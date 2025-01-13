@@ -1,8 +1,8 @@
 {
   "name": "omni-stack-gateway",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "version": "0.0.2",
+  "description": "Gateway Architecture where we want multi-directional communication between different systems.",
+  "author": "Griseld Gerveni",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
