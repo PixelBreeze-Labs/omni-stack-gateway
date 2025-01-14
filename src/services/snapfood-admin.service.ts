@@ -17,7 +17,7 @@ export class SnapfoodAdminService {
                 url: `${this.baseUrl}/${endpoint}`,
                 data,
                 headers: {
-                    'Authorization': `Bearer ${this.apiKey}`,
+                    'x-api-key': `${this.apiKey}`,
                     'Content-Type': 'application/json',
                 },
             });
