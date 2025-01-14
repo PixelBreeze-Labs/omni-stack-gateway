@@ -7,7 +7,6 @@ export interface ClientApp {
     domain: string[];
     configuredAt: Date;
     status: 'active' | 'inactive';
-    // Add form configuration
     reportConfig: {
         form: {
             title: string;
