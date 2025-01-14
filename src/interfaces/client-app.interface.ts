@@ -7,4 +7,31 @@ export interface ClientApp {
     domain: string[];
     configuredAt: Date;
     status: 'active' | 'inactive';
+    reportConfig: {
+        form: {
+            title: string;
+            subtitle: string;
+            nameInput: {
+                placeholder: string;
+                required: boolean;
+            };
+            messageInput: {
+                placeholder: string;
+                required: boolean;
+            };
+            submitButton: {
+                text: string;
+                backgroundColor: string;
+                textColor: string;
+                iconColor: string;
+            };
+        };
+        email: {
+            recipients: string[];
+            fromName: string;
+            fromEmail: string;
+            subject: string;
+            template?: string;
+        };
+    };
 }
