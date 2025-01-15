@@ -7,11 +7,14 @@ import { GatewayController } from './controllers/gateway.controller';
 import { SnapfoodAdminService } from './services/snapfood-admin.service';
 import { SnapfoodService } from './services/snapfood.service';
 import { ApiKeyMiddleware } from './middleware/api-key.middleware';
+import { EmailService } from './services/email.service';
 import configuration from './config/configuration';
 import { ClientAppSchema } from './schemas/client-app.schema';
 import { ReportSchema } from './schemas/report.schema';
 import { ReportsController } from './controllers/reports.controller';
 import { ReportsService } from './services/reports.service';
+import { ClientAppController } from './controllers/client-app.controller';
+import { ClientAppService } from './services/client-app.service';
 
 @Module({
   imports: [
@@ -34,12 +37,15 @@ import { ReportsService } from './services/reports.service';
   controllers: [
     GatewayController,
     StudentVerificationController,
-    ReportsController
+    ReportsController,
+    ClientAppController
   ],
   providers: [
     SnapfoodService,
     SnapfoodAdminService,
-    ReportsService
+    ReportsService,
+    EmailService,
+    ClientAppService
   ],
 })
 export class AppModule implements NestModule {
