@@ -1,13 +1,14 @@
 // src/schemas/operation.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import {OperationStatus, OperationType} from "./enums";
+import { Document, Schema as MongooseSchema } from 'mongoose';
+import { OperationStatus, OperationType } from '../enums';
 
 @Schema({ timestamps: true })
-export class Operation {
-    @Prop({ required: true })
+export class Operation extends Document {
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
     clientId: string;
 
-    @Prop({ required: true })
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Warehouse' })
     warehouseId: string;
 
     @Prop({ type: String, enum: OperationType, required: true })
@@ -19,7 +20,7 @@ export class Operation {
     @Prop({ type: String, enum: OperationStatus, default: OperationStatus.DRAFT })
     status: OperationStatus;
 
-    @Prop()
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Batch' })
     batchId?: string;
 
     @Prop()
@@ -31,6 +32,5 @@ export class Operation {
     @Prop()
     notes?: string;
 }
-
 
 export const OperationSchema = SchemaFactory.createForClass(Operation);

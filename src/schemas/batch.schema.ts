@@ -1,16 +1,17 @@
 // src/schemas/batch.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import {BatchStatus} from "./enums";
+import { Document, Schema as MongooseSchema } from 'mongoose';
+import { BatchStatus } from '../enums';
 
 @Schema({ timestamps: true })
-export class Batch {
-    @Prop({ required: true })
+export class Batch extends Document {
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
     clientId: string;
 
-    @Prop({ required: true })
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Warehouse' })
     warehouseId: string;
 
-    @Prop({ required: true })
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
     productId: string;
 
     @Prop({ required: true })

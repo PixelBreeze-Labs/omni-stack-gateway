@@ -1,30 +1,21 @@
-// src/schemas/product.schema.ts
+// src/schemas/client.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Currency } from '../enums';
 
 @Schema({ timestamps: true })
-export class Product extends Document {
-    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
-    clientId: string;
-
+export class Client extends Document {
     @Prop({ required: true })
     name: string;
 
     @Prop({ required: true })
     code: string;
 
-    @Prop()
-    barcode?: string;
-
-    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Brand' })
-    brandId?: string;
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'ClientApp' })
+    clientAppId: string;
 
     @Prop()
     externalId?: string;
-
-    @Prop({ type: Map, of: Number, default: {} })
-    prices: Map<Currency, number>;
 
     @Prop({ type: String, enum: Currency, default: Currency.USD })
     defaultCurrency: Currency;
@@ -33,4 +24,4 @@ export class Product extends Document {
     isActive: boolean;
 }
 
-export const ProductSchema = SchemaFactory.createForClass(Product);
+export const ClientSchema = SchemaFactory.createForClass(Client);

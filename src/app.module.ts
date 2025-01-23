@@ -18,6 +18,8 @@ import { Product, ProductSchema } from './schemas/product.schema';
 import { Warehouse, WarehouseSchema } from './schemas/warehouse.schema';
 import { InventoryItem, InventoryItemSchema } from './schemas/inventory-item.schema';
 import { Batch, BatchSchema } from './schemas/batch.schema';
+import { Brand, BrandSchema } from './schemas/brand.schema';
+import { Client, ClientSchema } from './schemas/client.schema';
 import { Operation, OperationSchema } from './schemas/operation.schema';
 import { OperationItem, OperationItemSchema } from './schemas/operation-item.schema';
 
@@ -53,6 +55,8 @@ import { ExchangeRateService } from './services/exchange-rate.service';
       { name: Warehouse.name, schema: WarehouseSchema },
       { name: InventoryItem.name, schema: InventoryItemSchema },
       { name: Batch.name, schema: BatchSchema },
+      { name: Brand.name, schema: BrandSchema },
+      { name: Client.name, schema: ClientSchema },
       { name: Operation.name, schema: OperationSchema },
       { name: OperationItem.name, schema: OperationItemSchema },
     ]),
