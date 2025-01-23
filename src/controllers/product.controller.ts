@@ -4,7 +4,9 @@ import { ProductService } from '../services/product.service';
 import { ExchangeRateService } from '../services/exchange-rate.service';
 import { CreateProductDto } from '../dtos/product.dto';
 import { Currency } from '../enums/currency.enum';
+import {ApiOperation, ApiResponse, ApiTags} from "@nestjs/swagger";
 
+@ApiTags('Products')
 @Controller('products')
 export class ProductController {
     constructor(
@@ -12,6 +14,8 @@ export class ProductController {
         private readonly exchangeRateService: ExchangeRateService,
     ) {}
 
+    @ApiOperation({ summary: 'Create new product with price conversion' })
+    @ApiResponse({ status: 201, description: 'Product created' })
     @Post()
     async create(@Body() dto: CreateProductDto) {
         const rates = await this.exchangeRateService.convertPrice(

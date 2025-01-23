@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { HttpModule } from '@nestjs/axios';
@@ -44,7 +44,6 @@ import { ProductService } from './services/product.service';
 import { ExchangeRateService } from './services/exchange-rate.service';
 import { ImportServiceFactory } from './services/import/import-factory.service';
 import { BybestProductsImportService } from './services/import/bybest-products-import.service';
-import { BaseImportService } from './services/import/base-import.service';
 import {ClientController} from "./controllers/client.controller";
 import {ClientService} from "./services/client.service";
 import {ClientApiKeyService} from "./services/client-api-key.service";
@@ -54,6 +53,7 @@ import { ScanService } from './services/scan.service';
 import { InventoryService } from './services/inventory.service';
 import { WarehouseService } from './services/warehouse.service';
 import { ScanReportService } from './services/scan-report.service';
+import { WarehouseLocationService } from './services/warehouse-location.service';
 
 @Module({
   imports: [
@@ -113,10 +113,10 @@ import { ScanReportService } from './services/scan-report.service';
     ClientService,
     ClientApiKeyService,
     BrandService,
-    BaseImportService,
     ScanService,
     InventoryService,
     WarehouseService,
+    WarehouseLocationService,
     ScanReportService,
   ],
 })
@@ -124,6 +124,10 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
         .apply(ApiKeyMiddleware)
+        .exclude(
+            { path: 'docs', method: RequestMethod.ALL },
+            { path: 'docs/(.*)', method: RequestMethod.ALL }
+        )
         .forRoutes('*');
   }
 }
