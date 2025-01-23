@@ -19,6 +19,7 @@ import { Warehouse, WarehouseSchema } from './schemas/warehouse.schema';
 import { InventoryItem, InventoryItemSchema } from './schemas/inventory-item.schema';
 import { Batch, BatchSchema } from './schemas/batch.schema';
 import { Brand, BrandSchema } from './schemas/brand.schema';
+import { BrandApiConfigSchema, BrandApiConfig } from './schemas/brand-api-config.schema';
 import { Client, ClientSchema } from './schemas/client.schema';
 import { Operation, OperationSchema } from './schemas/operation.schema';
 import { OperationItem, OperationItemSchema } from './schemas/operation-item.schema';
@@ -40,6 +41,8 @@ import { BaseImportService } from './services/import/base-import.service';
 import {ClientController} from "./controllers/client.controller";
 import {ClientService} from "./services/client.service";
 import {ClientApiKeyService} from "./services/client-api-key.service";
+import {BrandController} from "./controllers/brand.controller";
+import {BrandService} from "./services/brand.service";
 
 @Module({
   imports: [
@@ -63,6 +66,7 @@ import {ClientApiKeyService} from "./services/client-api-key.service";
       { name: InventoryItem.name, schema: InventoryItemSchema },
       { name: Batch.name, schema: BatchSchema },
       { name: Brand.name, schema: BrandSchema },
+      { name: BrandApiConfig.name, schema: BrandApiConfigSchema },
       { name: Client.name, schema: ClientSchema },
       { name: Operation.name, schema: OperationSchema },
       { name: OperationItem.name, schema: OperationItemSchema },
@@ -75,7 +79,8 @@ import {ClientApiKeyService} from "./services/client-api-key.service";
     ClientAppController,
     ProductController,
     ImportController,
-    ClientController
+    ClientController,
+    BrandController
   ],
   providers: [
     SnapfoodService,
@@ -88,7 +93,8 @@ import {ClientApiKeyService} from "./services/client-api-key.service";
     BybestProductsImportService,
     ImportServiceFactory,
     ClientService,
-    ClientApiKeyService
+    ClientApiKeyService,
+    BrandService
   ],
 })
 export class AppModule implements NestModule {
