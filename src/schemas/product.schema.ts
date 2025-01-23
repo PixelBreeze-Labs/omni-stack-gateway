@@ -1,6 +1,7 @@
 // src/schemas/product.schema.ts
 
-import { Prop, Schema } from '@nestjs/mongoose';
+import {Prop, Schema, SchemaFactory} from '@nestjs/mongoose';
+import { Currency } from '../enums/currency.enum';
 
 @Schema({ timestamps: true })
 export class Product {
@@ -39,4 +40,12 @@ export class Product {
 
     @Prop({ default: true })
     isActive: boolean;
+
+    @Prop({ type: Map, of: Number, default: {} })
+    prices: Map<Currency, number>;
+
+    @Prop({ type: String, enum: Currency, default: Currency.USD })
+    defaultCurrency: Currency;
 }
+
+export const ProductSchema = SchemaFactory.createForClass(Product);

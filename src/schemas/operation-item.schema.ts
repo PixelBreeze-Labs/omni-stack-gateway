@@ -1,5 +1,5 @@
 // src/schemas/operation-item.schema.ts
-import { Prop, Schema } from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({ timestamps: true })
 export class OperationItem {
@@ -21,3 +21,5 @@ export class OperationItem {
     @Prop()
     notes?: string;
 }
+
+export const OperationItemSchema = SchemaFactory.createForClass(OperationItem);

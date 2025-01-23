@@ -1,5 +1,5 @@
 // src/schemas/batch.schema.ts
-import { Prop, Schema } from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import {BatchStatus} from "./enums";
 
 @Schema({ timestamps: true })
@@ -25,3 +25,5 @@ export class Batch {
     @Prop()
     expiryDate?: Date;
 }
+
+export const BatchSchema = SchemaFactory.createForClass(Batch);

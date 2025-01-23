@@ -1,5 +1,5 @@
 // src/schemas/inventory-item.schema.ts
-import { Prop, Schema } from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({ timestamps: true })
 export class InventoryItem {
@@ -15,3 +15,5 @@ export class InventoryItem {
     @Prop()
     lastCountDate?: Date;
 }
+
+export const InventoryItemSchema = SchemaFactory.createForClass(InventoryItem);

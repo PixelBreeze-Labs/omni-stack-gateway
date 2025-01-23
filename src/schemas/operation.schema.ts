@@ -1,5 +1,5 @@
 // src/schemas/operation.schema.ts
-import { Prop, Schema } from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import {OperationStatus, OperationType} from "./enums";
 
 @Schema({ timestamps: true })
@@ -31,3 +31,6 @@ export class Operation {
     @Prop()
     notes?: string;
 }
+
+
+export const OperationSchema = SchemaFactory.createForClass(Operation);

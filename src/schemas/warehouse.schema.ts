@@ -1,5 +1,5 @@
 // src/schemas/warehouse.schema.ts
-import { Prop, Schema } from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({ timestamps: true })
 export class Warehouse {
@@ -18,3 +18,5 @@ export class Warehouse {
     @Prop({ default: true })
     isActive: boolean;
 }
+
+export const WarehouseSchema = SchemaFactory.createForClass(Warehouse);
