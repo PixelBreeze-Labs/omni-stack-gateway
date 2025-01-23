@@ -1,8 +1,9 @@
+// src/schemas/inventory-adjustment.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Schema as MongooseSchema } from 'mongoose';
 
 @Schema({ timestamps: true })
-export class ScanLog {
+export class InventoryAdjustment {
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
     productId: string;
 
@@ -15,14 +16,11 @@ export class ScanLog {
     @Prop({ required: true })
     quantity: number;
 
-    @Prop()
-    locationCode?: string;
+    @Prop({ required: true, enum: ['add', 'subtract', 'set'] })
+    type: string;
 
-    @Prop({ required: true, enum: ['create', 'update'] })
-    action: string;
-
-    @Prop()
-    note?: string;
+    @Prop({ required: true })
+    reason: string;
 }
 
-export const ScanLogSchema = SchemaFactory.createForClass(ScanLog);
+export const InventoryAdjustmentSchema = SchemaFactory.createForClass(InventoryAdjustment);
