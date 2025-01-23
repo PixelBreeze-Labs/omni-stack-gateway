@@ -7,7 +7,7 @@ export class ClientApp extends Document {
     @Prop({ required: true })
     name: string;
 
-    @Prop({ required: true, enum: ['wordpress', 'react', 'vue', 'other'] })
+    @Prop({ required: true, enum: ['wordpress', 'react', 'vue', 'other', 'next'] })
     type: string;
 
     @Prop({ required: true, unique: true })
