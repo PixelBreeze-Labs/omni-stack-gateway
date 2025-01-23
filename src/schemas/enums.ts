@@ -1,0 +1,23 @@
+// src/schemas/enums.ts
+export enum BatchStatus {
+    ACTIVE = 'ACTIVE',
+    PROCESSED = 'PROCESSED',
+    EXPIRED = 'EXPIRED',
+    CANCELLED = 'CANCELLED'
+}
+
+export enum OperationType {
+    PURCHASE = 'PURCHASE',
+    SALE = 'SALE',
+    TRANSFER = 'TRANSFER',
+    ADJUSTMENT = 'ADJUSTMENT',
+    RETURN = 'RETURN',
+    COUNT = 'COUNT'
+}
+
+export enum OperationStatus {
+    DRAFT = 'DRAFT',
+    PENDING = 'PENDING',
+    COMPLETED = 'COMPLETED',
+    CANCELLED = 'CANCELLED'
+}
