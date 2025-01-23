@@ -29,7 +29,7 @@ export abstract class BaseImportService {
         throw new Error('Unsupported file format');
     }
 
-    async processFile(file: Buffer, filename: string, brandId?: string): Promise<ImportResult> {
+    async processFile(file: Buffer, filename: string, brandId: string, clientId: string): Promise<ImportResult> {
         const rows = this.parseFile(file, filename);
         const results: ImportResult = {
             success: 0,
@@ -48,7 +48,7 @@ export abstract class BaseImportService {
 
             try {
                 const transformedRow = await this.transformRow(rows[i], brandId);
-                await this.saveRow(transformedRow);
+                await this.saveRow(transformedRow, clientId);
                 results.success++;
             } catch (error) {
                 results.failed++;
@@ -59,5 +59,5 @@ export abstract class BaseImportService {
         return results;
     }
 
-    protected abstract saveRow(row: any): Promise<void>;
+    protected abstract saveRow(row: any, clientId: string): Promise<void>;
 }

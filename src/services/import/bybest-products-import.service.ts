@@ -42,7 +42,10 @@ export class BybestProductsImportService extends BaseImportService {
         };
     }
 
-    protected async saveRow(row: any): Promise<void> {
-        await this.productModel.create(row);
+    protected async saveRow(row: any, clientId: string): Promise<void> {
+        await this.productModel.create({
+            ...row,
+            clientId
+        });
     }
 }
