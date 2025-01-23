@@ -1,7 +1,7 @@
 // src/schemas/operation.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
-import { OperationStatus, OperationType } from '../enums';
+import { OperationStatus, OperationType } from '../enums/operations.enum';
 
 @Schema({ timestamps: true })
 export class Operation extends Document {

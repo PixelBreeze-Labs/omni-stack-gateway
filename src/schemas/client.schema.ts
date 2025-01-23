@@ -1,7 +1,7 @@
 // src/schemas/client.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
-import { Currency } from '../enums';
+import { Currency } from '../enums/currency.enum';
 
 @Schema({ timestamps: true })
 export class Client extends Document {

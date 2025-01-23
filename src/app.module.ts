@@ -27,12 +27,16 @@ import { OperationItem, OperationItemSchema } from './schemas/operation-item.sch
 import { ReportsController } from './controllers/reports.controller';
 import { ClientAppController } from './controllers/client-app.controller';
 import { ProductController } from './controllers/product.controller';
+import { ImportController } from './controllers/import.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
 import { ClientAppService } from './services/client-app.service';
 import { ProductService } from './services/product.service';
 import { ExchangeRateService } from './services/exchange-rate.service';
+import { ImportServiceFactory } from './services/import/import-factory.service';
+import { BybestProductsImportService } from './services/import/bybest-products-import.service';
+import { BaseImportService } from './services/import/base-import.service';
 
 @Module({
   imports: [
@@ -66,7 +70,8 @@ import { ExchangeRateService } from './services/exchange-rate.service';
     StudentVerificationController,
     ReportsController,
     ClientAppController,
-    ProductController
+    ProductController,
+    ImportController
   ],
   providers: [
     SnapfoodService,
@@ -75,7 +80,9 @@ import { ExchangeRateService } from './services/exchange-rate.service';
     EmailService,
     ClientAppService,
     ProductService,
-    ExchangeRateService
+    ExchangeRateService,
+    BybestProductsImportService,
+    ImportServiceFactory
   ],
 })
 export class AppModule implements NestModule {
