@@ -22,6 +22,9 @@ export class Client extends Document {
 
     @Prop({ default: true })
     isActive: boolean;
+
+    @Prop({ required: true, unique: true, select: false })
+    apiKey: string;
 }
 
 export const ClientSchema = SchemaFactory.createForClass(Client);

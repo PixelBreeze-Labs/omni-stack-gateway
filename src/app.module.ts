@@ -37,6 +37,9 @@ import { ExchangeRateService } from './services/exchange-rate.service';
 import { ImportServiceFactory } from './services/import/import-factory.service';
 import { BybestProductsImportService } from './services/import/bybest-products-import.service';
 import { BaseImportService } from './services/import/base-import.service';
+import {ClientController} from "./controllers/client.controller";
+import {ClientService} from "./services/client.service";
+import {ClientApiKeyService} from "./services/client-api-key.service";
 
 @Module({
   imports: [
@@ -71,7 +74,8 @@ import { BaseImportService } from './services/import/base-import.service';
     ReportsController,
     ClientAppController,
     ProductController,
-    ImportController
+    ImportController,
+    ClientController
   ],
   providers: [
     SnapfoodService,
@@ -82,7 +86,9 @@ import { BaseImportService } from './services/import/base-import.service';
     ProductService,
     ExchangeRateService,
     BybestProductsImportService,
-    ImportServiceFactory
+    ImportServiceFactory,
+    ClientService,
+    ClientApiKeyService
   ],
 })
 export class AppModule implements NestModule {

@@ -2,7 +2,7 @@
 export interface ClientApp {
     id: string;
     name: string;
-    type: 'wordpress' | 'react' | 'vue' | 'other';
+    type: 'wordpress' | 'react' | 'vue' | 'other' | 'next';
     apiKey: string;
     domain: string[];
     configuredAt: Date;
