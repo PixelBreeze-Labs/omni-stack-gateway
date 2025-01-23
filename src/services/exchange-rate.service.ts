@@ -63,4 +63,42 @@ export class ExchangeRateService {
             return { amount: amount * rate, rate };
         }
     }
+
+    private formatRates(apiRates: Record<string, number>): Record<Currency, Record<Currency, number>> {
+        // Fallback rates if API data is incomplete
+        const fallbackRates = {
+            USD: { EUR: 0.91, ALL: 97.40, USD: 1 },
+            EUR: { USD: 1.10, ALL: 106.85, EUR: 1 },
+            ALL: { USD: 0.0103, EUR: 0.0094, ALL: 1 }
+        };
+
+        if (!apiRates || !apiRates.EUR || !apiRates.USD || !apiRates.ALL) {
+            this.logger.warn('Incomplete API rates, using fallback rates');
+            return fallbackRates;
+        }
+
+        const currencies = Object.values(Currency);
+        const formattedRates: Record<Currency, Record<Currency, number>> = {} as any;
+
+        try {
+            currencies.forEach(fromCurrency => {
+                formattedRates[fromCurrency] = {} as Record<Currency, number>;
+
+                currencies.forEach(toCurrency => {
+                    if (fromCurrency === toCurrency) {
+                        formattedRates[fromCurrency][toCurrency] = 1;
+                    } else {
+                        const baseRate = apiRates[toCurrency];
+                        const rate = baseRate / apiRates[fromCurrency];
+                        formattedRates[fromCurrency][toCurrency] = Number(rate.toFixed(4));
+                    }
+                });
+            });
+
+            return formattedRates;
+        } catch (error) {
+            this.logger.error('Error formatting rates, using fallback rates', error);
+            return fallbackRates;
+        }
+    }
 }

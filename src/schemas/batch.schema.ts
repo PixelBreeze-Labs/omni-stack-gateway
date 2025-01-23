@@ -1,7 +1,7 @@
 // src/schemas/batch.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
-import { BatchStatus } from '../enums';
+import { BatchStatus } from '../enums/batches.enum';
 
 @Schema({ timestamps: true })
 export class Batch extends Document {

@@ -1,7 +1,7 @@
 // src/schemas/product.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
-import { Currency } from '../enums';
+import { Currency } from '../enums/currency.enum';
 
 @Schema({ timestamps: true })
 export class Product extends Document {
@@ -31,6 +31,16 @@ export class Product extends Document {
 
     @Prop({ default: true })
     isActive: boolean;
+
+    @Prop({ default: 0 })
+    initialStock: number;
+
+    // Optional: Add import metadata
+    @Prop()
+    importedAt?: Date;
+
+    @Prop()
+    importBatchId?: string;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
