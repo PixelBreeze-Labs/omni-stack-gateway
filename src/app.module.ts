@@ -24,6 +24,8 @@ import { Client, ClientSchema } from './schemas/client.schema';
 import { Operation, OperationSchema } from './schemas/operation.schema';
 import { OperationItem, OperationItemSchema } from './schemas/operation-item.schema';
 import { ScanLog, ScanLogSchema } from './schemas/scan-log.schema';
+import { InventoryAdjustment, InventoryAdjustmentSchema } from './schemas/inventory-adjustment.schema';
+import { WarehouseLocation, WarehouseLocationSchema } from './schemas/warehouse-location.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -31,6 +33,9 @@ import { ClientAppController } from './controllers/client-app.controller';
 import { ProductController } from './controllers/product.controller';
 import { ImportController } from './controllers/import.controller';
 import { ScanController } from './controllers/scan.controller';
+import { InventoryController } from './controllers/inventory.controller';
+import { WarehouseLocationController } from './controllers/warehouse-location.controller';
+import { ScanReportController } from './controllers/scan-report.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -46,7 +51,9 @@ import {ClientApiKeyService} from "./services/client-api-key.service";
 import {BrandController} from "./controllers/brand.controller";
 import {BrandService} from "./services/brand.service";
 import { ScanService } from './services/scan.service';
-
+import { InventoryService } from './services/inventory.service';
+import { WarehouseService } from './services/warehouse.service';
+import { ScanReportService } from './services/scan-report.service';
 
 @Module({
   imports: [
@@ -75,6 +82,8 @@ import { ScanService } from './services/scan.service';
       { name: Operation.name, schema: OperationSchema },
       { name: OperationItem.name, schema: OperationItemSchema },
       { name: ScanLog.name, schema: ScanLogSchema },
+      { name: InventoryAdjustment.name, schema: InventoryAdjustmentSchema },
+      { name: WarehouseLocation.name, schema: WarehouseLocationSchema },
     ]),
   ],
   controllers: [
@@ -86,7 +95,10 @@ import { ScanService } from './services/scan.service';
     ImportController,
     ClientController,
     BrandController,
-    ScanController
+    ScanController,
+    InventoryController,
+    WarehouseLocationController,
+    ScanReportController,
   ],
   providers: [
     SnapfoodService,
@@ -102,7 +114,10 @@ import { ScanService } from './services/scan.service';
     ClientApiKeyService,
     BrandService,
     BaseImportService,
-    ScanService
+    ScanService,
+    InventoryService,
+    WarehouseService,
+    ScanReportService,
   ],
 })
 export class AppModule implements NestModule {
