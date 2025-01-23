@@ -41,6 +41,15 @@ export class Product extends Document {
 
     @Prop()
     importBatchId?: string;
+
+    @Prop()
+    lastScannedAt?: Date;
+
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Warehouse' })
+    lastScannedWarehouse?: string;
+
+    @Prop()
+    locationCode?: string;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

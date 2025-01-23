@@ -23,12 +23,14 @@ import { BrandApiConfigSchema, BrandApiConfig } from './schemas/brand-api-config
 import { Client, ClientSchema } from './schemas/client.schema';
 import { Operation, OperationSchema } from './schemas/operation.schema';
 import { OperationItem, OperationItemSchema } from './schemas/operation-item.schema';
+import { ScanLog, ScanLogSchema } from './schemas/scan-log.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
 import { ClientAppController } from './controllers/client-app.controller';
 import { ProductController } from './controllers/product.controller';
 import { ImportController } from './controllers/import.controller';
+import { ScanController } from './controllers/scan.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -43,6 +45,8 @@ import {ClientService} from "./services/client.service";
 import {ClientApiKeyService} from "./services/client-api-key.service";
 import {BrandController} from "./controllers/brand.controller";
 import {BrandService} from "./services/brand.service";
+import { ScanService } from './services/scan.service';
+
 
 @Module({
   imports: [
@@ -70,6 +74,7 @@ import {BrandService} from "./services/brand.service";
       { name: Client.name, schema: ClientSchema },
       { name: Operation.name, schema: OperationSchema },
       { name: OperationItem.name, schema: OperationItemSchema },
+      { name: ScanLog.name, schema: ScanLogSchema },
     ]),
   ],
   controllers: [
@@ -80,7 +85,8 @@ import {BrandService} from "./services/brand.service";
     ProductController,
     ImportController,
     ClientController,
-    BrandController
+    BrandController,
+    ScanController
   ],
   providers: [
     SnapfoodService,
@@ -94,7 +100,9 @@ import {BrandService} from "./services/brand.service";
     ImportServiceFactory,
     ClientService,
     ClientApiKeyService,
-    BrandService
+    BrandService,
+    BaseImportService,
+    ScanService
   ],
 })
 export class AppModule implements NestModule {
