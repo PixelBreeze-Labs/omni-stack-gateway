@@ -26,6 +26,9 @@ import { OperationItem, OperationItemSchema } from './schemas/operation-item.sch
 import { ScanLog, ScanLogSchema } from './schemas/scan-log.schema';
 import { InventoryAdjustment, InventoryAdjustmentSchema } from './schemas/inventory-adjustment.schema';
 import { WarehouseLocation, WarehouseLocationSchema } from './schemas/warehouse-location.schema';
+import { ImportTemplate, ImportTemplateSchema } from './schemas/template.schema';
+import { ProductVariationConfig, ProductVariationConfigSchema } from './schemas/product-variation-config.schema';
+import { TemplateField, TemplateFieldSchema } from './schemas/template-field.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -54,6 +57,13 @@ import { InventoryService } from './services/inventory.service';
 import { WarehouseService } from './services/warehouse.service';
 import { ScanReportService } from './services/scan-report.service';
 import { WarehouseLocationService } from './services/warehouse-location.service';
+import {TemplateService} from "./services/import/processors/template.service";
+import {ProductVariationService} from "./services/product-variation-service";
+import {SimpleImportProcessor} from "./services/import/processors/simple-processor";
+import {VariationImportProcessor} from "./services/import/processors/variation-processor";
+import {MatrixImportProcessor} from "./services/import/processors/matrix-processor";
+import {TemplateController} from "./controllers/template.controller";
+import {ProductVariationController} from "./controllers/product-variation.controller";
 
 @Module({
   imports: [
@@ -84,6 +94,9 @@ import { WarehouseLocationService } from './services/warehouse-location.service'
       { name: ScanLog.name, schema: ScanLogSchema },
       { name: InventoryAdjustment.name, schema: InventoryAdjustmentSchema },
       { name: WarehouseLocation.name, schema: WarehouseLocationSchema },
+      { name: ImportTemplate.name, schema: ImportTemplateSchema },
+      { name: ProductVariationConfig.name, schema: ProductVariationConfigSchema },
+      { name: TemplateField.name, schema: TemplateFieldSchema }
     ]),
   ],
   controllers: [
@@ -99,6 +112,8 @@ import { WarehouseLocationService } from './services/warehouse-location.service'
     InventoryController,
     WarehouseLocationController,
     ScanReportController,
+    TemplateController,
+    ProductVariationController
   ],
   providers: [
     SnapfoodService,
@@ -118,6 +133,11 @@ import { WarehouseLocationService } from './services/warehouse-location.service'
     WarehouseService,
     WarehouseLocationService,
     ScanReportService,
+    TemplateService,
+    ProductVariationService,
+    SimpleImportProcessor,
+    VariationImportProcessor,
+    MatrixImportProcessor
   ],
 })
 export class AppModule implements NestModule {
