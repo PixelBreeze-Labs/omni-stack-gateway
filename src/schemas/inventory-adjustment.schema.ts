@@ -1,6 +1,6 @@
 // src/schemas/inventory-adjustment.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Schema as MongooseSchema } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class InventoryAdjustment extends Document {
