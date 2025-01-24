@@ -17,7 +17,7 @@ export class SupabaseService {
     async uploadFile(buffer: Buffer, path: string): Promise<string> {
         const { data, error } = await this.supabase
             .storage
-            .from('qytetaret')
+            .from('products')
             .upload(path, buffer, {
                 contentType: 'image/jpeg',
                 upsert: true
@@ -27,7 +27,7 @@ export class SupabaseService {
 
         const { data: { publicUrl } } = this.supabase
             .storage
-            .from('qytetaret')
+            .from('products')
             .getPublicUrl(data.path);
 
         return publicUrl;
