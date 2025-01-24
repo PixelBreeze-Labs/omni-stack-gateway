@@ -39,6 +39,7 @@ import { ScanController } from './controllers/scan.controller';
 import { InventoryController } from './controllers/inventory.controller';
 import { WarehouseLocationController } from './controllers/warehouse-location.controller';
 import { ScanReportController } from './controllers/scan-report.controller';
+import { InventoryAdjustmentController } from './controllers/inventory-adjustment.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -68,6 +69,7 @@ import {SupabaseService} from "./services/supabase.service";
 import {ImageProcessingService} from "./services/image-processing.service";
 import {OpenAIService} from "./services/openai.service";
 import {BrandScraperService} from "./services/scraping/brand-scraper.service";
+import {InventoryAdjustmentService} from "./services/inventory-adjustments.service";
 import {ScraperController} from "./controllers/scraper.controller";
 
 @Module({
@@ -119,7 +121,8 @@ import {ScraperController} from "./controllers/scraper.controller";
     ScanReportController,
     TemplateController,
     ProductVariationController,
-    ScraperController
+    ScraperController,
+    InventoryAdjustmentController
   ],
   providers: [
     SnapfoodService,
@@ -147,7 +150,8 @@ import {ScraperController} from "./controllers/scraper.controller";
     SupabaseService,
     ImageProcessingService,
     OpenAIService,
-    BrandScraperService
+    BrandScraperService,
+    InventoryAdjustmentService
   ],
 })
 export class AppModule implements NestModule {
