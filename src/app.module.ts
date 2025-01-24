@@ -64,6 +64,11 @@ import {VariationImportProcessor} from "./services/import/processors/variation-p
 import {MatrixImportProcessor} from "./services/import/processors/matrix-processor";
 import {TemplateController} from "./controllers/template.controller";
 import {ProductVariationController} from "./controllers/product-variation.controller";
+import {SupabaseService} from "./services/supabase.service";
+import {ImageProcessingService} from "./services/image-processing.service";
+import {OpenAIService} from "./services/openai.service";
+import {BrandScraperService} from "./services/scraping/brand-scraper.service";
+import {ScraperController} from "./controllers/scraper.controller";
 
 @Module({
   imports: [
@@ -113,7 +118,8 @@ import {ProductVariationController} from "./controllers/product-variation.contro
     WarehouseLocationController,
     ScanReportController,
     TemplateController,
-    ProductVariationController
+    ProductVariationController,
+    ScraperController
   ],
   providers: [
     SnapfoodService,
@@ -137,7 +143,11 @@ import {ProductVariationController} from "./controllers/product-variation.contro
     ProductVariationService,
     SimpleImportProcessor,
     VariationImportProcessor,
-    MatrixImportProcessor
+    MatrixImportProcessor,
+    SupabaseService,
+    ImageProcessingService,
+    OpenAIService,
+    BrandScraperService
   ],
 })
 export class AppModule implements NestModule {
