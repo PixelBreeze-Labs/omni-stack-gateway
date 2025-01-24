@@ -50,6 +50,23 @@ export class Product extends Document {
 
     @Prop()
     locationCode?: string;
+
+    @Prop({ type: String })
+    imagePath?: string;
+
+    @Prop({ type: String })
+    imageThumbnailPath?: string;
+
+    @Prop({ type: [String] })
+    gallery?: string[];
+
+    @Prop({ type: Object })
+    imageMetadata?: {
+        width: number;
+        height: number;
+        format: string;
+        size: number;
+    };
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
