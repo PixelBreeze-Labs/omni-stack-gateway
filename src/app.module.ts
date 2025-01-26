@@ -163,7 +163,7 @@ export class AppModule implements NestModule {
         .exclude(
             { path: 'docs', method: RequestMethod.ALL },
             { path: 'docs/(.*)', method: RequestMethod.ALL },
-            { path: 'docs-json', method: RequestMethod.ALL }, // <-- exclude JSON endpoint
+            { path: 'docs-json', method: RequestMethod.ALL }
         )
         .forRoutes('*');
   }
