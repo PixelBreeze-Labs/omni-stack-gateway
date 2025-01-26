@@ -38,6 +38,7 @@ import { ImportController } from './controllers/import.controller';
 import { ScanController } from './controllers/scan.controller';
 import { InventoryController } from './controllers/inventory.controller';
 import { WarehouseLocationController } from './controllers/warehouse-location.controller';
+import { WarehouseController } from './controllers/warehouse.controller';
 import { ScanReportController } from './controllers/scan-report.controller';
 import { InventoryAdjustmentController } from './controllers/inventory-adjustment.controller';
 
@@ -118,6 +119,7 @@ import {ScraperController} from "./controllers/scraper.controller";
     ScanController,
     InventoryController,
     WarehouseLocationController,
+    WarehouseController,
     ScanReportController,
     TemplateController,
     ProductVariationController,
@@ -160,7 +162,8 @@ export class AppModule implements NestModule {
         .apply(ApiKeyMiddleware)
         .exclude(
             { path: 'docs', method: RequestMethod.ALL },
-            { path: 'docs/(.*)', method: RequestMethod.ALL }
+            { path: 'docs/(.*)', method: RequestMethod.ALL },
+            { path: 'docs-json', method: RequestMethod.ALL }, // <-- exclude JSON endpoint
         )
         .forRoutes('*');
   }
