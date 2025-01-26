@@ -162,7 +162,8 @@ export class AppModule implements NestModule {
         .apply(ApiKeyMiddleware)
         .exclude(
             { path: 'docs', method: RequestMethod.ALL },
-            { path: 'docs/(.*)', method: RequestMethod.ALL }
+            { path: 'docs/(.*)', method: RequestMethod.ALL },
+            { path: 'docs-json', method: RequestMethod.ALL }, // <-- exclude JSON endpoint
         )
         .forRoutes('*');
   }
