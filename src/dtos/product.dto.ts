@@ -1,9 +1,8 @@
-import { IsString, IsNumber, IsEnum, IsBoolean, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsEnum, IsBoolean, IsOptional, IsObject, IsArray } from 'class-validator';
 import { Currency } from '../enums/currency.enum';
 import { ApiProperty } from '@nestjs/swagger';
-import {Prop} from "@nestjs/mongoose";
 
-export class CreateProductDto {
+export class BaseProductDto {
     @ApiProperty({ description: 'Product name' })
     @IsString()
     name: string;
@@ -25,35 +24,83 @@ export class CreateProductDto {
     @IsOptional()
     useExternalRates?: boolean;
 
-    @Prop({ type: Boolean, default: false })
-    hasVariations: boolean;
+    @ApiProperty({ required: false })
+    @IsBoolean()
+    @IsOptional()
+    hasVariations?: boolean;
 
-    @Prop({ type: Object })
-    dimensions: {
+    @ApiProperty({ required: false })
+    @IsObject()
+    @IsOptional()
+    dimensions?: {
         weight: number;
         length: number;
         width: number;
         height: number;
     };
 
-    @Prop({ type: Map, of: String })
-    translations: Map<string, string>;
+    @ApiProperty({ required: false })
+    @IsObject()
+    @IsOptional()
+    translations?: Map<string, string>;
 
-    @Prop({ type: [String] })
-    tags: string[];
+    @ApiProperty({ required: false })
+    @IsArray()
+    @IsOptional()
+    tags?: string[];
 
-    @Prop({ type: Object })
+    @ApiProperty({ required: false })
+    @IsObject()
+    @IsOptional()
     parent?: {
         id: string;
         type: string;
     };
 
-    @Prop({ type: Boolean, default: false })
-    isFeatured: boolean;
+    @ApiProperty({ required: false })
+    @IsBoolean()
+    @IsOptional()
+    isFeatured?: boolean;
 
-    @Prop({ type: Boolean, default: false })
-    isBestSeller: boolean;
+    @ApiProperty({ required: false })
+    @IsBoolean()
+    @IsOptional()
+    isBestSeller?: boolean;
 
-    @Prop({ type: Number })
-    menuOrder: number;
+    @ApiProperty({ required: false })
+    @IsNumber()
+    @IsOptional()
+    menuOrder?: number;
+}
+
+export class CreateProductDto extends BaseProductDto {}
+
+export class ProductDto extends BaseProductDto {
+    @ApiProperty({ description: 'Product prices in different currencies' })
+    prices: Map<Currency, number>;
+
+    @ApiProperty({ enum: Currency, description: 'Default currency for the product' })
+    defaultCurrency: Currency;
+
+    @ApiProperty()
+    id: string;
+
+    @ApiProperty()
+    clientId: string;
+
+    @ApiProperty()
+    createdAt: Date;
+
+    @ApiProperty()
+    updatedAt: Date;
+}
+
+export class UpdateProductDto extends BaseProductDto {
+    @ApiProperty({ required: false })
+    @IsOptional()
+    prices?: Map<Currency, number>;
+
+    @ApiProperty({ required: false, enum: Currency })
+    @IsOptional()
+    defaultCurrency?: Currency;
 }

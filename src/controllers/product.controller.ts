@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ProductService } from '../services/product.service';
 import { ExchangeRateService } from '../services/exchange-rate.service';
-import { CreateProductDto } from '../dtos/product.dto';
+import { CreateProductDto, UpdateProductDto } from '../dtos/product.dto';
 import { Currency } from '../enums/currency.enum';
 import { ApiOperation, ApiResponse, ApiTags, ApiParam, ApiQuery } from "@nestjs/swagger";
 import { ClientAuthGuard } from '../guards/client-auth.guard';
@@ -30,11 +30,13 @@ export class ProductController {
         prices.set(dto.currency, dto.price);
         prices.set(Currency.USD, rates.amount);
 
-        return this.productService.create({
+        const productData: any = {
             ...dto,
             prices,
             defaultCurrency: dto.currency
-        });
+        };
+
+        return this.productService.create(productData);
     }
 
     @ApiOperation({ summary: 'Get all products' })
@@ -57,24 +59,26 @@ export class ProductController {
     @ApiOperation({ summary: 'Update product' })
     @ApiParam({ name: 'id', description: 'Product ID' })
     @Put(':id')
-    async update(@Param('id') id: string, @Body() updateData: Partial<CreateProductDto>) {
-        if (updateData.price && updateData.currency) {
+    async update(@Param('id') id: string, @Body() updateDto: UpdateProductDto) {
+        let productData: any = { ...updateDto };
+
+        if (updateDto.price && updateDto.currency) {
             const rates = await this.exchangeRateService.convertPrice(
-                updateData.price,
-                updateData.currency,
+                updateDto.price,
+                updateDto.currency,
                 Currency.USD,
-                updateData.useExternalRates
+                updateDto.useExternalRates
             );
 
             const prices = new Map<Currency, number>();
-            prices.set(updateData.currency, updateData.price);
+            prices.set(updateDto.currency, updateDto.price);
             prices.set(Currency.USD, rates.amount);
 
-            updateData.prices = prices;
-            updateData.defaultCurrency = updateData.currency;
+            productData.prices = prices;
+            productData.defaultCurrency = updateDto.currency;
         }
 
-        return this.productService.update(id, updateData);
+        return this.productService.update(id, productData);
     }
 
     @ApiOperation({ summary: 'Soft delete product' })

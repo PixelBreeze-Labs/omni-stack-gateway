@@ -72,6 +72,8 @@ import {OpenAIService} from "./services/openai.service";
 import {BrandScraperService} from "./services/scraping/brand-scraper.service";
 import {InventoryAdjustmentService} from "./services/inventory-adjustments.service";
 import {ScraperController} from "./controllers/scraper.controller";
+import {BatchController} from "./controllers/batch.controller";
+import {BatchService} from "./services/batch.service";
 
 @Module({
   imports: [
@@ -104,7 +106,7 @@ import {ScraperController} from "./controllers/scraper.controller";
       { name: WarehouseLocation.name, schema: WarehouseLocationSchema },
       { name: ImportTemplate.name, schema: ImportTemplateSchema },
       { name: ProductVariationConfig.name, schema: ProductVariationConfigSchema },
-      { name: TemplateField.name, schema: TemplateFieldSchema }
+      { name: TemplateField.name, schema: TemplateFieldSchema },
     ]),
   ],
   controllers: [
@@ -124,7 +126,8 @@ import {ScraperController} from "./controllers/scraper.controller";
     TemplateController,
     ProductVariationController,
     ScraperController,
-    InventoryAdjustmentController
+    InventoryAdjustmentController,
+    BatchController
   ],
   providers: [
     SnapfoodService,
@@ -153,7 +156,8 @@ import {ScraperController} from "./controllers/scraper.controller";
     ImageProcessingService,
     OpenAIService,
     BrandScraperService,
-    InventoryAdjustmentService
+    InventoryAdjustmentService,
+    BatchService
   ],
 })
 export class AppModule implements NestModule {
