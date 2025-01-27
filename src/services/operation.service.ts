@@ -289,10 +289,12 @@ export class OperationService {
         if (operation.status !== OperationStatus.DRAFT) {
             throw new BadRequestException('Can only delete draft operations');
         }
-
         await this.operationItemModel.deleteMany({ operationId: id });
-        await operation.delete();
 
-        return { message: 'Operation deleted successfully' };
+        return this.operationModel.findByIdAndDelete(id).exec();
+
+        // TODO: check this agai
+        // await operation.delete();
+        // return { message: 'Operation deleted successfully' };
     }
 }
