@@ -29,6 +29,8 @@ import { WarehouseLocation, WarehouseLocationSchema } from './schemas/warehouse-
 import { ImportTemplate, ImportTemplateSchema } from './schemas/template.schema';
 import { ProductVariationConfig, ProductVariationConfigSchema } from './schemas/product-variation-config.schema';
 import { TemplateField, TemplateFieldSchema } from './schemas/template-field.schema';
+import { StockLevel, StockLevelSchema } from './schemas/stock-level.schema';
+import { StockMovement, StockMovementSchema } from './schemas/stock-movement.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -41,6 +43,9 @@ import { WarehouseLocationController } from './controllers/warehouse-location.co
 import { WarehouseController } from './controllers/warehouse.controller';
 import { ScanReportController } from './controllers/scan-report.controller';
 import { InventoryAdjustmentController } from './controllers/inventory-adjustment.controller';
+import { OperationController } from './controllers/operation.controller';
+import { StockLevelController } from './controllers/stock-level.controller';
+import { StockMovementController } from './controllers/stock-movement.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -72,6 +77,11 @@ import {OpenAIService} from "./services/openai.service";
 import {BrandScraperService} from "./services/scraping/brand-scraper.service";
 import {InventoryAdjustmentService} from "./services/inventory-adjustments.service";
 import {ScraperController} from "./controllers/scraper.controller";
+import {BatchController} from "./controllers/batch.controller";
+import {BatchService} from "./services/batch.service";
+import { OperationService } from './services/operation.service';
+import { StockLevelService } from './services/stock-level.service';
+import { StockMovementService } from './services/stock-movement.service';
 
 @Module({
   imports: [
@@ -104,7 +114,9 @@ import {ScraperController} from "./controllers/scraper.controller";
       { name: WarehouseLocation.name, schema: WarehouseLocationSchema },
       { name: ImportTemplate.name, schema: ImportTemplateSchema },
       { name: ProductVariationConfig.name, schema: ProductVariationConfigSchema },
-      { name: TemplateField.name, schema: TemplateFieldSchema }
+      { name: TemplateField.name, schema: TemplateFieldSchema },
+      { name: StockLevel.name, schema: StockLevelSchema },
+      { name: StockMovement.name, schema: StockMovementSchema },
     ]),
   ],
   controllers: [
@@ -124,7 +136,11 @@ import {ScraperController} from "./controllers/scraper.controller";
     TemplateController,
     ProductVariationController,
     ScraperController,
-    InventoryAdjustmentController
+    InventoryAdjustmentController,
+    BatchController,
+    OperationController,
+    StockLevelController,
+    StockMovementController
   ],
   providers: [
     SnapfoodService,
@@ -153,7 +169,11 @@ import {ScraperController} from "./controllers/scraper.controller";
     ImageProcessingService,
     OpenAIService,
     BrandScraperService,
-    InventoryAdjustmentService
+    InventoryAdjustmentService,
+    BatchService,
+    OperationService,
+    StockLevelService,
+    StockMovementService
   ],
 })
 export class AppModule implements NestModule {
