@@ -2,6 +2,7 @@ export enum BatchStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE='INACTIVE',
     PROCESSED = 'PROCESSED',
+    PROCESSING = 'PROCESSING',
     EXPIRED = 'EXPIRED',
     CANCELLED = 'CANCELLED'
 }
