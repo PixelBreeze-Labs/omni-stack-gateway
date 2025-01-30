@@ -30,6 +30,7 @@ export class ClientService {
 
         return this.clientModel
             .find(filter)
+            .select('+apiKey')
             .skip(skip)
             .limit(limit)
             .sort({ createdAt: -1 });
