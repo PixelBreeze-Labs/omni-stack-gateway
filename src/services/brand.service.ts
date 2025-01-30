@@ -8,17 +8,25 @@ import {CreateBrandApiConfigDto, CreateBrandDto, ListBrandDto, UpdateBrandApiCon
 
 
 @Injectable()
+@Injectable()
 export class BrandService {
     constructor(
         @InjectModel(Brand.name) private brandModel: Model<Brand>,
         @InjectModel(BrandApiConfig.name) private configModel: Model<BrandApiConfig>
+    ) {}
+
+    async createWithConfig(
+        brandData: CreateBrandDto & { clientId: string },
+        apiConfig?: CreateBrandApiConfigDto
     ) {
-    }
+        // Create the brand with clientId
+        const brand = await this.brandModel.create(brandData);
 
-    async createWithConfig(createBrandDto: CreateBrandDto, apiConfig?: CreateBrandApiConfigDto) {
-        const brand = await this.brandModel.create(createBrandDto);
+        // If apiConfig exists and has non-empty values, create the config
+        if (apiConfig && (apiConfig.apiKey || apiConfig.baseUrl ||
+            Object.keys(apiConfig.endpoints || {}).length > 0 ||
+            Object.keys(apiConfig.headers || {}).length > 0)) {
 
-        if (apiConfig) {
             await this.configModel.create({
                 ...apiConfig,
                 brandId: brand.id
@@ -28,8 +36,10 @@ export class BrandService {
         return brand;
     }
 
-    async findAll(query: ListBrandDto) {
-        const filters: any = {};
+    async findAll(query: ListBrandDto & { clientId: string }) {
+        const filters: any = {
+            clientId: query.clientId // Always filter by clientId for security
+        };
 
         if (query.search) {
             filters.$or = [
@@ -38,22 +48,44 @@ export class BrandService {
             ];
         }
 
-        if (query.clientId) {
-            filters.clientId = query.clientId;
-        }
+        const brands = await this.brandModel
+            .find(filters)
+            .sort({ createdAt: -1 });
 
-        return this.brandModel.find(filters);
+        // Fetch associated API configs
+        const brandsWithConfig = await Promise.all(
+            brands.map(async (brand) => {
+                const config = await this.configModel.findOne({ brandId: brand.id });
+                return {
+                    ...brand.toObject(),
+                    apiConfig: config
+                };
+            })
+        );
+
+        return brandsWithConfig;
     }
 
-    async findOne(id: string) {
-        const brand = await this.brandModel.findById(id);
+    async findOne(id: string, clientId: string) {
+        const brand = await this.brandModel.findOne({ _id: id, clientId });
         if (!brand) {
             throw new NotFoundException('Brand not found');
         }
-        return brand;
+
+        const config = await this.configModel.findOne({ brandId: brand.id });
+        return {
+            ...brand.toObject(),
+            apiConfig: config
+        };
     }
 
-    async updateApiConfig(id: string, updateConfigDto: UpdateBrandApiConfigDto) {
+    async updateApiConfig(id: string, clientId: string, updateConfigDto: UpdateBrandApiConfigDto) {
+        // First verify the brand belongs to the client
+        const brand = await this.brandModel.findOne({ _id: id, clientId });
+        if (!brand) {
+            throw new NotFoundException('Brand not found');
+        }
+
         const config = await this.configModel.findOneAndUpdate(
             { brandId: id },
             { $set: updateConfigDto },

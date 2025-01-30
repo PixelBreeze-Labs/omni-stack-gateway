@@ -21,10 +21,13 @@ export class BrandController {
         @Req() req: Request & { client: Client },
         @Body() createBrandDto: CreateBrandDto,
     ) {
-        const { apiConfig, ...brandData } = createBrandDto;
+        // Add clientId from authenticated request
         return this.brandService.createWithConfig(
-            { ...brandData, clientId: req.client.id },
-            apiConfig
+            {
+                ...createBrandDto,
+                clientId: req.client.id
+            },
+            createBrandDto.apiConfig
         );
     }
 
@@ -32,16 +35,25 @@ export class BrandController {
     @ApiQuery({ type: ListBrandDto })
     @ApiResponse({ status: 200, description: 'Return all brands' })
     @Get()
-    async findAll(@Query() query: ListBrandDto, @Req() req: Request & { client: Client }) {
-        return this.brandService.findAll({ ...query, clientId: req.client.id });
+    async findAll(
+        @Query() query: ListBrandDto,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.brandService.findAll({
+            ...query,
+            clientId: req.client.id
+        });
     }
 
     @ApiOperation({ summary: 'Get brand by id' })
     @ApiParam({ name: 'id', description: 'Brand ID' })
     @ApiResponse({ status: 200, description: 'Return brand' })
     @Get(':id')
-    async findOne(@Param('id') id: string) {
-        return this.brandService.findOne(id);
+    async findOne(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.brandService.findOne(id, req.client.id);
     }
 
     @ApiOperation({ summary: 'Update brand API configuration' })
@@ -51,8 +63,9 @@ export class BrandController {
     @Put(':id/api-config')
     async updateApiConfig(
         @Param('id') id: string,
-        @Body() updateConfigDto: UpdateBrandApiConfigDto
+        @Body() updateConfigDto: UpdateBrandApiConfigDto,
+        @Req() req: Request & { client: Client }
     ) {
-        return this.brandService.updateApiConfig(id, updateConfigDto);
+        return this.brandService.updateApiConfig(id, req.client.id, updateConfigDto);
     }
 }
