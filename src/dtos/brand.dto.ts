@@ -1,6 +1,30 @@
-// src/dtos/brand.dto.ts
 import {IsNotEmpty, IsObject, IsOptional, IsString} from "class-validator";
 import { ApiProperty } from '@nestjs/swagger';
+
+export class CreateBrandApiConfigDto {
+    @ApiProperty({ description: 'API key for brand integration' })
+    @IsString()
+    @IsNotEmpty()
+    apiKey: string;
+
+    @ApiProperty({ description: 'Base URL for brand API' })
+    @IsString()
+    @IsNotEmpty()
+    baseUrl: string;
+
+    @ApiProperty({ description: 'API endpoints mapping' })
+    @IsObject()
+    endpoints: Record<string, string>;
+
+    @ApiProperty({ description: 'Custom headers for API requests' })
+    @IsObject()
+    headers: Record<string, string>;
+
+    @ApiProperty({ description: 'Refresh token for OAuth', required: false })
+    @IsString()
+    @IsOptional()
+    refreshToken?: string;
+}
 
 export class CreateBrandDto {
     @ApiProperty({ description: 'Brand name' })
@@ -26,31 +50,6 @@ export class CreateBrandDto {
     @ApiProperty({ description: 'API Configuration', required: false })
     @IsOptional()
     apiConfig?: CreateBrandApiConfigDto;
-}
-
-export class CreateBrandApiConfigDto {
-    @ApiProperty({ description: 'API key for brand integration' })
-    @IsString()
-    @IsNotEmpty()
-    apiKey: string;
-
-    @ApiProperty({ description: 'Base URL for brand API' })
-    @IsString()
-    @IsNotEmpty()
-    baseUrl: string;
-
-    @ApiProperty({ description: 'API endpoints mapping' })
-    @IsObject()
-    endpoints: Record<string, string>;
-
-    @ApiProperty({ description: 'Custom headers for API requests' })
-    @IsObject()
-    headers: Record<string, string>;
-
-    @ApiProperty({ description: 'Refresh token for OAuth', required: false })
-    @IsString()
-    @IsOptional()
-    refreshToken?: string;
 }
 
 export class UpdateBrandApiConfigDto {
