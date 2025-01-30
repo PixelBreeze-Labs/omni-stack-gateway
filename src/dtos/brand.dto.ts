@@ -37,11 +37,6 @@ export class CreateBrandDto {
     @IsNotEmpty()
     code: string;
 
-    @ApiProperty({ description: 'Client ID' })
-    @IsString()
-    @IsNotEmpty()
-    clientId: string;
-
     @ApiProperty({ description: 'Brand description' })
     @IsString()
     @IsOptional()
