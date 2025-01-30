@@ -17,6 +17,15 @@ export class CreateBrandDto {
     @IsString()
     @IsNotEmpty()
     clientId: string;
+
+    @ApiProperty({ description: 'Brand description' })
+    @IsString()
+    @IsOptional()
+    description?: string;
+
+    @ApiProperty({ description: 'API Configuration', required: false })
+    @IsOptional()
+    apiConfig?: CreateBrandApiConfigDto;
 }
 
 export class CreateBrandApiConfigDto {
@@ -30,29 +39,15 @@ export class CreateBrandApiConfigDto {
     @IsNotEmpty()
     baseUrl: string;
 
-    @ApiProperty({
-        description: 'API endpoints mapping',
-        example: {
-            products: '/api/products',
-            stock: '/api/inventory'
-        }
-    })
+    @ApiProperty({ description: 'API endpoints mapping' })
     @IsObject()
     endpoints: Record<string, string>;
 
-    @ApiProperty({
-        description: 'Custom headers for API requests',
-        example: {
-            'Content-Type': 'application/json'
-        }
-    })
+    @ApiProperty({ description: 'Custom headers for API requests' })
     @IsObject()
     headers: Record<string, string>;
 
-    @ApiProperty({
-        description: 'Refresh token for OAuth',
-        required: false
-    })
+    @ApiProperty({ description: 'Refresh token for OAuth', required: false })
     @IsString()
     @IsOptional()
     refreshToken?: string;

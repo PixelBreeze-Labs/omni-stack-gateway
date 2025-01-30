@@ -20,10 +20,10 @@ export class BrandController {
     async create(
         @Req() req: Request & { client: Client },
         @Body() createBrandDto: CreateBrandDto,
-        @Body('apiConfig') apiConfig?: CreateBrandApiConfigDto,
     ) {
+        const { apiConfig, ...brandData } = createBrandDto;
         return this.brandService.createWithConfig(
-            { ...createBrandDto, clientId: req.client.id },
+            { ...brandData, clientId: req.client.id },
             apiConfig
         );
     }
