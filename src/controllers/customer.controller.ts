@@ -14,7 +14,7 @@ export class CustomerController {
     @ApiQuery({ type: ListCustomerDto })
     @ApiResponse({ status: 200, description: 'List of customers' })
     @Get()
-    async findAll(@Query() query: ListCustomerDto, @Req() req): Promise<Customer[]> {
+    async findAll(@Query() query: ListCustomerDto, @Req() req): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
         return this.customerService.findAll({ ...query, clientIds: req.client.clientIds });
     }
 

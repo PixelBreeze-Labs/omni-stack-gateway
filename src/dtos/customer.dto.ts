@@ -103,4 +103,9 @@ export class ListCustomerDto {
     @IsString()
     @IsOptional()
     type?: string;
+
+    @ApiProperty({ type: [String], required: false })
+    @IsArray()
+    @IsOptional()
+    clientIds?: string[];
 }
