@@ -1,5 +1,4 @@
-// src/services/client.service.ts
-import {Injectable, NotFoundException, UnauthorizedException} from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Client } from '../schemas/client.schema';
@@ -83,8 +82,6 @@ export class ClientService {
                 }
             ]
         );
-
-        this.logger.log(`Migration completed: ${result.modifiedCount} clients updated.`);
 
         return {
             message: 'Migration completed successfully',
