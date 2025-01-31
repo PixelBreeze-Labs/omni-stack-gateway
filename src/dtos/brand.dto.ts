@@ -1,4 +1,5 @@
 import {IsNotEmpty, IsObject, IsOptional, IsString, IsNumber} from "class-validator";
+import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateBrandApiConfigDto {
@@ -86,19 +87,25 @@ export class ListBrandDto {
     @ApiProperty({
         description: 'Page number',
         required: false,
-        default: 1
+        default: 1,
+        type: Number
     })
     @IsNumber()
     @IsOptional()
+    @Type(() => Number)
+    @Min(1)
     page?: number;
 
     @ApiProperty({
         description: 'Number of items per page',
         required: false,
-        default: 10
+        default: 10,
+        type: Number
     })
     @IsNumber()
     @IsOptional()
+    @Type(() => Number)
+    @Min(1)
     limit?: number;
 
     @ApiProperty({
