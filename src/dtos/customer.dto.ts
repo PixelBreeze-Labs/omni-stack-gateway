@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsString, IsEmail, IsOptional, IsEnum, IsArray } from 'class-validator';
+import { IsNotEmpty, IsString, IsEmail, IsOptional, IsEnum, IsArray, IsNumber, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCustomerDto {
@@ -71,4 +72,35 @@ export class UpdateCustomerDto {
     @IsArray()
     @IsOptional()
     clientIds?: string[];
+}
+
+export class ListCustomerDto {
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    search?: string;
+
+    @ApiProperty({ required: false, default: 1 })
+    @IsNumber()
+    @IsOptional()
+    @Type(() => Number)
+    @Min(1)
+    page?: number;
+
+    @ApiProperty({ required: false, default: 10 })
+    @IsNumber()
+    @IsOptional()
+    @Type(() => Number)
+    @Min(1)
+    limit?: number;
+
+    @ApiProperty({ required: false, enum: ['ACTIVE', 'INACTIVE', 'ALL'] })
+    @IsString()
+    @IsOptional()
+    status?: string;
+
+    @ApiProperty({ required: false, enum: ['REGULAR', 'VIP', 'ALL'] })
+    @IsString()
+    @IsOptional()
+    type?: string;
 }
