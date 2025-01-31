@@ -3,7 +3,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { FamilyAccount } from '../schemas/family-account.schema';
-import { CreateFamilyAccountDto, ListFamilyAccountDto } from '../dtos/family-account.dto';
+import {
+    LinkFamilyAccountDto,
+    ListFamilyAccountDto,
+    UpdateFamilyAccountDto
+} from '../dtos/family-account.dto';
 
 @Injectable()
 export class FamilyAccountService {
@@ -11,9 +15,9 @@ export class FamilyAccountService {
         @InjectModel(FamilyAccount.name) private familyAccountModel: Model<FamilyAccount>
     ) {}
 
-    async create(createDto: CreateFamilyAccountDto & { clientId: string }) {
+    async link(linkDto: LinkFamilyAccountDto & { clientId: string }) {
         const familyAccount = new this.familyAccountModel({
-            ...createDto,
+            ...linkDto,
             status: 'Active'
         });
         return familyAccount.save();
@@ -93,7 +97,21 @@ export class FamilyAccountService {
         return account;
     }
 
-    async remove(id: string, clientId: string) {
+    async update(id: string, clientId: string, updateDto: UpdateFamilyAccountDto) {
+        const account = await this.familyAccountModel.findOneAndUpdate(
+            { _id: id, clientId },
+            { $set: updateDto },
+            { new: true }
+        );
+
+        if (!account) {
+            throw new NotFoundException('Family account not found');
+        }
+
+        return account;
+    }
+
+    async unlink(id: string, clientId: string) {
         const result = await this.familyAccountModel.findOneAndDelete({ _id: id, clientId });
         if (!result) {
             throw new NotFoundException('Family account not found');
