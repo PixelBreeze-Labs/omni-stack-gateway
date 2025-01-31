@@ -124,7 +124,7 @@ import { SyncService } from './services/sync.service';
       { name: StockLevel.name, schema: StockLevelSchema },
       { name: StockMovement.name, schema: StockMovementSchema },
       { name: FamilyAccount.name, schema: FamilyAccountSchema },
-      { name: Sync.name, schema: Sync },
+      { name: Sync.name, schema: SyncSchema },
 
     ]),
   ],
