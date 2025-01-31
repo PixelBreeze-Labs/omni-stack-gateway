@@ -5,6 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 import { StudentVerificationController } from './controllers/student-verification.controller';
 import { GatewayController } from './controllers/gateway.controller';
 import { SnapfoodAdminService } from './services/snapfood-admin.service';
+import { TrackmasterAdminService } from './services/trackmaster-admin.service';
 import { SnapfoodService } from './services/snapfood.service';
 import { ApiKeyMiddleware } from './middleware/api-key.middleware';
 import { EmailService } from './services/email.service';
@@ -181,6 +182,7 @@ import {UserController} from "./controllers/user.controller";
   providers: [
     SnapfoodService,
     SnapfoodAdminService,
+    TrackmasterAdminService,
     ReportsService,
     EmailService,
     ClientAppService,
