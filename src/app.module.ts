@@ -33,6 +33,7 @@ import { StockLevel, StockLevelSchema } from './schemas/stock-level.schema';
 import { StockMovement, StockMovementSchema } from './schemas/stock-movement.schema';
 import { FamilyAccount, FamilyAccountSchema } from './schemas/family-account.schema';
 import { Sync, SyncSchema } from './schemas/sync.schema';
+import { Customer, CustomerSchema } from './schemas/customer.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -50,6 +51,7 @@ import { StockLevelController } from './controllers/stock-level.controller';
 import { StockMovementController } from './controllers/stock-movement.controller';
 import { FamilyAccountController} from "./controllers/family-account.controller";
 import { SyncController } from "./controllers/sync.controller";
+import { CustomerController } from "./controllers/customer.controller";
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -88,6 +90,7 @@ import { StockLevelService } from './services/stock-level.service';
 import { StockMovementService } from './services/stock-movement.service';
 import { FamilyAccountService } from './services/family-account.service';
 import { SyncService } from './services/sync.service';
+import { CustomerService } from './services/customer.service';
 
 @Module({
   imports: [
@@ -125,6 +128,7 @@ import { SyncService } from './services/sync.service';
       { name: StockMovement.name, schema: StockMovementSchema },
       { name: FamilyAccount.name, schema: FamilyAccountSchema },
       { name: Sync.name, schema: SyncSchema },
+      { name: Customer.name, schema: CustomerSchema },
 
     ]),
   ],
@@ -151,7 +155,8 @@ import { SyncService } from './services/sync.service';
     StockLevelController,
     StockMovementController,
     FamilyAccountController,
-    SyncController
+    SyncController,
+    CustomerController
   ],
   providers: [
     SnapfoodService,
@@ -186,7 +191,8 @@ import { SyncService } from './services/sync.service';
     StockLevelService,
     StockMovementService,
     FamilyAccountService,
-    SyncService
+    SyncService,
+    CustomerService
   ],
 })
 export class AppModule implements NestModule {
