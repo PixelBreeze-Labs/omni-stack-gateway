@@ -25,4 +25,12 @@ export class UserService {
             client_ids: clientId
         }).select('-password');
     }
+
+    async findById(id: string) {
+        return this.userModel.findById(id).select('-password').exec();
+    }
+
+    async findByEmail(email: string) {
+        return this.userModel.findOne({ email }).exec();
+    }
 }
