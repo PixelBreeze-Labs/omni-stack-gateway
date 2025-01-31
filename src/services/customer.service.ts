@@ -43,4 +43,51 @@ export class CustomerService {
 
         return { items: customers, total, pages: Math.ceil(total / limit), page, limit };
     }
+
+    async findOne(id: string, clientId: string) {
+        const customer = await this.customerModel.findOne({ _id: id, clientIds: clientId });
+        if (!customer) {
+            throw new NotFoundException('Customer not found');
+        }
+        return customer;
+    }
+
+    async update(id: string, clientId: string, updateCustomerDto: UpdateCustomerDto) {
+        const customer = await this.customerModel.findOneAndUpdate(
+            { _id: id, clientIds: clientId },
+            { $set: updateCustomerDto },
+            { new: true }
+        );
+
+        if (!customer) {
+            throw new NotFoundException('Customer not found');
+        }
+
+        return customer;
+    }
+
+    async remove(id: string, clientId: string) {
+        const customer = await this.customerModel.findOne({ _id: id, clientIds: clientId });
+        if (!customer) {
+            throw new NotFoundException('Customer not found');
+        }
+
+        await this.customerModel.findByIdAndUpdate(
+            id,
+            { $set: { isActive: false } },
+            { new: true }
+        );
+
+        return { message: 'Customer deactivated successfully' };
+    }
+
+    async hardDelete(id: string, clientId: string) {
+        const customer = await this.customerModel.findOne({ _id: id, clientIds: clientId });
+        if (!customer) {
+            throw new NotFoundException('Customer not found');
+        }
+
+        await this.customerModel.findByIdAndDelete(id);
+        return { message: 'Customer deleted successfully' };
+    }
 }
