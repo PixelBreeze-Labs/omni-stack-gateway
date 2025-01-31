@@ -171,7 +171,7 @@ export class BrandService {
 
         return {
             message: 'Product synchronization started',
-            jobId: job.id,
+            // jobId: job.id,
             status: 'PENDING'
         };
     }
