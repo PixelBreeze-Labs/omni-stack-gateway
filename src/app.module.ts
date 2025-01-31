@@ -34,6 +34,7 @@ import { StockMovement, StockMovementSchema } from './schemas/stock-movement.sch
 import { FamilyAccount, FamilyAccountSchema } from './schemas/family-account.schema';
 import { Sync, SyncSchema } from './schemas/sync.schema';
 import { Customer, CustomerSchema } from './schemas/customer.schema';
+import { User, UserSchema } from './schemas/user.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -52,6 +53,8 @@ import { StockMovementController } from './controllers/stock-movement.controller
 import { FamilyAccountController} from "./controllers/family-account.controller";
 import { SyncController } from "./controllers/sync.controller";
 import { CustomerController } from "./controllers/customer.controller";
+import { AuthController } from "./controllers/auth.controller";
+
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -91,6 +94,11 @@ import { StockMovementService } from './services/stock-movement.service';
 import { FamilyAccountService } from './services/family-account.service';
 import { SyncService } from './services/sync.service';
 import { CustomerService } from './services/customer.service';
+import { AuthService } from './services/auth.service';
+
+import {JwtModule} from "@nestjs/jwt";
+import {UserService} from "./services/user.service";
+import {UserController} from "./controllers/user.controller";
 
 @Module({
   imports: [
@@ -106,6 +114,16 @@ import { CustomerService } from './services/customer.service';
       }),
       inject: [ConfigService],
     } as MongooseModuleAsyncOptions),
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: {
+        expiresIn: '8h',
+        algorithm: 'HS256'
+      },
+      verifyOptions: {
+        algorithms: ['HS256']
+      }
+    }),
     MongooseModule.forFeature([
       { name: 'ClientApp', schema: ClientAppSchema },
       { name: 'Report', schema: ReportSchema },
@@ -129,7 +147,7 @@ import { CustomerService } from './services/customer.service';
       { name: FamilyAccount.name, schema: FamilyAccountSchema },
       { name: Sync.name, schema: SyncSchema },
       { name: Customer.name, schema: CustomerSchema },
-
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   controllers: [
@@ -156,7 +174,9 @@ import { CustomerService } from './services/customer.service';
     StockMovementController,
     FamilyAccountController,
     SyncController,
-    CustomerController
+    CustomerController,
+    AuthController,
+    UserController
   ],
   providers: [
     SnapfoodService,
@@ -192,7 +212,9 @@ import { CustomerService } from './services/customer.service';
     StockMovementService,
     FamilyAccountService,
     SyncService,
-    CustomerService
+    CustomerService,
+    AuthService,
+    UserService
   ],
 })
 export class AppModule implements NestModule {

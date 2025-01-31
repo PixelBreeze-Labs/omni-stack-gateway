@@ -8,5 +8,9 @@ export default () => ({
     snapfood_admin: {
         baseUrl: process.env.SNAPFOOD_ADMIN_URL || 'https://snapfood.omnistackhub.xyz/api',
         apiKey: process.env.SNAPFOOD_ADMIN_API_KEY,
+    },
+    trackmaster_admin: {
+        baseUrl: process.env.TRACKMASTER_ADMIN_URL || 'https://trackmaster.omnistackhub.xyz/api',
+        apiKey: process.env.TRACKMASTER_ADMIN_API_KEY,
     }
 });
