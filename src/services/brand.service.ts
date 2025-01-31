@@ -20,7 +20,13 @@ export class BrandService {
         apiConfig?: CreateBrandApiConfigDto
     ) {
         // Create the brand with clientId
-        const brand = await this.brandModel.create(brandData);
+        const brand = await this.brandModel.create({
+            name: brandData.name,
+            code: brandData.code,
+            clientId: brandData.clientId,
+            description: brandData.description,
+            isActive: true
+        });
 
         // If apiConfig exists and has non-empty values, create the config
         if (apiConfig && (apiConfig.apiKey || apiConfig.endpoint ||
@@ -52,7 +58,8 @@ export class BrandService {
         if (search) {
             filters.$or = [
                 { name: new RegExp(search, 'i') },
-                { code: new RegExp(search, 'i') }
+                { code: new RegExp(search, 'i') },
+                { description: new RegExp(search, 'i') }
             ];
         }
 
