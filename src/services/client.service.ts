@@ -68,4 +68,28 @@ export class ClientService {
         if (!client) throw new UnauthorizedException('Invalid API key');
         return client;
     }
+
+    async migrateClients() {
+        const result = await this.clientModel.updateMany(
+            {},
+            [
+                {
+                    $set: {
+                        clientAppIds: { $ifNull: [["$clientAppId"], []] }
+                    }
+                },
+                {
+                    $unset: "clientAppId"
+                }
+            ]
+        );
+
+        this.logger.log(`Migration completed: ${result.modifiedCount} clients updated.`);
+
+        return {
+            message: 'Migration completed successfully',
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        };
+    }
 }

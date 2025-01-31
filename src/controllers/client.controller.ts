@@ -58,4 +58,12 @@ export class ClientController {
     async remove(@Param('id') id: string): Promise<void> {
         await this.clientService.remove(id);
     }
+
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Migrate Client Records to support multiple Client Apps' })
+    @ApiResponse({ status: 200, description: 'Migration completed successfully' })
+    @Post('migrate')
+    async migrateClients() {
+        return this.clientService.migrateClients();
+    }
 }

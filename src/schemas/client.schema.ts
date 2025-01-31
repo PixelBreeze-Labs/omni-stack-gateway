@@ -11,8 +11,8 @@ export class Client extends Document {
     @Prop({ required: true })
     code: string;
 
-    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'ClientApp' })
-    clientAppId: string;
+    @Prop({ required: true, type: [{ type: MongooseSchema.Types.ObjectId, ref: 'ClientApp' }] })
+    clientAppIds: string[];
 
     @Prop()
     externalId?: string;
