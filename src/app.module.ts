@@ -31,6 +31,7 @@ import { ProductVariationConfig, ProductVariationConfigSchema } from './schemas/
 import { TemplateField, TemplateFieldSchema } from './schemas/template-field.schema';
 import { StockLevel, StockLevelSchema } from './schemas/stock-level.schema';
 import { StockMovement, StockMovementSchema } from './schemas/stock-movement.schema';
+import { FamilyAccount, FamilyAccountSchema } from './schemas/family-account.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -46,6 +47,7 @@ import { InventoryAdjustmentController } from './controllers/inventory-adjustmen
 import { OperationController } from './controllers/operation.controller';
 import { StockLevelController } from './controllers/stock-level.controller';
 import { StockMovementController } from './controllers/stock-movement.controller';
+import {FamilyAccountController} from "./controllers/family-account.controller";
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -82,6 +84,7 @@ import {BatchService} from "./services/batch.service";
 import { OperationService } from './services/operation.service';
 import { StockLevelService } from './services/stock-level.service';
 import { StockMovementService } from './services/stock-movement.service';
+import { FamilyAccountService } from './services/family-account.service';
 
 @Module({
   imports: [
@@ -117,6 +120,8 @@ import { StockMovementService } from './services/stock-movement.service';
       { name: TemplateField.name, schema: TemplateFieldSchema },
       { name: StockLevel.name, schema: StockLevelSchema },
       { name: StockMovement.name, schema: StockMovementSchema },
+      { name: FamilyAccount.name, schema: FamilyAccountSchema },
+
     ]),
   ],
   controllers: [
@@ -140,7 +145,8 @@ import { StockMovementService } from './services/stock-movement.service';
     BatchController,
     OperationController,
     StockLevelController,
-    StockMovementController
+    StockMovementController,
+    FamilyAccountController
   ],
   providers: [
     SnapfoodService,
@@ -173,7 +179,8 @@ import { StockMovementService } from './services/stock-movement.service';
     BatchService,
     OperationService,
     StockLevelService,
-    StockMovementService
+    StockMovementService,
+    FamilyAccountService
   ],
 })
 export class AppModule implements NestModule {
