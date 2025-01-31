@@ -1,5 +1,4 @@
-// src/dtos/client.dto.ts
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEnum } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEnum, IsArray } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 import { Currency } from '../enums/currency.enum';
@@ -16,6 +15,11 @@ export class CreateClientDto {
     @IsString()
     @IsNotEmpty()
     code: string;
+
+    @ApiProperty({ required: true, type: [String] })
+    @IsArray()
+    @IsNotEmpty()
+    clientAppIds: string[];
 
     @ApiProperty({ required: false })
     @IsString()
