@@ -68,4 +68,28 @@ export class BrandController {
     ) {
         return this.brandService.updateApiConfig(id, req.client.id, updateConfigDto);
     }
+
+    @ApiOperation({ summary: 'Synchronize products for a brand' })
+    @ApiParam({ name: 'id', description: 'Brand ID' })
+    @ApiResponse({
+        status: 202,
+        description: 'Product synchronization started',
+        schema: {
+            type: 'object',
+            properties: {
+                message: { type: 'string' },
+                jobId: { type: 'string' },
+                status: { type: 'string' }
+            }
+        }
+    })
+    @ApiResponse({ status: 404, description: 'Brand not found' })
+    @ApiResponse({ status: 400, description: 'Brand API configuration not found' })
+    @Post(':id/sync')
+    async syncProducts(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.brandService.syncProducts(id, req.client.id);
+    }
 }
