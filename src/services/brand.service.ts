@@ -1,5 +1,5 @@
 // src/services/brand.service.ts
-import {Injectable, NotFoundException} from '@nestjs/common';
+import {Injectable, NotFoundException, BadRequestException} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {BrandApiConfig} from "../schemas/brand-api-config.schema";
@@ -23,18 +23,22 @@ export class BrandService {
         const brand = await this.brandModel.create(brandData);
 
         // If apiConfig exists and has non-empty values, create the config
-        if (apiConfig && (apiConfig.apiKey || apiConfig.baseUrl ||
+        if (apiConfig && (apiConfig.apiKey || apiConfig.endpoint ||
             Object.keys(apiConfig.endpoints || {}).length > 0 ||
             Object.keys(apiConfig.headers || {}).length > 0)) {
 
             await this.configModel.create({
                 ...apiConfig,
-                brandId: brand.id
+                brandId: brand.id,
+                isAutoSyncEnabled: apiConfig.isAutoSyncEnabled ?? false,
+                lastSyncStatus: undefined,
+                lastSyncAttempt: undefined
             });
         }
 
         return brand;
     }
+
 
     async findAll(query: ListBrandDto & { clientId: string }) {
         const { clientId, search, limit = 10, page = 1 } = query;
@@ -108,11 +112,67 @@ export class BrandService {
             throw new NotFoundException('Brand not found');
         }
 
+        // Prepare update data with proper handling of optional fields
+        const updateData = {
+            ...updateConfigDto,
+            isAutoSyncEnabled: updateConfigDto.isAutoSyncEnabled ?? false
+        };
+
         const config = await this.configModel.findOneAndUpdate(
             { brandId: id },
-            { $set: updateConfigDto },
+            {
+                $set: updateData,
+                // Only update lastSyncStatus and lastSyncAttempt if they exist in current config
+                $setOnInsert: {
+                    lastSyncStatus: undefined,
+                    lastSyncAttempt: undefined
+                }
+            },
             { new: true, upsert: true }
         );
         return config;
+    }
+
+    async syncProducts(id: string, clientId: string) {
+        // First verify the brand belongs to the client
+        const brand = await this.brandModel.findOne({ _id: id, clientId });
+        if (!brand) {
+            throw new NotFoundException('Brand not found');
+        }
+
+        const config = await this.configModel.findOne({ brandId: id });
+        if (!config) {
+            throw new BadRequestException('Brand API configuration not found');
+        }
+
+        // Update last sync attempt timestamp
+        await this.configModel.updateOne(
+            { brandId: id },
+            {
+                $set: {
+                    lastSyncAttempt: new Date(),
+                    lastSyncStatus: 'PENDING'
+                }
+            }
+        );
+
+        // // Queue the sync job
+        // const job = await this.queueService.addJob('sync-brand-products', {
+        //     brandId: id,
+        //     clientId,
+        //     config: {
+        //         apiKey: config.apiKey,
+        //         endpoint: config.endpoint,
+        //         apiSecret: config.apiSecret,
+        //         endpoints: config.endpoints,
+        //         headers: config.headers
+        //     }
+        // });
+
+        return {
+            message: 'Product synchronization started',
+            jobId: job.id,
+            status: 'PENDING'
+        };
     }
 }

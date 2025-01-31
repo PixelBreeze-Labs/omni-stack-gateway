@@ -1,4 +1,4 @@
-import {IsNotEmpty, IsObject, IsOptional, IsString, IsNumber, Min} from "class-validator";
+import {IsNotEmpty, IsObject, IsOptional, IsString, IsNumber, Min, IsBoolean} from "class-validator";
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -8,23 +8,72 @@ export class CreateBrandApiConfigDto {
     @IsNotEmpty()
     apiKey: string;
 
-    @ApiProperty({ description: 'Base URL for brand API' })
+    @ApiProperty({ description: 'API secret for brand integration', required: false })
+    @IsString()
+    @IsOptional()
+    apiSecret?: string;
+
+    @ApiProperty({ description: 'API endpoint URL' })
     @IsString()
     @IsNotEmpty()
-    baseUrl: string;
+    endpoint: string;
 
-    @ApiProperty({ description: 'API endpoints mapping' })
+    @ApiProperty({ description: 'API endpoints mapping', required: false })
     @IsObject()
-    endpoints: Record<string, string>;
+    @IsOptional()
+    endpoints?: Record<string, string>;
 
-    @ApiProperty({ description: 'Custom headers for API requests' })
+    @ApiProperty({ description: 'Custom headers for API requests', required: false })
     @IsObject()
-    headers: Record<string, string>;
+    @IsOptional()
+    headers?: Record<string, string>;
 
     @ApiProperty({ description: 'Refresh token for OAuth', required: false })
     @IsString()
     @IsOptional()
     refreshToken?: string;
+
+    @ApiProperty({ description: 'Enable automatic synchronization', required: false })
+    @IsBoolean()
+    @IsOptional()
+    isAutoSyncEnabled?: boolean;
+}
+
+export class UpdateBrandApiConfigDto {
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    apiKey?: string;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    apiSecret?: string;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    endpoint?: string;
+
+    @ApiProperty({ required: false })
+    @IsObject()
+    @IsOptional()
+    endpoints?: Record<string, string>;
+
+    @ApiProperty({ required: false })
+    @IsObject()
+    @IsOptional()
+    headers?: Record<string, string>;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    refreshToken?: string;
+
+    @ApiProperty({ required: false })
+    @IsBoolean()
+    @IsOptional()
+    isAutoSyncEnabled?: boolean;
 }
 
 export class CreateBrandDto {
@@ -48,32 +97,6 @@ export class CreateBrandDto {
     apiConfig?: CreateBrandApiConfigDto;
 }
 
-export class UpdateBrandApiConfigDto {
-    @ApiProperty({ required: false })
-    @IsString()
-    @IsOptional()
-    apiKey?: string;
-
-    @ApiProperty({ required: false })
-    @IsString()
-    @IsOptional()
-    baseUrl?: string;
-
-    @ApiProperty({ required: false })
-    @IsObject()
-    @IsOptional()
-    endpoints?: Record<string, string>;
-
-    @ApiProperty({ required: false })
-    @IsObject()
-    @IsOptional()
-    headers?: Record<string, string>;
-
-    @ApiProperty({ required: false })
-    @IsString()
-    @IsOptional()
-    refreshToken?: string;
-}
 
 export class ListBrandDto {
     @ApiProperty({
