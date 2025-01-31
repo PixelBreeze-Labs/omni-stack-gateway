@@ -50,16 +50,22 @@ export class BrandService {
         const { clientId, search, limit = 10, page = 1, status } = query;
         const skip = (page - 1) * limit;
 
-        // Build filters
-        const filters: any = {
-            clientId // Always filter by clientId for security
-        };
-
-        // Add status filter
-        if (status && status !== 'ALL') {
-            filters.isActive = status === 'ACTIVE';
+        // First, get all brand IDs with API configs
+        let connectedBrandIds: string[] = [];
+        if (status === 'CONNECTED' || status === 'DISCONNECTED') {
+            const configs = await this.configModel.find({
+                $and: [
+                    { apiKey: { $exists: true, $ne: '' } },
+                    { endpoint: { $exists: true, $ne: '' } }
+                ]
+            });
+            connectedBrandIds = configs.map(config => config.brandId.toString());
         }
 
+        // Build base filters
+        const filters: any = { clientId };
+
+        // Add search filter if present
         if (search) {
             filters.$or = [
                 { name: new RegExp(search, 'i') },
@@ -68,25 +74,47 @@ export class BrandService {
             ];
         }
 
+        // Add status filters
+        switch(status?.toUpperCase()) {
+            case 'ACTIVE':
+                filters.isActive = true;
+                break;
+            case 'INACTIVE':
+                filters.isActive = false;
+                break;
+            case 'CONNECTED':
+                filters._id = { $in: connectedBrandIds };
+                break;
+            case 'DISCONNECTED':
+                filters._id = { $nin: connectedBrandIds };
+                break;
+        }
+
+        // Get total count for pagination
         const total = await this.brandModel.countDocuments(filters);
         const totalPages = Math.ceil(total / limit);
 
+        // Get paginated brands
         const brands = await this.brandModel
             .find(filters)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
 
+        // Fetch associated API configs
         const items = await Promise.all(
             brands.map(async (brand) => {
                 const config = await this.configModel.findOne({ brandId: brand.id });
+                const isConnected = !!config && !!config.apiKey && !!config.endpoint;
+
                 return {
                     ...brand.toObject(),
                     id: brand._id,
                     apiConfig: config,
                     status: brand.isActive ? 'ACTIVE' : 'INACTIVE',
-                    totalProducts: 0,
-                    lastSync: null
+                    isConnected,
+                    totalProducts: 0, // You might want to fetch this from another service
+                    lastSync: config?.lastSyncAttempt || null
                 };
             })
         );
