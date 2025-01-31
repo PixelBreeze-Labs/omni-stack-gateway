@@ -1,4 +1,3 @@
-// src/schemas/customer.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
@@ -22,8 +21,8 @@ export class Customer extends Document {
     @Prop({ required: true, enum: ['REGULAR', 'VIP'] })
     type: string;
 
-    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
-    clientId: string;
+    @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Client' }], required: true })
+    clientIds: string[];
 
     @Prop({ default: true })
     isActive: boolean;
