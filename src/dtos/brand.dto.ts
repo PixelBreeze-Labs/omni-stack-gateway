@@ -1,4 +1,4 @@
-import {IsNotEmpty, IsObject, IsOptional, IsString} from "class-validator";
+import {IsNotEmpty, IsObject, IsOptional, IsString, IsNumber} from "class-validator";
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateBrandApiConfigDto {
@@ -84,10 +84,29 @@ export class ListBrandDto {
     search?: string;
 
     @ApiProperty({
-        description: 'Filter by client ID',
-        required: false
+        description: 'Page number',
+        required: false,
+        default: 1
+    })
+    @IsNumber()
+    @IsOptional()
+    page?: number;
+
+    @ApiProperty({
+        description: 'Number of items per page',
+        required: false,
+        default: 10
+    })
+    @IsNumber()
+    @IsOptional()
+    limit?: number;
+
+    @ApiProperty({
+        description: 'Status filter',
+        required: false,
+        enum: ['ACTIVE', 'INACTIVE', 'ALL']
     })
     @IsString()
     @IsOptional()
-    clientId?: string;
+    status?: string;
 }
