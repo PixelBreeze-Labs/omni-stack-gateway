@@ -92,4 +92,26 @@ export class BrandController {
     ) {
         return this.brandService.syncProducts(id, req.client.id);
     }
+
+    @ApiOperation({ summary: 'Soft delete brand' })
+    @ApiParam({ name: 'id', description: 'Brand ID' })
+    @ApiResponse({ status: 200, description: 'Brand deactivated successfully' })
+    @Delete(':id')
+    async remove(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.brandService.remove(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Hard delete brand' })
+    @ApiParam({ name: 'id', description: 'Brand ID' })
+    @ApiResponse({ status: 200, description: 'Brand deleted successfully' })
+    @Delete(':id/hard')
+    async hardDelete(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.brandService.hardDelete(id, req.client.id);
+    }
 }
