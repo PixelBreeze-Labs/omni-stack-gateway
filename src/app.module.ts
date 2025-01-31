@@ -32,6 +32,7 @@ import { TemplateField, TemplateFieldSchema } from './schemas/template-field.sch
 import { StockLevel, StockLevelSchema } from './schemas/stock-level.schema';
 import { StockMovement, StockMovementSchema } from './schemas/stock-movement.schema';
 import { FamilyAccount, FamilyAccountSchema } from './schemas/family-account.schema';
+import { Sync, SyncSchema } from './schemas/sync.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -47,7 +48,8 @@ import { InventoryAdjustmentController } from './controllers/inventory-adjustmen
 import { OperationController } from './controllers/operation.controller';
 import { StockLevelController } from './controllers/stock-level.controller';
 import { StockMovementController } from './controllers/stock-movement.controller';
-import {FamilyAccountController} from "./controllers/family-account.controller";
+import { FamilyAccountController} from "./controllers/family-account.controller";
+import { SyncController } from "./controllers/sync.controller";
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -85,6 +87,7 @@ import { OperationService } from './services/operation.service';
 import { StockLevelService } from './services/stock-level.service';
 import { StockMovementService } from './services/stock-movement.service';
 import { FamilyAccountService } from './services/family-account.service';
+import { SyncService } from './services/sync.service';
 
 @Module({
   imports: [
@@ -121,6 +124,7 @@ import { FamilyAccountService } from './services/family-account.service';
       { name: StockLevel.name, schema: StockLevelSchema },
       { name: StockMovement.name, schema: StockMovementSchema },
       { name: FamilyAccount.name, schema: FamilyAccountSchema },
+      { name: Sync.name, schema: Sync },
 
     ]),
   ],
@@ -146,7 +150,8 @@ import { FamilyAccountService } from './services/family-account.service';
     OperationController,
     StockLevelController,
     StockMovementController,
-    FamilyAccountController
+    FamilyAccountController,
+    SyncController
   ],
   providers: [
     SnapfoodService,
@@ -180,7 +185,8 @@ import { FamilyAccountService } from './services/family-account.service';
     OperationService,
     StockLevelService,
     StockMovementService,
-    FamilyAccountService
+    FamilyAccountService,
+    SyncService
   ],
 })
 export class AppModule implements NestModule {
