@@ -47,13 +47,18 @@ export class BrandService {
 
 
     async findAll(query: ListBrandDto & { clientId: string }) {
-        const { clientId, search, limit = 10, page = 1 } = query;
+        const { clientId, search, limit = 10, page = 1, status } = query;
         const skip = (page - 1) * limit;
 
         // Build filters
         const filters: any = {
             clientId // Always filter by clientId for security
         };
+
+        // Add status filter
+        if (status && status !== 'ALL') {
+            filters.isActive = status === 'ACTIVE';
+        }
 
         if (search) {
             filters.$or = [
@@ -63,33 +68,29 @@ export class BrandService {
             ];
         }
 
-        // Get total count for pagination
         const total = await this.brandModel.countDocuments(filters);
         const totalPages = Math.ceil(total / limit);
 
-        // Get paginated brands
         const brands = await this.brandModel
             .find(filters)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
 
-        // Fetch associated API configs
         const items = await Promise.all(
             brands.map(async (brand) => {
                 const config = await this.configModel.findOne({ brandId: brand.id });
                 return {
                     ...brand.toObject(),
-                    id: brand._id, // Ensure id is present
+                    id: brand._id,
                     apiConfig: config,
-                    status: brand.isActive ? 'ACTIVE' : 'INACTIVE', // Add status
-                    totalProducts: 0, // Add default value or fetch from another service
-                    lastSync: null // Add default value or fetch from sync service
+                    status: brand.isActive ? 'ACTIVE' : 'INACTIVE',
+                    totalProducts: 0,
+                    lastSync: null
                 };
             })
         );
 
-        // Return paginated response
         return {
             items,
             total,
@@ -97,6 +98,37 @@ export class BrandService {
             page,
             limit
         };
+    }
+
+    async remove(id: string, clientId: string) {
+        const brand = await this.brandModel.findOne({ _id: id, clientId });
+        if (!brand) {
+            throw new NotFoundException('Brand not found');
+        }
+
+        // Soft delete by setting isActive to false
+        await this.brandModel.findByIdAndUpdate(
+            id,
+            { $set: { isActive: false } },
+            { new: true }
+        );
+
+        return { message: 'Brand deactivated successfully' };
+    }
+
+    async hardDelete(id: string, clientId: string) {
+        const brand = await this.brandModel.findOne({ _id: id, clientId });
+        if (!brand) {
+            throw new NotFoundException('Brand not found');
+        }
+
+        // Delete the associated API config first
+        await this.configModel.deleteOne({ brandId: id });
+
+        // Then delete the brand
+        await this.brandModel.findByIdAndDelete(id);
+
+        return { message: 'Brand deleted successfully' };
     }
 
     async findOne(id: string, clientId: string) {
