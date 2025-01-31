@@ -1,10 +1,10 @@
 // src/controllers/brand.controller.ts
 import {ClientAuthGuard} from "../guards/client-auth.guard";
-import {Body, Controller, Get, Param, Post, Put, Req, UseGuards, Query} from "@nestjs/common";
+import {Body, Controller, Get, Param, Post, Put, Req, UseGuards, Query, Delete} from "@nestjs/common";
 import {CreateBrandApiConfigDto, CreateBrandDto, ListBrandDto, UpdateBrandApiConfigDto} from "../dtos/brand.dto";
 import {Client} from "../schemas/client.schema";
 import {BrandService} from "../services/brand.service";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam, ApiQuery,  Delete } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('Brands')
 @ApiBearerAuth()
