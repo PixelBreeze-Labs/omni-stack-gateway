@@ -37,33 +37,55 @@ export class BrandService {
     }
 
     async findAll(query: ListBrandDto & { clientId: string }) {
+        const { clientId, search, limit = 10, page = 1 } = query;
+        const skip = (page - 1) * limit;
+
+        // Build filters
         const filters: any = {
-            clientId: query.clientId // Always filter by clientId for security
+            clientId // Always filter by clientId for security
         };
 
-        if (query.search) {
+        if (search) {
             filters.$or = [
-                { name: new RegExp(query.search, 'i') },
-                { code: new RegExp(query.search, 'i') }
+                { name: new RegExp(search, 'i') },
+                { code: new RegExp(search, 'i') }
             ];
         }
 
+        // Get total count for pagination
+        const total = await this.brandModel.countDocuments(filters);
+        const totalPages = Math.ceil(total / limit);
+
+        // Get paginated brands
         const brands = await this.brandModel
             .find(filters)
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
 
         // Fetch associated API configs
-        const brandsWithConfig = await Promise.all(
+        const items = await Promise.all(
             brands.map(async (brand) => {
                 const config = await this.configModel.findOne({ brandId: brand.id });
                 return {
                     ...brand.toObject(),
-                    apiConfig: config
+                    id: brand._id, // Ensure id is present
+                    apiConfig: config,
+                    status: brand.isActive ? 'ACTIVE' : 'INACTIVE', // Add status
+                    totalProducts: 0, // Add default value or fetch from another service
+                    lastSync: null // Add default value or fetch from sync service
                 };
             })
         );
 
-        return brandsWithConfig;
+        // Return paginated response
+        return {
+            items,
+            total,
+            pages: totalPages,
+            page,
+            limit
+        };
     }
 
     async findOne(id: string, clientId: string) {
