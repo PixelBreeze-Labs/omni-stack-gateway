@@ -14,6 +14,10 @@ export class Brand extends Document {
     clientId: string;
 
     @Prop()
+    description?: string;
+
+
+    @Prop()
     externalId?: string;
 
     @Prop({ default: true })
