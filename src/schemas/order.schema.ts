@@ -18,6 +18,9 @@ export class Order extends Document {
 
     @Prop({ type: Object })
     metadata: Record<string, any>;
+
+    @Prop({ type: Date, default: Date.now })
+    createdAt: Date;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

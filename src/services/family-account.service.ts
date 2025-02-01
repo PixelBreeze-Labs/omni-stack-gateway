@@ -14,16 +14,16 @@ import {
     ListFamilyAccountDto,
     UpdateFamilyAccountDto
 } from '../dtos/family-account.dto';
-
-// Export FamilyStats so it can be used in method return types.
-export interface FamilyStats {
-    totalSpent: number;
-    memberCount: number;
-    recentActivities: Activity[];
-    benefitsUsage: any[];
-    joinedDate: Date;
-    lastActivity: Date;
-}
+import {
+    ActivityResponse,
+    ActivityType,
+    FamilyMemberPopulated,
+    FamilyStats,
+    PopulatedCustomer
+} from "../types/family-account.types";
+import {BenefitUsage} from "../schemas/benefit-usage.schema";
+import {Benefit} from "../schemas/benefit.schema";
+import {BenefitUsageResponse} from "../types/benefit.interface";
 
 @Injectable()
 export class FamilyAccountService {
@@ -31,7 +31,9 @@ export class FamilyAccountService {
         @InjectModel(FamilyAccount.name) private familyAccountModel: Model<FamilyAccount>,
         @InjectModel(Customer.name) private customerModel: Model<Customer>,
         @InjectModel(Order.name) private orderModel: Model<Order>,
-        @InjectModel(Activity.name) private activityModel: Model<Activity>
+        @InjectModel(Activity.name) private activityModel: Model<Activity>,
+        @InjectModel(BenefitUsage.name) private benefitUsageModel: Model<BenefitUsage>,
+        @InjectModel(Benefit.name) private benefitModel: Model<Benefit>,
     ) {}
 
     async link(linkDto: LinkFamilyAccountDto & { clientId: string }) {
@@ -163,71 +165,87 @@ export class FamilyAccountService {
         };
     }
 
-    async findOne(id: string, clientId: string): Promise<FamilyAccountDocument & { stats: FamilyStats }> {
+    async findOne(id: string, clientId: string) {
         const family = await this.familyAccountModel
-            .findOne({ _id: id, clientId })
-            .populate('mainCustomerId')
-            .populate('members.customerId');
+            .findOne({
+                _id: id,
+                clientId: new Types.ObjectId(clientId)
+            })
+            .populate<{ mainCustomerId: PopulatedCustomer }>({
+                path: 'mainCustomerId',
+                select: 'firstName lastName email avatar status'
+            })
+            .populate<{ members: FamilyMemberPopulated[] }>({
+                path: 'members.customerId',
+                select: 'firstName lastName email avatar status'
+            })
+            .lean();
 
         if (!family) {
             throw new NotFoundException('Family account not found');
         }
 
-        const stats = await this.getFamilyStats(id);
-        const familyObject = family.toObject();
-
-        return {
-            ...familyObject,
-            stats
-        } as FamilyAccountDocument & { stats: FamilyStats };
-    }
-
-    async getFamilyStats(id: string): Promise<FamilyStats> {
-        const family = await this.familyAccountModel
-            .findById(id)
-            .populate('mainCustomerId')
-            .populate('members.customerId');
-
-        if (!family) {
-            throw new NotFoundException('Family account not found');
-        }
-
-        const customerObjectIds = [
-            new Types.ObjectId(family.mainCustomerId.toString()),
-            ...family.members.map(m => new Types.ObjectId(m.customerId.toString()))
+        // Calculate total spent
+        const memberCustomerIds = [
+            family.mainCustomerId._id,
+            ...family.members.map(m => m.customerId._id)
         ];
 
-        const [totalSpent] = await this.orderModel.aggregate([
-            {
-                $match: {
-                    customerId: { $in: customerObjectIds },
-                    clientId: family.clientId,
-                    status: 'COMPLETED'
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: '$total' }
-                }
-            }
-        ]);
+        const totalSpent = await this.calculateTotalSpent(memberCustomerIds, clientId);
 
-        const recentActivities = await this.activityModel
-            .find({
-                clientId: family.clientId,
-                customerId: { $in: customerObjectIds }
+        // Transform the data for frontend
+        return {
+            ...family,
+            totalSpent,
+            mainCustomerId: {
+                ...family.mainCustomerId,
+                avatar: family.mainCustomerId.avatar || null
+            },
+            members: family.members.map(member => ({
+                id: member._id?.toString(),
+                customerId: {
+                    ...member.customerId,
+                    avatar: member.customerId.avatar || null
+                },
+                status: member.status,
+                relationship: member.relationship,
+                joinDate: member.joinDate
+            })),
+            lastActivity: family.lastActivity || family.updatedAt || new Date()
+        };
+    }
+
+
+    async getFamilyStats(id: string, clientId: string): Promise<FamilyStats> {
+        const family = await this.familyAccountModel
+            .findOne({
+                _id: id,
+                clientId: new Types.ObjectId(clientId)
             })
-            .sort({ createdAt: -1 })
-            .limit(5);
+            .populate<{ mainCustomerId: PopulatedCustomer }>('mainCustomerId')
+            .populate<{ members: FamilyMemberPopulated[] }>('members.customerId')
+            .lean();
+
+        if (!family) {
+            throw new NotFoundException('Family account not found');
+        }
+
+        const memberCustomerIds = [
+            new Types.ObjectId(family.mainCustomerId._id),
+            ...family.members.map(m => new Types.ObjectId(m.customerId._id))
+        ];
+
+        const totalSpent = await this.calculateTotalSpent(memberCustomerIds, clientId);
+        const recentActivities = await this.getRecentActivities(memberCustomerIds, clientId);
+        const benefitsUsage = await this.getBenefitsUsage(memberCustomerIds, clientId);
 
         return {
-            totalSpent: totalSpent?.total || 0,
+            totalSpent,
             memberCount: family.members.length + 1,
-            recentActivities,
-            benefitsUsage: [],
             joinedDate: family.createdAt,
-            lastActivity: family.lastActivity
+            benefitsUsage,
+            recentActivities,
+            lastActivity: family.lastActivity || new Date()
         };
     }
 
@@ -285,5 +303,163 @@ export class FamilyAccountService {
             await updated.save();
         }
         return updated;
+    }
+
+    private async calculateTotalSpent(memberIds: Types.ObjectId[], clientId: string): Promise<number> {
+        const result = await this.orderModel.aggregate([
+            {
+                $match: {
+                    customerId: { $in: memberIds },
+                    clientId: new Types.ObjectId(clientId),
+                    status: 'COMPLETED'
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: '$total' }
+                }
+            }
+        ]);
+
+        return result[0]?.total || 0;
+    }
+
+    private async getRecentActivities(memberIds: Types.ObjectId[], clientId: string): Promise<ActivityResponse[]> {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const orders = await this.orderModel
+            .find({
+                customerId: { $in: memberIds },
+                clientId: new Types.ObjectId(clientId),
+                createdAt: { $gte: thirtyDaysAgo }
+            })
+            .populate('customerId', 'firstName lastName')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        return orders.map(order => ({
+            type: 'ORDER' as ActivityType,
+            description: `Order placed by ${(order as any).customerId?.firstName} ${(order as any).customerId?.lastName || 'Unknown'}`,
+            date: order.createdAt || new Date(),
+            amount: order.total
+        }));
+    }
+    async getBenefitsUsage(memberIds: Types.ObjectId[], clientId: string): Promise<BenefitUsageResponse[]> {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const benefitUsages = await this.benefitUsageModel.aggregate([
+            {
+                $match: {
+                    customerId: { $in: memberIds },
+                    clientId: new Types.ObjectId(clientId),
+                    usedAt: { $gte: thirtyDaysAgo }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'benefits',
+                    localField: 'benefitId',
+                    foreignField: '_id',
+                    as: 'benefit'
+                }
+            },
+            {
+                $unwind: '$benefit'
+            },
+            {
+                $group: {
+                    _id: '$benefitId',
+                    name: { $first: '$benefit.name' },
+                    type: { $first: '$benefit.type' },
+                    usageCount: { $sum: 1 },
+                    totalSavings: { $sum: '$savedAmount' }
+                }
+            }
+        ]);
+
+        return benefitUsages.map(usage => ({
+            name: usage.name || 'Unknown',
+            usageCount: usage.usageCount || 0,
+            savings: usage.totalSavings || 0,
+            type: usage.type || 'UNKNOWN',
+            benefitId: usage._id.toString()
+        }));
+    }
+
+    // // Helper method to calculate benefit savings for an order
+    // async calculateBenefitSavings(
+    //     orderId: Types.ObjectId,
+    //     benefitId: Types.ObjectId,
+    //     orderTotal: number
+    // ): Promise<number> {
+    //     const benefit = await this.benefitModel.findById(benefitId);
+    //     if (!benefit) return 0;
+    //
+    //     switch (benefit.type) {
+    //         case 'DISCOUNT':
+    //             // If value is percentage, calculate percentage of total
+    //             return benefit.value <= 1 ?
+    //                 orderTotal * benefit.value :
+    //                 Math.min(benefit.value, orderTotal);
+    //
+    //         case 'CASHBACK':
+    //             // Calculate cashback amount
+    //             return benefit.value <= 1 ?
+    //                 orderTotal * benefit.value :
+    //                 benefit.value;
+    //
+    //         case 'FREE_SHIPPING':
+    //             // Return shipping cost saved (you'd need to get this from the order)
+    //             return benefit.value;
+    //
+    //         case 'POINTS':
+    //             // Convert points to monetary value (example conversion rate)
+    //             return benefit.value * 0.01;
+    //
+    //         default:
+    //             return 0;
+    //     }
+    // }
+
+    // // Method to record benefit usage
+    // async recordBenefitUsage(
+    //     familyAccountId: Types.ObjectId,
+    //     customerId: Types.ObjectId,
+    //     benefitId: Types.ObjectId,
+    //     orderId: Types.ObjectId,
+    //     clientId: string,
+    //     savedAmount: number
+    // ): Promise<BenefitUsage> {
+    //     const benefitUsage = new this.benefitUsageModel({
+    //         familyAccountId,
+    //         customerId,
+    //         benefitId,
+    //         orderId,
+    //         clientId: new Types.ObjectId(clientId),
+    //         savedAmount,
+    //         usedAt: new Date()
+    //     });
+    //
+    //     return benefitUsage.save();
+    // }
+
+    // Method to get available benefits for a family
+    async getFamilyBenefits(familyAccountId: string, clientId: string) {
+        const family = await this.familyAccountModel
+            .findOne({
+                _id: familyAccountId,
+                clientId: new Types.ObjectId(clientId)
+            })
+            .populate('sharedBenefits')
+            .lean();
+
+        if (!family) {
+            throw new NotFoundException('Family account not found');
+        }
+
+        return family.sharedBenefits;
     }
 }

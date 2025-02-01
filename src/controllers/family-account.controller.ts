@@ -10,7 +10,7 @@ import {
     Delete,
     Req,
     Query,
-    UseGuards
+    UseGuards, NotFoundException
 } from '@nestjs/common';
 import {
     LinkFamilyAccountDto,
@@ -19,6 +19,7 @@ import {
 } from '../dtos/family-account.dto';
 import { Client } from '../schemas/client.schema';
 import { FamilyAccountService } from '../services/family-account.service';
+import { Types } from 'mongoose';
 import {
     ApiTags,
     ApiOperation,
@@ -28,6 +29,7 @@ import {
     ApiParam,
     ApiQuery
 } from '@nestjs/swagger';
+import {Benefit} from "../schemas/benefit.schema";
 
 @ApiTags('Family Accounts')
 @ApiBearerAuth()
@@ -64,16 +66,24 @@ export class FamilyAccountController {
         });
     }
 
-    @ApiOperation({ summary: 'Get family account by id' })
+    @ApiOperation({ summary: 'Get family account by id with full details' })
     @ApiParam({ name: 'id', description: 'Account ID' })
-    @ApiResponse({ status: 200, description: 'Return family account' })
+    @ApiResponse({
+        status: 200,
+        description: 'Return family account with full details',
+    })
     @Get(':id')
     async findOne(
         @Param('id') id: string,
         @Req() req: Request & { client: Client }
     ) {
-        return this.familyAccountService.findOne(id, req.client.id);
+        const family = await this.familyAccountService.findOne(id, req.client.id);
+        if (!family) {
+            throw new NotFoundException('Family account not found');
+        }
+        return family;
     }
+
 
     @ApiOperation({ summary: 'Update family account' })
     @ApiParam({ name: 'id', description: 'Account ID' })
@@ -99,5 +109,78 @@ export class FamilyAccountController {
         @Req() req: Request & { client: Client }
     ) {
         return this.familyAccountService.unlink(id, memberId, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get family account statistics' })
+    @ApiParam({ name: 'id', description: 'Account ID' })
+    @ApiResponse({ status: 200, description: 'Return family account statistics' })
+    @Get(':id/stats')
+    async getFamilyStats(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        const family = await this.familyAccountService.findOne(id, req.client.id);
+        if (!family) {
+            throw new NotFoundException('Family account not found');
+        }
+
+        const stats = await this.familyAccountService.getFamilyStats(id, req.client.id);
+        return stats;
+    }
+
+    @ApiOperation({ summary: 'Get family benefits' })
+    @ApiParam({ name: 'id', description: 'Family Account ID' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns all benefits available for the family',
+        type: [Benefit] // You'll need to create this class with @ApiProperty decorators
+    })
+    @ApiResponse({ status: 404, description: 'Family account not found' })
+    @Get(':id/benefits')
+    async getFamilyBenefits(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.familyAccountService.getFamilyBenefits(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get benefit usage statistics' })
+    @ApiParam({ name: 'id', description: 'Family Account ID' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns benefit usage statistics for the family',
+        schema: {
+            properties: {
+                name: { type: 'string' },
+                usageCount: { type: 'number' },
+                savings: { type: 'number' },
+                type: { type: 'string', enum: ['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'] },
+                benefitId: { type: 'string' }
+            }
+        }
+    })
+    @ApiResponse({ status: 404, description: 'Family account not found' })
+    @Get(':id/benefits/usage')
+    async getBenefitsUsage(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        const family = await this.familyAccountService.findOne(id, req.client.id);
+        if (!family || !family.mainCustomerId) {
+            throw new NotFoundException('Family account not found');
+        }
+
+        const memberIds = [
+            new Types.ObjectId(family.mainCustomerId._id?.toString()),
+            ...family.members
+                .filter(m => m?.customerId?._id)
+                .map(m => new Types.ObjectId(m.customerId._id.toString()))
+        ].filter(Boolean);
+
+        if (memberIds.length === 0) {
+            return [];
+        }
+
+        return this.familyAccountService.getBenefitsUsage(memberIds, req.client.id);
     }
 }
