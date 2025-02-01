@@ -8,9 +8,10 @@ import { CreateCustomerDto, ListCustomerDto, UpdateCustomerDto } from '../dtos/c
 export class CustomerService {
     constructor(@InjectModel(Customer.name) private customerModel: Model<Customer>) {}
 
-    async create(customerData: CreateCustomerDto) {
+    async create(customerData: CreateCustomerDto & { clientId: string }) {
         return this.customerModel.create({
             ...customerData,
+            clientIds: [customerData.clientId],
             isActive: true
         });
     }
