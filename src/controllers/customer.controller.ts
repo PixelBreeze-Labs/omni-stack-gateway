@@ -6,12 +6,16 @@ import {CreateCustomerDto, UpdateCustomerDto, ListCustomerDto, PartialUpdateCust
 import { Customer } from '../schemas/customer.schema';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Client } from '../schemas/client.schema';
+import {FamilyAccountService} from "../services/family-account.service";
 
 @ApiTags('Customers')
 @Controller('customers')
 @UseGuards(ClientAuthGuard)
 export class CustomerController {
-    constructor(private customerService: CustomerService) {}
+    constructor(
+        private customerService: CustomerService,
+        private readonly familyAccountService: FamilyAccountService
+        ) {}
 
     @ApiOperation({ summary: 'Get all customers' })
     @ApiQuery({ type: ListCustomerDto })
@@ -25,22 +29,57 @@ export class CustomerController {
         return this.customerService.findAll({ ...query, clientIds: [req.client.id] });
     }
 
+    // customer.controller.ts
     @ApiOperation({ summary: 'Search customers by query' })
     @ApiQuery({ name: 'query', type: String, description: 'Search query for customers' })
+    @ApiQuery({ name: 'excludeFamilyMembers', type: Boolean, required: false, description: 'Exclude customers who are already in families' })
     @ApiResponse({ status: 200, description: 'List of matching customers' })
     @Get('search')
     async search(
+        @Req() req: Request & { client: Client },
         @Query('query') searchQuery: string,
-        @Req() req: Request & { client: Client }
+        @Query('excludeFamilyMembers') excludeFamilyMembers?: boolean,
     ): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
-        // Here we create a ListCustomerDto with the search field populated.
+        // First get all matching customers
         const queryDto: ListCustomerDto = {
             search: searchQuery,
             page: 1,
             limit: 10
-            // You can add additional defaults if needed.
         };
-        return this.customerService.findAll({ ...queryDto, clientIds: [req.client.id] });
+
+        const customers = await this.customerService.findAll({
+            ...queryDto,
+            clientIds: [req.client.id]
+        });
+
+        // If we don't need to exclude family members, return as is
+        if (!excludeFamilyMembers) {
+            return customers;
+        }
+
+        // Get available customers (not in families)
+        const availableCustomers = await this.familyAccountService.searchCustomers(
+            searchQuery,
+            req.client.id
+        );
+
+        // Create a Set of available customer IDs for efficient lookup
+        const availableCustomerIds = new Set(
+            availableCustomers.map(c => c._id.toString())
+        );
+
+        // Filter the original results
+        const filteredItems = customers.items.filter(customer =>
+            availableCustomerIds.has(customer._id.toString())
+        );
+
+        return {
+            items: filteredItems,
+            total: filteredItems.length,
+            pages: Math.ceil(filteredItems.length / queryDto.limit),
+            page: queryDto.page,
+            limit: queryDto.limit
+        };
     }
 
 
