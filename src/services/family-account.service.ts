@@ -297,22 +297,58 @@ export class FamilyAccountService {
     }
 
     async update(id: string, clientId: string, updateDto: UpdateFamilyAccountDto) {
-        const family = await this.familyAccountModel.findOne({ _id: id, clientId });
+        // First find the family and verify it exists
+        const family = await this.familyAccountModel.findOne({
+            _id: new Types.ObjectId(id),
+            clientId: new Types.ObjectId(clientId)
+        });
+
         if (!family) {
             throw new NotFoundException('Family account not found');
         }
 
+        // If updating members, verify they exist and aren't in other families
         if (updateDto.members) {
-            const memberIds = updateDto.members.map(m => m.customerId);
+            // Convert member IDs to ObjectId
+            const memberIds = updateDto.members.map(m => new Types.ObjectId(m.customerId));
+
+            // Check if any of these members are already in other families
+            const existingFamily = await this.familyAccountModel.findOne({
+                _id: { $ne: new Types.ObjectId(id) }, // Exclude current family
+                clientId: new Types.ObjectId(clientId),
+                status: 'ACTIVE',
+                $or: [
+                    { 'members.customerId': { $in: memberIds } }
+                ]
+            });
+
+            if (existingFamily) {
+                throw new BadRequestException(
+                    'One or more members are already part of another family account'
+                );
+            }
+
+            // Verify all members exist and are active
             const members = await this.customerModel.find({
                 _id: { $in: memberIds },
-                clientId
+                clientIds: clientId,
+                status: 'ACTIVE'
             });
+
             if (members.length !== memberIds.length) {
-                throw new BadRequestException('One or more members not found');
+                throw new BadRequestException('One or more members not found or inactive');
             }
+
+            // Transform members data
+            updateDto.members = updateDto.members.map(m => ({
+                customerId: new Types.ObjectId(m.customerId),
+                relationship: m.relationship,
+                status: 'ACTIVE',
+                joinDate: new Date()
+            }));
         }
 
+        // Update the family account
         const updated = await this.familyAccountModel.findByIdAndUpdate(
             id,
             {
@@ -330,35 +366,42 @@ export class FamilyAccountService {
     }
 
     async unlink(id: string, memberId: string, clientId: string) {
-        // First find the family without the member check to see if it exists
+        // First find the family without the member check
         const family = await this.familyAccountModel.findOne({
             _id: new Types.ObjectId(id),
-            clientId: new Types.ObjectId(clientId)
+            clientId: new Types.ObjectId(clientId),
+            status: 'ACTIVE' // Only allow unlinking from active families
         });
 
         if (!family) {
-            throw new NotFoundException('Family account not found');
+            throw new NotFoundException('Family account not found or inactive');
         }
 
         if (family.mainCustomerId.toString() === memberId) {
             throw new BadRequestException('Cannot unlink main customer');
         }
 
-        // Update family account and remove member
+        // Verify member exists in the family
+        const memberExists = family.members.some(m =>
+            m.customerId.toString() === memberId && m.status === 'ACTIVE'
+        );
+
+        if (!memberExists) {
+            throw new BadRequestException('Member not found in family or already inactive');
+        }
+
+        // Update family account - mark member as inactive instead of removing
         const updated = await this.familyAccountModel.findByIdAndUpdate(
             id,
             {
-                $pull: {
-                    members: {
-                        customerId: new Types.ObjectId(memberId)
-                    }
-                },
                 $set: {
+                    'members.$[member].status': 'INACTIVE',
                     lastActivity: new Date()
                 }
             },
             {
-                new: true
+                new: true,
+                arrayFilters: [{ 'member.customerId': new Types.ObjectId(memberId) }]
             }
         )
             .populate('mainCustomerId')
@@ -368,8 +411,9 @@ export class FamilyAccountService {
             throw new BadRequestException('Failed to unlink member');
         }
 
-        // Update status if no members left
-        if (updated.members.length === 0) {
+        // If this was the last active member, mark family as inactive
+        const activeMembers = updated.members.filter(m => m.status === 'ACTIVE');
+        if (activeMembers.length === 0) {
             updated.status = 'INACTIVE';
             await updated.save();
         }
