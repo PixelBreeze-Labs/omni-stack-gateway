@@ -8,6 +8,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery }
 
 @ApiTags('Customers')
 @Controller('customers')
+@UseGuards(ClientAuthGuard)
 export class CustomerController {
     constructor(private customerService: CustomerService) {}
 
@@ -17,9 +18,10 @@ export class CustomerController {
     @Get()
     async findAll(
         @Query() query: ListCustomerDto,
-        @Req() req: any  // req.client provided by authentication guard
+        @Req() req: any  // req.client provided by the ClientAuthGuard
     ): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
-        return this.customerService.findAll({ ...query, clientIds: req.client.clientIds });
+        // For findAll, the service expects an array
+        return this.customerService.findAll({ ...query, clientIds: [req.client.id] });
     }
 
     @ApiBearerAuth()
@@ -27,16 +29,17 @@ export class CustomerController {
     @ApiParam({ name: 'id', description: 'Customer ID' })
     @ApiResponse({ status: 200, description: 'Customer details' })
     @Get(':id')
-    @UseGuards(ClientAuthGuard)
     async findOne(@Param('id') id: string, @Req() req: any): Promise<Customer> {
-        return this.customerService.findOne(id, req.client.clientIds);
+        // For findOne, pass the client ID as a string
+        return this.customerService.findOne(id, req.client.id);
     }
 
     @ApiOperation({ summary: 'Create new customer' })
     @ApiResponse({ status: 201, description: 'Customer created' })
     @Post()
     async create(@Body() createCustomerDto: CreateCustomerDto, @Req() req: any): Promise<Customer> {
-        return this.customerService.create({ ...createCustomerDto, clientIds: req.client.clientIds });
+        // For create, the DTO expects an array, so we pass [req.client.id]
+        return this.customerService.create({ ...createCustomerDto, clientIds: [req.client.id] });
     }
 
     @ApiBearerAuth()
@@ -44,13 +47,13 @@ export class CustomerController {
     @ApiParam({ name: 'id', description: 'Customer ID' })
     @ApiResponse({ status: 200, description: 'Customer updated' })
     @Put(':id')
-    @UseGuards(ClientAuthGuard)
     async update(
         @Param('id') id: string,
         @Body() updateCustomerDto: UpdateCustomerDto,
         @Req() req: any
     ): Promise<Customer> {
-        return this.customerService.update(id, req.client.clientIds, updateCustomerDto);
+        // For update, pass the client ID as a string
+        return this.customerService.update(id, req.client.id, updateCustomerDto);
     }
 
     @ApiBearerAuth()
@@ -58,8 +61,8 @@ export class CustomerController {
     @ApiParam({ name: 'id', description: 'Customer ID' })
     @ApiResponse({ status: 200, description: 'Customer deleted' })
     @Delete(':id')
-    @UseGuards(ClientAuthGuard)
     async remove(@Param('id') id: string, @Req() req: any): Promise<void> {
-        await this.customerService.remove(id, req.client.clientIds);
+        // For remove, pass the client ID as a string
+        await this.customerService.remove(id, req.client.id);
     }
 }
