@@ -5,13 +5,13 @@ import {
     IsEmail,
     IsOptional,
     IsEnum,
-    IsArray,
     IsObject,
     IsNumber,
     Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { CustomerStatus, CustomerType, FilterStatus, FilterType } from '../types/customer.types';
 
 export class CreateCustomerDto {
     @ApiProperty({ required: false, description: "User ID reference" })
@@ -39,61 +39,71 @@ export class CreateCustomerDto {
     @IsString()
     phone?: string;
 
-    @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'] })
+    @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'], enumName: 'CustomerStatus' })
     @IsEnum(['ACTIVE', 'INACTIVE'])
-    status: string;
+    @IsNotEmpty()
+    status: CustomerStatus;
 
-    @ApiProperty({ enum: ['REGULAR', 'VIP'] })
+    @ApiProperty({ enum: ['REGULAR', 'VIP'], enumName: 'CustomerType' })
     @IsEnum(['REGULAR', 'VIP'])
-    type: string;
+    @IsNotEmpty()
+    type: CustomerType;
 
-    @ApiProperty({ required: false, description: "External IDs as key-value pairs" })
+    @ApiProperty({
+        required: false,
+        description: "External IDs as key-value pairs",
+        example: { "erp_id": "123", "pos_id": "456" }
+    })
     @IsOptional()
     @IsObject()
     external_ids?: Record<string, any>;
+
+    @ApiProperty({ required: false, readOnly: true })
+    @IsOptional()
+    clientId?: string;
 }
 
-export class UpdateCustomerDto {
-    @ApiProperty({ required: false, description: "User ID reference" })
+// Using PartialType from @nestjs/swagger automatically makes all fields optional
+export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
+    @ApiProperty({ required: false })
     @IsOptional()
     @IsString()
-    userId?: string;
+    override userId?: string;
 
     @ApiProperty({ required: false })
-    @IsString()
     @IsOptional()
-    firstName?: string;
-
-    @ApiProperty({ required: false })
     @IsString()
-    @IsOptional()
-    lastName?: string;
+    override firstName?: string;
 
     @ApiProperty({ required: false })
+    @IsOptional()
+    @IsString()
+    override lastName?: string;
+
+    @ApiProperty({ required: false })
+    @IsOptional()
     @IsEmail()
-    @IsOptional()
-    email?: string;
+    override email?: string;
 
     @ApiProperty({ required: false })
     @IsOptional()
     @IsString()
-    phone?: string;
+    override phone?: string;
 
     @ApiProperty({ required: false, enum: ['ACTIVE', 'INACTIVE'] })
-    @IsEnum(['ACTIVE', 'INACTIVE'])
     @IsOptional()
-    status?: string;
+    @IsEnum(['ACTIVE', 'INACTIVE'])
+    override status?: CustomerStatus;
 
     @ApiProperty({ required: false, enum: ['REGULAR', 'VIP'] })
-    @IsEnum(['REGULAR', 'VIP'])
     @IsOptional()
-    type?: string;
+    @IsEnum(['REGULAR', 'VIP'])
+    override type?: CustomerType;
 
-
-    @ApiProperty({ required: false, description: "External IDs as key-value pairs" })
+    @ApiProperty({ required: false })
     @IsOptional()
     @IsObject()
-    external_ids?: Record<string, any>;
+    override external_ids?: Record<string, any>;
 }
 
 export class ListCustomerDto {
@@ -102,28 +112,56 @@ export class ListCustomerDto {
     @IsOptional()
     search?: string;
 
-    @ApiProperty({ required: false, default: 1 })
+    @ApiProperty({ required: false, default: 1, minimum: 1 })
     @IsNumber()
     @IsOptional()
     @Type(() => Number)
     @Min(1)
-    page?: number;
+    page?: number = 1;
 
-    @ApiProperty({ required: false, default: 10 })
+    @ApiProperty({ required: false, default: 10, minimum: 1 })
     @IsNumber()
     @IsOptional()
     @Type(() => Number)
     @Min(1)
-    limit?: number;
+    limit?: number = 10;
 
-    @ApiProperty({ required: false, enum: ['ACTIVE', 'INACTIVE', 'ALL'] })
-    @IsString()
+    @ApiProperty({
+        required: false,
+        enum: ['ACTIVE', 'INACTIVE', 'ALL'],
+        default: 'ALL'
+    })
     @IsOptional()
-    status?: string;
+    @IsEnum(['ACTIVE', 'INACTIVE', 'ALL'])
+    status?: FilterStatus = 'ALL';
 
-    @ApiProperty({ required: false, enum: ['REGULAR', 'VIP', 'ALL'] })
-    @IsString()
+    @ApiProperty({
+        required: false,
+        enum: ['REGULAR', 'VIP', 'ALL'],
+        default: 'ALL'
+    })
     @IsOptional()
-    type?: string;
+    @IsEnum(['REGULAR', 'VIP', 'ALL'])
+    type?: FilterType = 'ALL';
 
+    @ApiProperty({ required: false })
+    @IsOptional()
+    @IsString({ each: true })
+    clientIds?: string[];
+
+    @ApiProperty({
+        required: false,
+        enum: ['firstName', 'lastName', 'email', 'createdAt', 'updatedAt']
+    })
+    @IsOptional()
+    @IsString()
+    sortBy?: string;
+
+    @ApiProperty({ required: false, enum: ['asc', 'desc'], default: 'desc' })
+    @IsOptional()
+    @IsEnum(['asc', 'desc'])
+    sortOrder?: 'asc' | 'desc' = 'desc';
 }
+
+// No need for separate PartialUpdateCustomerDto since UpdateCustomerDto is already partial
+export { UpdateCustomerDto as PartialUpdateCustomerDto };
