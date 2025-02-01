@@ -47,11 +47,6 @@ export class CreateCustomerDto {
     @IsEnum(['REGULAR', 'VIP'])
     type: string;
 
-    @ApiProperty({ type: [String] })
-    @IsArray()
-    @IsNotEmpty()
-    clientIds: string[];
-
     @ApiProperty({ required: false, description: "External IDs as key-value pairs" })
     @IsOptional()
     @IsObject()
@@ -94,10 +89,6 @@ export class UpdateCustomerDto {
     @IsOptional()
     type?: string;
 
-    @ApiProperty({ type: [String], required: false })
-    @IsArray()
-    @IsOptional()
-    clientIds?: string[];
 
     @ApiProperty({ required: false, description: "External IDs as key-value pairs" })
     @IsOptional()
@@ -135,8 +126,4 @@ export class ListCustomerDto {
     @IsOptional()
     type?: string;
 
-    @ApiProperty({ type: [String], required: false })
-    @IsArray()
-    @IsOptional()
-    clientIds?: string[];
 }
