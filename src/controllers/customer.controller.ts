@@ -5,6 +5,8 @@ import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { CreateCustomerDto, UpdateCustomerDto, ListCustomerDto } from '../dtos/customer.dto';
 import { Customer } from '../schemas/customer.schema';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Request } from 'express';
+import { Client } from '../schemas/client.schema';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -18,9 +20,9 @@ export class CustomerController {
     @Get()
     async findAll(
         @Query() query: ListCustomerDto,
-        @Req() req: any  // req.client provided by the ClientAuthGuard
+        @Req() req: Request & { client: Client }
     ): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
-        // For findAll, the service expects an array
+        // For findAll, the service expects an array of client IDs.
         return this.customerService.findAll({ ...query, clientIds: [req.client.id] });
     }
 
@@ -29,16 +31,16 @@ export class CustomerController {
     @ApiParam({ name: 'id', description: 'Customer ID' })
     @ApiResponse({ status: 200, description: 'Customer details' })
     @Get(':id')
-    async findOne(@Param('id') id: string, @Req() req: any): Promise<Customer> {
-        // For findOne, pass the client ID as a string
+    async findOne(@Param('id') id: string, @Req() req: Request & { client: Client }): Promise<Customer> {
+        // For findOne, pass the client ID as a string.
         return this.customerService.findOne(id, req.client.id);
     }
 
     @ApiOperation({ summary: 'Create new customer' })
     @ApiResponse({ status: 201, description: 'Customer created' })
     @Post()
-    async create(@Body() createCustomerDto: CreateCustomerDto, @Req() req: any): Promise<Customer> {
-        // For create, the DTO expects an array, so we pass [req.client.id]
+    async create(@Body() createCustomerDto: CreateCustomerDto, @Req() req: Request & { client: Client }): Promise<Customer> {
+        // For create, the DTO expects clientIds as an array.
         return this.customerService.create({ ...createCustomerDto, clientIds: [req.client.id] });
     }
 
@@ -50,9 +52,9 @@ export class CustomerController {
     async update(
         @Param('id') id: string,
         @Body() updateCustomerDto: UpdateCustomerDto,
-        @Req() req: any
+        @Req() req: Request & { client: Client }
     ): Promise<Customer> {
-        // For update, pass the client ID as a string
+        // For update, pass the client ID as a string.
         return this.customerService.update(id, req.client.id, updateCustomerDto);
     }
 
@@ -61,8 +63,8 @@ export class CustomerController {
     @ApiParam({ name: 'id', description: 'Customer ID' })
     @ApiResponse({ status: 200, description: 'Customer deleted' })
     @Delete(':id')
-    async remove(@Param('id') id: string, @Req() req: any): Promise<void> {
-        // For remove, pass the client ID as a string
+    async remove(@Param('id') id: string, @Req() req: Request & { client: Client }): Promise<void> {
+        // For remove, pass the client ID as a string.
         await this.customerService.remove(id, req.client.id);
     }
 }
