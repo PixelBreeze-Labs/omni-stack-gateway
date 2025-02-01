@@ -330,10 +330,12 @@ export class FamilyAccountService {
     }
 
     async unlink(id: string, memberId: string, clientId: string) {
+        // First find the family without population to check raw data
         const family = await this.familyAccountModel.findOne({
             _id: id,
-            clientId: new Types.ObjectId(clientId)
-        }).populate<{ members: FamilyMemberPopulated[] }>('members.customerId');
+            clientId: new Types.ObjectId(clientId),
+            'members.customerId': new Types.ObjectId(memberId) // Check if member exists directly
+        });
 
         if (!family) {
             throw new NotFoundException('Family account not found');
@@ -343,22 +345,7 @@ export class FamilyAccountService {
             throw new BadRequestException('Cannot unlink main customer');
         }
 
-        // Check if member exists in family
-        const memberExists = family.members.some(member =>
-            member.customerId && member.customerId._id?.toString() === memberId
-        );
-
-        if (!memberExists) {
-            throw new BadRequestException('Member not found in family');
-        }
-
-        // Get valid members
-        const remainingValidMembers = family.members.filter(member =>
-            member.customerId &&
-            member.customerId._id?.toString() !== memberId
-        );
-
-        // Update family account
+        // Update family account with $pull operation
         const updated = await this.familyAccountModel.findByIdAndUpdate(
             id,
             {
@@ -368,33 +355,28 @@ export class FamilyAccountService {
                     }
                 },
                 $set: {
-                    lastActivity: new Date(),
-                    status: remainingValidMembers.length === 0 ? 'INACTIVE' : family.status
+                    lastActivity: new Date()
                 }
             },
             {
-                new: true,
-                runValidators: true
+                new: true
             }
-        ).populate<{ members: FamilyMemberPopulated[] }>({
-            path: 'members.customerId',
-            match: {
-                clientIds: clientId,
-                status: 'ACTIVE'
-            }
-        });
+        );
 
         if (!updated) {
             throw new BadRequestException('Failed to unlink member');
         }
 
-        // If the update succeeded but there are no more active members, mark as inactive
+        // Check remaining members and update status if needed
         if (updated.members.length === 0) {
             updated.status = 'INACTIVE';
             await updated.save();
         }
 
-        return updated;
+        // Return populated version
+        return this.familyAccountModel.findById(updated._id)
+            .populate('mainCustomerId')
+            .populate('members.customerId');
     }
 
     private async calculateTotalSpent(memberIds: Types.ObjectId[], clientId: string): Promise<number> {
