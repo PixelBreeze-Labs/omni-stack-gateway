@@ -36,55 +36,74 @@ export class FamilyAccountService {
         @InjectModel(Benefit.name) private benefitModel: Model<Benefit>,
     ) {}
 
+    // In FamilyAccountService
     async link(linkDto: LinkFamilyAccountDto & { clientId: string }) {
-        // Verify main customer exists and belongs to client
-        const mainCustomer = await this.customerModel.findOne({
-            _id: linkDto.mainCustomerId,
-            clientIds: linkDto.clientId // Note: Ensure your customer documents have an array in clientIds
-        });
-
-        if (!mainCustomer) {
-            throw new NotFoundException('Main customer not found');
-        }
-
-        // Verify all members exist and belong to client
-        const memberIds = linkDto.members.map(m => m.customerId);
-        const members = await this.customerModel.find({
-            _id: { $in: memberIds },
-            clientIds: linkDto.clientId
-        });
-
-        if (members.length !== memberIds.length) {
-            throw new BadRequestException('One or more members not found');
-        }
-
-        const existingAccount = await this.familyAccountModel.findOne({
+        // Check if main customer or any members are already in a family
+        const existingFamily = await this.familyAccountModel.findOne({
             clientId: linkDto.clientId,
+            status: 'ACTIVE',
             $or: [
-                { mainCustomerId: linkDto.mainCustomerId },
-                { 'members.customerId': linkDto.mainCustomerId }
+                { mainCustomerId: new Types.ObjectId(linkDto.mainCustomerId) },
+                { 'members.customerId': new Types.ObjectId(linkDto.mainCustomerId) },
+                ...linkDto.members.map(m => ({
+                    $or: [
+                        { mainCustomerId: new Types.ObjectId(m.customerId) },
+                        { 'members.customerId': new Types.ObjectId(m.customerId) }
+                    ]
+                }))
             ]
         });
 
-        if (existingAccount) {
-            throw new BadRequestException('Customer is already part of a family account');
+        if (existingFamily) {
+            throw new BadRequestException(
+                'One or more customers are already part of a family account'
+            );
         }
 
+        // Verify main customer exists and belongs to client
+        const mainCustomer = await this.customerModel.findOne({
+            _id: linkDto.mainCustomerId,
+            clientIds: linkDto.clientId,
+            status: 'ACTIVE'
+        });
+
+        if (!mainCustomer) {
+            throw new NotFoundException('Main customer not found or inactive');
+        }
+
+        // Verify all members exist, belong to client, and are active
+        const memberIds = linkDto.members.map(m => new Types.ObjectId(m.customerId));
+        const members = await this.customerModel.find({
+            _id: { $in: memberIds },
+            clientIds: linkDto.clientId,
+            status: 'ACTIVE'
+        });
+
+        if (members.length !== memberIds.length) {
+            throw new BadRequestException('One or more members not found or inactive');
+        }
+
+        // Create family account
         const familyAccount = new this.familyAccountModel({
-            clientId: linkDto.clientId,
-            mainCustomerId: linkDto.mainCustomerId,
+            clientId: new Types.ObjectId(linkDto.clientId),
+            mainCustomerId: new Types.ObjectId(linkDto.mainCustomerId),
             members: linkDto.members.map(m => ({
-                ...m,
+                customerId: new Types.ObjectId(m.customerId),
+                relationship: m.relationship,
                 joinDate: new Date(),
                 status: 'ACTIVE'
             })),
-            sharedBenefits: linkDto.sharedBenefits || [],
+            sharedBenefits: linkDto.sharedBenefits?.map(id => new Types.ObjectId(id)) || [],
             status: 'ACTIVE',
             lastActivity: new Date(),
             totalSpent: 0
         });
 
-        return familyAccount.save();
+        const saved = await familyAccount.save();
+        return this.familyAccountModel
+            .findById(saved._id)
+            .populate('mainCustomerId')
+            .populate('members.customerId');
     }
 
     async findAll(query: ListFamilyAccountDto & { clientId: string }) {
@@ -311,25 +330,49 @@ export class FamilyAccountService {
     }
 
     async unlink(id: string, memberId: string, clientId: string) {
-        const family = await this.familyAccountModel.findOne({ _id: id, clientId });
+        const family = await this.familyAccountModel.findOne({
+            _id: id,
+            clientId: new Types.ObjectId(clientId)
+        });
+
         if (!family) {
             throw new NotFoundException('Family account not found');
         }
+
         if (family.mainCustomerId.toString() === memberId) {
             throw new BadRequestException('Cannot unlink main customer');
         }
+
+        // Check if member exists in family
+        const memberExists = family.members.some(m =>
+            m.customerId.toString() === memberId
+        );
+
+        if (!memberExists) {
+            throw new BadRequestException('Member not found in family');
+        }
+
+        // Update with proper status check
         const updated = await this.familyAccountModel.findByIdAndUpdate(
             id,
             {
-                $pull: { members: { customerId: memberId } },
-                $set: { lastActivity: new Date() }
+                $pull: {
+                    members: {
+                        customerId: new Types.ObjectId(memberId)
+                    }
+                },
+                $set: {
+                    lastActivity: new Date(),
+                    status: family.members.length === 1 ? 'INACTIVE' : family.status
+                }
             },
             { new: true }
-        );
-        if (!updated.members.length) {
-            updated.status = 'INACTIVE';
-            await updated.save();
+        ).populate('members.customerId');
+
+        if (!updated) {
+            throw new BadRequestException('Failed to unlink member');
         }
+
         return updated;
     }
 
@@ -489,5 +532,37 @@ export class FamilyAccountService {
         }
 
         return family.sharedBenefits;
+    }
+
+    // In FamilyAccountService
+    async searchCustomers(query: string, clientId: string) {
+        // First, get all customers that match the search criteria
+        const customers = await this.customerModel.find({
+            clientIds: clientId,
+            status: 'ACTIVE',
+            $or: [
+                { firstName: new RegExp(query, 'i') },
+                { lastName: new RegExp(query, 'i') },
+                { email: new RegExp(query, 'i') }
+            ]
+        }).lean();
+
+        // Get all customer IDs that are already in families
+        const familyAccounts = await this.familyAccountModel.find({
+            clientId,
+            status: 'ACTIVE'
+        });
+
+        const existingFamilyMemberIds = new Set(
+            familyAccounts.flatMap(family => [
+                family.mainCustomerId.toString(),
+                ...family.members.map(m => m.customerId.toString())
+            ])
+        );
+
+        // Filter out customers who are already in families
+        return customers.filter(customer =>
+            !existingFamilyMemberIds.has(customer._id.toString())
+        );
     }
 }
