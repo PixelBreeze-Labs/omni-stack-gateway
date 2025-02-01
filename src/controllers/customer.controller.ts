@@ -78,6 +78,16 @@ export class CustomerController {
 
 
 
+    @ApiOperation({ summary: 'Hard delete customer' })
+    @ApiParam({ name: 'id', description: 'Customer ID' })
+    @ApiResponse({ status: 200, description: 'Customer deleted successfully' })
+    @Delete(':id/hard')
+    async hardDelete(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.customerService.hardDelete(id, req.client.id);
+    }
 
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Delete customer' })
