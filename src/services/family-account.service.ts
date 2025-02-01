@@ -153,24 +153,42 @@ export class FamilyAccountService {
     }
 
     private async getMetrics(clientId: string) {
-        const [totalFamilies, activeAccounts] = await Promise.all([
-            this.familyAccountModel.countDocuments({ clientId }),
-            this.familyAccountModel.countDocuments({ clientId, status: 'ACTIVE' })
-        ]);
+        // First, get all family accounts with populated main customer
+        const families = await this.familyAccountModel
+            .find({ clientId })
+            .populate({
+                path: 'mainCustomerId',
+                match: {
+                    clientIds: clientId,
+                    status: 'ACTIVE'
+                },
+                select: 'status'
+            })
+            .lean();
 
-        const families = await this.familyAccountModel.find({ clientId });
-        const linkedMembers = families.reduce((acc, family) =>
+        // Filter out families where main customer is deleted or inactive
+        const validFamilies = families.filter(family => family.mainCustomerId != null);
+
+        const totalFamilies = validFamilies.length;
+        const activeAccounts = validFamilies.filter(family => family.status === 'ACTIVE').length;
+        const inactiveAccounts = validFamilies.filter(family => family.status === 'INACTIVE').length;
+
+        // Calculate linked members only for valid families
+        const linkedMembers = validFamilies.reduce((acc, family) =>
             acc + (family.members?.length || 0), 0);
 
-        const averageSize = totalFamilies > 0 ? linkedMembers / totalFamilies : 0;
+        const averageSize = totalFamilies > 0 ?
+            (linkedMembers + totalFamilies) / totalFamilies : 0; // Add totalFamilies to include main customers
+
         const familySpendingMultiplier = 1;
         // const familySpendingMultiplier = await this.calculateSpendingMultiplier(clientId);
 
         return {
             totalFamilies,
             activeAccounts,
+            inactiveAccounts,
             linkedMembers,
-            averageSize,
+            averageSize: Number(averageSize.toFixed(1)), // Round to 1 decimal
             familySpendingMultiplier
         };
     }
