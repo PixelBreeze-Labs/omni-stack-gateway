@@ -1,16 +1,23 @@
 // dtos/family-account.dto.ts
-import { IsString, IsArray, IsEnum, IsOptional, ValidateNested, IsMongoId } from 'class-validator';
+import {IsString, IsArray, IsEnum, IsOptional, ValidateNested, IsMongoId, IsNotEmpty} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class MemberDto {
-    @ApiProperty()
-    @IsMongoId()
+    @IsString()
+    @IsNotEmpty()
     customerId: string;
 
-    @ApiProperty()
     @IsString()
+    @IsNotEmpty()
     relationship: string;
+
+    @IsOptional()
+    @IsString()
+    status?: string;
+
+    @IsOptional()
+    joinDate?: Date;
 }
 
 export class LinkFamilyAccountDto {

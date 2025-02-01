@@ -309,12 +309,12 @@ export class FamilyAccountService {
 
         // If updating members, verify they exist and aren't in other families
         if (updateDto.members) {
-            // Convert member IDs to ObjectId
+            // Convert member IDs to ObjectId for checking
             const memberIds = updateDto.members.map(m => new Types.ObjectId(m.customerId));
 
             // Check if any of these members are already in other families
             const existingFamily = await this.familyAccountModel.findOne({
-                _id: { $ne: new Types.ObjectId(id) }, // Exclude current family
+                _id: { $ne: new Types.ObjectId(id) },
                 clientId: new Types.ObjectId(clientId),
                 status: 'ACTIVE',
                 $or: [
@@ -339,16 +339,32 @@ export class FamilyAccountService {
                 throw new BadRequestException('One or more members not found or inactive');
             }
 
-            // Transform members data
-            updateDto.members = updateDto.members.map(m => ({
+            // Keep string IDs in the DTO, but prepare the data for MongoDB
+            const membersForDb = updateDto.members.map(m => ({
                 customerId: new Types.ObjectId(m.customerId),
                 relationship: m.relationship,
                 status: 'ACTIVE',
                 joinDate: new Date()
             }));
+
+            // Update the family account directly with the prepared data
+            const updated = await this.familyAccountModel.findByIdAndUpdate(
+                id,
+                {
+                    $set: {
+                        members: membersForDb,
+                        lastActivity: new Date()
+                    }
+                },
+                { new: true }
+            )
+                .populate('mainCustomerId')
+                .populate('members.customerId');
+
+            return updated;
         }
 
-        // Update the family account
+        // If not updating members, just update other fields
         const updated = await this.familyAccountModel.findByIdAndUpdate(
             id,
             {
