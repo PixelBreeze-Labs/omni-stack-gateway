@@ -40,7 +40,7 @@ export class CustomerController {
     @Post()
     async create(@Body() createCustomerDto: CreateCustomerDto, @Req() req: Request & { client: Client }): Promise<Customer> {
         // For create, the DTO expects clientIds as an array.
-        return this.customerService.create({ ...createCustomerDto, clientIds: [req.client.id] });
+        return this.customerService.create({ ...createCustomerDto, clientId: req.client.id });
     }
 
     @ApiBearerAuth()
