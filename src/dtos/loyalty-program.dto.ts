@@ -1,4 +1,3 @@
-// src/dtos/loyalty-program.dto.ts
 import {
     IsString,
     IsOptional,
@@ -27,10 +26,9 @@ export class BonusDayDto {
 }
 
 export class EarningPointsDto {
-    @ApiPropertyOptional({ default: 1 })
+    @ApiProperty({ default: 1 })
     @IsNumber()
-    @IsOptional()
-    spend: number;
+    spend: number; // Required in the schema
 
     @ApiPropertyOptional({ type: [BonusDayDto], default: [] })
     @IsArray()

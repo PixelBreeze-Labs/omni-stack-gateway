@@ -10,7 +10,7 @@ export class TrackmasterAdminService {
     private readonly baseUrl = this.configService.get<string>('trackmaster_admin.baseUrl');
     private readonly apiKey = this.configService.get<string>('trackmaster_admin.apiKey');
 
-    async verifyAccess(data: { external_ids: string[], role: string }) {
+    async verifyAccess(data: { external_ids: Record<string, any>, role: string }) {
         try {
             const response = await axios({
                 method: 'POST',
