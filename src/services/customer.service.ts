@@ -79,7 +79,7 @@ export class CustomerService {
 
         await this.customerModel.findByIdAndUpdate(
             id,
-            { $set: { isActive: false } },
+            { $set: { isActive: false, status: 'INACTIVE' } },
             { new: true }
         );
 
