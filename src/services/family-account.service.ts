@@ -135,13 +135,7 @@ export class FamilyAccountService {
 
         let items = await this.familyAccountModel
             .find(filters)
-            .populate({
-                path: 'mainCustomerId',
-                match: {
-                    clientIds: clientId,
-                    status: 'ACTIVE'
-                }
-            })
+            .populate('mainCustomerId')
             .populate({
                 path: 'members.customerId',
                 match: {
@@ -152,8 +146,14 @@ export class FamilyAccountService {
             .sort({ createdAt: -1 })
             .lean();
 
-        // Filter out families where mainCustomerId is null (deleted or inactive)
-        items = items.filter(item => item.mainCustomerId != null);
+        // Only filter out families where main account is deleted/inactive
+        items = items
+            .filter(item => item.mainCustomerId != null)
+            .map(family => ({
+                ...family,
+                // Keep all members, even if customerId is null
+                members: family.members || []
+            }));
 
         // Calculate pagination after filtering
         const total = items.length;
@@ -330,11 +330,10 @@ export class FamilyAccountService {
     }
 
     async unlink(id: string, memberId: string, clientId: string) {
-        // First find the family without population to check raw data
+        // First find the family without the member check to see if it exists
         const family = await this.familyAccountModel.findOne({
-            _id: id,
-            clientId: new Types.ObjectId(clientId),
-            'members.customerId': new Types.ObjectId(memberId) // Check if member exists directly
+            _id: new Types.ObjectId(id),
+            clientId: new Types.ObjectId(clientId)
         });
 
         if (!family) {
@@ -345,7 +344,7 @@ export class FamilyAccountService {
             throw new BadRequestException('Cannot unlink main customer');
         }
 
-        // Update family account with $pull operation
+        // Update family account and remove member
         const updated = await this.familyAccountModel.findByIdAndUpdate(
             id,
             {
@@ -361,22 +360,21 @@ export class FamilyAccountService {
             {
                 new: true
             }
-        );
+        )
+            .populate('mainCustomerId')
+            .populate('members.customerId');
 
         if (!updated) {
             throw new BadRequestException('Failed to unlink member');
         }
 
-        // Check remaining members and update status if needed
+        // Update status if no members left
         if (updated.members.length === 0) {
             updated.status = 'INACTIVE';
             await updated.save();
         }
 
-        // Return populated version
-        return this.familyAccountModel.findById(updated._id)
-            .populate('mainCustomerId')
-            .populate('members.customerId');
+        return updated;
     }
 
     private async calculateTotalSpent(memberIds: Types.ObjectId[], clientId: string): Promise<number> {
