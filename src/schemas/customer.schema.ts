@@ -21,11 +21,18 @@ export class Customer extends Document {
     @Prop()
     phone?: string;
 
-    @Prop({ required: true, default: 'ACTIVE', enum: ['ACTIVE', 'INACTIVE'] })
+    @Prop({
+        type: String,
+        enum: ['ACTIVE', 'INACTIVE', 'PENDING'],
+        default: 'ACTIVE'
+    })
     status: string;
 
     @Prop({ required: true, enum: ['REGULAR', 'VIP'] })
     type: string;
+
+    @Prop()
+    avatar?: string;
 
     @Prop({
         type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Client' }],
@@ -51,4 +58,5 @@ export class Customer extends Document {
     external_ids: Record<string, any>;
 }
 
+export type CustomerDocument = Customer & Document;
 export const CustomerSchema = SchemaFactory.createForClass(Customer);

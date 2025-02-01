@@ -37,6 +37,9 @@ import { Sync, SyncSchema } from './schemas/sync.schema';
 import { Customer, CustomerSchema } from './schemas/customer.schema';
 import { User, UserSchema } from './schemas/user.schema';
 import { Member, MemberSchema } from './schemas/member.schema';
+import { Order, OrderSchema } from './schemas/order.schema';
+import { Activity, ActivitySchema } from './schemas/activity.schema';
+
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -159,6 +162,8 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Customer.name, schema: CustomerSchema },
       { name: User.name, schema: UserSchema },
       { name: Member.name, schema: MemberSchema },
+      { name: Order.name, schema: OrderSchema },
+      { name: Activity.name, schema: ActivitySchema }
     ]),
   ],
   controllers: [

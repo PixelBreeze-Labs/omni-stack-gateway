@@ -1,10 +1,33 @@
-// src/controllers/family-account.controller.ts
-import { ClientAuthGuard } from "../guards/client-auth.guard";
-import { Body, Controller, Get, Param, Post, Put, Delete, Req, Query, UseGuards } from "@nestjs/common";
-import { LinkFamilyAccountDto, ListFamilyAccountDto, UpdateFamilyAccountDto } from "../dtos/family-account.dto";
-import { Client } from "../schemas/client.schema";
-import { FamilyAccountService } from "../services/family-account.service";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
+// controllers/family-account.controller.ts
+import { ClientAuthGuard } from '../guards/client-auth.guard';
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    Post,
+    Put,
+    Delete,
+    Req,
+    Query,
+    UseGuards
+} from '@nestjs/common';
+import {
+    LinkFamilyAccountDto,
+    ListFamilyAccountDto,
+    UpdateFamilyAccountDto
+} from '../dtos/family-account.dto';
+import { Client } from '../schemas/client.schema';
+import { FamilyAccountService } from '../services/family-account.service';
+import {
+    ApiTags,
+    ApiOperation,
+    ApiResponse,
+    ApiBearerAuth,
+    ApiBody,
+    ApiParam,
+    ApiQuery
+} from '@nestjs/swagger';
 
 @ApiTags('Family Accounts')
 @ApiBearerAuth()
@@ -67,12 +90,14 @@ export class FamilyAccountController {
 
     @ApiOperation({ summary: 'Unlink family member' })
     @ApiParam({ name: 'id', description: 'Account ID' })
+    @ApiParam({ name: 'memberId', description: 'Member ID to unlink' })
     @ApiResponse({ status: 200, description: 'Family member unlinked successfully' })
-    @Delete(':id')
+    @Delete(':id/members/:memberId')
     async unlink(
         @Param('id') id: string,
+        @Param('memberId') memberId: string,
         @Req() req: Request & { client: Client }
     ) {
-        return this.familyAccountService.unlink(id, req.client.id);
+        return this.familyAccountService.unlink(id, memberId, req.client.id);
     }
 }
