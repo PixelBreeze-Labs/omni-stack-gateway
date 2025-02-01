@@ -5,7 +5,6 @@ import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { CreateCustomerDto, UpdateCustomerDto, ListCustomerDto } from '../dtos/customer.dto';
 import { Customer } from '../schemas/customer.schema';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
-import { Request } from 'express';
 import { Client } from '../schemas/client.schema';
 
 @ApiTags('Customers')
