@@ -1,5 +1,5 @@
-// dtos/user.dto.ts
-import { IsString, IsEmail, IsArray, IsOptional } from 'class-validator';
+// src/dtos/user.dto.ts
+import { IsString, IsEmail, IsOptional, IsObject, IsArray } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -19,10 +19,15 @@ export class CreateUserDto {
     @IsString()
     password: string;
 
-    @ApiProperty({ required: false })
-    @IsArray()
+    @ApiProperty({ required: false, description: "External IDs as key-value pairs" })
     @IsOptional()
-    external_ids?: string[];
+    @IsObject()
+    external_ids?: Record<string, any>;
+
+    @ApiProperty({ required: false, description: "Client IDs" })
+    @IsOptional()
+    @IsArray()
+    client_ids?: string[];
 }
 
 export class SalesAssociateLoginDto {

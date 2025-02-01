@@ -1,8 +1,24 @@
-import { IsNotEmpty, IsString, IsEmail, IsOptional, IsEnum, IsArray, IsNumber, Min } from 'class-validator';
+// src/dtos/customer.dto.ts
+import {
+    IsNotEmpty,
+    IsString,
+    IsEmail,
+    IsOptional,
+    IsEnum,
+    IsArray,
+    IsObject,
+    IsNumber,
+    Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCustomerDto {
+    @ApiProperty({ required: false, description: "User ID reference" })
+    @IsOptional()
+    @IsString()
+    userId?: string;
+
     @ApiProperty()
     @IsString()
     @IsNotEmpty()
@@ -19,8 +35,8 @@ export class CreateCustomerDto {
     email: string;
 
     @ApiProperty({ required: false })
-    @IsString()
     @IsOptional()
+    @IsString()
     phone?: string;
 
     @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'] })
@@ -35,9 +51,19 @@ export class CreateCustomerDto {
     @IsArray()
     @IsNotEmpty()
     clientIds: string[];
+
+    @ApiProperty({ required: false, description: "External IDs as key-value pairs" })
+    @IsOptional()
+    @IsObject()
+    external_ids?: Record<string, any>;
 }
 
 export class UpdateCustomerDto {
+    @ApiProperty({ required: false, description: "User ID reference" })
+    @IsOptional()
+    @IsString()
+    userId?: string;
+
     @ApiProperty({ required: false })
     @IsString()
     @IsOptional()
@@ -54,8 +80,8 @@ export class UpdateCustomerDto {
     email?: string;
 
     @ApiProperty({ required: false })
-    @IsString()
     @IsOptional()
+    @IsString()
     phone?: string;
 
     @ApiProperty({ required: false, enum: ['ACTIVE', 'INACTIVE'] })
@@ -72,6 +98,11 @@ export class UpdateCustomerDto {
     @IsArray()
     @IsOptional()
     clientIds?: string[];
+
+    @ApiProperty({ required: false, description: "External IDs as key-value pairs" })
+    @IsOptional()
+    @IsObject()
+    external_ids?: Record<string, any>;
 }
 
 export class ListCustomerDto {
