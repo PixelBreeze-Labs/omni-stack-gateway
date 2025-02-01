@@ -21,19 +21,16 @@ export class LoyaltyProgramService {
 
         // Cast the current loyalty program to our expected type.
         const currentLp = (client.loyaltyProgram as LoyaltyProgram) || ({} as LoyaltyProgram);
-        // Ensure currentPointsSystem.earningPoints exists as an object.
         const currentPointsSystem = currentLp.pointsSystem || {
             earningPoints: {} as any,
             redeemingPoints: {} as any
         };
 
-        // Ensure that bonusDays is available from either the DTO or the current value.
-        const currentEarningPoints = currentPointsSystem.earningPoints as any;
-        const bonusDaysFromDto =
-            updateDto.pointsSystem?.earningPoints?.bonusDays ??
-            (currentEarningPoints && currentEarningPoints.bonusDays ? currentEarningPoints.bonusDays : []);
-
         // Convert bonusDays dates from string to Date objects.
+        const bonusDaysFromDto =
+            updateDto.pointsSystem?.earningPoints?.bonusDays ||
+            (currentPointsSystem.earningPoints && currentPointsSystem.earningPoints.bonusDays) ||
+            [];
         const parsedBonusDays = bonusDaysFromDto.map((bd: any) => ({
             ...bd,
             date: bd.date ? new Date(bd.date) : new Date(),
@@ -81,12 +78,17 @@ export class LoyaltyProgramService {
             },
         };
 
+        // Map membership tiers from DTO to ensure required fields are present.
+        const updatedMembershipTiers = (updateDto.membershipTiers ?? currentLp.membershipTiers ?? []).map((mt) => ({
+            ...mt,
+            perks: mt.perks ?? []  // Default perks to an empty array if not provided.
+        }));
+
         const updatedLoyaltyProgram = {
             ...currentLp,
             ...updateDto,
             pointsSystem: updatedPointsSystem,
-            membershipTiers:
-                updateDto.membershipTiers ?? currentLp.membershipTiers ?? [],
+            membershipTiers: updatedMembershipTiers,
         };
 
         client.loyaltyProgram = updatedLoyaltyProgram;
