@@ -1,84 +1,70 @@
-// src/dtos/family-account.dto.ts
-import { IsString, IsNotEmpty, IsOptional, IsNumber, Min } from 'class-validator';
+// dtos/family-account.dto.ts
+import { IsString, IsArray, IsEnum, IsOptional, ValidateNested, IsMongoId } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
-// For link member request
-export class LinkFamilyAccountDto {
-    @ApiProperty({ description: 'Family member name' })
-    @IsString()
-    @IsNotEmpty()
-    name: string;
+export class MemberDto {
+    @ApiProperty()
+    @IsMongoId()
+    customerId: string;
 
-    @ApiProperty({ description: 'Family member email' })
+    @ApiProperty()
     @IsString()
-    @IsNotEmpty()
-    email: string;
-
-    @ApiProperty({ description: 'Relationship to family member' })
-    @IsString()
-    @IsNotEmpty()
     relationship: string;
-
-    @ApiProperty({ description: 'Family member status', required: false })
-    @IsString()
-    @IsOptional()
-    status?: string;
 }
 
-// For updating relationship/status
+export class LinkFamilyAccountDto {
+    @ApiProperty()
+    @IsMongoId()
+    mainCustomerId: string;
+
+    @ApiProperty({ type: [MemberDto] })
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => MemberDto)
+    members: MemberDto[];
+
+    @ApiProperty({ required: false })
+    @IsArray()
+    @IsOptional()
+    sharedBenefits?: string[];
+}
+
 export class UpdateFamilyAccountDto {
     @ApiProperty({ required: false })
-    @IsString()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => MemberDto)
     @IsOptional()
-    relationship?: string;
+    members?: MemberDto[];
 
     @ApiProperty({ required: false })
-    @IsString()
+    @IsArray()
+    @IsOptional()
+    sharedBenefits?: string[];
+
+    @ApiProperty({ required: false })
+    @IsEnum(['ACTIVE', 'INACTIVE'])
     @IsOptional()
     status?: string;
 }
 
-// For listing and filtering
 export class ListFamilyAccountDto {
-    @ApiProperty({
-        description: 'Search term for filtering accounts',
-        required: false
-    })
-    @IsString()
+    @ApiProperty({ required: false })
     @IsOptional()
+    @IsString()
     search?: string;
 
-    @ApiProperty({
-        description: 'Page number',
-        required: false,
-        default: 1,
-        type: Number
-    })
-    @IsNumber()
+    @ApiProperty({ required: false, enum: ['ACTIVE', 'INACTIVE', 'ALL'] })
     @IsOptional()
-    @Type(() => Number)
-    @Min(1)
+    @IsEnum(['ACTIVE', 'INACTIVE', 'ALL'])
+    status?: string;
+
+    @ApiProperty({ required: false, default: 1 })
+    @IsOptional()
     page?: number;
 
-    @ApiProperty({
-        description: 'Number of items per page',
-        required: false,
-        default: 10,
-        type: Number
-    })
-    @IsNumber()
+    @ApiProperty({ required: false, default: 10 })
     @IsOptional()
-    @Type(() => Number)
-    @Min(1)
     limit?: number;
-
-    @ApiProperty({
-        description: 'Status filter',
-        required: false,
-        enum: ['Active', 'Inactive', 'Bronze']
-    })
-    @IsString()
-    @IsOptional()
-    status?: string;
 }

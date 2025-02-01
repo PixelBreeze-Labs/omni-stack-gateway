@@ -1,57 +1,50 @@
 // schemas/family-account.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
+import { Customer } from './customer.schema';
+
+export interface FamilyMember {
+    customerId: MongooseSchema.Types.ObjectId;
+    relationship: string;
+    joinDate: Date;
+    status: string;
+}
+
+export type FamilyAccountDocument = FamilyAccount & Document;
 
 @Schema({ timestamps: true })
 export class FamilyAccount extends Document {
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
-    clientId: string;
+    clientId: MongooseSchema.Types.ObjectId;
 
-    @Prop({
-        type: {
-            name: { type: String, required: true },
-            email: { type: String, required: true },
-            phone: String,
-            avatar: String,
-            status: { type: String, enum: ['ACTIVE', 'INACTIVE'] },
-            joinDate: Date
-        },
-        required: true
-    })
-    mainAccount: {
-        name: string;
-        email: string;
-        phone?: string;
-        avatar?: string;
-        status: string;
-        joinDate: Date;
-    };
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Customer' })
+    mainCustomerId: MongooseSchema.Types.ObjectId;
 
     @Prop([{
-        name: { type: String, required: true },
-        email: { type: String, required: true },
-        phone: String,
+        customerId: { type: MongooseSchema.Types.ObjectId, ref: 'Customer' },
         relationship: { type: String, required: true },
-        status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'PENDING'] },
-        joinDate: Date
+        joinDate: { type: Date, default: Date.now },
+        status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' }
     }])
-    members: Array<{
-        name: string;
-        email: string;
-        phone?: string;
-        relationship: string;
-        status: string;
-        joinDate: Date;
-    }>;
+    members: FamilyMember[];
 
-    @Prop({ type: [String] })
-    sharedBenefits: string[];
+    @Prop([{ type: MongooseSchema.Types.ObjectId, ref: 'Benefit' }])
+    sharedBenefits: MongooseSchema.Types.ObjectId[];
+
+    @Prop({ type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' })
+    status: string;
+
+    @Prop({ type: Date, default: Date.now })
+    lastActivity: Date;
 
     @Prop({ type: Number, default: 0 })
     totalSpent: number;
 
-    @Prop()
-    lastActivity: Date;
+    @Prop({ type: Date, default: Date.now })
+    createdAt: Date;
+
+    @Prop({ type: Date, default: Date.now })
+    updatedAt: Date;
 }
 
 export const FamilyAccountSchema = SchemaFactory.createForClass(FamilyAccount);
