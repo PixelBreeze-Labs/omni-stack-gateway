@@ -1,6 +1,4 @@
-// src/schemas/loyalty-program.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Types } from 'mongoose';
 
 @Schema({ _id: false })
 export class BonusDay {

@@ -1,4 +1,3 @@
-// src/controllers/loyalty-program.controller.ts
 import { Controller, Put, Delete, Param, Body, HttpCode } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LoyaltyProgramService } from '../services/loyalty-program.service';
