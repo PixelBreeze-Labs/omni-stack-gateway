@@ -30,7 +30,7 @@ export class EarningPointsDto {
     @ApiPropertyOptional({ default: 1 })
     @IsNumber()
     @IsOptional()
-    spend?: number;
+    spend: number;
 
     @ApiPropertyOptional({ type: [BonusDayDto], default: [] })
     @IsArray()
