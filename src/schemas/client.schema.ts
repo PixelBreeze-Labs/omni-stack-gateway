@@ -2,6 +2,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Currency } from '../enums/currency.enum';
+import { LoyaltyProgram, LoyaltyProgramSchema } from './loyalty-program.schema';
 
 @Schema({ timestamps: true })
 export class Client extends Document {
@@ -25,6 +26,10 @@ export class Client extends Document {
 
     @Prop({ required: true, unique: true, select: false })
     apiKey: string;
+
+    // Embed loyalty program configuration
+    @Prop({ type: LoyaltyProgramSchema, default: {} })
+    loyaltyProgram: LoyaltyProgram;
 }
 
 export const ClientSchema = SchemaFactory.createForClass(Client);
