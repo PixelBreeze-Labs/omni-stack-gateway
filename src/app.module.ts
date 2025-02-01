@@ -36,6 +36,7 @@ import { FamilyAccount, FamilyAccountSchema } from './schemas/family-account.sch
 import { Sync, SyncSchema } from './schemas/sync.schema';
 import { Customer, CustomerSchema } from './schemas/customer.schema';
 import { User, UserSchema } from './schemas/user.schema';
+import { Member, MemberSchema } from './schemas/member.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -55,6 +56,8 @@ import { FamilyAccountController} from "./controllers/family-account.controller"
 import { SyncController } from "./controllers/sync.controller";
 import { CustomerController } from "./controllers/customer.controller";
 import { AuthController } from "./controllers/auth.controller";
+import { UserController } from "./controllers/user.controller";
+import { ByBestSyncController } from "./controllers/bybest-sync.controller";
 
 
 // Service imports
@@ -96,10 +99,12 @@ import { FamilyAccountService } from './services/family-account.service';
 import { SyncService } from './services/sync.service';
 import { CustomerService } from './services/customer.service';
 import { AuthService } from './services/auth.service';
+import { ByBestSyncService } from './services/bybest-sync.service';
+import { UserService } from "./services/user.service";
 
+// Others
 import {JwtModule} from "@nestjs/jwt";
-import {UserService} from "./services/user.service";
-import {UserController} from "./controllers/user.controller";
+
 
 @Module({
   imports: [
@@ -149,6 +154,7 @@ import {UserController} from "./controllers/user.controller";
       { name: Sync.name, schema: SyncSchema },
       { name: Customer.name, schema: CustomerSchema },
       { name: User.name, schema: UserSchema },
+      { name: Member.name, schema: MemberSchema },
     ]),
   ],
   controllers: [
@@ -177,7 +183,8 @@ import {UserController} from "./controllers/user.controller";
     SyncController,
     CustomerController,
     AuthController,
-    UserController
+    UserController,
+    ByBestSyncController
   ],
   providers: [
     SnapfoodService,
@@ -216,7 +223,8 @@ import {UserController} from "./controllers/user.controller";
     SyncService,
     CustomerService,
     AuthService,
-    UserService
+    UserService,
+    ByBestSyncService
   ],
 })
 export class AppModule implements NestModule {
