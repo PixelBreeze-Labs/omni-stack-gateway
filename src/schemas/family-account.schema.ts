@@ -2,8 +2,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Customer } from './customer.schema';
+import { Types } from 'mongoose';
 
 export interface FamilyMember {
+    _id: Types.ObjectId;
     customerId: MongooseSchema.Types.ObjectId;
     relationship: string;
     joinDate: Date;
