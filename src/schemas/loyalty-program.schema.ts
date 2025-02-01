@@ -53,11 +53,9 @@ export class MembershipTier {
     @Prop({ required: true })
     name: string;
 
-    @Prop({ required: true })
-    spendRange: {
-        min: number;
-        max: number;
-    };
+    // Specify the type for spendRange explicitly:
+    @Prop({ required: true, type: { min: Number, max: Number } })
+    spendRange: { min: number; max: number };
 
     @Prop({ required: true })
     pointsMultiplier: number;
