@@ -1,4 +1,4 @@
-// schemas/user.schema.ts
+// src/schemas/user.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
@@ -16,13 +16,28 @@ export class User extends Document {
     @Prop({ required: true })
     password: string;
 
-    @Prop({ type: [String], default: [] })
-    external_ids: string[];
+    /**
+     * external_ids: A JSON object to store various external IDs.
+     * Example:
+     * {
+     *   oldPlatformUserId: "123",
+     *   bookMasterId: "456",
+     *   trackMasterId: "789",
+     *   supaBaseId: "abc",
+     *   venueBoostId: "def"
+     * }
+     */
+    @Prop({ type: Object, default: {} })
+    external_ids: Record<string, any>;
 
     @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Client' }] })
     client_ids: string[];
 
-    @Prop({ type: Map, of: String })
+    /**
+     * metadata: Use this Map to store additional information,
+     * such as oldPlatformRegistrationType and gender.
+     */
+    @Prop({ type: Map, of: String, default: {} })
     metadata: Map<string, any>;
 
     @Prop({ default: true })
