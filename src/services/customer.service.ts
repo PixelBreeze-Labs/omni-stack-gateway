@@ -95,4 +95,18 @@ export class CustomerService {
         await this.customerModel.findByIdAndDelete(id);
         return { message: 'Customer deleted successfully' };
     }
+
+    async partialUpdate(id: string, clientId: string, updateCustomerDto: Partial<UpdateCustomerDto>): Promise<Customer> {
+        const customer = await this.customerModel.findOneAndUpdate(
+            { _id: id, clientIds: clientId },
+            { $set: updateCustomerDto },
+            { new: true }
+        );
+
+        if (!customer) {
+            throw new NotFoundException(`Customer with ID ${id} not found for this client`);
+        }
+
+        return customer;
+    }
 }

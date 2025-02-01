@@ -1,8 +1,8 @@
 // src/controllers/customer.controller.ts
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
+import {Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, Patch} from '@nestjs/common';
 import { CustomerService } from '../services/customer.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
-import { CreateCustomerDto, UpdateCustomerDto, ListCustomerDto } from '../dtos/customer.dto';
+import {CreateCustomerDto, UpdateCustomerDto, ListCustomerDto, PartialUpdateCustomerDto} from '../dtos/customer.dto';
 import { Customer } from '../schemas/customer.schema';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Client } from '../schemas/client.schema';
@@ -87,5 +87,18 @@ export class CustomerController {
     async remove(@Param('id') id: string, @Req() req: Request & { client: Client }): Promise<void> {
         // For remove, pass the client ID as a string.
         await this.customerService.remove(id, req.client.id);
+    }
+
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update customer (partial update)' })
+    @ApiParam({ name: 'id', description: 'Customer ID' })
+    @ApiResponse({ status: 200, description: 'Customer updated' })
+    @Patch(':id')
+    async partialUpdate(
+        @Param('id') id: string,
+        @Body() updateCustomerDto: PartialUpdateCustomerDto,
+        @Req() req: Request & { client: Client }
+    ): Promise<Customer> {
+        return this.customerService.partialUpdate(id, req.client.id, updateCustomerDto);
     }
 }
