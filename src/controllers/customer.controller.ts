@@ -1,3 +1,4 @@
+// src/controllers/customer.controller.ts
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { CustomerService } from '../services/customer.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
@@ -14,7 +15,10 @@ export class CustomerController {
     @ApiQuery({ type: ListCustomerDto })
     @ApiResponse({ status: 200, description: 'List of customers' })
     @Get()
-    async findAll(@Query() query: ListCustomerDto, @Req() req): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
+    async findAll(
+        @Query() query: ListCustomerDto,
+        @Req() req: any  // req.client provided by authentication guard
+    ): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
         return this.customerService.findAll({ ...query, clientIds: req.client.clientIds });
     }
 
@@ -24,14 +28,14 @@ export class CustomerController {
     @ApiResponse({ status: 200, description: 'Customer details' })
     @Get(':id')
     @UseGuards(ClientAuthGuard)
-    async findOne(@Param('id') id: string, @Req() req): Promise<Customer> {
+    async findOne(@Param('id') id: string, @Req() req: any): Promise<Customer> {
         return this.customerService.findOne(id, req.client.clientIds);
     }
 
     @ApiOperation({ summary: 'Create new customer' })
     @ApiResponse({ status: 201, description: 'Customer created' })
     @Post()
-    async create(@Body() createCustomerDto: CreateCustomerDto, @Req() req): Promise<Customer> {
+    async create(@Body() createCustomerDto: CreateCustomerDto, @Req() req: any): Promise<Customer> {
         return this.customerService.create({ ...createCustomerDto, clientIds: req.client.clientIds });
     }
 
@@ -44,7 +48,7 @@ export class CustomerController {
     async update(
         @Param('id') id: string,
         @Body() updateCustomerDto: UpdateCustomerDto,
-        @Req() req
+        @Req() req: any
     ): Promise<Customer> {
         return this.customerService.update(id, req.client.clientIds, updateCustomerDto);
     }
@@ -55,7 +59,7 @@ export class CustomerController {
     @ApiResponse({ status: 200, description: 'Customer deleted' })
     @Delete(':id')
     @UseGuards(ClientAuthGuard)
-    async remove(@Param('id') id: string, @Req() req): Promise<void> {
+    async remove(@Param('id') id: string, @Req() req: any): Promise<void> {
         await this.customerService.remove(id, req.client.clientIds);
     }
 }

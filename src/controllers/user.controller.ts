@@ -1,10 +1,10 @@
-// controllers/user.controller.ts
+// src/controllers/user.controller.ts
 import { Controller, Post, Get, Body, UseGuards, Req } from '@nestjs/common';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { UserService } from '../services/user.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import {CreateUserDto} from "../dtos/user.dto";
-import {Client} from "../schemas/client.schema";
+import { CreateUserDto } from '../dtos/user.dto';
+import { Client } from '../schemas/client.schema';
 
 @ApiTags('Users')
 @Controller('users')
@@ -20,9 +20,10 @@ export class UserController {
         @Body() createUserDto: CreateUserDto,
         @Req() req: Request & { client: Client }
     ) {
+        // Pass along client_ids from the authenticated client.
         return this.userService.create({
             ...createUserDto,
-            client_ids: [req.client.id]
+            client_ids: [req.client.id],
         });
     }
 
