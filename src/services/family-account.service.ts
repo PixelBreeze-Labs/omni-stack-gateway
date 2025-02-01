@@ -397,27 +397,27 @@ export class FamilyAccountService {
             throw new BadRequestException('Cannot unlink main customer');
         }
 
-        // Verify member exists in the family
+        // IMPORTANT FIX: Verify member exists in the family by comparing with _id
         const memberExists = family.members.some(m =>
-            m.customerId.toString() === memberId && m.status === 'ACTIVE'
+            m._id.toString() === memberId && m.status === 'ACTIVE'
         );
 
         if (!memberExists) {
             throw new BadRequestException('Member not found in family or already inactive');
         }
 
-        // Update family account - mark member as inactive instead of removing
+        // Update family account - mark member as inactive
         const updated = await this.familyAccountModel.findByIdAndUpdate(
             id,
             {
                 $set: {
-                    'members.$[member].status': 'INACTIVE',
+                    'members.$[elem].status': 'INACTIVE',
                     lastActivity: new Date()
                 }
             },
             {
                 new: true,
-                arrayFilters: [{ 'member.customerId': new Types.ObjectId(memberId) }]
+                arrayFilters: [{ 'elem._id': new Types.ObjectId(memberId) }] // Use _id for filtering
             }
         )
             .populate('mainCustomerId')
