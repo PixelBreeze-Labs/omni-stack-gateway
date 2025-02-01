@@ -39,6 +39,8 @@ import { User, UserSchema } from './schemas/user.schema';
 import { Member, MemberSchema } from './schemas/member.schema';
 import { Order, OrderSchema } from './schemas/order.schema';
 import { Activity, ActivitySchema } from './schemas/activity.schema';
+import { Benefit, BenefitSchema } from './schemas/benefit.schema';
+import { BenefitUsage, BenefitUsageSchema } from './schemas/benefit-usage.schema';
 
 
 // Controller imports
@@ -163,7 +165,9 @@ import {JwtModule} from "@nestjs/jwt";
       { name: User.name, schema: UserSchema },
       { name: Member.name, schema: MemberSchema },
       { name: Order.name, schema: OrderSchema },
-      { name: Activity.name, schema: ActivitySchema }
+      { name: Activity.name, schema: ActivitySchema },
+      { name: Benefit.name, schema: BenefitSchema },
+      { name: BenefitUsage.name, schema: BenefitUsageSchema },
     ]),
   ],
   controllers: [
