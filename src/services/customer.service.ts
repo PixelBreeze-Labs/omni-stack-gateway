@@ -11,6 +11,7 @@ export class CustomerService {
     async create(customerData: CreateCustomerDto & { clientId: string }) {
         return this.customerModel.create({
             ...customerData,
+            clientIds: [customerData.clientId],
             isActive: true
         });
     }
