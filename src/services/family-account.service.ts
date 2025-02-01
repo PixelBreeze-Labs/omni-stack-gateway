@@ -333,7 +333,7 @@ export class FamilyAccountService {
         const family = await this.familyAccountModel.findOne({
             _id: id,
             clientId: new Types.ObjectId(clientId)
-        }).populate('members.customerId');
+        }).populate<{ members: FamilyMemberPopulated[] }>('members.customerId');
 
         if (!family) {
             throw new NotFoundException('Family account not found');
@@ -343,19 +343,19 @@ export class FamilyAccountService {
             throw new BadRequestException('Cannot unlink main customer');
         }
 
-        // Check if member exists in family by comparing string versions of ObjectIds
+        // Check if member exists in family
         const memberExists = family.members.some(member =>
-            member.customerId && member.customerId._id.toString() === memberId
+            member.customerId && member.customerId._id?.toString() === memberId
         );
 
         if (!memberExists) {
             throw new BadRequestException('Member not found in family');
         }
 
-        // Get valid members (excluding the one being removed and null customerIds)
+        // Get valid members
         const remainingValidMembers = family.members.filter(member =>
             member.customerId &&
-            member.customerId._id.toString() !== memberId
+            member.customerId._id?.toString() !== memberId
         );
 
         // Update family account
@@ -363,13 +363,12 @@ export class FamilyAccountService {
             id,
             {
                 $pull: {
-                    'members': {
-                        'customerId': new Types.ObjectId(memberId)
+                    members: {
+                        customerId: new Types.ObjectId(memberId)
                     }
                 },
                 $set: {
                     lastActivity: new Date(),
-                    // Set status to INACTIVE if no valid members remain
                     status: remainingValidMembers.length === 0 ? 'INACTIVE' : family.status
                 }
             },
@@ -377,7 +376,7 @@ export class FamilyAccountService {
                 new: true,
                 runValidators: true
             }
-        ).populate({
+        ).populate<{ members: FamilyMemberPopulated[] }>({
             path: 'members.customerId',
             match: {
                 clientIds: clientId,
