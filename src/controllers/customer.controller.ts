@@ -25,6 +25,25 @@ export class CustomerController {
         return this.customerService.findAll({ ...query, clientIds: [req.client.id] });
     }
 
+    @ApiOperation({ summary: 'Search customers by query' })
+    @ApiQuery({ name: 'query', type: String, description: 'Search query for customers' })
+    @ApiResponse({ status: 200, description: 'List of matching customers' })
+    @Get('search')
+    async search(
+        @Query('query') searchQuery: string,
+        @Req() req: Request & { client: Client }
+    ): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
+        // Here we create a ListCustomerDto with the search field populated.
+        const queryDto: ListCustomerDto = {
+            search: searchQuery,
+            page: 1,
+            limit: 10
+            // You can add additional defaults if needed.
+        };
+        return this.customerService.findAll({ ...queryDto, clientIds: [req.client.id] });
+    }
+
+
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Get customer by ID' })
     @ApiParam({ name: 'id', description: 'Customer ID' })
@@ -56,6 +75,9 @@ export class CustomerController {
         // For update, pass the client ID as a string.
         return this.customerService.update(id, req.client.id, updateCustomerDto);
     }
+
+
+
 
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Delete customer' })

@@ -1,3 +1,4 @@
+// src/services/customer.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -9,6 +10,7 @@ export class CustomerService {
     constructor(@InjectModel(Customer.name) private customerModel: Model<Customer>) {}
 
     async create(customerData: CreateCustomerDto & { clientId: string }) {
+        // Set clientIds as an array with the provided clientId
         return this.customerModel.create({
             ...customerData,
             clientIds: [customerData.clientId],
@@ -20,6 +22,7 @@ export class CustomerService {
         const { clientIds, search, limit = 10, page = 1, status, type } = query;
         const skip = (page - 1) * limit;
 
+        // Use $in operator to match any client id in the customer document array.
         const filters: any = { clientIds: { $in: clientIds } };
 
         if (search) {
@@ -46,7 +49,8 @@ export class CustomerService {
     }
 
     async findOne(id: string, clientId: string) {
-        const customer = await this.customerModel.findOne({ _id: id, clientIds: clientId });
+        // Use $in operator for clientIds matching
+        const customer = await this.customerModel.findOne({ _id: id, clientIds: { $in: [clientId] } });
         if (!customer) {
             throw new NotFoundException('Customer not found');
         }
@@ -55,7 +59,7 @@ export class CustomerService {
 
     async update(id: string, clientId: string, updateCustomerDto: UpdateCustomerDto) {
         const customer = await this.customerModel.findOneAndUpdate(
-            { _id: id, clientIds: clientId },
+            { _id: id, clientIds: { $in: [clientId] } },
             { $set: updateCustomerDto },
             { new: true }
         );
@@ -68,7 +72,7 @@ export class CustomerService {
     }
 
     async remove(id: string, clientId: string) {
-        const customer = await this.customerModel.findOne({ _id: id, clientIds: clientId });
+        const customer = await this.customerModel.findOne({ _id: id, clientIds: { $in: [clientId] } });
         if (!customer) {
             throw new NotFoundException('Customer not found');
         }
@@ -83,7 +87,7 @@ export class CustomerService {
     }
 
     async hardDelete(id: string, clientId: string) {
-        const customer = await this.customerModel.findOne({ _id: id, clientIds: clientId });
+        const customer = await this.customerModel.findOne({ _id: id, clientIds: { $in: [clientId] } });
         if (!customer) {
             throw new NotFoundException('Customer not found');
         }
