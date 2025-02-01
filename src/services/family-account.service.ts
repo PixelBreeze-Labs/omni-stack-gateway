@@ -100,6 +100,7 @@ export class FamilyAccountService {
         if (search) {
             const customerIds = await this.customerModel.find({
                 clientIds: clientId,
+                status: 'ACTIVE',
                 $or: [
                     { firstName: new RegExp(search, 'i') },
                     { lastName: new RegExp(search, 'i') },
@@ -113,27 +114,36 @@ export class FamilyAccountService {
             ];
         }
 
-        const [items, total] = await Promise.all([
-            this.familyAccountModel
-                .find(filters)
-                .populate({
-                    path: 'mainCustomerId',
-                    match: { clientIds: clientId }
-                })
-                .populate({
-                    path: 'members.customerId',
-                    match: { clientIds: clientId }
-                })
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            this.familyAccountModel.countDocuments(filters)
-        ]);
+        let items = await this.familyAccountModel
+            .find(filters)
+            .populate({
+                path: 'mainCustomerId',
+                match: {
+                    clientIds: clientId,
+                    status: 'ACTIVE'
+                }
+            })
+            .populate({
+                path: 'members.customerId',
+                match: {
+                    clientIds: clientId,
+                    status: 'ACTIVE'
+                }
+            })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Filter out families where mainCustomerId is null (deleted or inactive)
+        items = items.filter(item => item.mainCustomerId != null);
+
+        // Calculate pagination after filtering
+        const total = items.length;
+        items = items.slice(skip, skip + limit);
 
         const metrics = await this.getMetrics(clientId);
 
         return {
-            items: items.map(item => item.toObject()),
+            items,
             total,
             pages: Math.ceil(total / limit),
             page,
