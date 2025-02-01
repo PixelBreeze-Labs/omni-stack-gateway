@@ -59,6 +59,7 @@ import { AuthController } from "./controllers/auth.controller";
 import { UserController } from "./controllers/user.controller";
 import { ByBestSyncController } from "./controllers/bybest-sync.controller";
 import { MemberController } from "./controllers/member.controller";
+import { LoyaltyProgramController } from './controllers/loyalty-program.controller';
 
 
 // Service imports
@@ -103,6 +104,7 @@ import { AuthService } from './services/auth.service';
 import { ByBestSyncService } from './services/bybest-sync.service';
 import { UserService } from "./services/user.service";
 import { MemberService } from "./services/member.service";
+import { LoyaltyProgramService } from './services/loyalty-program.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -187,7 +189,8 @@ import {JwtModule} from "@nestjs/jwt";
     AuthController,
     UserController,
     ByBestSyncController,
-    MemberController
+    MemberController,
+    LoyaltyProgramController
   ],
   providers: [
     SnapfoodService,
@@ -228,7 +231,8 @@ import {JwtModule} from "@nestjs/jwt";
     AuthService,
     UserService,
     ByBestSyncService,
-    MemberService
+    MemberService,
+    LoyaltyProgramService
   ],
 })
 export class AppModule implements NestModule {
