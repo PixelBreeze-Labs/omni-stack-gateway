@@ -1,9 +1,10 @@
 // src/controllers/member.controller.ts
-import { Controller, Post, Get, Put, Delete, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, Req, UseGuards, Query } from '@nestjs/common';
 import { MemberService } from '../services/member.service';
-import { CreateMemberDto, UpdateMemberDto } from '../dtos/member.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {CreateMemberDto, ListMemberDto, UpdateMemberDto} from '../dtos/member.dto';
+import {ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery} from '@nestjs/swagger';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
+import {Member} from "../schemas/member.schema";
 
 @ApiTags('Members')
 @Controller('members')
@@ -22,13 +23,18 @@ export class MemberController {
         return this.memberService.create(createMemberDto);
     }
 
-    @ApiBearerAuth()
-    @UseGuards(ClientAuthGuard)
-    @Get()
-    @ApiOperation({ summary: 'List all members' })
+    @ApiOperation({ summary: 'Get all members' })
+    @ApiQuery({ type: ListMemberDto })
     @ApiResponse({ status: 200, description: 'List of members' })
-    async findAll(@Req() req: any) {
-        return this.memberService.findAll();
+    @Get()
+    async findAll(@Query() query: ListMemberDto): Promise<{
+        items: Member[];
+        total: number;
+        pages: number;
+        page: number;
+        limit: number;
+    }> {
+        return this.memberService.findAll(query);
     }
 
     @ApiBearerAuth()

@@ -1,6 +1,17 @@
 // src/dtos/member.dto.ts
-import { IsString, IsEmail, IsOptional, IsObject, IsArray, IsBoolean, IsDateString } from 'class-validator';
+import {
+    IsString,
+    IsEmail,
+    IsOptional,
+    IsObject,
+    IsArray,
+    IsBoolean,
+    IsDateString,
+    IsEnum,
+    IsInt, Min
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {Type} from "class-transformer";
 
 export class CreateMemberDto {
     @ApiProperty({ required: false, description: "User ID reference" })
@@ -131,4 +142,40 @@ export class UpdateMemberDto {
     @IsOptional()
     @IsObject()
     metadata?: Record<string, any>;
+}
+
+export class ListMemberDto {
+    @ApiPropertyOptional({ description: 'Page number', default: 1 })
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @IsOptional()
+    page?: number;
+
+    @ApiPropertyOptional({ description: 'Number of items per page', default: 10 })
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @IsOptional()
+    limit?: number;
+
+    @ApiPropertyOptional({ description: 'Search term' })
+    @IsString()
+    @IsOptional()
+    search?: string;
+
+    @ApiPropertyOptional({ description: 'Member status (ACTIVE, PENDING, REJECTED)' })
+    @IsEnum(['ACTIVE', 'PENDING', 'REJECTED', 'ALL'], { message: 'Invalid status' })
+    @IsOptional()
+    status?: string;
+
+    @ApiPropertyOptional({ description: 'Sort by field', default: 'createdAt' })
+    @IsString()
+    @IsOptional()
+    sortBy?: string;
+
+    @ApiPropertyOptional({ description: 'Sort order (asc/desc)', default: 'desc' })
+    @IsEnum(['asc', 'desc'], { message: 'Sort order must be either asc or desc' })
+    @IsOptional()
+    sortOrder?: 'asc' | 'desc';
 }
