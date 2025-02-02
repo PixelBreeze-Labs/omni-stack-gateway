@@ -1,49 +1,51 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Member } from '../schemas/member.schema';
+import { Model, SortOrder } from 'mongoose';
+import { Member, MemberDocument } from '../schemas/member.schema';
 import { CreateMemberDto, UpdateMemberDto, ListMemberDto } from '../dtos/member.dto';
+
+interface PaginatedResponse<T> {
+    items: T[];
+    total: number;
+    pages: number;
+    page: number;
+    limit: number;
+}
 
 @Injectable()
 export class MemberService {
-    constructor(@InjectModel(Member.name) private memberModel: Model<Member>) {}
+    constructor(@InjectModel(Member.name) private memberModel: Model<MemberDocument>) {}
 
     private generateMemberCode(): string {
         const randomNum = Math.floor(Math.random() * 10000000000);
-        const code = randomNum.toString().padStart(13, '0');
-        return code;
+        return randomNum.toString().padStart(13, '0');
     }
 
     private async ensureUniqueCode(): Promise<string> {
         let code: string;
-        let existingMember: any;
+        let existingMember: MemberDocument | null;
+
         do {
             code = this.generateMemberCode();
             existingMember = await this.memberModel.findOne({ code }).exec();
         } while (existingMember);
+
         return code;
     }
 
-    async findAll(query: ListMemberDto): Promise<{
-        items: Member[];
-        total: number;
-        pages: number;
-        page: number;
-        limit: number
-    }> {
+    async findAll(query: ListMemberDto): Promise<PaginatedResponse<Member>> {
         const {
             page = 1,
             limit = 10,
-            search,
-            status,
             sortBy = 'createdAt',
-            sortOrder = 'desc'
+            sortOrder = 'desc',
+            search
         } = query;
 
-        // Build filter conditions
-        const filter: any = {};
+        const skip = (page - 1) * limit;
 
-        // Handle search
+        // Build filter
+        const filter: any = {};
         if (search) {
             filter.$or = [
                 { firstName: new RegExp(search, 'i') },
@@ -53,70 +55,54 @@ export class MemberService {
             ];
         }
 
-        // Handle status filter
-        if (status) {
-            switch (status.toUpperCase()) {
-                case 'ACTIVE':
-                    filter.acceptedAt = { $exists: true };
-                    filter.isRejected = { $ne: true };
-                    break;
-                case 'PENDING':
-                    filter.acceptedAt = { $exists: false };
-                    filter.isRejected = { $ne: true };
-                    break;
-                case 'REJECTED':
-                    filter.isRejected = true;
-                    break;
-            }
-        }
-
-        // Calculate skip value for pagination
-        const skip = (page - 1) * limit;
-
-        // Build sort object
-        const sort = {
-            [sortBy]: sortOrder === 'asc' ? 1 : -1
+        // Build sort object for mongoose
+        const sortOptions: { [key: string]: SortOrder } = {
+            [sortBy]: sortOrder as SortOrder
         };
 
-        // Execute queries
         const [items, total] = await Promise.all([
             this.memberModel
                 .find(filter)
-                .sort(sort)
+                .sort(sortOptions)
                 .skip(skip)
                 .limit(limit)
+                .lean()
                 .exec(),
             this.memberModel.countDocuments(filter)
         ]);
 
-        // Calculate total pages
-        const pages = Math.ceil(total / limit);
-
         return {
             items,
             total,
-            pages,
+            pages: Math.ceil(total / limit),
             page,
             limit
         };
     }
 
     async create(createMemberDto: CreateMemberDto): Promise<Member> {
-        if (!createMemberDto.code) {
-            createMemberDto.code = await this.ensureUniqueCode();
-        }
+        const code = await this.ensureUniqueCode();
 
         const member = new this.memberModel({
             ...createMemberDto,
+            code,
             createdAt: new Date(),
             updatedAt: new Date()
         });
 
-        return member.save();
+        return (await member.save()).toObject();
     }
 
     async findOne(id: string): Promise<Member> {
-        const member = await this.memberModel.findById(id).exec();
+        const member = await this.memberModel.findById(id).lean().exec();
+        if (!member) {
+            throw new NotFoundException('Member not found');
+        }
+        return member;
+    }
+
+    async findByCode(code: string): Promise<Member> {
+        const member = await this.memberModel.findOne({ code }).lean().exec();
         if (!member) {
             throw new NotFoundException('Member not found');
         }
@@ -131,17 +117,20 @@ export class MemberService {
                 updatedAt: new Date()
             },
             { new: true }
-        ).exec();
+        )
+            .lean()
+            .exec();
 
         if (!member) {
             throw new NotFoundException('Member not found');
         }
+
         return member;
     }
 
     async remove(id: string): Promise<void> {
-        const res = await this.memberModel.deleteOne({ _id: id }).exec();
-        if (res.deletedCount === 0) {
+        const result = await this.memberModel.deleteOne({ _id: id }).exec();
+        if (result.deletedCount === 0) {
             throw new NotFoundException('Member not found');
         }
     }
