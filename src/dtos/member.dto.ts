@@ -40,9 +40,10 @@ export class CreateMemberDto {
     @IsString()
     address?: string;
 
-    @ApiProperty({ description: "Unique code for the member" })
+    @ApiPropertyOptional({ description: "Unique code for the member" })
+    @IsOptional()
     @IsString()
-    code: string;
+    code?: string
 
     @ApiPropertyOptional({ description: "Accepted at date in ISO8601 format", default: null })
     @IsOptional()

@@ -1,24 +1,23 @@
+// src/schemas/member.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import {Document, Schema as MongooseSchema} from 'mongoose';
-import {User} from "./user.schema";
+import { Document } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class Member extends Document {
-    // Optional reference to the User (foreign key)
-    @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name, required: false })
-    userId?: string;
-
     @Prop({ required: true })
     firstName: string;
 
     @Prop({ required: true })
     lastName: string;
 
-    @Prop({ required: true })
+    @Prop({ required: true, unique: true })
     email: string;
 
+    @Prop({ required: true, unique: true })
+    code: string;
+
     @Prop({ default: '-' })
-    phoneNumber: string;
+    phoneNumber?: string;
 
     @Prop()
     birthday?: Date;
@@ -29,28 +28,26 @@ export class Member extends Document {
     @Prop()
     address?: string;
 
-    // New unique code field for Member
-    @Prop({ required: true })
-    code: string;
-
-    @Prop({ default: null })
+    @Prop()
     acceptedAt?: Date;
 
     @Prop({ default: false })
-    isRejected: boolean;
+    isRejected?: boolean;
 
-    @Prop({ default: null })
+    @Prop()
     rejectedAt?: Date;
 
-    /**
-     * metadata: An object to store additional data.
-     * For example, you can store the oldPlatformMemberCode here:
-     * {
-     *   oldPlatformMemberCode: "XYZ123"
-     * }
-     */
-    @Prop({ type: Object, default: {} })
-    metadata: Record<string, any>;
+    @Prop({ type: Object })
+    metadata?: Record<string, any>;
+
+    @Prop()
+    createdAt?: Date;
+
+    @Prop()
+    updatedAt?: Date;
 }
 
 export const MemberSchema = SchemaFactory.createForClass(Member);
+
+MemberSchema.index({ code: 1 }, { unique: true });
+MemberSchema.index({ email: 1 }, { unique: true });

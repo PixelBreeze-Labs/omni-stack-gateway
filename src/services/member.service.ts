@@ -9,10 +9,44 @@ import { CreateMemberDto, UpdateMemberDto } from '../dtos/member.dto';
 export class MemberService {
     constructor(@InjectModel(Member.name) private memberModel: Model<Member>) {}
 
+    private generateMemberCode(): string {
+        // Generate a random number between 0 and 9999999999 (10 digits)
+        const randomNum = Math.floor(Math.random() * 10000000000);
+
+        // Convert to string and pad with zeros to 13 digits
+        const code = randomNum.toString().padStart(13, '0');
+
+        return code;
+    }
+
+    private async ensureUniqueCode(): Promise<string> {
+        let code: string;
+        let existingMember: any;
+
+        // Keep generating codes until we find a unique one
+        do {
+            code = this.generateMemberCode();
+            existingMember = await this.memberModel.findOne({ code }).exec();
+        } while (existingMember);
+
+        return code;
+    }
+
     async create(createMemberDto: CreateMemberDto): Promise<Member> {
-        const member = new this.memberModel(createMemberDto);
+        // Generate unique code if not provided
+        if (!createMemberDto.code) {
+            createMemberDto.code = await this.ensureUniqueCode();
+        }
+
+        const member = new this.memberModel({
+            ...createMemberDto,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
         return member.save();
     }
+
 
     async findAll(): Promise<Member[]> {
         return this.memberModel.find().exec();
