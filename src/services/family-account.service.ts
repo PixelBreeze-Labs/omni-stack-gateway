@@ -339,20 +339,22 @@ export class FamilyAccountService {
                 throw new BadRequestException('One or more members not found or inactive');
             }
 
-            // Keep string IDs in the DTO, but prepare the data for MongoDB
-            const membersForDb = updateDto.members.map(m => ({
+            // Prepare new members data
+            const newMembersForDb = updateDto.members.map(m => ({
                 customerId: new Types.ObjectId(m.customerId),
                 relationship: m.relationship,
                 status: 'ACTIVE',
                 joinDate: new Date()
             }));
 
-            // Update the family account directly with the prepared data
+            // Update the family account by pushing new members
             const updated = await this.familyAccountModel.findByIdAndUpdate(
                 id,
                 {
+                    $push: {
+                        members: { $each: newMembersForDb }
+                    },
                     $set: {
-                        members: membersForDb,
                         lastActivity: new Date()
                     }
                 },
