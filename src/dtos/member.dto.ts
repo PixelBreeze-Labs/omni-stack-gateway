@@ -111,6 +111,11 @@ export class UpdateMemberDto {
     @ApiPropertyOptional()
     @IsOptional()
     @IsString()
+    country?: string;
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsString()
     city?: string;
 
     @ApiPropertyOptional()

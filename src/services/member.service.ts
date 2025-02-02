@@ -86,6 +86,7 @@ export class MemberService {
         const member = new this.memberModel({
             ...createMemberDto,
             code,
+            acceptedAt: new Date(),
             createdAt: new Date(),
             updatedAt: new Date()
         });

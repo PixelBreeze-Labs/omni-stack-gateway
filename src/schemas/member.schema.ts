@@ -25,6 +25,9 @@ export class Member extends Document {
     birthday?: Date;
 
     @Prop()
+    country?: string;
+
+    @Prop()
     city?: string;
 
     @Prop()
