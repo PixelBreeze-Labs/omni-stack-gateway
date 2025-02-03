@@ -91,17 +91,32 @@ export class StoreService {
             .skip(skip)
             .limit(limit) as unknown as PopulatedStore[];
 
-        const items = stores.map(store => ({
-            ...store.toObject(),
-            id: store._id,
-            status: store.isActive ? 'ACTIVE' : 'INACTIVE',
-            address: store.address ? {
-                ...store.address,
-                city: store.address.city,
-                state: store.address.state,
-                country: store.address.country
-            } : undefined
-        }));
+        const items = stores.map(store => {
+            const storeObj = store.toObject();
+            return {
+                ...storeObj,
+                id: store._id,
+                status: store.isActive ? 'ACTIVE' : 'INACTIVE',
+                address: storeObj.address ? {
+                    addressLine1: storeObj.address.addressLine1,
+                    addressLine2: storeObj.address.addressLine2,
+                    postcode: storeObj.address.postcode,
+                    city: {
+                        id: storeObj.address.city?._id,
+                        name: storeObj.address.city?.name
+                    },
+                    state: {
+                        id: storeObj.address.state?._id,
+                        name: storeObj.address.state?.name
+                    },
+                    country: {
+                        id: storeObj.address.country?._id,
+                        name: storeObj.address.country?.name,
+                        code: storeObj.address.country?.code
+                    }
+                } : undefined
+            };
+        });
 
         return {
             items,
