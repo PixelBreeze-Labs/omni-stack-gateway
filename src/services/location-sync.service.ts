@@ -201,7 +201,7 @@ export class LocationSyncService {
         return cities;
     }
 
-    private async syncCountryStatesAndCities(countryId: string) {
+    async syncCountryStatesAndCities(countryId: string) {
         const country = await this.countryModel.findById(countryId);
 
         try {
