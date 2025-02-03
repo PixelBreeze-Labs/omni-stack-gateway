@@ -45,6 +45,7 @@ import { City, CitySchema } from './schemas/city.schema';
 import { Country, CountrySchema } from './schemas/country.schema';
 import { State, StateSchema } from './schemas/state.schema';
 import { Store, StoreSchema } from './schemas/store.schema';
+import { Address, AddressSchema } from './schemas/address.schema';
 
 
 // Controller imports
@@ -181,7 +182,8 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Country.name, schema: CountrySchema },
       { name: State.name, schema: StateSchema },
       { name: City.name, schema: CitySchema },
-      { name: Store.name, schema: StoreSchema }
+      { name: Store.name, schema: StoreSchema },
+      { name: Address.name, schema: AddressSchema }
     ]),
   ],
   controllers: [
