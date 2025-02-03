@@ -4,6 +4,17 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Store } from '../schemas/store.schema';
 import { CreateStoreDto, UpdateStoreDto, ListStoreDto } from '../dtos/store.dto';
+import {Address} from "../schemas/address.schema";
+
+
+// Add above your Store class
+interface PopulatedStore extends Store {
+    address?: Address & {
+        city?: any;
+        state?: any;
+        country?: any;
+    }
+}
 
 @Injectable()
 export class StoreService {
@@ -49,15 +60,11 @@ export class StoreService {
             .find(filters)
             .populate({
                 path: 'address',
-                populate: [
-                    { path: 'city' },
-                    { path: 'state' },
-                    { path: 'country' }
-                ]
+                populate: ['city', 'state', 'country']
             })
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit) as unknown as PopulatedStore[];
 
         const items = stores.map(store => ({
             ...store.toObject(),
