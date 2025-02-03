@@ -40,7 +40,7 @@ export class StoreService {
             name: storeData.name,
             code: storeData.code,
             clientId: storeData.clientId,
-            address: address._id, // Link the address
+            addressId: address._id, // Link the address
             isActive: true,
             externalIds: storeData.externalIds
         });
