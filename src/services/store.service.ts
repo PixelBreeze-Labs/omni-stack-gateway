@@ -22,25 +22,28 @@ export class StoreService {
     ) {}
 
     async create(storeData: CreateStoreDto & { clientId: string }) {
-        // Create store with basic data
-        const storeToCreate = {
+        // First create the address
+        const addressData = {
+            addressLine1: storeData.addressLine1,
+            addressLine2: storeData.addressLine2,
+            postcode: storeData.postcode,
+            city: storeData.cityId,
+            state: storeData.stateId,
+            country: storeData.countryId,
+            clientId: storeData.clientId
+        };
+
+        const address = await this.addressModel.create(addressData);
+
+        // Then create store with the new address
+        const store = await this.storeModel.create({
             name: storeData.name,
             code: storeData.code,
             clientId: storeData.clientId,
-            isActive: true
-        };
-
-        // Add address if provided
-        if (storeData.addressId) {
-            storeToCreate['address'] = storeData.addressId;
-        }
-
-        // Add external IDs if provided
-        if (storeData.externalIds) {
-            storeToCreate['externalIds'] = storeData.externalIds;
-        }
-
-        const store = await this.storeModel.create(storeToCreate);
+            address: address._id, // Link the address
+            isActive: true,
+            externalIds: storeData.externalIds
+        });
 
         // Return populated store
         return await this.storeModel

@@ -3,6 +3,7 @@ import { IsNotEmpty, IsObject, IsOptional, IsString, IsNumber, Min, IsBoolean, I
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
+
 export class CreateStoreDto {
     @ApiProperty({ description: 'Store name' })
     @IsString()
@@ -13,6 +14,36 @@ export class CreateStoreDto {
     @IsString()
     @IsNotEmpty()
     code: string;
+
+    @ApiProperty({ description: 'Address Line 1' })
+    @IsString()
+    @IsNotEmpty()
+    addressLine1: string;
+
+    @ApiProperty({ description: 'Address Line 2', required: false })
+    @IsString()
+    @IsOptional()
+    addressLine2?: string;
+
+    @ApiProperty({ description: 'Postal Code' })
+    @IsString()
+    @IsNotEmpty()
+    postcode: string;
+
+    @ApiProperty({ description: 'City ID' })
+    @IsMongoId()
+    @IsNotEmpty()
+    cityId: string;
+
+    @ApiProperty({ description: 'State ID' })
+    @IsMongoId()
+    @IsNotEmpty()
+    stateId: string;
+
+    @ApiProperty({ description: 'Country ID' })
+    @IsMongoId()
+    @IsNotEmpty()
+    countryId: string;
 
     @ApiProperty({ description: 'Address ID', required: false })
     @IsMongoId()
