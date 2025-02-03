@@ -1,5 +1,5 @@
 // src/services/location-sync.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {Injectable, Logger, NotFoundException} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Country } from '../schemas/country.schema';
@@ -7,6 +7,31 @@ import { State } from '../schemas/state.schema';
 import { City } from '../schemas/city.schema';
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
+
+// Add interfaces for API responses
+interface RestCountry {
+    name: {
+        common: string;
+        official: string;
+    };
+    cca2: string;
+    cca3: string;
+}
+
+interface GeoNamesCountry {
+    countryCode: string;
+    geonameId: number;
+    name: string;
+}
+
+interface GeoNamesResponse {
+    geonames: Array<{
+        geonameId: number;
+        name: string;
+        adminCode1?: string;
+        fcl?: string;
+    }>;
+}
 
 @Injectable()
 export class LocationSyncService {
@@ -22,36 +47,37 @@ export class LocationSyncService {
         this.geoNamesUsername = this.configService.get<string>('GEONAMES_USERNAME');
     }
 
-    // Sync methods remain the same...
-    async syncAll() {
-        try {
-            await this.syncCountries();
-            await this.syncStatesAndCities();
-            this.logger.log('Location sync completed successfully');
-        } catch (error) {
-            this.logger.error('Location sync failed', error);
-            throw error;
-        }
-    }
-
     private async syncCountries() {
         try {
-            // Fetch countries from REST Countries API
-            const response = await axios.get('https://restcountries.com/v3.1/all');
-            const countries = response.data;
+            // First get countries from GeoNames to get their geonameIds
+            const geonamesResponse = await axios.get<{ geonames: GeoNamesCountry[] }>(
+                `http://api.geonames.org/countryInfoJSON?username=${this.geoNamesUsername}`
+            );
 
-            for (const country of countries) {
-                await this.countryModel.findOneAndUpdate(
-                    { code: country.cca2 },
-                    {
-                        name: country.name.common,
-                        code: country.cca2,
-                    },
-                    { upsert: true, new: true }
-                );
+            // Then get additional data from RestCountries
+            const restCountriesResponse = await axios.get<RestCountry[]>('https://restcountries.com/v3.1/all');
+
+            // Create a map of country codes to RestCountries data
+            const countryMap = new Map(
+                restCountriesResponse.data.map(country => [country.cca2, country])
+            );
+
+            for (const geoCountry of geonamesResponse.data.geonames) {
+                const restCountryData = countryMap.get(geoCountry.countryCode);
+                if (restCountryData) {
+                    await this.countryModel.findOneAndUpdate(
+                        { code: geoCountry.countryCode },
+                        {
+                            name: restCountryData.name.common,
+                            code: geoCountry.countryCode,
+                            geonameId: geoCountry.geonameId
+                        },
+                        { upsert: true, new: true }
+                    );
+                }
             }
 
-            this.logger.log(`Synced ${countries.length} countries`);
+            this.logger.log(`Synced ${geonamesResponse.data.geonames.length} countries`);
         } catch (error) {
             this.logger.error('Failed to sync countries', error);
             throw error;
@@ -67,51 +93,79 @@ export class LocationSyncService {
 
         for (const country of countries) {
             try {
-                // Fetch states/regions for each country
-                const statesResponse = await axios.get(
-                    `http://api.geonames.org/childrenJSON?geonameId=${country.code}&username=${this.geoNamesUsername}`
+                // Get admin divisions (states)
+                const statesResponse = await axios.get<GeoNamesResponse>(
+                    `http://api.geonames.org/childrenJSON?geonameId=${country.geonameId}&username=${this.geoNamesUsername}`
                 );
+
+                if (!statesResponse.data.geonames) {
+                    this.logger.warn(`No states found for ${country.name}`);
+                    continue;
+                }
 
                 for (const stateData of statesResponse.data.geonames) {
                     const state = await this.stateModel.findOneAndUpdate(
                         {
-                            code: stateData.adminCode1,
                             countryId: country._id,
+                            geonameId: stateData.geonameId
                         },
                         {
                             name: stateData.name,
-                            code: stateData.adminCode1,
                             countryId: country._id,
+                            geonameId: stateData.geonameId,
+                            code: stateData.adminCode1 || stateData.geonameId.toString()
                         },
                         { upsert: true, new: true }
                     );
 
-                    // Fetch cities for each state
-                    const citiesResponse = await axios.get(
-                        `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&username=${this.geoNamesUsername}`
-                    );
-
-                    for (const cityData of citiesResponse.data.geonames) {
-                        await this.cityModel.findOneAndUpdate(
-                            {
-                                name: cityData.name,
-                                stateId: state._id,
-                            },
-                            {
-                                name: cityData.name,
-                                stateId: state._id,
-                            },
-                            { upsert: true, new: true }
+                    // Get cities for this state
+                    try {
+                        const citiesResponse = await axios.get<GeoNamesResponse>(
+                            `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&username=${this.geoNamesUsername}`
                         );
+
+                        if (citiesResponse.data.geonames) {
+                            for (const cityData of citiesResponse.data.geonames) {
+                                if (cityData.fcl === 'P') { // Only include populated places
+                                    await this.cityModel.findOneAndUpdate(
+                                        {
+                                            stateId: state._id,
+                                            geonameId: cityData.geonameId
+                                        },
+                                        {
+                                            name: cityData.name,
+                                            stateId: state._id,
+                                            geonameId: cityData.geonameId
+                                        },
+                                        { upsert: true, new: true }
+                                    );
+                                }
+                            }
+                        }
+                    } catch (cityError) {
+                        this.logger.error(`Failed to sync cities for state ${state.name} in ${country.name}`, cityError);
                     }
+
+                    // Add delay to respect rate limits
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
 
                 this.logger.log(`Synced states and cities for ${country.name}`);
             } catch (error) {
                 this.logger.error(`Failed to sync states and cities for ${country.name}`, error);
-                // Continue with next country even if one fails
                 continue;
             }
+        }
+    }
+
+    async syncAll() {
+        try {
+            await this.syncCountries();
+            await this.syncStatesAndCities();
+            this.logger.log('Location sync completed successfully');
+        } catch (error) {
+            this.logger.error('Location sync failed', error);
+            throw error;
         }
     }
 

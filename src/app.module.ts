@@ -41,6 +41,9 @@ import { Order, OrderSchema } from './schemas/order.schema';
 import { Activity, ActivitySchema } from './schemas/activity.schema';
 import { Benefit, BenefitSchema } from './schemas/benefit.schema';
 import { BenefitUsage, BenefitUsageSchema } from './schemas/benefit-usage.schema';
+import { City, CitySchema } from './schemas/city.schema';
+import { Country, CountrySchema } from './schemas/country.schema';
+import { State, StateSchema } from './schemas/state.schema';
 
 
 // Controller imports
@@ -67,6 +70,7 @@ import { UserController } from "./controllers/user.controller";
 import { ByBestSyncController } from "./controllers/bybest-sync.controller";
 import { MemberController } from "./controllers/member.controller";
 import { LoyaltyProgramController } from './controllers/loyalty-program.controller';
+import { LocationController } from './controllers/system/location.controller';
 
 
 // Service imports
@@ -112,6 +116,7 @@ import { ByBestSyncService } from './services/bybest-sync.service';
 import { UserService } from "./services/user.service";
 import { MemberService } from "./services/member.service";
 import { LoyaltyProgramService } from './services/loyalty-program.service';
+import { LocationSyncService } from './services/location-sync.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -170,6 +175,9 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Activity.name, schema: ActivitySchema },
       { name: Benefit.name, schema: BenefitSchema },
       { name: BenefitUsage.name, schema: BenefitUsageSchema },
+      { name: Country.name, schema: CountrySchema },
+      { name: State.name, schema: StateSchema },
+      { name: City.name, schema: CitySchema },
     ]),
   ],
   controllers: [
@@ -203,7 +211,8 @@ import {JwtModule} from "@nestjs/jwt";
     MemberController,
     LoyaltyProgramController,
     SalesFamilyAccountController,
-    SalesCustomerController
+    SalesCustomerController,
+    LocationController
   ],
   providers: [
     SnapfoodService,
@@ -245,7 +254,8 @@ import {JwtModule} from "@nestjs/jwt";
     UserService,
     ByBestSyncService,
     MemberService,
-    LoyaltyProgramService
+    LoyaltyProgramService,
+    LocationSyncService
   ],
 })
 export class AppModule implements NestModule {

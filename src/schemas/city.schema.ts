@@ -9,6 +9,9 @@ export class City extends Document {
 
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'State', required: true })
     stateId: string;
+
+    @Prop({ required: true })
+    geonameId: number;
 }
 
 export const CitySchema = SchemaFactory.createForClass(City);
