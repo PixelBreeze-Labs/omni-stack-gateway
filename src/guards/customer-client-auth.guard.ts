@@ -19,8 +19,17 @@ export class CustomerClientAuthGuard implements CanActivate {
             throw new UnauthorizedException('Authentication required');
         }
 
-        // Get customer details
-        const customer = await this.customerService.findById(customerId);
+        // Try to find customer using the first matching client ID
+        let customer = null;
+        for (const clientId of user.client_ids) {
+            try {
+                customer = await this.customerService.findOne(customerId, clientId);
+                if (customer) break;
+            } catch (err) {
+                continue; // Try next client ID if this one fails
+            }
+        }
+
         if (!customer) {
             throw new UnauthorizedException('Customer not found');
         }
