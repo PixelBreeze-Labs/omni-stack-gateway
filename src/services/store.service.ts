@@ -47,20 +47,14 @@ export class StoreService {
         // Get paginated stores with populated address
         const stores = await this.storeModel
             .find(filters)
-            .populate([
-                {
-                    path: 'cityId',
-                    model: 'City',
-                    populate: {
-                        path: 'stateId',
-                        model: 'State',
-                        populate: {
-                            path: 'countryId',
-                            model: 'Country'
-                        }
-                    }
-                }
-            ])
+            .populate({
+                path: 'address',
+                populate: [
+                    { path: 'city' },
+                    { path: 'state' },
+                    { path: 'country' }
+                ]
+            })
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
@@ -70,12 +64,10 @@ export class StoreService {
             id: store._id,
             status: store.isActive ? 'ACTIVE' : 'INACTIVE',
             address: {
-                addressLine1: store.addressLine1,
-                addressLine2: store.addressLine2,
-                postcode: store.postcode,
-                city: store.cityId,
-                state: store.cityId?.stateId,
-                country: store.cityId?.stateId?.countryId
+                ...store.address,
+                city: store.address?.city,
+                state: store.address?.state,
+                country: store.address?.country
             }
         }));
 
