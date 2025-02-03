@@ -1,13 +1,11 @@
-// src/services/store.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Store } from '../schemas/store.schema';
+import { Address } from '../schemas/address.schema';
 import { CreateStoreDto, UpdateStoreDto, ListStoreDto } from '../dtos/store.dto';
-import {Address} from "../schemas/address.schema";
+import { CreateAddressDto } from '../dtos/address.dto';
 
-
-// Add above your Store class
 interface PopulatedStore extends Store {
     address?: Address & {
         city?: any;
@@ -19,26 +17,55 @@ interface PopulatedStore extends Store {
 @Injectable()
 export class StoreService {
     constructor(
-        @InjectModel(Store.name) private storeModel: Model<Store>
+        @InjectModel(Store.name) private storeModel: Model<Store>,
+        @InjectModel(Address.name) private addressModel: Model<Address>
     ) {}
 
     async create(storeData: CreateStoreDto & { clientId: string }) {
-        const store = await this.storeModel.create({
-            ...storeData,
+        // Create store with basic data
+        const storeToCreate = {
+            name: storeData.name,
+            code: storeData.code,
+            clientId: storeData.clientId,
             isActive: true
+        };
+
+        // Add address if provided
+        if (storeData.addressId) {
+            storeToCreate['address'] = storeData.addressId;
+        }
+
+        // Add external IDs if provided
+        if (storeData.externalIds) {
+            storeToCreate['externalIds'] = storeData.externalIds;
+        }
+
+        const store = await this.storeModel.create(storeToCreate);
+
+        // Return populated store
+        return await this.storeModel
+            .findById(store._id)
+            .populate({
+                path: 'address',
+                populate: ['city', 'state', 'country']
+            });
+    }
+
+    async createAddress(addressData: CreateAddressDto & { clientId: string }) {
+        const address = await this.addressModel.create({
+            ...addressData,
+            clientId: addressData.clientId
         });
 
-        return store;
+        return address;
     }
 
     async findAll(query: ListStoreDto & { clientId: string }) {
         const { clientId, search, limit = 10, page = 1, status } = query;
         const skip = (page - 1) * limit;
 
-        // Build base filters
         const filters: any = { clientId };
 
-        // Add search filter if present
         if (search) {
             filters.$or = [
                 { name: new RegExp(search, 'i') },
@@ -46,16 +73,13 @@ export class StoreService {
             ];
         }
 
-        // Add status filters
         if (status && status !== 'ALL') {
             filters.isActive = status === 'ACTIVE';
         }
 
-        // Get total count for pagination
         const total = await this.storeModel.countDocuments(filters);
         const totalPages = Math.ceil(total / limit);
 
-        // Get paginated stores with populated address
         const stores = await this.storeModel
             .find(filters)
             .populate({
@@ -70,12 +94,12 @@ export class StoreService {
             ...store.toObject(),
             id: store._id,
             status: store.isActive ? 'ACTIVE' : 'INACTIVE',
-            address: {
+            address: store.address ? {
                 ...store.address,
-                city: store.address?.city,
-                state: store.address?.state,
-                country: store.address?.country
-            }
+                city: store.address.city,
+                state: store.address.state,
+                country: store.address.country
+            } : undefined
         }));
 
         return {
@@ -87,24 +111,24 @@ export class StoreService {
         };
     }
 
-    async findOne(id: string, clientId: string) {
-        const store = await this.storeModel
-            .findOne({ _id: id, clientId })
-            .populate('address');
+    async update(id: string, clientId: string, updateStoreDto: UpdateStoreDto) {
+        const updateData: any = {
+            ...updateStoreDto
+        };
 
-        if (!store) {
-            throw new NotFoundException('Store not found');
+        // Handle address update if provided
+        if (updateStoreDto.addressId) {
+            updateData.address = updateStoreDto.addressId;
         }
 
-        return store;
-    }
-
-    async update(id: string, clientId: string, updateStoreDto: UpdateStoreDto) {
         const store = await this.storeModel.findOneAndUpdate(
             { _id: id, clientId },
-            { $set: updateStoreDto },
+            { $set: updateData },
             { new: true }
-        ).populate('address');
+        ).populate({
+            path: 'address',
+            populate: ['city', 'state', 'country']
+        });
 
         if (!store) {
             throw new NotFoundException('Store not found');
@@ -119,7 +143,6 @@ export class StoreService {
             throw new NotFoundException('Store not found');
         }
 
-        // Soft delete by setting isActive to false and deletedAt
         await this.storeModel.findByIdAndUpdate(
             id,
             {
@@ -135,7 +158,9 @@ export class StoreService {
     }
 
     async hardDelete(id: string, clientId: string) {
-        const store = await this.storeModel.findOne({ _id: id, clientId });
+        const store = await this.storeModel
+            .findOne({ _id: id, clientId });
+
         if (!store) {
             throw new NotFoundException('Store not found');
         }
