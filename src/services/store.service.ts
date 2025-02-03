@@ -27,10 +27,9 @@ export class StoreService {
             addressLine1: storeData.addressLine1,
             addressLine2: storeData.addressLine2,
             postcode: storeData.postcode,
-            city: storeData.cityId,
-            state: storeData.stateId,
-            country: storeData.countryId,
-            clientId: storeData.clientId
+            cityId: storeData.cityId,
+            stateId: storeData.stateId,
+            countryId: storeData.countryId
         };
 
         const address = await this.addressModel.create(addressData);
@@ -40,12 +39,11 @@ export class StoreService {
             name: storeData.name,
             code: storeData.code,
             clientId: storeData.clientId,
-            addressId: address._id, // Link the address
+            addressId: address._id,
             isActive: true,
             externalIds: storeData.externalIds
         });
 
-        // Return populated store
         return await this.storeModel
             .findById(store._id)
             .populate({
