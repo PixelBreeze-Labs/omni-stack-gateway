@@ -41,4 +41,12 @@ export class LocationController {
     async getCities(@Query('stateId') stateId: string) {
         return this.locationSyncService.getCities(stateId);
     }
+
+    @ApiOperation({ summary: 'Sync states and cities for specific country' })
+    @ApiQuery({ name: 'countryId', required: true, type: String })
+    @ApiResponse({ status: 200, description: 'Locations synchronized successfully' })
+    @Post('sync/country')
+    async syncCountryLocations(@Query('countryId') countryId: string) {
+        return this.locationSyncService.syncCountryStatesAndCities(countryId);
+    }
 }

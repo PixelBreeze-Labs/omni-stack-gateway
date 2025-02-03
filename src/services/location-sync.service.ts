@@ -199,4 +199,69 @@ export class LocationSyncService {
 
         return cities;
     }
+
+    async syncCountryStatesAndCities(countryId: string) {
+        const country = await this.countryModel.findById(countryId);
+        if (!country) {
+            throw new NotFoundException(`Country not found: ${countryId}`);
+        }
+
+        try {
+            // Get states for country
+            const statesResponse = await axios.get<GeoNamesResponse>(
+                `http://api.geonames.org/childrenJSON?geonameId=${country.geonameId}&username=${this.geoNamesUsername}`
+            );
+
+            if (!statesResponse.data.geonames) {
+                throw new NotFoundException(`No states found for ${country.name}`);
+            }
+
+            for (const stateData of statesResponse.data.geonames) {
+                const state = await this.stateModel.findOneAndUpdate(
+                    {
+                        countryId: country._id,
+                        geonameId: stateData.geonameId
+                    },
+                    {
+                        name: stateData.name,
+                        countryId: country._id,
+                        geonameId: stateData.geonameId,
+                        code: stateData.adminCode1 || stateData.geonameId.toString()
+                    },
+                    { upsert: true, new: true }
+                );
+
+                // Get cities for state
+                const citiesResponse = await axios.get<GeoNamesResponse>(
+                    `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&username=${this.geoNamesUsername}`
+                );
+
+                if (citiesResponse.data.geonames) {
+                    for (const cityData of citiesResponse.data.geonames) {
+                        if (cityData.fcl === 'P') {
+                            await this.cityModel.findOneAndUpdate(
+                                {
+                                    stateId: state._id,
+                                    geonameId: cityData.geonameId
+                                },
+                                {
+                                    name: cityData.name,
+                                    stateId: state._id,
+                                    geonameId: cityData.geonameId
+                                },
+                                { upsert: true, new: true }
+                            );
+                        }
+                    }
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            return { message: `Successfully synced locations for ${country.name}` };
+        } catch (error) {
+            this.logger.error(`Failed to sync locations for country ${country.name}`, error);
+            throw error;
+        }
+    }
 }
