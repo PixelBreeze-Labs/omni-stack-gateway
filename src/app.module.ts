@@ -44,6 +44,7 @@ import { BenefitUsage, BenefitUsageSchema } from './schemas/benefit-usage.schema
 import { City, CitySchema } from './schemas/city.schema';
 import { Country, CountrySchema } from './schemas/country.schema';
 import { State, StateSchema } from './schemas/state.schema';
+import { Store, StoreSchema } from './schemas/store.schema';
 
 
 // Controller imports
@@ -71,6 +72,7 @@ import { ByBestSyncController } from "./controllers/bybest-sync.controller";
 import { MemberController } from "./controllers/member.controller";
 import { LoyaltyProgramController } from './controllers/loyalty-program.controller';
 import { LocationController } from './controllers/system/location.controller';
+import { StoreController } from "./controllers/store.controller";
 
 
 // Service imports
@@ -117,6 +119,7 @@ import { UserService } from "./services/user.service";
 import { MemberService } from "./services/member.service";
 import { LoyaltyProgramService } from './services/loyalty-program.service';
 import { LocationSyncService } from './services/location-sync.service';
+import { StoreService } from './services/store.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -178,6 +181,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Country.name, schema: CountrySchema },
       { name: State.name, schema: StateSchema },
       { name: City.name, schema: CitySchema },
+      { name: Store.name, schema: StoreSchema }
     ]),
   ],
   controllers: [
@@ -212,7 +216,8 @@ import {JwtModule} from "@nestjs/jwt";
     LoyaltyProgramController,
     SalesFamilyAccountController,
     SalesCustomerController,
-    LocationController
+    LocationController,
+    StoreController
   ],
   providers: [
     SnapfoodService,
@@ -255,7 +260,8 @@ import {JwtModule} from "@nestjs/jwt";
     ByBestSyncService,
     MemberService,
     LoyaltyProgramService,
-    LocationSyncService
+    LocationSyncService,
+    StoreService
   ],
 })
 export class AppModule implements NestModule {
