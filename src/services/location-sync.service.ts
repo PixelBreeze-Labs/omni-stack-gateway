@@ -93,22 +93,18 @@ export class LocationSyncService {
 
         for (const country of countries) {
             try {
-                // Get admin divisions (states)
-                const statesResponse = await axios.get<GeoNamesResponse>(
-                    `http://api.geonames.org/childrenJSON?geonameId=${country.geonameId}&username=${this.geoNamesUsername}`
+                const adminDivResponse = await axios.get<GeoNamesResponse>(
+                    `http://api.geonames.org/childrenJSON?geonameId=${country.geonameId}&featureClass=A&username=${this.geoNamesUsername}`
                 );
 
-                if (!statesResponse.data.geonames) {
+                if (!adminDivResponse.data.geonames) {
                     this.logger.warn(`No states found for ${country.name}`);
                     continue;
                 }
 
-                for (const stateData of statesResponse.data.geonames) {
+                for (const stateData of adminDivResponse.data.geonames) {
                     const state = await this.stateModel.findOneAndUpdate(
-                        {
-                            countryId: country._id,
-                            geonameId: stateData.geonameId
-                        },
+                        { countryId: country._id, geonameId: stateData.geonameId },
                         {
                             name: stateData.name,
                             countryId: country._id,
@@ -118,36 +114,24 @@ export class LocationSyncService {
                         { upsert: true, new: true }
                     );
 
-                    // Get cities for this state
-                    try {
-                        const citiesResponse = await axios.get<GeoNamesResponse>(
-                            `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&featureClass=P&username=${this.geoNamesUsername}`
-                        );
+                    const citiesResponse = await axios.get<GeoNamesResponse>(
+                        `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&featureClass=P,A&username=${this.geoNamesUsername}`
+                    );
 
-
-                        if (citiesResponse.data.geonames) {
-                            for (const cityData of citiesResponse.data.geonames) {
-                                if (cityData.fcl === 'P') { // Only include populated places
-                                    await this.cityModel.findOneAndUpdate(
-                                        {
-                                            stateId: state._id,
-                                            geonameId: cityData.geonameId
-                                        },
-                                        {
-                                            name: cityData.name,
-                                            stateId: state._id,
-                                            geonameId: cityData.geonameId
-                                        },
-                                        { upsert: true, new: true }
-                                    );
-                                }
-                            }
+                    if (citiesResponse.data.geonames) {
+                        for (const cityData of citiesResponse.data.geonames) {
+                            await this.cityModel.findOneAndUpdate(
+                                { stateId: state._id, geonameId: cityData.geonameId },
+                                {
+                                    name: cityData.name,
+                                    stateId: state._id,
+                                    geonameId: cityData.geonameId
+                                },
+                                { upsert: true, new: true }
+                            );
                         }
-                    } catch (cityError) {
-                        this.logger.error(`Failed to sync cities for state ${state.name} in ${country.name}`, cityError);
                     }
 
-                    // Add delay to respect rate limits
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
 
