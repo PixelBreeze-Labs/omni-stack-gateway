@@ -75,3 +75,15 @@ export class ListFamilyAccountDto {
     @IsOptional()
     limit?: number;
 }
+
+export class AddFamilyMemberDto {
+    @ApiProperty({ description: 'Customer ID to add as member' })
+    @IsString()
+    @IsNotEmpty()
+    customerId: string;
+
+    @ApiProperty({ description: 'Relationship to main customer', example: 'SPOUSE' })
+    @IsString()
+    @IsNotEmpty()
+    relationship: string;
+}
