@@ -121,8 +121,9 @@ export class LocationSyncService {
                     // Get cities for this state
                     try {
                         const citiesResponse = await axios.get<GeoNamesResponse>(
-                            `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&username=${this.geoNamesUsername}`
+                            `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&featureClass=P&username=${this.geoNamesUsername}`
                         );
+
 
                         if (citiesResponse.data.geonames) {
                             for (const cityData of citiesResponse.data.geonames) {
@@ -233,7 +234,7 @@ export class LocationSyncService {
 
                 // Get cities for state
                 const citiesResponse = await axios.get<GeoNamesResponse>(
-                    `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&username=${this.geoNamesUsername}`
+                    `http://api.geonames.org/childrenJSON?geonameId=${stateData.geonameId}&featureClass=P&username=${this.geoNamesUsername}`
                 );
 
                 if (citiesResponse.data.geonames) {
