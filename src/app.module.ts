@@ -61,6 +61,7 @@ import { FamilyAccountController} from "./controllers/family-account.controller"
 import { SalesFamilyAccountController} from "./controllers/sales/family-account.controller";
 import { SyncController } from "./controllers/sync.controller";
 import { CustomerController } from "./controllers/customer.controller";
+import { SalesCustomerController } from "./controllers/sales/customer.controller";
 import { AuthController } from "./controllers/auth.controller";
 import { UserController } from "./controllers/user.controller";
 import { ByBestSyncController } from "./controllers/bybest-sync.controller";
@@ -201,7 +202,8 @@ import {JwtModule} from "@nestjs/jwt";
     ByBestSyncController,
     MemberController,
     LoyaltyProgramController,
-    SalesFamilyAccountController
+    SalesFamilyAccountController,
+    SalesCustomerController
   ],
   providers: [
     SnapfoodService,
