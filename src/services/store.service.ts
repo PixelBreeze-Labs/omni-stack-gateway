@@ -157,6 +157,21 @@ export class StoreService {
         return { message: 'Store deactivated successfully' };
     }
 
+    async findOne(id: string, clientId: string) {
+        const store = await this.storeModel
+            .findOne({ _id: id, clientId })
+            .populate({
+                path: 'address',
+                populate: ['city', 'state', 'country']
+            });
+
+        if (!store) {
+            throw new NotFoundException('Store not found');
+        }
+
+        return store;
+    }
+
     async hardDelete(id: string, clientId: string) {
         const store = await this.storeModel
             .findOne({ _id: id, clientId });
