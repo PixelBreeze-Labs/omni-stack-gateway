@@ -5,11 +5,17 @@ import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiQuery } from '@nest
 import { Country } from '../../schemas/country.schema';
 import { State } from '../../schemas/state.schema';
 import { City } from '../../schemas/city.schema';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { NotFoundException } from '@nestjs/common';
 
 @ApiTags('Locations')
 @Controller('locations')
 export class LocationController {
-    constructor(private readonly locationSyncService: LocationSyncService) {}
+    constructor(
+        private readonly locationSyncService: LocationSyncService,
+        @InjectModel(City.name) private cityModel: Model<City>
+    ) {}
 
     @ApiOperation({ summary: 'Sync all location data' })
     @ApiResponse({ status: 200, description: 'Location data synchronized successfully' })
@@ -48,5 +54,20 @@ export class LocationController {
     @Post('sync/country')
     async syncCountryLocations(@Query('countryId') countryId: string) {
         return this.locationSyncService.syncCountryStatesAndCities(countryId);
+    }
+
+    @Get('cities/random')
+    @ApiOperation({ summary: 'Get 10 random test cities' })
+    @ApiResponse({ status: 200, description: 'List of random cities' })
+    async getRandomCities() {
+        const cities = await this.cityModel.aggregate([
+            { $sample: { size: 10 } }
+        ]);
+
+        if (!cities.length) {
+            throw new NotFoundException('No cities found');
+        }
+
+        return cities;
     }
 }
