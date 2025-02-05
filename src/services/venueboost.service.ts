@@ -169,4 +169,33 @@ export class VenueBoostService {
             throw error;
         }
     }
+
+    async getFeedbackStats() {
+        try {
+            const response$ = this.httpService.get(`${this.baseUrl}/feedback-os/stats`, {
+                params: {
+                    venue_short_code: this.bbVenueCode,
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                },
+                validateStatus: (status) => status < 500,
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch feedback stats:', error);
+            throw error;
+        }
+    }
+
+
+
 }

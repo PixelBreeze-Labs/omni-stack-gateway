@@ -81,4 +81,14 @@ export class VenueBoostController {
     async getFeedbackById(@Param('id') id: number) {
         return await this.venueBoostService.getFeedbackById(id);
     }
+
+    @Get('feedback/stats')
+    @ApiOperation({ summary: 'Get feedback statistics' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns feedback statistics including averages and trends'
+    })
+    async getFeedbackStats() {
+        return await this.venueBoostService.getFeedbackStats();
+    }
 }
