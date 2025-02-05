@@ -74,6 +74,7 @@ import { MemberController } from "./controllers/member.controller";
 import { LoyaltyProgramController } from './controllers/loyalty-program.controller';
 import { LocationController } from './controllers/system/location.controller';
 import { StoreController } from "./controllers/store.controller";
+import { VenueBoostController } from "./controllers/venueboost.controller";
 
 
 // Service imports
@@ -121,10 +122,10 @@ import { MemberService } from "./services/member.service";
 import { LoyaltyProgramService } from './services/loyalty-program.service';
 import { LocationSyncService } from './services/location-sync.service';
 import { StoreService } from './services/store.service';
+import { VenueBoostService } from "./services/venueboost.service";
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
-
 
 @Module({
   imports: [
@@ -219,7 +220,8 @@ import {JwtModule} from "@nestjs/jwt";
     SalesFamilyAccountController,
     SalesCustomerController,
     LocationController,
-    StoreController
+    StoreController,
+    VenueBoostController
   ],
   providers: [
     SnapfoodService,
@@ -263,7 +265,8 @@ import {JwtModule} from "@nestjs/jwt";
     MemberService,
     LoyaltyProgramService,
     LocationSyncService,
-    StoreService
+    StoreService,
+    VenueBoostService
   ],
 })
 export class AppModule implements NestModule {

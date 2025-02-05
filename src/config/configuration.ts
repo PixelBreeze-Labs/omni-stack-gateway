@@ -18,4 +18,9 @@ export default () => ({
         apiKey: process.env.BYBEST_API_KEY || 'sync.venueboost.io',
         clientId: process.env.BYBEST_CLIENT_ID || '67957d78172a3de27fd14a9a',
     },
+    venueboost: {
+        baseUrl: process.env.VB_BASE_URL || 'https://core.venueboost.io/api/v1',
+        apiKey: process.env.VB_API_KEY || '4f3e2b1c9a7d4e8f9a1b2c3d4e5f6g7h8i9j0',
+        bbVenueCode: process.env.BB_VB_CODE || 'BYB2929SCDE',
+    },
 });
