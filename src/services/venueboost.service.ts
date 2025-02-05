@@ -58,8 +58,11 @@ export class VenueBoostService {
     }
 
     async acceptMember(memberId: number) {
+        console.log(1,memberId);
         try {
-            const response$ = this.httpService.post(`${this.baseUrl}/members-os/${memberId}/approve`, {},{
+            const response$ = this.httpService.post(`${this.baseUrl}/members-os/accept`, {
+                member_id: memberId
+            }, {
                 params: {
                     venue_short_code: this.bbVenueCode
                 },
@@ -77,10 +80,13 @@ export class VenueBoostService {
 
     async rejectMember(memberId: number, reason?: string) {
         try {
-            const response$ = this.httpService.post(`${this.baseUrl}/members-os/${memberId}/reject`, {
-                venue_short_code: this.bbVenueCode,
-                rejection_reason: reason
+            const response$ = this.httpService.post(`${this.baseUrl}/members-os/reject`, {
+                member_id: memberId,
+                rejection_reason: 'rejected from trackmastre'
             }, {
+                params: {
+                    venue_short_code: this.bbVenueCode
+                },
                 headers: {
                     'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
                 }
