@@ -85,14 +85,27 @@ export class StoreService {
             .find(filters)
             .populate({
                 path: 'address',
-                populate: ['city', 'state', 'country']
+                populate: [
+                    {
+                        path: 'city',
+                        model: 'City'
+                    },
+                    {
+                        path: 'state',
+                        model: 'State'
+                    },
+                    {
+                        path: 'country',
+                        model: 'Country'
+                    }
+                ]
             })
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit) as unknown as PopulatedStore[];
 
         const items = stores.map(store => {
-            const storeObj = store.toObject();
+            const storeObj = store.toObject({ virtuals: true });
             return {
                 ...storeObj,
                 id: store._id,
@@ -101,19 +114,9 @@ export class StoreService {
                     addressLine1: storeObj.address.addressLine1,
                     addressLine2: storeObj.address.addressLine2,
                     postcode: storeObj.address.postcode,
-                    city: {
-                        id: storeObj.address.city?._id,
-                        name: storeObj.address.city?.name
-                    },
-                    state: {
-                        id: storeObj.address.state?._id,
-                        name: storeObj.address.state?.name
-                    },
-                    country: {
-                        id: storeObj.address.country?._id,
-                        name: storeObj.address.country?.name,
-                        code: storeObj.address.country?.code
-                    }
+                    city: storeObj.address.city,
+                    state: storeObj.address.state,
+                    country: storeObj.address.country
                 } : undefined
             };
         });
