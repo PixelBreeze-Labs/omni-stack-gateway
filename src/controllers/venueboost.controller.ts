@@ -58,4 +58,27 @@ export class VenueBoostController {
     ) {
         return await this.venueBoostService.exportMembers(registrationSource);
     }
+
+    // --- Feedback Endpoints ---
+
+    @Get('feedback')
+    @ApiOperation({ summary: 'List customer feedback' })
+    @ApiResponse({ status: 200, description: 'Returns customer feedback list with pagination' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'per_page', required: false })
+    @ApiQuery({ name: 'search', required: false })
+    async listFeedback(
+        @Query('page') page?: number,
+        @Query('per_page') perPage?: number,
+        @Query('search') search?: string,
+    ) {
+        return await this.venueBoostService.listFeedback({ page, per_page: perPage, search });
+    }
+
+    @Get('feedback/:id')
+    @ApiOperation({ summary: 'Get customer feedback by ID' })
+    @ApiResponse({ status: 200, description: 'Returns feedback detail' })
+    async getFeedbackById(@Param('id') id: number) {
+        return await this.venueBoostService.getFeedbackById(id);
+    }
 }
