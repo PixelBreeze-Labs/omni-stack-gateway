@@ -1,5 +1,5 @@
 // src/controllers/venueboost.controller.ts
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Body } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { VenueBoostService } from '../services/venueboost.service';
 
@@ -9,24 +9,53 @@ export class VenueBoostController {
     constructor(private readonly venueBoostService: VenueBoostService) {}
 
     @Get('members')
-    @ApiOperation({ summary: 'List members from VenueBoost' })
-    @ApiResponse({ status: 200, description: 'Returns list of members' })
-    @ApiQuery({ name: 'page', required: false, type: Number })
-    @ApiQuery({ name: 'per_page', required: false, type: Number })
-    @ApiQuery({
-        name: 'registration_source',
-        required: false,
-        enum: ['from_my_club', 'landing_page']
-    })
+    @ApiOperation({ summary: 'List members' })
+    @ApiResponse({ status: 200, description: 'Returns members list with pagination' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'per_page', required: false })
+    @ApiQuery({ name: 'registration_source', required: false, enum: ['from_my_club', 'landing_page'] })
+    @ApiQuery({ name: 'search', required: false })
+    @ApiQuery({ name: 'status', required: false })
     async listMembers(
         @Query('page') page?: number,
         @Query('per_page') perPage?: number,
-        @Query('registration_source') registrationSource?: 'from_my_club' | 'landing_page'
+        @Query('registration_source') registrationSource?: 'from_my_club' | 'landing_page',
+        @Query('search') search?: string,
+        @Query('status') status?: string
     ) {
         return await this.venueBoostService.listMembers({
             page,
             per_page: perPage,
-            registration_source: registrationSource
+            registration_source: registrationSource,
+            search,
+            status
         });
+    }
+
+    @Post('members/:id/approve')
+    @ApiOperation({ summary: 'Approve member' })
+    @ApiResponse({ status: 200, description: 'Member approved successfully' })
+    async approveMember(@Param('id') id: number) {
+        return await this.venueBoostService.acceptMember(id);
+    }
+
+    @Post('members/:id/reject')
+    @ApiOperation({ summary: 'Reject member' })
+    @ApiResponse({ status: 200, description: 'Member rejected successfully' })
+    async rejectMember(
+        @Param('id') id: number,
+        @Body('rejection_reason') reason?: string
+    ) {
+        return await this.venueBoostService.rejectMember(id, reason);
+    }
+
+    @Get('members/export')
+    @ApiOperation({ summary: 'Export members' })
+    @ApiResponse({ status: 200, description: 'Returns members export file' })
+    @ApiQuery({ name: 'registration_source', required: false, enum: ['from_my_club', 'landing_page'] })
+    async exportMembers(
+        @Query('registration_source') registrationSource?: 'from_my_club' | 'landing_page'
+    ) {
+        return await this.venueBoostService.exportMembers(registrationSource);
     }
 }
