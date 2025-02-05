@@ -59,9 +59,10 @@ export class VenueBoostService {
 
     async acceptMember(memberId: number) {
         try {
-            const response$ = this.httpService.post(`${this.baseUrl}/members-os/${memberId}/approve`, {
-                venue_short_code: this.bbVenueCode
-            }, {
+            const response$ = this.httpService.post(`${this.baseUrl}/members-os/${memberId}/approve`, {},{
+                params: {
+                    venue_short_code: this.bbVenueCode
+                },
                 headers: {
                     'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
                 }
