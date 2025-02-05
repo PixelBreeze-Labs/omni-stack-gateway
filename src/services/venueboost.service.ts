@@ -123,7 +123,7 @@ export class VenueBoostService {
 
     async listFeedback(params?: { page?: number; per_page?: number; search?: string }) {
         try {
-            const response$ = this.httpService.get(`${this.baseUrl}/feedback`, {
+            const response$ = this.httpService.get(`${this.baseUrl}/feedback-os`, {
                 params: {
                     venue_short_code: this.bbVenueCode,
                     page: params?.page || 1,
@@ -149,7 +149,7 @@ export class VenueBoostService {
 
     async getFeedbackById(id: number) {
         try {
-            const response$ = this.httpService.get(`${this.baseUrl}/feedback/${id}`, {
+            const response$ = this.httpService.get(`${this.baseUrl}/feedback-os/${id}`, {
                 params: {
                     venue_short_code: this.bbVenueCode,
                 },
