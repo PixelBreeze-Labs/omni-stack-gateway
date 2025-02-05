@@ -24,6 +24,8 @@ export class VenueBoostService {
         page?: number;
         per_page?: number;
         registration_source?: 'from_my_club' | 'landing_page';
+        search?: string;
+        status?: string;
     }) {
         try {
             const response$ = this.httpService.get(`${this.baseUrl}/members-os`, {
@@ -31,7 +33,9 @@ export class VenueBoostService {
                     venue_short_code: this.bbVenueCode,
                     page: params.page || 1,
                     per_page: params.per_page || 15,
-                    registration_source: params.registration_source
+                    registration_source: params.registration_source,
+                    search: params.search,
+                    status: params.status
                 },
                 headers: {
                     'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
@@ -41,26 +45,69 @@ export class VenueBoostService {
 
             const response = await lastValueFrom(response$);
 
-
             if (response.status === 400) {
                 this.logger.error('Bad request:', response.data);
                 throw new Error(response.data.message || 'Bad request');
             }
 
-            if (!response.data) {
-                throw new Error('No data received from API');
-            }
-
-            return {
-                data: response.data.data,
-                current_page: response.data.current_page,
-                last_page: response.data.last_page,
-                per_page: response.data.per_page,
-                total: response.data.total
-            };
-
+            return response.data;
         } catch (error) {
-            this.logger.error('Failed to fetch members from VenueBoost', error);
+            this.logger.error('Failed to fetch members:', error);
+            throw error;
+        }
+    }
+
+    async acceptMember(memberId: number) {
+        try {
+            const response$ = this.httpService.post(`${this.baseUrl}/members-os/${memberId}/approve`, {
+                venue_short_code: this.bbVenueCode
+            }, {
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                }
+            });
+            const response = await lastValueFrom(response$);
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to approve member ${memberId}:`, error);
+            throw error;
+        }
+    }
+
+    async rejectMember(memberId: number, reason?: string) {
+        try {
+            const response$ = this.httpService.post(`${this.baseUrl}/members-os/${memberId}/reject`, {
+                venue_short_code: this.bbVenueCode,
+                rejection_reason: reason
+            }, {
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                }
+            });
+            const response = await lastValueFrom(response$);
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to reject member ${memberId}:`, error);
+            throw error;
+        }
+    }
+
+    async exportMembers(registrationSource?: 'from_my_club' | 'landing_page') {
+        try {
+            const response$ = this.httpService.get(`${this.baseUrl}/members-os/export`, {
+                params: {
+                    venue_short_code: this.bbVenueCode,
+                    registration_source: registrationSource
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                },
+                responseType: 'blob'
+            });
+            const response = await lastValueFrom(response$);
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to export members:', error);
             throw error;
         }
     }
