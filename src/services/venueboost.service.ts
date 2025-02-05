@@ -118,4 +118,55 @@ export class VenueBoostService {
             throw error;
         }
     }
+
+    // --- Feedback functions ---
+
+    async listFeedback(params?: { page?: number; per_page?: number; search?: string }) {
+        try {
+            const response$ = this.httpService.get(`${this.baseUrl}/feedback`, {
+                params: {
+                    venue_short_code: this.bbVenueCode,
+                    page: params?.page || 1,
+                    per_page: params?.per_page || 15,
+                    search: params?.search,
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                },
+                validateStatus: (status) => status < 500,
+            });
+            const response = await lastValueFrom(response$);
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch feedback:', error);
+            throw error;
+        }
+    }
+
+    async getFeedbackById(id: number) {
+        try {
+            const response$ = this.httpService.get(`${this.baseUrl}/feedback/${id}`, {
+                params: {
+                    venue_short_code: this.bbVenueCode,
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                },
+                validateStatus: (status) => status < 500,
+            });
+            const response = await lastValueFrom(response$);
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch feedback with id ${id}:`, error);
+            throw error;
+        }
+    }
 }
