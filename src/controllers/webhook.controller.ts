@@ -41,8 +41,8 @@ export class WebhookController {
 
             // Find client and validate webhook key
             const client = await this.clientModel.findOne({
-                venueShortCode: venueShortCode,
-                webhookApiKey: webhookApiKey,
+                'venueBoostConnection.venueShortCode': venueShortCode,
+                'venueBoostConnection.webhookApiKey': webhookApiKey,
                 'venueBoostConnection.status': 'connected'
             });
 
