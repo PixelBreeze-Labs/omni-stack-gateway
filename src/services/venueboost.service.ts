@@ -6,6 +6,7 @@ import { lastValueFrom } from 'rxjs';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {Client} from "../schemas/client.schema";
+import {Store} from "../schemas/store.schema";
 
 @Injectable()
 export class VenueBoostService {
@@ -17,7 +18,8 @@ export class VenueBoostService {
     constructor(
         private readonly httpService: HttpService,
         private readonly configService: ConfigService,
-        @InjectModel(Client.name) private clientModel: Model<Client>
+        @InjectModel(Client.name) private clientModel: Model<Client>,
+        @InjectModel(Store.name) private storeModel: Model<Store>
     ) {
         this.baseUrl = this.configService.get<string>('venueboost.baseUrl');
         this.bbVenueCode = this.configService.get<string>('venueboost.bbVenueCode');
@@ -231,6 +233,8 @@ export class VenueBoostService {
     }) {
         try {
             const venueShortCode = await this.getVenueShortCode(params.clientId);
+
+            // First update PHP backend
             const response$ = this.httpService.post(`${this.baseUrl}/stores-os/connect-disconnect`, {
                 venue_short_code: venueShortCode,
                 vb_id: params.vbId,
@@ -239,7 +243,21 @@ export class VenueBoostService {
             }, {
                 headers: { 'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey }
             });
-            return (await lastValueFrom(response$)).data;
+            await lastValueFrom(response$);
+
+            // Then update our store
+            const updateData = params.type === 'connect'
+                ? { $set: { 'externalIds.venueboostId': params.vbId.toString() } }
+                : { $unset: { 'externalIds.venueboostId': "" } };
+
+            const store = await this.storeModel.findByIdAndUpdate(
+                params.osId,
+                updateData,
+                { new: true }
+            );
+
+            if (!store) throw new NotFoundException('Store not found');
+            return store;
         } catch (error) {
             this.logger.error('Failed to connect/disconnect store:', error);
             throw error;
