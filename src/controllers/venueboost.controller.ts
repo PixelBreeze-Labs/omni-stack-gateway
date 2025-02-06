@@ -140,9 +140,9 @@ export class VenueBoostController {
     @ApiResponse({ status: 200, description: 'Client connected with VenueBoost' })
     @Post('connect')
     async connect(
-        @Body() body: { venueShortCode: string },
+        @Body() body: { venueShortCode: string, webhookApiKey: string },
         @Req() req: Request & { client: Client }
     ) {
-        return this.venueBoostService.connectVenueBoost(req.client.id, body.venueShortCode);
+        return this.venueBoostService.connectVenueBoost(req.client.id, body.venueShortCode, body.webhookApiKey);
     }
 }
