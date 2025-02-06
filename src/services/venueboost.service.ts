@@ -264,13 +264,14 @@ export class VenueBoostService {
         }
     }
 
-    async connectVenueBoost(clientId: string, venueShortCode: string) {
+    async connectVenueBoost(clientId: string, venueShortCode: string, webhookApiKey: string) {
         const client = await this.clientModel.findByIdAndUpdate(
             clientId,
             {
                 $set: {
                     venueBoostConnection: {
                         venueShortCode,
+                        webhookApiKey,
                         connectedAt: new Date(),
                         status: 'connected'
                     }

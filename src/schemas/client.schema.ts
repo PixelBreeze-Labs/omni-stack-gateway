@@ -36,7 +36,8 @@ export class Client extends Document {
             venueShortCode: { type: String, unique: true, sparse: true },
             connectedAt: { type: Date },
             disconnectedAt: { type: Date },
-            status: { type: String, enum: ['connected', 'disconnected'] }
+            status: { type: String, enum: ['connected', 'disconnected'] },
+            webhookApiKey: { type: String, select: false }
         },
         _id: false
     })
@@ -45,6 +46,7 @@ export class Client extends Document {
         connectedAt: Date;
         disconnectedAt?: Date;
         status: 'connected' | 'disconnected';
+        webhookApiKey: string;
     };
 }
 
