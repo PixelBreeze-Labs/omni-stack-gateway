@@ -30,6 +30,22 @@ export class Client extends Document {
     // Embed loyalty program configuration
     @Prop({ type: LoyaltyProgramSchema, default: {} })
     loyaltyProgram: LoyaltyProgram;
+
+    @Prop({
+        type: {
+            venueShortCode: { type: String, unique: true, sparse: true },
+            connectedAt: { type: Date },
+            disconnectedAt: { type: Date },
+            status: { type: String, enum: ['connected', 'disconnected'] }
+        },
+        _id: false
+    })
+    venueBoostConnection?: {
+        venueShortCode: string;
+        connectedAt: Date;
+        disconnectedAt?: Date;
+        status: 'connected' | 'disconnected';
+    };
 }
 
 export const ClientSchema = SchemaFactory.createForClass(Client);

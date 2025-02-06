@@ -1,8 +1,11 @@
 // src/services/venueboost.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import {BadRequestException, Injectable, Logger, NotFoundException} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import {Client} from "../schemas/client.schema";
 
 @Injectable()
 export class VenueBoostService {
@@ -14,10 +17,19 @@ export class VenueBoostService {
     constructor(
         private readonly httpService: HttpService,
         private readonly configService: ConfigService,
+        @InjectModel(Client.name) private clientModel: Model<Client>
     ) {
         this.baseUrl = this.configService.get<string>('venueboost.baseUrl');
         this.bbVenueCode = this.configService.get<string>('venueboost.bbVenueCode');
         this.apiKey = this.configService.get<string>('venueboost.apiKey');
+    }
+
+    private async getVenueShortCode(clientId: string): Promise<string> {
+        const client = await this.clientModel.findById(clientId);
+        if (!client?.venueBoostConnection?.venueShortCode) {
+            throw new BadRequestException('Client not connected to VenueBoost');
+        }
+        return client.venueBoostConnection.venueShortCode;
     }
 
     async listMembers(params: {
@@ -194,6 +206,63 @@ export class VenueBoostService {
             this.logger.error('Failed to fetch feedback stats:', error);
             throw error;
         }
+    }
+
+
+    async listStores(clientId: string) {
+        try {
+            const venueShortCode = await this.getVenueShortCode(clientId);
+            const response$ = this.httpService.get(`${this.baseUrl}/stores-os`, {
+                params: { venue_short_code: venueShortCode },
+                headers: { 'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey }
+            });
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch stores:', error);
+            throw error;
+        }
+    }
+
+    async connectDisconnectStore(params: {
+        clientId: string;
+        vbId: number;
+        osId: string;
+        type: 'connect' | 'disconnect';
+    }) {
+        try {
+            const venueShortCode = await this.getVenueShortCode(params.clientId);
+            const response$ = this.httpService.post(`${this.baseUrl}/stores-os/connect-disconnect`, {
+                venue_short_code: venueShortCode,
+                vb_id: params.vbId,
+                os_id: params.osId,
+                type: params.type
+            }, {
+                headers: { 'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey }
+            });
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to connect/disconnect store:', error);
+            throw error;
+        }
+    }
+
+    async connectVenueBoost(clientId: string, venueShortCode: string) {
+        const client = await this.clientModel.findByIdAndUpdate(
+            clientId,
+            {
+                $set: {
+                    venueBoostConnection: {
+                        venueShortCode,
+                        connectedAt: new Date(),
+                        status: 'connected'
+                    }
+                }
+            },
+            { new: true }
+        );
+
+        if (!client) throw new NotFoundException('Client not found');
+        return client;
     }
 
 

@@ -1,10 +1,14 @@
 // src/controllers/venueboost.controller.ts
-import { Controller, Get, Post, Query, Param, Body } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
+import {Controller, Req, Get, Post, Query, Param, Body, UseGuards} from '@nestjs/common';
+import {ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth, ApiBody} from '@nestjs/swagger';
 import { VenueBoostService } from '../services/venueboost.service';
+import {ClientAuthGuard} from "../guards/client-auth.guard";
+import {Client} from "../schemas/client.schema";
 
 @ApiTags('VenueBoost')
+@ApiBearerAuth()
 @Controller('vb')
+@UseGuards(ClientAuthGuard)
 export class VenueBoostController {
     constructor(private readonly venueBoostService: VenueBoostService) {}
 
@@ -90,5 +94,55 @@ export class VenueBoostController {
     })
     async getFeedbackStats() {
         return await this.venueBoostService.getFeedbackStats();
+    }
+
+    // --- Store Endpoints ---
+
+    @ApiOperation({ summary: 'List connected VenueBoost stores' })
+    @ApiResponse({ status: 200, description: 'Returns list of stores' })
+    @Get('stores')
+    async listStores(@Req() req: Request & { client: Client }) {
+        return this.venueBoostService.listStores(req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Connect/disconnect store with VenueBoost' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                vbId: { type: 'number' },
+                osId: { type: 'string' },
+                type: { type: 'string', enum: ['connect', 'disconnect'] }
+            }
+        }
+    })
+    @ApiResponse({ status: 200, description: 'Store connected/disconnected' })
+    @Post('stores/connect-disconnect')
+    async connectDisconnectStore(
+        @Body() body: { vbId: number; osId: string; type: 'connect' | 'disconnect' },
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.venueBoostService.connectDisconnectStore({
+            ...body,
+            clientId: req.client.id
+        });
+    }
+
+    @ApiOperation({ summary: 'Connect client with VenueBoost' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                venueShortCode: { type: 'string' }
+            }
+        }
+    })
+    @ApiResponse({ status: 200, description: 'Client connected with VenueBoost' })
+    @Post('connect')
+    async connect(
+        @Body() body: { venueShortCode: string },
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.venueBoostService.connectVenueBoost(req.client.id, body.venueShortCode);
     }
 }
