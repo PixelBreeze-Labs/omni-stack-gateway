@@ -60,3 +60,6 @@ export class Customer extends Document {
 
 export type CustomerDocument = Customer & Document;
 export const CustomerSchema = SchemaFactory.createForClass(Customer);
+
+CustomerSchema.index({ email: 1, clientIds: 1, isActive: 1 });
+

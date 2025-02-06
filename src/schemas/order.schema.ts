@@ -2,16 +2,67 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
+class PaymentDetails {
+    @Prop()
+    status: string;
+
+    @Prop()
+    transactionId?: string;
+
+    @Prop({ type: Object })
+    paymentProviderResponse?: Record<string, any>;
+}
+
+class SourceDetails {
+    @Prop()
+    type: string;
+
+    @Prop()
+    platform: string;
+
+    @Prop()
+    url?: string;
+
+    @Prop()
+    externalOrderId: string;
+
+    @Prop()
+    externalCustomerId: string;
+
+    @Prop()
+    externalCustomerEmail?: string;
+}
+
+class OrderItem {
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product' })
+    productId?: string;
+
+    @Prop()
+    externalProductId: string;
+
+    @Prop()
+    name: string;
+
+    @Prop()
+    quantity: number;
+
+    @Prop()
+    price: number;
+
+    @Prop()
+    total: number;
+}
+
 @Schema({ timestamps: true })
 export class Order extends Document {
-    @Prop({ required: true, unique: true })
+    @Prop({ required: true })
     orderNumber: string;
 
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
     clientId: string;
 
-    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Customer' })
-    customerId: string;
+    @Prop({ required: false, type: MongooseSchema.Types.ObjectId, ref: 'Customer' })
+    customerId?: string;
 
     @Prop({ required: true, type: Number })
     subtotal: number;
@@ -37,56 +88,14 @@ export class Order extends Document {
     @Prop({ required: true })
     paymentMethod: string;
 
-    @Prop({
-        type: {
-            status: String,
-            transactionId: String,
-            paymentProviderResponse: Object
-        }
-    })
-    payment: {
-        status: string;
-        transactionId?: string;
-        paymentProviderResponse?: Record<string, any>;
-    };
+    @Prop({ type: PaymentDetails })
+    payment: PaymentDetails;
 
-    @Prop({
-        type: {
-            type: { type: String, required: true }, // 'quick_checkout' or 'regular_checkout'
-            platform: { type: String, required: true }, // 'bybest.shop', etc.
-            url: String,
-            externalOrderId: String,
-            externalCustomerId: String
-        },
-        required: true
-    })
-    source: {
-        type: string;
-        platform: string;
-        url?: string;
-        externalOrderId: string;
-        externalCustomerId: string;
-    };
+    @Prop({ type: SourceDetails, required: true })
+    source: SourceDetails;
 
-    @Prop({
-        type: [{
-            productId: { type: MongooseSchema.Types.ObjectId, ref: 'Product' },
-            externalProductId: String,
-            name: String,
-            quantity: Number,
-            price: Number,
-            total: Number
-        }],
-        required: true
-    })
-    items: Array<{
-        productId: string;
-        externalProductId: string;
-        name: string;
-        quantity: number;
-        price: number;
-        total: number;
-    }>;
+    @Prop({ type: [OrderItem], required: true })
+    items: OrderItem[];
 
     @Prop({ type: Object })
     metadata?: Record<string, any>;
@@ -99,3 +108,6 @@ export class Order extends Document {
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
+
+// Add compound index for unique order number per client
+OrderSchema.index({ orderNumber: 1, clientId: 1 }, { unique: true });

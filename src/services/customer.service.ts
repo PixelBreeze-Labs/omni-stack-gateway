@@ -57,6 +57,14 @@ export class CustomerService {
         return customer;
     }
 
+    async findByEmail(email: string, clientId: string): Promise<Customer | null> {
+        return this.customerModel.findOne({
+            email: email,
+            clientIds: { $in: [clientId] },
+            isActive: true
+        });
+    }
+
     async update(id: string, clientId: string, updateCustomerDto: UpdateCustomerDto) {
         const customer = await this.customerModel.findOneAndUpdate(
             { _id: id, clientIds: { $in: [clientId] } },
