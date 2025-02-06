@@ -76,6 +76,7 @@ import { LocationController } from './controllers/system/location.controller';
 import { StoreController } from "./controllers/store.controller";
 import { VenueBoostController } from "./controllers/venueboost.controller";
 import { OrderController } from "./controllers/order.controller";
+import { WebhookController } from "./controllers/webhook.controller";
 
 
 // Service imports
@@ -224,7 +225,8 @@ import {JwtModule} from "@nestjs/jwt";
     LocationController,
     StoreController,
     VenueBoostController,
-    OrderController
+    OrderController,
+    WebhookController
   ],
   providers: [
     SnapfoodService,
