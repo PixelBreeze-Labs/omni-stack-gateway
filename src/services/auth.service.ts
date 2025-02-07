@@ -5,6 +5,16 @@ import { UserService } from './user.service';
 import { TrackmasterAdminService } from './trackmaster-admin.service';
 import * as bcrypt from 'bcrypt';
 import { SalesAssociateLoginDto } from "../dtos/user.dto";
+import { User } from "../schemas/user.schema";
+import { Store } from "../schemas/store.schema";
+import { Document, Types } from 'mongoose';
+
+// Correct type definitions for Mongoose populated documents
+type MongooseDocument<T> = Document<unknown, any, T> & T & { _id: Types.ObjectId };
+type PopulatedStore = MongooseDocument<Store>;
+type PopulatedUser = MongooseDocument<Omit<User, 'primaryStoreId'>> & {
+    primaryStoreId: PopulatedStore;
+};
 
 @Injectable()
 export class AuthService {
@@ -16,14 +26,9 @@ export class AuthService {
 
     async salesAssociateLogin(loginDto: SalesAssociateLoginDto) {
         // Find user and populate store data
-        const user = await this.userService.findByEmailForStore(loginDto.email)
-            .populate({
-                path: 'primaryStoreId',
-                populate: {
-                    path: 'address'
-                }
-            });
+        const user = await this.userService.findByEmailForStore(loginDto.email) as unknown as PopulatedUser;
 
+        // Rest of your code remains the same
         if (!user) {
             throw new UnauthorizedException('Invalid credentials');
         }

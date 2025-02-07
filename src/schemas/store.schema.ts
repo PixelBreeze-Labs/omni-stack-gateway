@@ -52,6 +52,8 @@ export class Store extends Document {
 }
 
 export const StoreSchema = SchemaFactory.createForClass(Store);
+StoreSchema.set('toJSON', { virtuals: true });
+StoreSchema.set('toObject', { virtuals: true })
 
 // Add virtual populate for address and client
 StoreSchema.virtual('address', {
