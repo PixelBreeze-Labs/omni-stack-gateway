@@ -42,6 +42,12 @@ export class User extends Document {
 
     @Prop({ default: true })
     isActive: boolean;
+
+    @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Store' }] })
+    storeIds: string[];
+
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Store' })
+    primaryStoreId?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
