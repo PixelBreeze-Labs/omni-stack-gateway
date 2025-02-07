@@ -15,8 +15,8 @@ export class AuthService {
     ) {}
 
     async salesAssociateLogin(loginDto: SalesAssociateLoginDto) {
-        const user = await this.userService.findByEmail(loginDto.email)
-            .populate('primaryStoreId');
+        const userDoc = await this.userService.findByEmail(loginDto.email);
+        const user = await userDoc.populate('primaryStoreId');
 
         if (!user) throw new UnauthorizedException('Invalid credentials');
 
