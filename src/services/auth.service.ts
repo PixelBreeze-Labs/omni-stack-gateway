@@ -36,7 +36,8 @@ export class AuthService {
             sub: user.id,
             email: user.email,
             permissions: verificationResult.permissions,
-            store: user.primaryStoreId
+            store: user.primaryStoreId,
+            clientId: verificationResult.staff.clientId
         });
 
         return {

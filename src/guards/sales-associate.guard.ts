@@ -7,6 +7,8 @@ import { UserService } from '../services/user.service';
 interface JWTPayload {
     sub: string;
     email: string;
+    permissions: any;
+    clientId: string;
     iat: number;
     exp: number;
 }
@@ -49,14 +51,11 @@ export class SalesAssociateGuard implements CanActivate {
                 throw new UnauthorizedException('Insufficient permissions');
             }
 
-            // Attach verified data to request
             request.user = {
                 ...user,
-                permissions: verificationResult.permissions
+                permissions: payload.permissions,
+                clientId: payload.clientId
             };
-
-            // Cache verification result if needed
-            request.verificationResult = verificationResult;
 
             return true;
         } catch (error) {
