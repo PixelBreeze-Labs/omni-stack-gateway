@@ -33,6 +33,22 @@ export class Store extends Document {
 
     @Prop({ type: Date })
     deletedAt?: Date;
+
+    @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }] })
+    userIds: string[];
+
+    @Prop({ type: Map, of: String, default: {} })
+    metadata: Map<string, any>;
+
+
+    address?: {
+        addressLine1: string;
+        addressLine2?: string;
+        postcode: string;
+        city: any;
+        state: any;
+        country: any;
+    };
 }
 
 export const StoreSchema = SchemaFactory.createForClass(Store);

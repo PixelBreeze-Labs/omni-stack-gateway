@@ -86,4 +86,32 @@ export class StoreController {
     ) {
         return this.storeService.hardDelete(id, req.client.id);
     }
+
+    @ApiOperation({ summary: 'Get stores from connected VenueBoost clients' })
+    @Get('connected')
+    async getConnectedStores(@Req() req: Request & { client: Client }) {
+        return this.storeService.findConnectedStores(req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Connect user to store' })
+    @ApiBody({ type: Object, schema: { properties: { userId: { type: 'string' } } } })
+    @Post(':id/connect-user')
+    async connectUser(
+        @Param('id') storeId: string,
+        @Body('userId') userId: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.storeService.connectUser(storeId, userId, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Disconnect user from store' })
+    @ApiBody({ type: Object, schema: { properties: { userId: { type: 'string' } } } })
+    @Post(':id/disconnect-user')
+    async disconnectUser(
+        @Param('id') storeId: string,
+        @Body('userId') userId: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.storeService.disconnectUser(storeId, userId, req.client.id);
+    }
 }
