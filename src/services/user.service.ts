@@ -36,14 +36,10 @@ export class UserService {
         return this.userModel.findOne({ email }).exec();
     }
 
+
     async findByEmailForStore(email: string) {
         return this.userModel.findOne({ email })
-            .populate({
-                path: 'primaryStoreId',
-                populate: {
-                    path: 'address'
-                }
-            })
+            .populate('primaryStoreId')
             .exec();
     }
 
