@@ -41,7 +41,7 @@ export class SalesAssociateGuard implements CanActivate {
 
             // Verify with Trackmaster Admin
             const verificationResult = await this.trackmasterAdminService.verifyAccess({
-                external_ids: user.external_ids,
+                external_ids: user.external_ids.staffId,
                 role: 'SALES_ASSOCIATE'
             });
 
