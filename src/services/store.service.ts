@@ -258,7 +258,25 @@ export class StoreService {
     }
 
     async connectUser(storeId: string, userId: string, clientId: string) {
-        const store = await this.storeModel.findOne({ _id: storeId, clientId });
+        const client = await this.clientModel.findById(clientId);
+        if (!client?.venueBoostConnection?.venueShortCode) {
+            throw new NotFoundException('Client not connected to VenueBoost');
+        }
+
+        // Find store among all connected clients' stores
+        const connectedClientIds = await this.clientModel
+            .find({
+                'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
+                'venueBoostConnection.status': 'connected'
+            })
+            .distinct('_id');
+
+        const store = await this.storeModel.findOne({
+            _id: storeId,
+            clientId: { $in: connectedClientIds },
+            isActive: true
+        });
+
         if (!store) throw new NotFoundException('Store not found');
 
         await this.storeModel.findByIdAndUpdate(storeId, {
@@ -273,7 +291,24 @@ export class StoreService {
     }
 
     async disconnectUser(storeId: string, userId: string, clientId: string) {
-        const store = await this.storeModel.findOne({ _id: storeId, clientId });
+        const client = await this.clientModel.findById(clientId);
+        if (!client?.venueBoostConnection?.venueShortCode) {
+            throw new NotFoundException('Client not connected to VenueBoost');
+        }
+
+        const connectedClientIds = await this.clientModel
+            .find({
+                'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
+                'venueBoostConnection.status': 'connected'
+            })
+            .distinct('_id');
+
+        const store = await this.storeModel.findOne({
+            _id: storeId,
+            clientId: { $in: connectedClientIds },
+            isActive: true
+        });
+
         if (!store) throw new NotFoundException('Store not found');
 
         await this.storeModel.findByIdAndUpdate(storeId, {
