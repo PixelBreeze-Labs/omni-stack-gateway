@@ -33,7 +33,7 @@ export class Client extends Document {
 
     @Prop({
         type: {
-            venueShortCode: { type: String, unique: true, sparse: true },
+            venueShortCode: { type: String, sparse: true },
             connectedAt: { type: Date },
             disconnectedAt: { type: Date },
             status: { type: String, enum: ['connected', 'disconnected'] },
