@@ -15,19 +15,14 @@ export class AuthService {
     ) {}
 
     async salesAssociateLogin(loginDto: SalesAssociateLoginDto) {
-        // Find user by email
-        const user = await this.userService.findByEmail(loginDto.email);
-        if (!user) {
-            throw new UnauthorizedException('Invalid credentials');
-        }
+        const user = await this.userService.findByEmail(loginDto.email)
+            .populate('primaryStoreId');
 
-        // Verify password
+        if (!user) throw new UnauthorizedException('Invalid credentials');
+
         const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
-        if (!isPasswordValid) {
-            throw new UnauthorizedException('Invalid credentials');
-        }
+        if (!isPasswordValid) throw new UnauthorizedException('Invalid credentials');
 
-        // Verify with Trackmaster Admin if user can access sales app
         const verificationResult = await this.trackmasterAdminService.verifyAccess({
             external_ids: user.external_ids,
             role: 'SALES_ASSOCIATE'
@@ -37,11 +32,11 @@ export class AuthService {
             throw new UnauthorizedException('No access to sales associate app');
         }
 
-        // Generate JWT token
         const token = this.jwtService.sign({
             sub: user.id,
             email: user.email,
-            permissions: verificationResult.permissions
+            permissions: verificationResult.permissions,
+            store: user.primaryStoreId
         });
 
         return {
@@ -51,7 +46,8 @@ export class AuthService {
                 name: user.name,
                 surname: user.surname,
                 email: user.email,
-                permissions: verificationResult.permissions
+                permissions: verificationResult.permissions,
+                store: user.primaryStoreId
             }
         };
     }
