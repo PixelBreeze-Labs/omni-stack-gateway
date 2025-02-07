@@ -7,6 +7,7 @@ import { Client } from '../schemas/client.schema';
 import { User } from '../schemas/user.schema';
 import { CreateStoreDto, UpdateStoreDto, ListStoreDto } from '../dtos/store.dto';
 import { CreateAddressDto } from '../dtos/address.dto';
+import {  Schema as MongooseSchema } from 'mongoose';
 
 interface PopulatedStore extends Omit<Store, 'address'> {
     address?: {
@@ -216,12 +217,11 @@ export class StoreService {
             return [];
         }
 
-        // Find another client with same venueShortCode
         const connectedClient = await this.clientModel.findOne({
-            _id: { $ne: clientId }, // Exclude current client
+            _id: { $ne: clientId },
             'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
             'venueBoostConnection.status': 'connected'
-        });
+        }).lean();
 
         if (!connectedClient) {
             return [];
@@ -235,7 +235,11 @@ export class StoreService {
             })
             .populate({
                 path: 'address',
-                populate: ['city', 'state', 'country']
+                populate: [
+                    { path: 'city' },
+                    { path: 'state' },
+                    { path: 'country' }
+                ]
             });
 
         return stores.map(store => ({

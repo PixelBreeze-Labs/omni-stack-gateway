@@ -41,6 +41,13 @@ export class StoreController {
         });
     }
 
+    @ApiOperation({ summary: 'Get stores from connected VenueBoost clients' })
+    @Get('connected')
+    async getConnectedStores(@Req() req: Request & { client: Client }) {
+        return this.storeService.findConnectedStores(req.client.id);
+    }
+
+
     @ApiOperation({ summary: 'Get store by id' })
     @ApiParam({ name: 'id', description: 'Store ID' })
     @ApiResponse({ status: 200, description: 'Return store' })
@@ -85,12 +92,6 @@ export class StoreController {
         @Req() req: Request & { client: Client }
     ) {
         return this.storeService.hardDelete(id, req.client.id);
-    }
-
-    @ApiOperation({ summary: 'Get stores from connected VenueBoost clients' })
-    @Get('connected')
-    async getConnectedStores(@Req() req: Request & { client: Client }) {
-        return this.storeService.findConnectedStores(req.client.id);
     }
 
     @ApiOperation({ summary: 'Connect user to store' })
