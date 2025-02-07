@@ -1,5 +1,5 @@
 // src/controllers/user.controller.ts
-import { Controller, Post, Get, Body, UseGuards, Req } from '@nestjs/common';
+import {Controller, Post, Get, Body, UseGuards, Req, Delete, Param} from '@nestjs/common';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { UserService } from '../services/user.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
@@ -34,5 +34,17 @@ export class UserController {
     @ApiResponse({ status: 200, description: 'List of users' })
     async listUsers(@Req() req: Request & { client: Client }) {
         return this.userService.findByClientId(req.client.id);
+    }
+
+    @Delete(':id')
+    @ApiBearerAuth()
+    @UseGuards(ClientAuthGuard)
+    @ApiOperation({ summary: 'Delete user' })
+    @ApiResponse({ status: 200, description: 'User deleted successfully' })
+    async deleteUser(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.userService.delete(id);
     }
 }
