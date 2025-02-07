@@ -216,14 +216,20 @@ export class StoreService {
             return [];
         }
 
-        const connectedClients = await this.clientModel.find({
+        // Find another client with same venueShortCode
+        const connectedClient = await this.clientModel.findOne({
+            _id: { $ne: clientId }, // Exclude current client
             'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
             'venueBoostConnection.status': 'connected'
         });
 
+        if (!connectedClient) {
+            return [];
+        }
+
         const stores = await this.storeModel
             .find({
-                clientId: { $in: connectedClients.map(c => c._id) },
+                clientId: connectedClient._id,
                 isActive: true,
                 deletedAt: null
             })
@@ -232,22 +238,19 @@ export class StoreService {
                 populate: ['city', 'state', 'country']
             });
 
-        return stores.map(store => {
-            const storeObj = store.toObject({ virtuals: true });
-            return {
-                ...storeObj,
-                id: store._id,
-                status: store.isActive ? 'ACTIVE' : 'INACTIVE',
-                address: storeObj.address ? {
-                    addressLine1: storeObj.address.addressLine1,
-                    addressLine2: storeObj.address.addressLine2,
-                    postcode: storeObj.address.postcode,
-                    city: storeObj.address.city,
-                    state: storeObj.address.state,
-                    country: storeObj.address.country
-                } : undefined
-            };
-        });
+        return stores.map(store => ({
+            ...store.toObject({ virtuals: true }),
+            id: store._id,
+            status: store.isActive ? 'ACTIVE' : 'INACTIVE',
+            address: store.address ? {
+                addressLine1: store.address.addressLine1,
+                addressLine2: store.address.addressLine2,
+                postcode: store.address.postcode,
+                city: store.address.city,
+                state: store.address.state,
+                country: store.address.country
+            } : undefined
+        }));
     }
 
     async connectUser(storeId: string, userId: string, clientId: string) {
