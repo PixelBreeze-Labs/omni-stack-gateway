@@ -23,50 +23,18 @@ export class SalesAssociateGuard implements CanActivate {
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
-        const authHeader = request.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new UnauthorizedException('Bearer token missing');
-        }
-
-        const token = authHeader.split(' ')[1];
+        const token = request.headers.authorization?.split(' ')[1];
+        if (!token) throw new UnauthorizedException('Bearer token missing');
 
         try {
-            // First verify JWT token
-            const payload = await this.jwtService.verifyAsync<JWTPayload>(token);
-
-            // Get user from database
+            const payload = await this.jwtService.verifyAsync(token);
             const user = await this.userService.findById(payload.sub);
-            if (!user) {
-                throw new UnauthorizedException('User not found');
-            }
 
-            // Verify with Trackmaster Admin
-            const verificationResult = await this.trackmasterAdminService.verifyAccess({
-                external_ids: user.external_ids.staffId,
-                role: 'SALES_ASSOCIATE'
-            });
-
-            if (!verificationResult.hasAccess) {
-                throw new UnauthorizedException('Insufficient permissions');
-            }
-
-            request.user = {
-                ...user,
-                permissions: payload.permissions,
-                clientId: payload.clientId
-            };
-
+            request.user = user;
             return true;
         } catch (error) {
-            if (error.name === 'JsonWebTokenError') {
-                throw new UnauthorizedException('Invalid token');
-            }
-            if (error.name === 'TokenExpiredError') {
-                throw new UnauthorizedException('Token expired');
-            }
-            console.error('Sales Associate Guard Error:', error);
-            throw new UnauthorizedException('Authentication failed');
+            console.error('Guard Error:', error);
+            throw new UnauthorizedException(error);
         }
     }
 }
