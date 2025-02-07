@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserService } from './user.service';
 import { TrackmasterAdminService } from './trackmaster-admin.service';
 import * as bcrypt from 'bcrypt';
-import {SalesAssociateLoginDto} from "../dtos/user.dto";
+import { SalesAssociateLoginDto } from "../dtos/user.dto";
 
 @Injectable()
 export class AuthService {
@@ -15,13 +15,23 @@ export class AuthService {
     ) {}
 
     async salesAssociateLogin(loginDto: SalesAssociateLoginDto) {
-        const userDoc = await this.userService.findByEmail(loginDto.email);
-        const user = await userDoc.populate('primaryStoreId');
+        // Find user and populate store data
+        const user = await this.userService.findByEmailForStore(loginDto.email)
+            .populate({
+                path: 'primaryStoreId',
+                populate: {
+                    path: 'address'
+                }
+            });
 
-        if (!user) throw new UnauthorizedException('Invalid credentials');
+        if (!user) {
+            throw new UnauthorizedException('Invalid credentials');
+        }
 
         const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
-        if (!isPasswordValid) throw new UnauthorizedException('Invalid credentials');
+        if (!isPasswordValid) {
+            throw new UnauthorizedException('Invalid credentials');
+        }
 
         const verificationResult = await this.trackmasterAdminService.verifyAccess({
             external_ids: user.external_ids,
@@ -32,11 +42,22 @@ export class AuthService {
             throw new UnauthorizedException('No access to sales associate app');
         }
 
+        // Transform store data
+        const store = user.primaryStoreId ? {
+            id: user.primaryStoreId._id,
+            name: user.primaryStoreId.name,
+            code: user.primaryStoreId.code,
+            address: user.primaryStoreId.address,
+            clientId: user.primaryStoreId.clientId,
+            externalIds: user.primaryStoreId.externalIds,
+            metadata: user.primaryStoreId.metadata
+        } : null;
+
         const token = this.jwtService.sign({
             sub: user.id,
             email: user.email,
             permissions: verificationResult.permissions,
-            store: user.primaryStoreId,
+            store: store,
             clientId: verificationResult.staff.clientId
         });
 
@@ -48,7 +69,11 @@ export class AuthService {
                 surname: user.surname,
                 email: user.email,
                 permissions: verificationResult.permissions,
-                store: user.primaryStoreId
+                store: store,
+                external_ids: user.external_ids,
+                client_ids: user.client_ids,
+                metadata: user.metadata,
+                storeIds: user.storeIds
             }
         };
     }

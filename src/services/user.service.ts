@@ -36,6 +36,17 @@ export class UserService {
         return this.userModel.findOne({ email }).exec();
     }
 
+    async findByEmailForStore(email: string) {
+        return this.userModel.findOne({ email })
+            .populate({
+                path: 'primaryStoreId',
+                populate: {
+                    path: 'address'
+                }
+            })
+            .exec();
+    }
+
     async delete(id: string) {
         // First, remove user ID from any stores that reference it
         await this.storeModel.updateMany(
