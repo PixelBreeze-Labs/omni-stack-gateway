@@ -175,9 +175,9 @@ export class UserService {
                 address: {
                     addressLine1: createUserDto.address.addressLine1,
                     postcode: createUserDto.address.postcode,
-                    cityId: createUserDto.address.cityId,
-                    stateId: createUserDto.address.stateId,
-                    countryId: createUserDto.address.countryId
+                    city: createUserDto.address.city,
+                    state: createUserDto.address.state,
+                    country: createUserDto.address.country
                 },
                 status: 'ACTIVE'
             });
