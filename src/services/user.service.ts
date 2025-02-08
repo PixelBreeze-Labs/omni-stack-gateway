@@ -79,10 +79,7 @@ export class UserService {
             }
         }
 
-        // Generate unique referral code
         const referralCode = this.generateReferralCode();
-
-        // Hash password
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
         // Find client and its loyalty program
@@ -109,11 +106,9 @@ export class UserService {
             points: 0
         });
 
-        // Handle referral logic
+        // Handle referral logic...
         if (referredByUser) {
             user.referredBy = referredByUser._id;
-
-            // Update referrer
             await this.userModel.updateOne(
                 { _id: referredByUser._id },
                 {
@@ -122,7 +117,6 @@ export class UserService {
                 }
             );
 
-            // Add referral points if loyalty program exists
             if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
                 const referrerTier = client.loyaltyProgram.membershipTiers
                     .find(tier => tier.name === initialClientTiers.get(client._id.toString()));
@@ -136,10 +130,10 @@ export class UserService {
             }
         }
 
-        // Save and handle signup bonus if applicable
+        // Save user first
         const savedUser = await user.save();
 
-        // Handle signup bonus for both points and wallet
+        // Handle signup bonus for points
         if (client?.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
             const signUpBonus = client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
 
@@ -148,8 +142,25 @@ export class UserService {
                 { _id: savedUser._id },
                 { $inc: { points: signUpBonus } }
             );
+        }
 
-            // Add wallet credit for signup bonus
+        // Create wallet
+        const wallet = await this.walletService.findOrCreateWallet(
+            savedUser._id.toString(),
+            client._id.toString(),
+            client.defaultCurrency || 'EUR'
+        );
+
+        // Update user with wallet ID
+        await this.userModel.updateOne(
+            { _id: savedUser._id },
+            { walletId: wallet._id }
+        );
+
+        // Add wallet credit for signup bonus if applicable
+        if (client?.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+            const signUpBonus = client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+
             await this.walletService.addCredit(
                 wallet._id.toString(),
                 signUpBonus,
@@ -164,20 +175,7 @@ export class UserService {
             );
         }
 
-        // Create wallet for the user
-        const wallet = await this.walletService.findOrCreateWallet(
-            savedUser._id.toString(), // Convert ObjectId to string
-            client._id.toString(),    // Convert ObjectId to string
-            client.defaultCurrency || 'EUR'
-        );
-
-        // Update user with wallet ID
-        await this.userModel.updateOne(
-            { _id: savedUser._id },
-            { walletId: wallet._id }
-        );
-
-        // After user is created, check if it's from metroshop
+        // Handle metroshop registration
         if (createUserDto.registrationSource === 'metroshop') {
             await this.customerService.create({
                 firstName: createUserDto.name,
