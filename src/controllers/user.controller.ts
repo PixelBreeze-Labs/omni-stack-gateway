@@ -64,7 +64,7 @@ export class UserController {
         return this.userService.delete(id);
     }
 
-    @Post()
+    @Post(':venueShortCode/users')
     @ApiOperation({ summary: 'Register new user' })
     @ApiResponse({ status: 201, description: 'User registered successfully' })
     async registerUser(
