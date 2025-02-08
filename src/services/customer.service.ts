@@ -31,8 +31,28 @@ export class CustomerService {
         const { clientIds, search, limit = 10, page = 1, status, type } = query;
         const skip = (page - 1) * limit;
 
-        // Use $in operator to match any client id in the customer document array.
-        const filters: any = { clientIds: { $in: clientIds } };
+        // Get all connected client IDs
+        const connectedClientIds = new Set<string>();
+        for (const clientId of clientIds) {
+            // Get the client's venueShortCode
+            const client = await this.clientModel.findById(clientId);
+            if (client?.venueBoostConnection?.venueShortCode) {
+                // Find all clients connected to the same venue
+                const connectedClients = await this.clientModel.find({
+                    'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
+                    'venueBoostConnection.status': 'connected'
+                });
+
+                // Add their IDs to our set
+                connectedClients.forEach(cc => connectedClientIds.add(cc._id.toString()));
+            }
+        }
+
+        // Combine original clientIds with connected client IDs
+        const allClientIds = [...new Set([...clientIds, ...connectedClientIds])];
+
+        // Build filters
+        const filters: any = { clientIds: { $in: allClientIds } };
 
         if (search) {
             filters.$or = [
@@ -52,10 +72,22 @@ export class CustomerService {
         }
 
         const total = await this.customerModel.countDocuments(filters);
-        const customers = await this.customerModel.find(filters).skip(skip).limit(limit);
+        const customers = await this.customerModel.find(filters)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
 
-        return { items: customers, total, pages: Math.ceil(total / limit), page, limit };
+        return {
+            items: customers,
+            total,
+            pages: Math.ceil(total / limit),
+            page,
+            limit,
+            // Include information about which clients' customers are included
+            includedClientIds: allClientIds
+        };
     }
+
 
     async findOne(id: string, clientId: string) {
         // Use $in operator for clientIds matching
