@@ -47,6 +47,7 @@ import { State, StateSchema } from './schemas/state.schema';
 import { Store, StoreSchema } from './schemas/store.schema';
 import { Address, AddressSchema } from './schemas/address.schema';
 import { Campaign, CampaignSchema } from './schemas/campaign.schema';
+import { Wallet, WalletSchema } from './schemas/wallet.schema';
 import { CampaignEvent, CampaignEventSchema } from './schemas/campaign-event.schema';
 
 
@@ -80,6 +81,7 @@ import { VenueBoostController } from "./controllers/venueboost.controller";
 import { OrderController } from "./controllers/order.controller";
 import { WebhookController } from "./controllers/webhook.controller";
 import { CampaignTrackingController } from './controllers/campaign-tracking.controller';
+import { WalletController } from './controllers/wallet.controller';
 
 
 
@@ -131,6 +133,7 @@ import { StoreService } from './services/store.service';
 import { VenueBoostService } from "./services/venueboost.service";
 import { OrderService } from "./services/order.service";
 import { CampaignTrackingService } from './services/campaign-tracking.service';
+import { WalletService } from './services/wallet.service';
 
 
 // Others
@@ -195,7 +198,8 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Store.name, schema: StoreSchema },
       { name: Address.name, schema: AddressSchema },
       { name: Campaign.name, schema: CampaignSchema },
-      { name: CampaignEvent.name, schema: CampaignEventSchema }
+      { name: CampaignEvent.name, schema: CampaignEventSchema },
+      { name: Wallet.name, schema: WalletSchema }
     ]),
   ],
   controllers: [
@@ -235,7 +239,8 @@ import {JwtModule} from "@nestjs/jwt";
     VenueBoostController,
     OrderController,
     WebhookController,
-    CampaignTrackingController
+    CampaignTrackingController,
+    WalletController
   ],
   providers: [
     SnapfoodService,
@@ -282,7 +287,8 @@ import {JwtModule} from "@nestjs/jwt";
     StoreService,
     VenueBoostService,
     OrderService,
-    CampaignTrackingService
+    CampaignTrackingService,
+    WalletService
   ],
 })
 export class AppModule implements NestModule {

@@ -1,6 +1,7 @@
 // src/dtos/user.dto.ts
-import { IsString, IsEmail, IsOptional, IsObject, IsArray } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsObject, IsArray, IsEnum, IsNotEmpty, IsDate } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import {RegistrationSource} from "../schemas/user.schema";
 
 export class CreateUserDto {
     @ApiProperty()
@@ -28,6 +29,21 @@ export class CreateUserDto {
     @IsOptional()
     @IsArray()
     client_ids?: string[];
+
+    @ApiProperty({ enum: RegistrationSource })
+    @IsEnum(RegistrationSource)
+    @IsNotEmpty()
+    registrationSource: RegistrationSource;
+
+    @ApiProperty({ required: false })
+    @IsDate()
+    @IsOptional()
+    birthday?: Date;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    referralCode?: string;
 }
 
 export class SalesAssociateLoginDto {
