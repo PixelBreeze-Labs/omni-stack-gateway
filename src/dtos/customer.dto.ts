@@ -75,6 +75,15 @@ export class CreateCustomerDto {
     @IsObject()
     @IsOptional()
     metadata?: Record<string, any>;
+
+
+    @ApiProperty({
+        enum: ['manual', 'metroshop', 'metrosuites', 'bookmaster', 'trackmaster', 'other'],
+        default: 'manual'
+    })
+    @IsEnum(['manual', 'metroshop', 'metrosuites', 'bookmaster', 'trackmaster', 'other'])
+    @IsOptional()
+    registrationSource?: string = 'manual';
 }
 
 // Using PartialType from @nestjs/swagger automatically makes all fields optional

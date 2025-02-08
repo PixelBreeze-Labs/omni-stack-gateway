@@ -7,7 +7,8 @@ export enum RegistrationSource {
     METROSHOP = 'metroshop',
     BOOKMASTER = 'bookmaster',
     TRACKMASTER = 'trackmaster',
-    OTHER = 'other'
+    OTHER = 'other',
+    MANUAL = 'manual'
 }
 
 
