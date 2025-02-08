@@ -10,13 +10,22 @@ export class CustomerService {
     constructor(@InjectModel(Customer.name) private customerModel: Model<Customer>) {}
 
     async create(customerData: CreateCustomerDto & { clientId: string }) {
-        // Set clientIds as an array with the provided clientId
+        // Extract address from customerData if it exists
+        const { address, metadata = {}, ...restCustomerData } = customerData;
+
+        // Merge address into metadata if address exists
+        const updatedMetadata = address
+            ? { ...metadata, address }
+            : metadata;
+
         return this.customerModel.create({
-            ...customerData,
+            ...restCustomerData,
             clientIds: [customerData.clientId],
+            metadata: updatedMetadata,
             isActive: true
         });
     }
+
 
     async findAll(query: ListCustomerDto & { clientIds: string[] }) {
         const { clientIds, search, limit = 10, page = 1, status, type } = query;

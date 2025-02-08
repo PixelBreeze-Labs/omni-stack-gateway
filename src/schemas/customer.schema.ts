@@ -56,10 +56,18 @@ export class Customer extends Document {
      */
     @Prop({ type: Object, default: {} })
     external_ids: Record<string, any>;
+
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Address' })
+    addressId?: string;
+
+    @Prop({ type: MongooseSchema.Types.Mixed })
+    metadata?: Record<string, any>;
 }
 
 export type CustomerDocument = Customer & Document;
 export const CustomerSchema = SchemaFactory.createForClass(Customer);
 
 CustomerSchema.index({ email: 1, clientIds: 1, isActive: 1 });
+CustomerSchema.index({ addressId: 1 });
+
 

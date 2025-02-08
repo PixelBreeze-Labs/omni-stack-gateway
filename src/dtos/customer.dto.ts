@@ -8,10 +8,13 @@ import {
     IsObject,
     IsNumber,
     Min,
+    ValidateNested
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { CustomerStatus, CustomerType, FilterStatus, FilterType } from '../types/customer.types';
+import { CreateAddressDto } from './address.dto';
+
 
 export class CreateCustomerDto {
     @ApiProperty({ required: false, description: "User ID reference" })
@@ -61,6 +64,17 @@ export class CreateCustomerDto {
     @ApiProperty({ required: false, readOnly: true })
     @IsOptional()
     clientId?: string;
+
+    @ApiProperty({ type: CreateAddressDto })
+    @ValidateNested()
+    @Type(() => CreateAddressDto)
+    @IsOptional()
+    address?: CreateAddressDto;
+
+    @ApiProperty({ required: false })
+    @IsObject()
+    @IsOptional()
+    metadata?: Record<string, any>;
 }
 
 // Using PartialType from @nestjs/swagger automatically makes all fields optional

@@ -8,6 +8,7 @@ import { Store } from "../schemas/store.schema";
 import { Client } from "../schemas/client.schema";
 import * as crypto from 'crypto';
 import {WalletService} from "./wallet.service";
+import {CustomerService} from "./customer.service";
 
 @Injectable()
 export class UserService {
@@ -15,7 +16,8 @@ export class UserService {
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
-        private walletService: WalletService
+        private walletService: WalletService,
+        private customerService: CustomerService
 ) {}
 
     private generateReferralCode(): string {
@@ -156,6 +158,30 @@ export class UserService {
             { _id: savedUser._id },
             { walletId: wallet._id }
         );
+
+        // After user is created, check if it's from metroshop
+        if (createUserDto.registrationSource === 'metroshop') {
+            await this.customerService.create({
+                firstName: createUserDto.name,
+                lastName: createUserDto.surname,
+                email: createUserDto.email,
+                phone: createUserDto.phone,
+                type: 'REGULAR',
+                clientId: client._id.toString(),
+                userId: savedUser._id.toString(),
+                external_ids: {
+                    venueBoostId: createUserDto.external_id
+                },
+                address: {
+                    addressLine1: createUserDto.address.addressLine1,
+                    postcode: createUserDto.address.postcode,
+                    cityId: createUserDto.address.cityId,
+                    stateId: createUserDto.address.stateId,
+                    countryId: createUserDto.address.countryId
+                },
+                status: 'ACTIVE'
+            });
+        }
 
         return this.userModel.findById(savedUser._id)
             .populate('walletId')
