@@ -5,13 +5,20 @@ import { Model } from 'mongoose';
 import { Customer } from '../schemas/customer.schema';
 import { Client } from '../schemas/client.schema';
 import { CreateCustomerDto, ListCustomerDto, UpdateCustomerDto } from '../dtos/customer.dto';
+import { UserService } from "./user.service";
+import * as crypto from 'crypto';
 
 @Injectable()
 export class CustomerService {
     constructor(
         @InjectModel(Customer.name) private customerModel: Model<Customer>,
-        @InjectModel(Client.name) private clientModel: Model<Client>
+        @InjectModel(Client.name) private clientModel: Model<Client>,
+        private userService: UserService
     ) {}
+
+    private generateRandomPassword(): string {
+        return crypto.randomBytes(12).toString('hex');
+    }
 
     async create(customerData: CreateCustomerDto & { clientId: string }) {
         // Extract address from customerData if it exists
@@ -22,14 +29,55 @@ export class CustomerService {
             ? { ...metadata, address }
             : metadata;
 
-        return this.customerModel.create({
+        // Create the customer
+        const customer = await this.customerModel.create({
             ...restCustomerData,
             clientIds: [customerData.clientId],
             metadata: updatedMetadata,
             isActive: true
         });
-    }
 
+        // If registration method is manual, create a user
+        if (customerData.registrationSource === 'manual') {
+            try {
+                // Generate random password
+                const randomPassword = this.generateRandomPassword();
+
+                // Create user with the customer's information
+                const user = await this.userService.create({
+                    name: customerData.firstName,
+                    surname: customerData.lastName,
+                    email: customerData.email,
+                    password: randomPassword,
+                    registrationSource: 'MANUAL',
+                    external_ids: customerData.external_ids || {},
+                    client_ids: [customerData.clientId],
+                    points: 0,
+                    metadata: {
+                        customerId: customer._id.toString()
+                    }
+                });
+
+                // Update customer with user ID
+                await this.customerModel.findByIdAndUpdate(
+                    customer._id,
+                    {
+                        userId: user._id,
+                        $set: { 'metadata.userCreated': true }
+                    },
+                    { new: true }
+                );
+
+                return await this.customerModel.findById(customer._id);
+            } catch (error) {
+                // If user creation fails, still return the customer but log the error
+                console.error('Failed to create user for customer:', error);
+                return customer;
+            }
+        }
+
+        return customer;
+    }
 
     async findAll(query: ListCustomerDto & { clientIds: string[] }) {
         const { clientIds, search, limit = 10, page = 1, status, type } = query;
@@ -76,18 +124,31 @@ export class CustomerService {
         }
 
         const total = await this.customerModel.countDocuments(filters);
+
+        // Populate user data to get registration source
         const customers = await this.customerModel.find(filters)
+            .populate('userId', 'registrationSource')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
 
+        // Transform customers to include source
+        const transformedCustomers = customers.map(customer => {
+            const customerObj = customer.toObject();
+            return {
+                ...customerObj,
+                source: customerObj.userId ? customerObj.userId.registrationSource : 'manual',
+                // Remove userId details if you don't want to expose them
+                userId: customerObj.userId ? customerObj.userId._id : null
+            };
+        });
+
         return {
-            items: customers,
+            items: transformedCustomers,
             total,
             pages: Math.ceil(total / limit),
             page,
             limit,
-            // Include information about which clients' customers are included
             includedClientIds: allClientIds
         };
     }
