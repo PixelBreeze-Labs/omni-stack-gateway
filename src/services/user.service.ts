@@ -139,10 +139,28 @@ export class UserService {
         // Save and handle signup bonus if applicable
         const savedUser = await user.save();
 
+        // Handle signup bonus for both points and wallet
         if (client?.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+            const signUpBonus = client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+
+            // Update points
             await this.userModel.updateOne(
                 { _id: savedUser._id },
-                { $inc: { points: client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus } }
+                { $inc: { points: signUpBonus } }
+            );
+
+            // Add wallet credit for signup bonus
+            await this.walletService.addCredit(
+                wallet._id.toString(),
+                signUpBonus,
+                {
+                    description: 'Sign up bonus points awarded',
+                    source: 'reward',
+                    metadata: {
+                        reason: 'signup_bonus',
+                        points: signUpBonus
+                    }
+                }
             );
         }
 
