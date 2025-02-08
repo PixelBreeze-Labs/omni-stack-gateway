@@ -14,21 +14,18 @@ export class CreateAddressDto {
 
     @ApiProperty({ description: 'Postal code' })
     @IsString()
-    @IsNotEmpty()
+    @IsOptional()
     postcode: string;
 
-    @ApiProperty({ description: 'City ID' })
-    @IsMongoId()
-    @IsNotEmpty()
-    cityId: string;
+    @ApiProperty({ description: 'City' })
+    @IsOptional()
+    city: string;
 
-    @ApiProperty({ description: 'State ID' })
-    @IsMongoId()
-    @IsNotEmpty()
-    stateId: string;
+    @ApiProperty({ description: 'State' })
+    @IsOptional()
+    state: string;
 
-    @ApiProperty({ description: 'Country ID' })
-    @IsMongoId()
-    @IsNotEmpty()
-    countryId: string;
+    @ApiProperty({ description: 'Country' })
+    @IsOptional()
+    country: string;
 }
