@@ -1,15 +1,31 @@
 // src/controllers/user.controller.ts
-import {Controller, Post, Get, Body, UseGuards, Req, Delete, Param} from '@nestjs/common';
+import {
+    Controller,
+    Post,
+    Get,
+    Body,
+    UseGuards,
+    Req,
+    Delete,
+    Param,
+    Headers,
+    UnauthorizedException
+} from '@nestjs/common';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { UserService } from '../services/user.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateUserDto } from '../dtos/user.dto';
 import { Client } from '../schemas/client.schema';
+import {InjectModel} from "@nestjs/mongoose";
+import {Model} from "mongoose";
 
 @ApiTags('Users')
 @Controller('users')
 export class UserController {
-    constructor(private userService: UserService) {}
+    constructor(
+        private userService: UserService,
+        @InjectModel(Client.name) private clientModel: Model<Client>,
+    ) {}
 
     @Post()
     @ApiBearerAuth()
@@ -46,5 +62,33 @@ export class UserController {
         @Req() req: Request & { client: Client }
     ) {
         return this.userService.delete(id);
+    }
+
+    @Post()
+    @ApiOperation({ summary: 'Register new user' })
+    @ApiResponse({ status: 201, description: 'User registered successfully' })
+    async registerUser(
+        @Param('venueShortCode') venueShortCode: string,
+        @Headers('webhook-api-key') webhookApiKey: string,
+        @Headers('x-api-key') apiKey: string,
+        @Body() createUserDto: CreateUserDto,
+    ) {
+
+        // Find client and validate webhook key
+        const client = await this.clientModel.findOne({
+            'venueBoostConnection.venueShortCode': venueShortCode,
+            'venueBoostConnection.webhookApiKey': webhookApiKey,
+            'venueBoostConnection.status': 'connected'
+        });
+
+        if (!client) {
+            throw new UnauthorizedException('Invalid venue or webhook key');
+        }
+
+        // Pass along client_ids from the authenticated client.
+        return this.userService.registerUser({
+            ...createUserDto,
+            client_ids: [client._id.toString()],
+        });
     }
 }

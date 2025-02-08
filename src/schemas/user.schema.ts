@@ -2,6 +2,15 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
+export enum RegistrationSource {
+    METROSUITES = 'metrosuites',
+    METROSHOP = 'metroshop',
+    BOOKMASTER = 'bookmaster',
+    TRACKMASTER = 'trackmaster',
+    OTHER = 'other'
+}
+
+
 @Schema({ timestamps: true })
 export class User extends Document {
     @Prop({ required: true })
@@ -15,6 +24,13 @@ export class User extends Document {
 
     @Prop({ required: true })
     password: string;
+
+    @Prop({
+        type: String,
+        enum: RegistrationSource,
+        required: true
+    })
+    registrationSource: RegistrationSource;
 
     /**
      * external_ids: A JSON object to store various external IDs.
@@ -48,6 +64,42 @@ export class User extends Document {
 
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Store' })
     primaryStoreId?: string;
+
+
+    @Prop({ type: Number, default: 0 })
+    points: number;
+
+    @Prop({ type: Number, default: 0 })
+    totalSpend: number;
+
+    @Prop({ type: Date })
+    birthday?: Date;
+
+    // Current tier per client
+    @Prop({ type: Map, of: String, default: {} })
+    clientTiers: Map<string, string>; // clientId -> tierName
+
+    // Referral System
+    @Prop({ type: String, sparse: true })
+    referralCode?: string;
+
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
+    referredBy?: string;
+
+    @Prop({ type: Number, default: 5 })
+    referralsRemaining: number;
+
+    @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }] })
+    referrals: string[];
+
+    // Wallet
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Wallet' })
+    walletId?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// Add indexes
+UserSchema.index({ email: 1 });
+UserSchema.index({ referralCode: 1 });
+UserSchema.index({ client_ids: 1 });
