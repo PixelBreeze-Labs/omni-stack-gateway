@@ -3,11 +3,15 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Customer } from '../schemas/customer.schema';
+import { Client } from '../schemas/client.schema';
 import { CreateCustomerDto, ListCustomerDto, UpdateCustomerDto } from '../dtos/customer.dto';
 
 @Injectable()
 export class CustomerService {
-    constructor(@InjectModel(Customer.name) private customerModel: Model<Customer>) {}
+    constructor(
+        @InjectModel(Customer.name) private customerModel: Model<Customer>,
+        @InjectModel(Client.name) private clientModel: Model<Client>
+    ) {}
 
     async create(customerData: CreateCustomerDto & { clientId: string }) {
         // Extract address from customerData if it exists
