@@ -46,6 +46,8 @@ import { Country, CountrySchema } from './schemas/country.schema';
 import { State, StateSchema } from './schemas/state.schema';
 import { Store, StoreSchema } from './schemas/store.schema';
 import { Address, AddressSchema } from './schemas/address.schema';
+import { Campaign, CampaignSchema } from './schemas/campaign.schema';
+import { CampaignEvent, CampaignEventSchema } from './schemas/campaign-event.schema';
 
 
 // Controller imports
@@ -77,6 +79,8 @@ import { StoreController } from "./controllers/store.controller";
 import { VenueBoostController } from "./controllers/venueboost.controller";
 import { OrderController } from "./controllers/order.controller";
 import { WebhookController } from "./controllers/webhook.controller";
+import { CampaignTrackingController } from './controllers/campaign-tracking.controller';
+
 
 
 // Service imports
@@ -126,6 +130,8 @@ import { LocationSyncService } from './services/location-sync.service';
 import { StoreService } from './services/store.service';
 import { VenueBoostService } from "./services/venueboost.service";
 import { OrderService } from "./services/order.service";
+import { CampaignTrackingService } from './services/campaign-tracking.service';
+
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -187,7 +193,9 @@ import {JwtModule} from "@nestjs/jwt";
       { name: State.name, schema: StateSchema },
       { name: City.name, schema: CitySchema },
       { name: Store.name, schema: StoreSchema },
-      { name: Address.name, schema: AddressSchema }
+      { name: Address.name, schema: AddressSchema },
+      { name: Campaign.name, schema: CampaignSchema },
+      { name: CampaignEvent.name, schema: CampaignEventSchema }
     ]),
   ],
   controllers: [
@@ -226,7 +234,8 @@ import {JwtModule} from "@nestjs/jwt";
     StoreController,
     VenueBoostController,
     OrderController,
-    WebhookController
+    WebhookController,
+    CampaignTrackingController
   ],
   providers: [
     SnapfoodService,
@@ -272,7 +281,8 @@ import {JwtModule} from "@nestjs/jwt";
     LocationSyncService,
     StoreService,
     VenueBoostService,
-    OrderService
+    OrderService,
+    CampaignTrackingService
   ],
 })
 export class AppModule implements NestModule {
