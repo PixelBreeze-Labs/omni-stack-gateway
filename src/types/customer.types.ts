@@ -6,6 +6,19 @@ export type FilterStatus = 'ACTIVE' | 'INACTIVE' | 'ALL';
 export type FilterType = 'REGULAR' | 'VIP' | 'ALL';
 export type RegistrationSource = 'manual' | 'metroshop' | 'metrosuites' | 'bookmaster' | 'trackmaster' | 'other';
 
+export interface CustomerMetrics {
+    totalCustomers: number;
+    activeCustomers: number;
+    averageOrderValue: number;
+    customerGrowth: number;
+    trends: {
+        customers: { value: number; percentage: number };
+        active: { value: number; percentage: number };
+        orderValue: { value: number; percentage: number };
+        growth: { value: number; percentage: number };
+    };
+}
+
 export interface CustomerResponse {
     _id: string;
     firstName: string;
@@ -20,7 +33,6 @@ export interface CustomerResponse {
     external_ids: Record<string, any>;
     addressId?: string;
     metadata?: Record<string, any>;
-    // User-related fields
     source: RegistrationSource;
     userId?: string;
     points: number;
@@ -40,4 +52,5 @@ export interface CustomerListResponse {
     page: number;
     limit: number;
     includedClientIds?: string[];
+    metrics: CustomerMetrics;
 }

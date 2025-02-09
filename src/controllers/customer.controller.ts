@@ -74,7 +74,8 @@ export class CustomerController {
             total: filteredItems.length,
             pages: Math.ceil(filteredItems.length / queryDto.limit),
             page: queryDto.page,
-            limit: queryDto.limit
+            limit: queryDto.limit,
+            metrics: customers.metrics  // Include metrics from the original response
         };
     }
 

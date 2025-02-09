@@ -7,7 +7,7 @@ import { Client } from '../schemas/client.schema';
 import { CreateCustomerDto, ListCustomerDto, UpdateCustomerDto } from '../dtos/customer.dto';
 import { UserService } from "./user.service";
 import * as crypto from 'crypto';
-import {CustomerListResponse, CustomerResponse} from "../types/customer.types";
+import {CustomerListResponse, CustomerMetrics, CustomerResponse} from "../types/customer.types";
 import {RegistrationSource} from "../schemas/user.schema";
 
 @Injectable()
@@ -83,6 +83,8 @@ export class CustomerService {
         const { clientIds, search, limit = 10, page = 1, status, type } = query;
         const skip = (page - 1) * limit;
 
+        const metrics = await this.calculateMetrics(clientIds);
+
         // Get all connected client IDs
         const connectedClientIds = new Set<string>();
         for (const clientId of clientIds) {
@@ -157,8 +159,109 @@ export class CustomerService {
             pages: Math.ceil(total / limit),
             page,
             limit,
-            includedClientIds: allClientIds
+            includedClientIds: allClientIds,
+            metrics
         };
+    }
+
+
+    async calculateMetrics(clientIds: string[]): Promise<CustomerMetrics> {
+        const now = new Date();
+        const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+        // Get current month stats
+        const currentMonthCustomers = await this.customerModel.find({
+            clientIds: { $in: clientIds },
+            createdAt: { $lt: now, $gte: firstDayThisMonth }
+        });
+
+        // Get last month stats
+        const lastMonthCustomers = await this.customerModel.find({
+            clientIds: { $in: clientIds },
+            createdAt: { $lt: firstDayThisMonth, $gte: firstDayLastMonth }
+        });
+
+        // Total customers
+        const totalCustomers = await this.customerModel.countDocuments({
+            clientIds: { $in: clientIds }
+        });
+
+        // Active customers
+        const activeCustomers = await this.customerModel.countDocuments({
+            clientIds: { $in: clientIds },
+            isActive: true
+        });
+
+        // Last month active customers
+        const lastMonthActiveCustomers = await this.customerModel.countDocuments({
+            clientIds: { $in: clientIds },
+            isActive: true,
+            updatedAt: { $lt: firstDayThisMonth, $gte: firstDayLastMonth }
+        });
+
+        // Calculate total spend and average order value
+        const customers = await this.customerModel.find({
+            clientIds: { $in: clientIds }
+        }).populate('userId', 'totalSpend');
+
+        const totalSpend = customers.reduce((sum, customer) => {
+            return sum + ((customer.userId as any)?.totalSpend || 0);
+        }, 0);
+
+        const lastMonthTotalSpend = lastMonthCustomers.reduce((sum, customer) => {
+            return sum + ((customer.userId as any)?.totalSpend || 0);
+        }, 0);
+
+        const avgOrderValue = totalSpend / (customers.length || 1);
+        const lastMonthAvgOrderValue = lastMonthTotalSpend / (lastMonthCustomers.length || 1);
+
+        // Calculate growth percentages
+        const customerGrowth = currentMonthCustomers.length;
+        const customerGrowthPercentage = CustomerService.calculateGrowthPercentage(
+            currentMonthCustomers.length,
+            lastMonthCustomers.length
+        );
+
+        const activeGrowthPercentage = CustomerService.calculateGrowthPercentage(
+            activeCustomers,
+            lastMonthActiveCustomers
+        );
+
+        const orderValueGrowthPercentage = CustomerService.calculateGrowthPercentage(
+            avgOrderValue,
+            lastMonthAvgOrderValue
+        );
+
+        return {
+            totalCustomers,
+            activeCustomers,
+            averageOrderValue: Math.round(avgOrderValue * 100) / 100,
+            customerGrowth,
+            trends: {
+                customers: {
+                    value: currentMonthCustomers.length,
+                    percentage: Number(customerGrowthPercentage)
+                },
+                active: {
+                    value: activeCustomers,
+                    percentage: Number(activeGrowthPercentage)
+                },
+                orderValue: {
+                    value: Math.round(avgOrderValue * 100) / 100,
+                    percentage: Number(orderValueGrowthPercentage)
+                },
+                growth: {
+                    value: customerGrowth,
+                    percentage: Number(customerGrowthPercentage)
+                }
+            }
+        };
+    }
+
+    private static calculateGrowthPercentage(current: number, previous: number): number {
+        if (previous === 0) return current > 0 ? 100 : 0;
+        return ((current - previous) / previous) * 100;
     }
 
     async findOne(id: string, clientId: string) {
