@@ -10,11 +10,26 @@ import { LoyaltyProgram } from '../schemas/loyalty-program.schema';
 export class LoyaltyProgramService {
     constructor(@InjectModel(Client.name) private clientModel: Model<Client>) {}
 
+    async getLoyaltyProgram(clientId: string): Promise<LoyaltyProgram> {
+        const client = await this.clientModel.findById(clientId)
+            .select('+apiKey')
+            .exec();
+
+        if (!client) {
+            throw new NotFoundException('Client not found');
+        }
+
+        return client.loyaltyProgram;
+    }
+
     async updateLoyaltyProgram(
         clientId: string,
         updateDto: UpdateLoyaltyProgramDto,
     ): Promise<Client> {
-        const client = await this.clientModel.findById(clientId).exec();
+        const client = await this.clientModel.findById(clientId)
+            .select('+apiKey')
+            .exec();
+
         if (!client) {
             throw new NotFoundException('Client not found');
         }
@@ -96,10 +111,14 @@ export class LoyaltyProgramService {
     }
 
     async disableLoyaltyProgram(clientId: string): Promise<Client> {
-        const client = await this.clientModel.findById(clientId).exec();
+        const client = await this.clientModel.findById(clientId)
+            .select('+apiKey')
+            .exec();
+
         if (!client) {
             throw new NotFoundException('Client not found');
         }
+
         client.loyaltyProgram = {} as any;
         return client.save();
     }
