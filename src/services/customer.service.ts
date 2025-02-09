@@ -134,21 +134,32 @@ export class CustomerService {
             })
 
         const transformedCustomers: CustomerResponse[] = customers.map(customer => {
-            const user = customer.userId as any;
+            // Get the clean _doc data
+            const cleanCustomer = customer._doc || customer;
+            const user = cleanCustomer.userId as any;
 
             return {
-                ...customer,
-                _id: customer._id.toString(),
+                _id: cleanCustomer._id.toString(),
+                firstName: cleanCustomer.firstName,
+                lastName: cleanCustomer.lastName,
+                email: cleanCustomer.email,
+                phone: cleanCustomer.phone || '',
+                status: cleanCustomer.status,
+                type: cleanCustomer.type,
+                isActive: cleanCustomer.isActive,
                 source: user?.registrationSource?.toLowerCase() || 'manual',
                 userId: user?._id?.toString() || null,
                 points: user?.points || 0,
-                totalSpend: user?.totalSpend || 0,
-                membershipTier: user?.clientTiers?.get(customer.clientIds[0]) || 'NONE',
+                totalSpent: user?.totalSpend || 0,
+                membershipTier: user?.clientTiers?.get(cleanCustomer.clientIds[0]) || 'NONE',
                 walletBalance: user?.walletId?.balance || 0,
-                registrationDate: user?.createdAt || customer.createdAt,
-                lastActive: customer.updatedAt,
-                createdAt: customer.createdAt,
-                updatedAt: customer.updatedAt
+                registrationDate: user?.createdAt || cleanCustomer.createdAt,
+                lastActive: cleanCustomer.updatedAt,
+                createdAt: cleanCustomer.createdAt,
+                updatedAt: cleanCustomer.updatedAt,
+                clientIds: cleanCustomer.clientIds,
+                external_ids: cleanCustomer.external_ids || {},
+                metadata: cleanCustomer.metadata || {}
             };
         });
 
