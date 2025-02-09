@@ -83,7 +83,7 @@ export class UserService {
         const referralCode = this.generateReferralCode();
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-        // 3. Load the primary client using the provided client id
+        // 3. Load the primary client using the provided client id.
         const primaryClient = await this.clientModel.findById(createUserDto.client_ids[0])
             .select('loyaltyProgram defaultCurrency venueBoostConnection');
         if (!primaryClient) {
@@ -91,10 +91,10 @@ export class UserService {
         }
 
         // 4. Determine which loyalty program to use.
-        // We want to use the primary client for the user,
+        // We use the primary client for the user,
         // but if the primary client doesn't have a loyalty program with membershipTiers,
         // then try to "borrow" it from a connected client.
-        let loyaltyClient = primaryClient; // default to the primary client
+        let loyaltyClient = primaryClient; // default to primary client
         if (
             !primaryClient.loyaltyProgram ||
             !Array.isArray(primaryClient.loyaltyProgram.membershipTiers) ||
@@ -106,8 +106,7 @@ export class UserService {
                     'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
                     'venueBoostConnection.status': 'connected'
                 })
-                    .select('loyaltyProgram')
-                    .lean();
+                    .select('loyaltyProgram defaultCurrency');
                 if (
                     connectedClient &&
                     connectedClient.loyaltyProgram &&
@@ -120,8 +119,8 @@ export class UserService {
         }
 
         // 5. Determine the membership tier using the loyalty program from loyaltyClient.
-        // Even though we borrow the loyalty, the user will remain with the primary client.
-        // So we store the tier using the primary client's ID as the key.
+        // Even though we borrow the loyalty data, the user remains with the primary client.
+        // We store the tier using the primary client's ID as the key.
         let initialClientTiers: Record<string, string> = {};
         if (
             loyaltyClient.loyaltyProgram &&
@@ -133,16 +132,15 @@ export class UserService {
                 return (!lowest || current.spendRange.min < lowest.spendRange.min) ? current : lowest;
             }, null);
             if (lowestTier) {
-                // Key is primary client's id, so the user remains with that client.
                 initialClientTiers[primaryClient._id.toString()] = lowestTier.name;
             }
         }
-        // If no tier is found, fall back to "Default Tier"
+        // If no tier was found, fall back to "Default Tier".
         if (Object.keys(initialClientTiers).length === 0) {
             initialClientTiers[primaryClient._id.toString()] = 'Default Tier';
         }
 
-        // 6. Create the new user with the initial membership tier (clientTiers stored as a plain object)
+        // 6. Create the new user with the membership tier stored as a plain object.
         const user = new this.userModel({
             ...createUserDto,
             password: hashedPassword,
@@ -190,7 +188,7 @@ export class UserService {
         // 8. Save the new user.
         const savedUser = await user.save();
 
-        // 9. Award signup bonus points if defined (using primary client's loyalty info)
+        // 9. Award signup bonus points if defined (using primary client's loyalty info).
         if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
             const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
             await this.userModel.updateOne(
