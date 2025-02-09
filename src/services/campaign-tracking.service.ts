@@ -1,4 +1,3 @@
-// src/tracking/services/campaign-tracking.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -8,7 +7,8 @@ import {
     CampaignParamsDto,
     TrackAddToCartDto,
     TrackPurchaseDto,
-    ListCampaignStatsDto
+    ListCampaignStatsDto,
+    TrackViewProductDto,
 } from '../dtos/campaign-tracking.dto';
 
 @Injectable()
@@ -18,6 +18,9 @@ export class CampaignTrackingService {
         @InjectModel(CampaignEvent.name) private campaignEventModel: Model<CampaignEvent>,
     ) {}
 
+    /**
+     * Get an existing campaign matching the provided UTM parameters or create a new one.
+     */
     private async getOrCreateCampaign(clientId: string, params: CampaignParamsDto): Promise<Campaign> {
         const campaign = await this.campaignModel.findOneAndUpdate(
             {
@@ -30,33 +33,36 @@ export class CampaignTrackingService {
             {
                 $setOnInsert: {
                     clientId,
-                    ...params
-                }
+                    ...params,
+                },
             },
             {
                 upsert: true,
-                new: true
+                new: true,
             }
         );
-
         return campaign;
     }
 
+    /**
+     * Track a product view event.
+     */
     async trackViewProduct(clientId: string, productId: string, campaignParams: CampaignParamsDto): Promise<void> {
         const campaign = await this.getOrCreateCampaign(clientId, campaignParams);
-
         await this.campaignEventModel.create({
             clientId,
             campaignId: campaign._id,
             eventType: 'view_product',
             productId,
-            eventData: {}
+            eventData: {},
         });
     }
 
+    /**
+     * Track an add-to-cart event.
+     */
     async trackAddToCart(clientId: string, data: TrackAddToCartDto): Promise<void> {
         const campaign = await this.getOrCreateCampaign(clientId, data.campaignParams);
-
         await this.campaignEventModel.create({
             clientId,
             campaignId: campaign._id,
@@ -65,14 +71,16 @@ export class CampaignTrackingService {
             eventData: {
                 quantity: data.quantity,
                 price: data.price,
-                currency: data.currency
-            }
+                currency: data.currency,
+            },
         });
     }
 
+    /**
+     * Track a purchase event.
+     */
     async trackPurchase(clientId: string, data: TrackPurchaseDto): Promise<void> {
         const campaign = await this.getOrCreateCampaign(clientId, data.campaignParams);
-
         await this.campaignEventModel.create({
             clientId,
             campaignId: campaign._id,
@@ -80,41 +88,47 @@ export class CampaignTrackingService {
             orderId: data.orderId,
             eventData: {
                 total: data.total,
-                currency: data.currency
-            }
+                currency: data.currency,
+            },
         });
     }
 
-    // Analytics methods
+    /**
+     * Get aggregated campaign statistics.
+     * The query parameter can be a campaign ID string or a filter DTO.
+     */
     async getCampaignStats(clientId: string, query: string | ListCampaignStatsDto) {
         let matchQuery: any = { clientId };
 
         if (typeof query === 'string') {
-            // If query is a string, it's a campaignId
+            // If query is a string, assume it's a campaignId.
             matchQuery.campaignId = query;
         } else {
-            // Handle filter parameters
+            // Apply additional filters based on DTO values.
             if (query.utmSource) matchQuery['campaign.utmSource'] = query.utmSource;
             if (query.utmCampaign) matchQuery['campaign.utmCampaign'] = query.utmCampaign;
             if (query.startDate) matchQuery.createdAt = { $gte: new Date(query.startDate) };
-            if (query.endDate) matchQuery.createdAt = { ...matchQuery.createdAt, $lte: new Date(query.endDate) };
+            if (query.endDate)
+                matchQuery.createdAt = { ...matchQuery.createdAt, $lte: new Date(query.endDate) };
         }
 
         const [viewCount, cartCount, purchaseCount, revenue] = await Promise.all([
             this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'view_product' }),
             this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'add_to_cart' }),
             this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'purchase' }),
-            this.campaignEventModel.aggregate([
-                {
-                    $match: { ...matchQuery, eventType: 'purchase' }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        total: { $sum: '$eventData.total' }
-                    }
-                }
-            ]).then(result => result[0]?.total || 0)
+            this.campaignEventModel
+                .aggregate([
+                    {
+                        $match: { ...matchQuery, eventType: 'purchase' },
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: '$eventData.total' },
+                        },
+                    },
+                ])
+                .then((result) => result[0]?.total || 0),
         ]);
 
         return {
@@ -122,7 +136,7 @@ export class CampaignTrackingService {
             cartCount,
             purchaseCount,
             revenue,
-            conversionRate: purchaseCount > 0 ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%'
+            conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
         };
     }
 }
