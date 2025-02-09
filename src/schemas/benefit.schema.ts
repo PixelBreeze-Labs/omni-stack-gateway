@@ -27,6 +27,9 @@ export class Benefit extends Document {
 
     @Prop({ type: [String], default: [] })
     applicableTiers: string[];
+
+    @Prop({})
+    minSpend?: number;
 }
 
 export const BenefitSchema = SchemaFactory.createForClass(Benefit);
