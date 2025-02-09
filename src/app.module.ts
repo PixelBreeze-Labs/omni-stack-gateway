@@ -82,6 +82,7 @@ import { OrderController } from "./controllers/order.controller";
 import { WebhookController } from "./controllers/webhook.controller";
 import { CampaignTrackingController } from './controllers/campaign-tracking.controller';
 import { WalletController } from './controllers/wallet.controller';
+import { BenefitController } from './controllers/benefit.controller';
 
 
 
@@ -134,6 +135,7 @@ import { VenueBoostService } from "./services/venueboost.service";
 import { OrderService } from "./services/order.service";
 import { CampaignTrackingService } from './services/campaign-tracking.service';
 import { WalletService } from './services/wallet.service';
+import { BenefitService } from './services/benefit.service';
 
 
 // Others
@@ -288,7 +290,8 @@ import {JwtModule} from "@nestjs/jwt";
     VenueBoostService,
     OrderService,
     CampaignTrackingService,
-    WalletService
+    WalletService,
+    BenefitService
   ],
 })
 export class AppModule implements NestModule {
