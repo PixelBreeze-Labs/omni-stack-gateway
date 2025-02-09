@@ -76,9 +76,8 @@ export class User extends Document {
     @Prop({ type: Date })
     birthday?: Date;
 
-    // Current tier per client
-    @Prop({ type: Map, of: String, default: {} })
-    clientTiers: Map<string, string>; // clientId -> tierName
+    @Prop({ type: Object, default: {} })
+    clientTiers: Record<string, string>;
 
     // Referral System
     @Prop({ type: String, sparse: true })

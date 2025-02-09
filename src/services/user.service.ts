@@ -66,13 +66,13 @@ export class UserService {
         return this.userModel.findByIdAndDelete(id).exec();
     }
 
-    async registerUser(createUserDto: CreateUserDto & { client_ids: string[] }) {
+    async registerUser(createUserDto: CreateUserDto & { client_ids: string[] }): Promise<User> {
         // 1. Check referral code if provided
         let referredByUser = null;
         if (createUserDto.referralCode) {
             referredByUser = await this.userModel.findOne({
                 referralCode: createUserDto.referralCode,
-                referralsRemaining: { $gt: 0 }
+                referralsRemaining: { $gt: 0 },
             });
             if (!referredByUser) {
                 throw new BadRequestException('Invalid or expired referral code');
@@ -91,7 +91,7 @@ export class UserService {
         }
 
         // 4. Determine initial tier if loyalty program exists.
-        // Use a plain object instead of a native Map.
+        // Use a plain object for membership tiers.
         let initialClientTiers: Record<string, string> = {};
         if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
             // Find the tier with the lowest spend minimum.
@@ -99,16 +99,22 @@ export class UserService {
                 return (!lowest || current.spendRange.min < lowest.spendRange.min) ? current : lowest;
             }, null);
             if (lowestTier) {
+                // Use the client's _id as the key.
                 initialClientTiers[client._id.toString()] = lowestTier.name;
             }
         }
+        // If no tier was defined, assign a default tier.
+        if (Object.keys(initialClientTiers).length === 0) {
+            initialClientTiers[client._id.toString()] = 'Default Tier';
+        }
 
         // 5. Create the new user with the initial tier.
+        // The clientTiers field is stored as a plain object.
         const user = new this.userModel({
             ...createUserDto,
             password: hashedPassword,
             referralCode,
-            clientTiers: initialClientTiers, // This now is a plain object
+            clientTiers: initialClientTiers, // plain object for membership tier
             points: 0,
             totalSpend: 0
         });
