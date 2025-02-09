@@ -134,8 +134,8 @@ export class CustomerService {
             })
 
         const transformedCustomers: CustomerResponse[] = customers.map(customer => {
-            // Get the clean _doc data
-            const cleanCustomer = customer._doc || customer;
+            // Convert to plain object to avoid mongoose document issues
+            const cleanCustomer = customer.toObject();
             const user = cleanCustomer.userId as any;
 
             return {
@@ -146,11 +146,12 @@ export class CustomerService {
                 phone: cleanCustomer.phone || '',
                 status: cleanCustomer.status,
                 type: cleanCustomer.type,
+                avatar: cleanCustomer.avatar,
                 isActive: cleanCustomer.isActive,
-                source: user?.registrationSource?.toLowerCase() || 'manual',
+                source: (user?.registrationSource?.toLowerCase() || 'manual') as RegistrationSource,
                 userId: user?._id?.toString() || null,
                 points: user?.points || 0,
-                totalSpent: user?.totalSpend || 0,
+                totalSpend: user?.totalSpend || 0,
                 membershipTier: user?.clientTiers?.get(cleanCustomer.clientIds[0]) || 'NONE',
                 walletBalance: user?.walletId?.balance || 0,
                 registrationDate: user?.createdAt || cleanCustomer.createdAt,
@@ -159,8 +160,9 @@ export class CustomerService {
                 updatedAt: cleanCustomer.updatedAt,
                 clientIds: cleanCustomer.clientIds,
                 external_ids: cleanCustomer.external_ids || {},
-                metadata: cleanCustomer.metadata || {}
-            };
+                metadata: cleanCustomer.metadata || {},
+                addressId: cleanCustomer.addressId?.toString()
+            }
         });
 
         return {
