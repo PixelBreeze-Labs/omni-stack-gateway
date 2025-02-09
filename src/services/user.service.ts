@@ -94,9 +94,19 @@ export class UserService {
         // Determine initial tier if loyalty program exists
         let initialClientTiers = new Map<string, string>();
         if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
-            const initialTier = client.loyaltyProgram.membershipTiers[0];
-            initialClientTiers.set(client._id.toString(), initialTier.name);
+            // Find the lowest tier (first tier)
+            const lowestTier = client.loyaltyProgram.membershipTiers
+                .reduce((lowest, current) => {
+                    return (!lowest || current.spendRange.min < lowest.spendRange.min)
+                        ? current
+                        : lowest;
+                }, null);
+
+            if (lowestTier) {
+                initialClientTiers.set(client._id.toString(), lowestTier.name);
+            }
         }
+
 
         // Create user
         const user = new this.userModel({
@@ -104,7 +114,8 @@ export class UserService {
             password: hashedPassword,
             referralCode,
             clientTiers: initialClientTiers,
-            points: 0
+            points: 0,
+            totalSpend: 0
         });
 
         // Handle referral logic...
@@ -119,10 +130,17 @@ export class UserService {
             );
 
             if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
-                const referrerTier = client.loyaltyProgram.membershipTiers
-                    .find(tier => tier.name === initialClientTiers.get(client._id.toString()));
+                // Get referrer's current tier
+                const referrerCurrentTier = initialClientTiers.get(client._id.toString());
+                if (!referrerCurrentTier) {
+                    console.error('No tier found for referrer');
+                    return user;
+                }
 
-                if (referrerTier) {
+                const referrerTier = client.loyaltyProgram.membershipTiers
+                    .find(tier => tier.name === referrerCurrentTier);
+
+                if (referrerTier?.referralPoints) {
                     await this.userModel.updateOne(
                         { _id: referredByUser._id },
                         { $inc: { points: referrerTier.referralPoints } }
@@ -130,7 +148,6 @@ export class UserService {
                 }
             }
         }
-
         // Save user first
         const savedUser = await user.save();
 
