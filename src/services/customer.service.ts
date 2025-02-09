@@ -1,5 +1,5 @@
 // src/services/customer.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {forwardRef, Inject, Injectable, NotFoundException} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Customer } from '../schemas/customer.schema';
@@ -7,12 +7,15 @@ import { Client } from '../schemas/client.schema';
 import { CreateCustomerDto, ListCustomerDto, UpdateCustomerDto } from '../dtos/customer.dto';
 import { UserService } from "./user.service";
 import * as crypto from 'crypto';
+import {CustomerListResponse, CustomerResponse} from "../types/customer.types";
+import {RegistrationSource} from "../schemas/user.schema";
 
 @Injectable()
 export class CustomerService {
     constructor(
         @InjectModel(Customer.name) private customerModel: Model<Customer>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
+        @Inject(forwardRef(() => UserService))
         private userService: UserService
     ) {}
 
@@ -40,16 +43,14 @@ export class CustomerService {
         // If registration method is manual, create a user
         if (customerData.registrationSource === 'manual') {
             try {
-                // Generate random password
                 const randomPassword = this.generateRandomPassword();
 
-                // Create user with the customer's information
                 const user = await this.userService.create({
                     name: customerData.firstName,
                     surname: customerData.lastName,
                     email: customerData.email,
                     password: randomPassword,
-                    registrationSource: 'MANUAL',
+                    registrationSource: RegistrationSource.MANUAL,
                     external_ids: customerData.external_ids || {},
                     client_ids: [customerData.clientId],
                     points: 0,
@@ -58,7 +59,6 @@ export class CustomerService {
                     }
                 });
 
-                // Update customer with user ID
                 await this.customerModel.findByIdAndUpdate(
                     customer._id,
                     {
@@ -68,9 +68,9 @@ export class CustomerService {
                     { new: true }
                 );
 
-                return await this.customerModel.findById(customer._id);
+                return await this.customerModel.findById(customer._id)
+                    .populate('userId');
             } catch (error) {
-                // If user creation fails, still return the customer but log the error
                 console.error('Failed to create user for customer:', error);
                 return customer;
             }
@@ -79,31 +79,24 @@ export class CustomerService {
         return customer;
     }
 
-    async findAll(query: ListCustomerDto & { clientIds: string[] }) {
+    async findAll(query: ListCustomerDto & { clientIds: string[] }): Promise<CustomerListResponse> {
         const { clientIds, search, limit = 10, page = 1, status, type } = query;
         const skip = (page - 1) * limit;
 
         // Get all connected client IDs
         const connectedClientIds = new Set<string>();
         for (const clientId of clientIds) {
-            // Get the client's venueShortCode
             const client = await this.clientModel.findById(clientId);
             if (client?.venueBoostConnection?.venueShortCode) {
-                // Find all clients connected to the same venue
                 const connectedClients = await this.clientModel.find({
                     'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
                     'venueBoostConnection.status': 'connected'
                 });
-
-                // Add their IDs to our set
                 connectedClients.forEach(cc => connectedClientIds.add(cc._id.toString()));
             }
         }
 
-        // Combine original clientIds with connected client IDs
         const allClientIds = [...new Set([...clientIds, ...connectedClientIds])];
-
-        // Build filters
         const filters: any = { clientIds: { $in: allClientIds } };
 
         if (search) {
@@ -125,21 +118,36 @@ export class CustomerService {
 
         const total = await this.customerModel.countDocuments(filters);
 
-        // Populate user data to get registration source
         const customers = await this.customerModel.find(filters)
-            .populate('userId', 'registrationSource')
+            .populate({
+                path: 'userId',
+                select: 'registrationSource points totalSpend clientTiers createdAt walletId',
+                populate: {
+                    path: 'walletId',
+                    select: 'balance'
+                }
+            })
             .sort({ createdAt: -1 })
+            .lean()
             .skip(skip)
             .limit(limit);
 
-        // Transform customers to include source
-        const transformedCustomers = customers.map(customer => {
-            const customerObj = customer.toObject();
+        const transformedCustomers: CustomerResponse[] = customers.map(customer => {
+            const user = customer.userId as any;
+
             return {
-                ...customerObj,
-                source: customerObj.userId ? customerObj.userId.registrationSource : 'manual',
-                // Remove userId details if you don't want to expose them
-                userId: customerObj.userId ? customerObj.userId._id : null
+                ...customer,
+                _id: customer._id.toString(),
+                source: user?.registrationSource?.toLowerCase() || 'manual',
+                userId: user?._id?.toString() || null,
+                points: user?.points || 0,
+                totalSpend: user?.totalSpend || 0,
+                membershipTier: user?.clientTiers?.get(customer.clientIds[0]) || 'NONE',
+                walletBalance: user?.walletId?.balance || 0,
+                registrationDate: user?.createdAt || customer.createdAt,
+                lastActive: customer.updatedAt,
+                createdAt: customer.createdAt,
+                updatedAt: customer.updatedAt
             };
         });
 
@@ -152,7 +160,6 @@ export class CustomerService {
             includedClientIds: allClientIds
         };
     }
-
 
     async findOne(id: string, clientId: string) {
         // Use $in operator for clientIds matching

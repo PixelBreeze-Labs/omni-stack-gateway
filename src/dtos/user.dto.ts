@@ -1,5 +1,5 @@
 // src/dtos/user.dto.ts
-import { IsString, IsEmail, IsOptional, IsObject, IsArray, IsEnum, IsNotEmpty, IsDate, ValidateNested } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsObject, IsNumber, IsArray, IsEnum, IsNotEmpty, IsDate, ValidateNested } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import {RegistrationSource} from "../schemas/user.schema";
 import { Type } from 'class-transformer';
@@ -64,6 +64,20 @@ export class CreateUserDto {
     @IsOptional()
     phone?: string;
 
+    @ApiProperty()
+    @IsNumber()
+    @IsOptional()
+    @Type(() => Number)
+    points?: number;
+
+   @ApiProperty({
+       required: false,
+       description: "Additional metadata as key-value pairs",
+       type: Object
+   })
+   @IsOptional()
+   @IsObject()
+   metadata?: Record<string, any>;
 }
 
 export class SalesAssociateLoginDto {

@@ -7,6 +7,7 @@ import { Customer } from '../schemas/customer.schema';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Client } from '../schemas/client.schema';
 import {FamilyAccountService} from "../services/family-account.service";
+import {CustomerListResponse} from "../types/customer.types";
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -24,10 +25,10 @@ export class CustomerController {
     async findAll(
         @Query() query: ListCustomerDto,
         @Req() req: Request & { client: Client }
-    ): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
-        // For findAll, the service expects an array of client IDs.
+    ): Promise<CustomerListResponse> {
         return this.customerService.findAll({ ...query, clientIds: [req.client.id] });
     }
+
 
     // customer.controller.ts
     @ApiOperation({ summary: 'Search customers by query' })
@@ -39,8 +40,7 @@ export class CustomerController {
         @Req() req: Request & { client: Client },
         @Query('query') searchQuery: string,
         @Query('excludeFamilyMembers') excludeFamilyMembers?: boolean,
-    ): Promise<{ items: Customer[]; total: number; pages: number; page: number; limit: number }> {
-        // First get all matching customers
+    ): Promise<CustomerListResponse> {
         const queryDto: ListCustomerDto = {
             search: searchQuery,
             page: 1,
@@ -52,23 +52,19 @@ export class CustomerController {
             clientIds: [req.client.id]
         });
 
-        // If we don't need to exclude family members, return as is
         if (!excludeFamilyMembers) {
             return customers;
         }
 
-        // Get available customers (not in families)
         const availableCustomers = await this.familyAccountService.searchCustomers(
             searchQuery,
             req.client.id
         );
 
-        // Create a Set of available customer IDs for efficient lookup
         const availableCustomerIds = new Set(
             availableCustomers.map(c => c._id.toString())
         );
 
-        // Filter the original results
         const filteredItems = customers.items.filter(customer =>
             availableCustomerIds.has(customer._id.toString())
         );
