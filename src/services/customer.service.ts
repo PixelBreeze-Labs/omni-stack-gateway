@@ -124,15 +124,14 @@ export class CustomerService {
             .populate({
                 path: 'userId',
                 select: 'registrationSource points totalSpend clientTiers createdAt walletId',
+                // Make the populate of walletId optional
+                options: { allowEmptyPaths: true },
                 populate: {
                     path: 'walletId',
-                    select: 'balance'
+                    select: 'balance',
+                    options: { allowEmptyPaths: true }
                 }
             })
-            .sort({ createdAt: -1 })
-            .lean()
-            .skip(skip)
-            .limit(limit);
 
         const transformedCustomers: CustomerResponse[] = customers.map(customer => {
             const user = customer.userId as any;
