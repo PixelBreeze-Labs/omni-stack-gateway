@@ -1,5 +1,5 @@
 // src/controllers/benefit.controller.ts
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Req, Delete, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BenefitService } from '../services/benefit.service';
 import { CreateBenefitDto, UpdateBenefitDto } from '../dtos/benefit.dto';
@@ -14,8 +14,11 @@ export class BenefitController {
 
     @Get()
     @ApiOperation({ summary: 'Get all benefits' })
-    async findAll(@Req() req: Request & { client: Client }) {
-        return this.benefitService.findAll(req.client.id);
+    async findAll(
+        @Req() req: Request & { client: Client },
+        @Query('tier') tier?: string
+    ) {
+        return this.benefitService.findAll(req.client.id, tier);
     }
 
     @Post()
@@ -45,5 +48,25 @@ export class BenefitController {
         @Req() req: Request & { client: Client }
     ) {
         return this.benefitService.toggleActive(id, isActive, req.client.id);
+    }
+
+    @Put(':id/tier/:tierId')
+    @ApiOperation({ summary: 'Assign benefit to tier' })
+    async assignToTier(
+        @Param('id') id: string,
+        @Param('tierId') tierId: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.benefitService.assignToTier(id, tierId, req.client.id);
+    }
+
+    @Delete(':id/tier/:tierId')
+    @ApiOperation({ summary: 'Remove benefit from tier' })
+    async removeFromTier(
+        @Param('id') id: string,
+        @Param('tierId') tierId: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.benefitService.removeFromTier(id, tierId, req.client.id);
     }
 }

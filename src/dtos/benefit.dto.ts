@@ -2,6 +2,7 @@
 import { IsString, IsEnum, IsNumber, IsOptional, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { BenefitType } from '../schemas/benefit.schema';
+import { PartialType } from "@nestjs/mapped-types";
 
 export class BenefitResponse {
     @ApiProperty()
@@ -40,7 +41,7 @@ export class BenefitUsageResponse {
     benefitId: string;
 }
 
-export class CreateBenefitDto {
+export class BenefitDto {
     @ApiProperty()
     @IsString()
     name: string;
@@ -57,31 +58,17 @@ export class CreateBenefitDto {
     @ApiProperty()
     @IsNumber()
     value: number;
-}
-
-export class UpdateBenefitDto {
-    @ApiProperty()
-    @IsString()
-    @IsOptional()
-    name?: string;
-
-    @ApiProperty()
-    @IsString()
-    @IsOptional()
-    description?: string;
-
-    @ApiProperty({ enum: ['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'] })
-    @IsEnum(['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'])
-    @IsOptional()
-    type?: BenefitType;
-
-    @ApiProperty()
-    @IsNumber()
-    @IsOptional()
-    value?: number;
 
     @ApiProperty()
     @IsBoolean()
     @IsOptional()
     isActive?: boolean;
+
+    @ApiProperty()
+    @IsOptional()
+    @IsString({ each: true })
+    applicableTiers?: string[];
 }
+
+export class CreateBenefitDto extends BenefitDto {}
+export class UpdateBenefitDto extends PartialType(BenefitDto) {}
