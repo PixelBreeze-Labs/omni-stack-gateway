@@ -68,6 +68,12 @@ export class BenefitDto {
     @IsOptional()
     @IsString({ each: true })
     applicableTiers?: string[];
+
+
+   @ApiProperty()
+   @IsOptional()
+   @IsNumber()
+   minSpend?: number;
 }
 
 export class CreateBenefitDto extends BenefitDto {}
