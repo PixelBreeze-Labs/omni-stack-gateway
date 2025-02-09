@@ -124,7 +124,6 @@ export class CustomerService {
             .populate({
                 path: 'userId',
                 select: 'registrationSource points totalSpend clientTiers createdAt walletId',
-                // Make the populate of walletId optional
                 options: { allowEmptyPaths: true },
                 populate: {
                     path: 'walletId',
@@ -132,6 +131,7 @@ export class CustomerService {
                     options: { allowEmptyPaths: true }
                 }
             })
+            .sort({ createdAt: -1 })
 
         const transformedCustomers: CustomerResponse[] = customers.map(customer => {
             // Convert to plain object to avoid mongoose document issues
