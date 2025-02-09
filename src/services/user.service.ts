@@ -67,58 +67,53 @@ export class UserService {
     }
 
     async registerUser(createUserDto: CreateUserDto & { client_ids: string[] }) {
-        // Check referral code if provided
+        // 1. Check referral code if provided
         let referredByUser = null;
         if (createUserDto.referralCode) {
             referredByUser = await this.userModel.findOne({
                 referralCode: createUserDto.referralCode,
                 referralsRemaining: { $gt: 0 }
             });
-
             if (!referredByUser) {
                 throw new BadRequestException('Invalid or expired referral code');
             }
         }
 
+        // 2. Generate referral code and hash the password
         const referralCode = this.generateReferralCode();
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-        // Find client and its loyalty program
+        // 3. Find client and its loyalty program
         const client = await this.clientModel.findById(createUserDto.client_ids[0])
             .select('loyaltyProgram defaultCurrency');
-
         if (!client) {
             throw new BadRequestException('Client not found');
         }
 
-        // Determine initial tier if loyalty program exists
-        let initialClientTiers = new Map<string, string>();
+        // 4. Determine initial tier if loyalty program exists.
+        // Use a plain object instead of a native Map.
+        let initialClientTiers: Record<string, string> = {};
         if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
-            // Find the lowest tier (first tier)
-            const lowestTier = client.loyaltyProgram.membershipTiers
-                .reduce((lowest, current) => {
-                    return (!lowest || current.spendRange.min < lowest.spendRange.min)
-                        ? current
-                        : lowest;
-                }, null);
-
+            // Find the tier with the lowest spend minimum.
+            const lowestTier = client.loyaltyProgram.membershipTiers.reduce((lowest, current) => {
+                return (!lowest || current.spendRange.min < lowest.spendRange.min) ? current : lowest;
+            }, null);
             if (lowestTier) {
-                initialClientTiers.set(client._id.toString(), lowestTier.name);
+                initialClientTiers[client._id.toString()] = lowestTier.name;
             }
         }
 
-
-        // Create user
+        // 5. Create the new user with the initial tier.
         const user = new this.userModel({
             ...createUserDto,
             password: hashedPassword,
             referralCode,
-            clientTiers: initialClientTiers,
+            clientTiers: initialClientTiers, // This now is a plain object
             points: 0,
             totalSpend: 0
         });
 
-        // Handle referral logic...
+        // 6. Handle referral logic if a referral code was provided.
         if (referredByUser) {
             user.referredBy = referredByUser._id;
             await this.userModel.updateOne(
@@ -130,55 +125,53 @@ export class UserService {
             );
 
             if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
-                // Get referrer's current tier
-                const referrerCurrentTier = initialClientTiers.get(client._id.toString());
-                if (!referrerCurrentTier) {
+                // Look up the referrer's tier from their stored clientTiers.
+                const referrerTierName = referredByUser.clientTiers
+                    ? referredByUser.clientTiers[client._id.toString()]
+                    : null;
+                if (!referrerTierName) {
                     console.error('No tier found for referrer');
-                    return user;
-                }
-
-                const referrerTier = client.loyaltyProgram.membershipTiers
-                    .find(tier => tier.name === referrerCurrentTier);
-
-                if (referrerTier?.referralPoints) {
-                    await this.userModel.updateOne(
-                        { _id: referredByUser._id },
-                        { $inc: { points: referrerTier.referralPoints } }
-                    );
+                } else {
+                    const referrerTier = client.loyaltyProgram.membershipTiers
+                        .find(tier => tier.name === referrerTierName);
+                    if (referrerTier?.referralPoints) {
+                        await this.userModel.updateOne(
+                            { _id: referredByUser._id },
+                            { $inc: { points: referrerTier.referralPoints } }
+                        );
+                    }
                 }
             }
         }
-        // Save user first
+
+        // 7. Save the new user.
         const savedUser = await user.save();
 
-        // Handle signup bonus for points
+        // 8. Award signup bonus points if defined.
         if (client?.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
             const signUpBonus = client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
-
-            // Update points
             await this.userModel.updateOne(
                 { _id: savedUser._id },
                 { $inc: { points: signUpBonus } }
             );
         }
 
-        // Create wallet
+        // 9. Create the wallet for the user.
         const wallet = await this.walletService.findOrCreateWallet(
             savedUser._id.toString(),
             client._id.toString(),
             client.defaultCurrency || 'EUR'
         );
 
-        // Update user with wallet ID
+        // Update the user with the wallet ID.
         await this.userModel.updateOne(
             { _id: savedUser._id },
             { walletId: wallet._id }
         );
 
-        // Add wallet credit for signup bonus if applicable
+        // 10. Add wallet credit for the signup bonus if applicable.
         if (client?.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
             const signUpBonus = client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
-
             await this.walletService.addCredit(
                 wallet._id.toString(),
                 signUpBonus,
@@ -193,7 +186,7 @@ export class UserService {
             );
         }
 
-        // Handle metroshop registration
+        // 11. Handle additional registration logic for metroshop.
         if (createUserDto.registrationSource === 'metroshop') {
             await this.customerService.create({
                 firstName: createUserDto.name,
@@ -217,8 +210,10 @@ export class UserService {
             });
         }
 
+        // Return the saved user with the wallet populated.
         return this.userModel.findById(savedUser._id)
             .populate('walletId')
             .exec();
     }
+
 }

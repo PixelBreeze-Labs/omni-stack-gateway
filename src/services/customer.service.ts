@@ -159,7 +159,8 @@ export class CustomerService {
                 userId: user?._id?.toString() || null,
                 points: user?.points || 0,
                 totalSpend: user?.totalSpend || 0,
-                membershipTier: user?.clientTiers?.get(cleanCustomer.clientIds[0]) || 'NONE',
+                // Updated: use property access to fetch membership tier
+                membershipTier: (user?.clientTiers && user.clientTiers[cleanCustomer.clientIds[0]]) || 'NONE',
                 walletBalance: user?.walletId?.balance || 0,
                 registrationDate: user?.createdAt || cleanCustomer.createdAt,
                 lastActive: cleanCustomer.updatedAt,
@@ -171,6 +172,7 @@ export class CustomerService {
                 addressId: cleanCustomer.addressId?.toString()
             }
         });
+
 
         return {
             items: transformedCustomers,
