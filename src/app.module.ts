@@ -242,7 +242,8 @@ import {JwtModule} from "@nestjs/jwt";
     OrderController,
     WebhookController,
     CampaignTrackingController,
-    WalletController
+    WalletController,
+    BenefitController
   ],
   providers: [
     SnapfoodService,
