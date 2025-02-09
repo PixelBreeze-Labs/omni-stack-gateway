@@ -83,43 +83,76 @@ export class UserService {
         const referralCode = this.generateReferralCode();
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-        // 3. Find client and its loyalty program
-        const client = await this.clientModel.findById(createUserDto.client_ids[0])
-            .select('loyaltyProgram.membershipTiers loyaltyProgram.defaultCurrency');
-        if (!client) {
+        // 3. Load the primary client using the provided client id
+        const primaryClient = await this.clientModel.findById(createUserDto.client_ids[0])
+            .select('loyaltyProgram defaultCurrency venueBoostConnection');
+        if (!primaryClient) {
             throw new BadRequestException('Client not found');
         }
 
-        // 4. Determine initial tier if loyalty program exists.
-        // Use a plain object for membership tiers.
+        // 4. Determine which loyalty program to use.
+        // We want to use the primary client for the user,
+        // but if the primary client doesn't have a loyalty program with membershipTiers,
+        // then try to "borrow" it from a connected client.
+        let loyaltyClient = primaryClient; // default to the primary client
+        if (
+            !primaryClient.loyaltyProgram ||
+            !Array.isArray(primaryClient.loyaltyProgram.membershipTiers) ||
+            primaryClient.loyaltyProgram.membershipTiers.length === 0
+        ) {
+            if (primaryClient.venueBoostConnection && primaryClient.venueBoostConnection.venueShortCode) {
+                const connectedClient = await this.clientModel.findOne({
+                    _id: { $ne: primaryClient._id },
+                    'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
+                    'venueBoostConnection.status': 'connected'
+                })
+                    .select('loyaltyProgram')
+                    .lean();
+                if (
+                    connectedClient &&
+                    connectedClient.loyaltyProgram &&
+                    Array.isArray(connectedClient.loyaltyProgram.membershipTiers) &&
+                    connectedClient.loyaltyProgram.membershipTiers.length > 0
+                ) {
+                    loyaltyClient = connectedClient;
+                }
+            }
+        }
+
+        // 5. Determine the membership tier using the loyalty program from loyaltyClient.
+        // Even though we borrow the loyalty, the user will remain with the primary client.
+        // So we store the tier using the primary client's ID as the key.
         let initialClientTiers: Record<string, string> = {};
-        if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
-            // Find the tier with the lowest spend minimum.
-            const lowestTier = client.loyaltyProgram.membershipTiers.reduce((lowest, current) => {
+        if (
+            loyaltyClient.loyaltyProgram &&
+            Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
+            loyaltyClient.loyaltyProgram.membershipTiers.length > 0
+        ) {
+            // Find the tier with the lowest "min" spend.
+            const lowestTier = loyaltyClient.loyaltyProgram.membershipTiers.reduce((lowest, current) => {
                 return (!lowest || current.spendRange.min < lowest.spendRange.min) ? current : lowest;
             }, null);
             if (lowestTier) {
-                // Use the client's _id as the key.
-                initialClientTiers[client._id.toString()] = lowestTier.name;
+                // Key is primary client's id, so the user remains with that client.
+                initialClientTiers[primaryClient._id.toString()] = lowestTier.name;
             }
         }
-        // If no tier was defined, assign a default tier.
+        // If no tier is found, fall back to "Default Tier"
         if (Object.keys(initialClientTiers).length === 0) {
-            initialClientTiers[client._id.toString()] = 'Default Tier';
+            initialClientTiers[primaryClient._id.toString()] = 'Default Tier';
         }
 
-        // 5. Create the new user with the initial tier.
-        // The clientTiers field is stored as a plain object.
+        // 6. Create the new user with the initial membership tier (clientTiers stored as a plain object)
         const user = new this.userModel({
             ...createUserDto,
             password: hashedPassword,
             referralCode,
-            clientTiers: initialClientTiers, // plain object for membership tier
+            clientTiers: initialClientTiers,
             points: 0,
             totalSpend: 0
         });
 
-        // 6. Handle referral logic if a referral code was provided.
+        // 7. Handle referral logic if a referral code was provided.
         if (referredByUser) {
             user.referredBy = referredByUser._id;
             await this.userModel.updateOne(
@@ -130,15 +163,19 @@ export class UserService {
                 }
             );
 
-            if (client?.loyaltyProgram?.membershipTiers?.length > 0) {
-                // Look up the referrer's tier from their stored clientTiers.
+            if (
+                loyaltyClient.loyaltyProgram &&
+                Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
+                loyaltyClient.loyaltyProgram.membershipTiers.length > 0
+            ) {
+                // Look up the referrer's tier from their stored clientTiers, using primary client's id.
                 const referrerTierName = referredByUser.clientTiers
-                    ? referredByUser.clientTiers[client._id.toString()]
+                    ? referredByUser.clientTiers[primaryClient._id.toString()]
                     : null;
                 if (!referrerTierName) {
                     console.error('No tier found for referrer');
                 } else {
-                    const referrerTier = client.loyaltyProgram.membershipTiers
+                    const referrerTier = loyaltyClient.loyaltyProgram.membershipTiers
                         .find(tier => tier.name === referrerTierName);
                     if (referrerTier?.referralPoints) {
                         await this.userModel.updateOne(
@@ -150,23 +187,23 @@ export class UserService {
             }
         }
 
-        // 7. Save the new user.
+        // 8. Save the new user.
         const savedUser = await user.save();
 
-        // 8. Award signup bonus points if defined.
-        if (client?.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
-            const signUpBonus = client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+        // 9. Award signup bonus points if defined (using primary client's loyalty info)
+        if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+            const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
             await this.userModel.updateOne(
                 { _id: savedUser._id },
                 { $inc: { points: signUpBonus } }
             );
         }
 
-        // 9. Create the wallet for the user.
+        // 10. Create the wallet for the user using the primary client's default currency.
         const wallet = await this.walletService.findOrCreateWallet(
             savedUser._id.toString(),
-            client._id.toString(),
-            client.defaultCurrency || 'EUR'
+            primaryClient._id.toString(),
+            primaryClient.defaultCurrency || 'EUR'
         );
 
         // Update the user with the wallet ID.
@@ -175,9 +212,9 @@ export class UserService {
             { walletId: wallet._id }
         );
 
-        // 10. Add wallet credit for the signup bonus if applicable.
-        if (client?.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
-            const signUpBonus = client.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+        // 11. Add wallet credit for the signup bonus if applicable.
+        if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+            const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
             await this.walletService.addCredit(
                 wallet._id.toString(),
                 signUpBonus,
@@ -192,7 +229,7 @@ export class UserService {
             );
         }
 
-        // 11. Handle additional registration logic for metroshop.
+        // 12. Handle additional registration logic for metroshop.
         if (createUserDto.registrationSource === 'metroshop') {
             await this.customerService.create({
                 firstName: createUserDto.name,
@@ -200,7 +237,7 @@ export class UserService {
                 email: createUserDto.email,
                 phone: createUserDto.phone,
                 type: 'REGULAR',
-                clientId: client._id.toString(),
+                clientId: primaryClient._id.toString(), // remain with primary client
                 userId: savedUser._id.toString(),
                 external_ids: {
                     venueBoostId: createUserDto.external_id
@@ -216,7 +253,7 @@ export class UserService {
             });
         }
 
-        // Return the saved user with the wallet populated.
+        // 13. Return the saved user with the wallet populated.
         return this.userModel.findById(savedUser._id)
             .populate('walletId')
             .exec();
