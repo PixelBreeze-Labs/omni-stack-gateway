@@ -6,6 +6,7 @@ import {
     IsArray,
     ValidateNested,
     IsDateString,
+    IsDate
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -15,14 +16,14 @@ export class BonusDayDto {
     @IsString()
     name: string;
 
-    @ApiProperty({ description: 'ISO8601 formatted date string' })
-    @IsDateString()
+    @ApiProperty()
+    @Type(() => Date)
+    @IsDate()
     date: string;
 
-    @ApiPropertyOptional({ default: 2 })
+    @ApiProperty()
     @IsNumber()
-    @IsOptional()
-    multiplier?: number;
+    multiplier: number;
 }
 
 export class EarningPointsDto {
@@ -136,4 +137,16 @@ export class UpdateLoyaltyProgramDto {
     @Type(() => MembershipTierDto)
     @IsOptional()
     membershipTiers?: MembershipTierDto[];
+}
+
+export class UpdatePointsSystemDto {
+    @ApiProperty()
+    @ValidateNested()
+    @Type(() => EarningPointsDto)
+    earningPoints: EarningPointsDto;
+
+    @ApiProperty()
+    @ValidateNested()
+    @Type(() => RedeemingPointsDto)
+    redeemingPoints: RedeemingPointsDto;
 }

@@ -1,14 +1,22 @@
-// src/services/loyalty-program.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Client } from '../schemas/client.schema';
 import { Model } from 'mongoose';
-import { UpdateLoyaltyProgramDto } from '../dtos/loyalty-program.dto';
+import { UpdateLoyaltyProgramDto, UpdatePointsSystemDto, BonusDayDto } from '../dtos/loyalty-program.dto';
 import { LoyaltyProgram } from '../schemas/loyalty-program.schema';
 
 @Injectable()
 export class LoyaltyProgramService {
-    constructor(@InjectModel(Client.name) private clientModel: Model<Client>) {}
+    constructor(
+        @InjectModel(Client.name) private clientModel: Model<Client>
+    ) {}
+
+    private transformBonusDays(bonusDays: BonusDayDto[] = []): any[] {
+        return bonusDays.map(day => ({
+            ...day,
+            date: new Date(day.date)
+        }));
+    }
 
     async getLoyaltyProgram(clientId: string): Promise<LoyaltyProgram> {
         const client = await this.clientModel.findById(clientId)
@@ -34,22 +42,12 @@ export class LoyaltyProgramService {
             throw new NotFoundException('Client not found');
         }
 
-        // Cast the current loyalty program to our expected type.
+        // Cast the current loyalty program to our expected type
         const currentLp = (client.loyaltyProgram as LoyaltyProgram) || ({} as LoyaltyProgram);
         const currentPointsSystem = currentLp.pointsSystem || {
             earningPoints: {} as any,
             redeemingPoints: {} as any
         };
-
-        // Convert bonusDays dates from string to Date objects.
-        const bonusDaysFromDto =
-            updateDto.pointsSystem?.earningPoints?.bonusDays ||
-            (currentPointsSystem.earningPoints && currentPointsSystem.earningPoints.bonusDays) ||
-            [];
-        const parsedBonusDays = bonusDaysFromDto.map((bd: any) => ({
-            ...bd,
-            date: bd.date ? new Date(bd.date) : new Date(),
-        }));
 
         const updatedPointsSystem = {
             ...currentPointsSystem,
@@ -59,7 +57,11 @@ export class LoyaltyProgramService {
                     updateDto.pointsSystem?.earningPoints?.spend ??
                     currentPointsSystem.earningPoints?.spend ??
                     1,
-                bonusDays: parsedBonusDays,
+                bonusDays: this.transformBonusDays(
+                    updateDto.pointsSystem?.earningPoints?.bonusDays ||
+                    (currentPointsSystem.earningPoints?.bonusDays as BonusDayDto[]) ||
+                    []
+                ),
                 signUpBonus:
                     updateDto.pointsSystem?.earningPoints?.signUpBonus ??
                     currentPointsSystem.earningPoints?.signUpBonus ??
@@ -93,10 +95,10 @@ export class LoyaltyProgramService {
             },
         };
 
-        // Map membership tiers from DTO to ensure required fields are present.
+        // Map membership tiers from DTO
         const updatedMembershipTiers = (updateDto.membershipTiers ?? currentLp.membershipTiers ?? []).map((mt) => ({
             ...mt,
-            perks: mt.perks ?? []  // Default perks to an empty array if not provided.
+            perks: mt.perks ?? []
         }));
 
         const updatedLoyaltyProgram = {
@@ -106,7 +108,49 @@ export class LoyaltyProgramService {
             membershipTiers: updatedMembershipTiers,
         };
 
-        client.loyaltyProgram = updatedLoyaltyProgram;
+        client.loyaltyProgram = updatedLoyaltyProgram as LoyaltyProgram;
+        return client.save();
+    }
+
+    async updatePointsSystem(clientId: string, updateDto: UpdatePointsSystemDto) {
+        const client = await this.clientModel.findById(clientId);
+        if (!client) throw new NotFoundException('Client not found');
+
+        // Transform dates in bonusDays before updating
+        const transformedUpdateDto = {
+            ...updateDto,
+            earningPoints: {
+                ...updateDto.earningPoints,
+                bonusDays: this.transformBonusDays(updateDto.earningPoints.bonusDays)
+            }
+        };
+
+        const updatedProgram = {
+            ...client.loyaltyProgram,
+            pointsSystem: {
+                ...client.loyaltyProgram.pointsSystem,
+                ...transformedUpdateDto
+            }
+        };
+
+        client.loyaltyProgram = updatedProgram as LoyaltyProgram;
+        return client.save();
+    }
+
+    async addBonusDay(clientId: string, bonusDay: BonusDayDto) {
+        const client = await this.clientModel.findById(clientId);
+        if (!client) throw new NotFoundException('Client not found');
+
+        const bonusDayWithDate = {
+            ...bonusDay,
+            date: new Date(bonusDay.date)
+        };
+
+        if (!client.loyaltyProgram.pointsSystem.earningPoints.bonusDays) {
+            client.loyaltyProgram.pointsSystem.earningPoints.bonusDays = [];
+        }
+
+        client.loyaltyProgram.pointsSystem.earningPoints.bonusDays.push(bonusDayWithDate);
         return client.save();
     }
 
@@ -119,7 +163,19 @@ export class LoyaltyProgramService {
             throw new NotFoundException('Client not found');
         }
 
-        client.loyaltyProgram = {} as any;
+        client.loyaltyProgram = {} as LoyaltyProgram;
+        return client.save();
+    }
+
+    async removeBonusDay(clientId: string, bonusDayId: string) {
+        const client = await this.clientModel.findById(clientId);
+        if (!client) throw new NotFoundException('Client not found');
+
+        client.loyaltyProgram.pointsSystem.earningPoints.bonusDays =
+            client.loyaltyProgram.pointsSystem.earningPoints.bonusDays.filter(
+                day => day.name !== bonusDayId
+            );
+
         return client.save();
     }
 }
