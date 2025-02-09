@@ -6,7 +6,7 @@ import {
     TrackViewProductDto,
     TrackAddToCartDto,
     TrackPurchaseDto,
-    ListCampaignStatsDto
+    ListCampaignStatsDto,
 } from '../dtos/campaign-tracking.dto';
 import { Client } from '../schemas/client.schema';
 
@@ -22,12 +22,12 @@ export class CampaignTrackingController {
     @Post('view-product')
     async trackViewProduct(
         @Req() req: Request & { client: Client },
-        @Body() trackViewDto: TrackViewProductDto
+        @Body() trackViewDto: TrackViewProductDto,
     ) {
         await this.campaignTrackingService.trackViewProduct(
             req.client.id,
             trackViewDto.productId,
-            trackViewDto.campaignParams
+            trackViewDto.campaignParams,
         );
         return { success: true };
     }
@@ -37,7 +37,7 @@ export class CampaignTrackingController {
     @Post('add-to-cart')
     async trackAddToCart(
         @Req() req: Request & { client: Client },
-        @Body() trackCartDto: TrackAddToCartDto
+        @Body() trackCartDto: TrackAddToCartDto,
     ) {
         await this.campaignTrackingService.trackAddToCart(req.client.id, trackCartDto);
         return { success: true };
@@ -48,7 +48,7 @@ export class CampaignTrackingController {
     @Post('purchase')
     async trackPurchase(
         @Req() req: Request & { client: Client },
-        @Body() trackPurchaseDto: TrackPurchaseDto
+        @Body() trackPurchaseDto: TrackPurchaseDto,
     ) {
         await this.campaignTrackingService.trackPurchase(req.client.id, trackPurchaseDto);
         return { success: true };
@@ -59,14 +59,12 @@ export class CampaignTrackingController {
     @Get('stats')
     async getCampaignStats(
         @Req() req: Request & { client: Client },
-        @Query() query: ListCampaignStatsDto
+        @Query() query: ListCampaignStatsDto,
     ) {
+        // If a campaignId is provided in the query, use it for filtering
         if (query.campaignId) {
             return this.campaignTrackingService.getCampaignStats(req.client.id, query.campaignId);
         }
-
-        // Additional stats filtering logic based on query parameters
-        // You can implement methods for getting stats by date range, utm source, etc.
         return this.campaignTrackingService.getCampaignStats(req.client.id, query);
     }
 }
