@@ -85,7 +85,7 @@ export class UserService {
 
         // 3. Find client and its loyalty program
         const client = await this.clientModel.findById(createUserDto.client_ids[0])
-            .select('loyaltyProgram defaultCurrency');
+            .select('loyaltyProgram.membershipTiers loyaltyProgram.defaultCurrency');
         if (!client) {
             throw new BadRequestException('Client not found');
         }
