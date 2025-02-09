@@ -257,4 +257,29 @@ export class UserService {
             .exec();
     }
 
+    // Example of how systems interact in UserService
+    // async awardPoints(userId: string, amount: number, source: string) {
+    //     const user = await this.userModel.findById(userId);
+    //     if (!user) throw new NotFoundException('User not found');
+    //
+    //     const client = await this.clientModel.findById(user.client_ids[0]);
+    //     if (!client?.loyaltyProgram) return;
+    //
+    //     // Get user's tier
+    //     const userTier = user.clientTiers.get(client._id.toString());
+    //     const tierDetails = client.loyaltyProgram.membershipTiers
+    //         .find(t => t.name === userTier);
+    //
+    //     // Apply tier multiplier
+    //     const multiplier = tierDetails?.pointsMultiplier || 1;
+    //     const finalPoints = amount * multiplier;
+    //
+    //     // Update user points
+    //     await this.userModel.updateOne(
+    //         { _id: userId },
+    //         { $inc: { points: finalPoints } }
+    //     );
+    //
+    //     return finalPoints;
+    // }
 }
