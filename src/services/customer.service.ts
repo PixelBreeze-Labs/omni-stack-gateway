@@ -1,4 +1,3 @@
-// src/services/customer.service.ts
 import {forwardRef, Inject, Injectable, NotFoundException} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -21,6 +20,23 @@ export class CustomerService {
 
     private generateRandomPassword(): string {
         return crypto.randomBytes(12).toString('hex');
+    }
+
+    private async getConnectedClientIds(clientIds: string[]): Promise<string[]> {
+        const connectedClientIds = new Set<string>(clientIds);
+
+        for (const clientId of clientIds) {
+            const client = await this.clientModel.findById(clientId);
+            if (client?.venueBoostConnection?.venueShortCode) {
+                const connectedClients = await this.clientModel.find({
+                    'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
+                    'venueBoostConnection.status': 'connected'
+                });
+                connectedClients.forEach(cc => connectedClientIds.add(cc._id.toString()));
+            }
+        }
+
+        return Array.from(connectedClientIds);
     }
 
     async create(customerData: CreateCustomerDto & { clientId: string }) {
@@ -83,22 +99,12 @@ export class CustomerService {
         const { clientIds, search, limit = 10, page = 1, status, type } = query;
         const skip = (page - 1) * limit;
 
-        const metrics = await this.calculateMetrics(clientIds);
-
         // Get all connected client IDs
-        const connectedClientIds = new Set<string>();
-        for (const clientId of clientIds) {
-            const client = await this.clientModel.findById(clientId);
-            if (client?.venueBoostConnection?.venueShortCode) {
-                const connectedClients = await this.clientModel.find({
-                    'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
-                    'venueBoostConnection.status': 'connected'
-                });
-                connectedClients.forEach(cc => connectedClientIds.add(cc._id.toString()));
-            }
-        }
+        const allClientIds = await this.getConnectedClientIds(clientIds);
 
-        const allClientIds = [...new Set([...clientIds, ...connectedClientIds])];
+        // Calculate metrics with all client IDs
+        const metrics = await this.calculateMetrics(allClientIds);
+
         const filters: any = { clientIds: { $in: allClientIds } };
 
         if (search) {
@@ -132,9 +138,10 @@ export class CustomerService {
                 }
             })
             .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
 
         const transformedCustomers: CustomerResponse[] = customers.map(customer => {
-            // Convert to plain object to avoid mongoose document issues
             const cleanCustomer = customer.toObject();
             const user = cleanCustomer.userId as any;
 
@@ -176,45 +183,40 @@ export class CustomerService {
         };
     }
 
-
     async calculateMetrics(clientIds: string[]): Promise<CustomerMetrics> {
+        const allClientIds = await this.getConnectedClientIds(clientIds);
+
         const now = new Date();
         const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-        // Get current month stats
         const currentMonthCustomers = await this.customerModel.find({
-            clientIds: { $in: clientIds },
+            clientIds: { $in: allClientIds },
             createdAt: { $lt: now, $gte: firstDayThisMonth }
         });
 
-        // Get last month stats
         const lastMonthCustomers = await this.customerModel.find({
-            clientIds: { $in: clientIds },
+            clientIds: { $in: allClientIds },
             createdAt: { $lt: firstDayThisMonth, $gte: firstDayLastMonth }
         });
 
-        // Total customers
         const totalCustomers = await this.customerModel.countDocuments({
-            clientIds: { $in: clientIds }
+            clientIds: { $in: allClientIds }
         });
 
-        // Active customers
         const activeCustomers = await this.customerModel.countDocuments({
-            clientIds: { $in: clientIds },
+            clientIds: { $in: allClientIds },
             isActive: true
         });
 
-        // Last month active customers
         const lastMonthActiveCustomers = await this.customerModel.countDocuments({
-            clientIds: { $in: clientIds },
+            clientIds: { $in: allClientIds },
             isActive: true,
             updatedAt: { $lt: firstDayThisMonth, $gte: firstDayLastMonth }
         });
 
-        // Calculate total spend and average order value
         const customers = await this.customerModel.find({
-            clientIds: { $in: clientIds }
+            clientIds: { $in: allClientIds }
         }).populate('userId', 'totalSpend');
 
         const totalSpend = customers.reduce((sum, customer) => {
@@ -228,7 +230,6 @@ export class CustomerService {
         const avgOrderValue = totalSpend / (customers.length || 1);
         const lastMonthAvgOrderValue = lastMonthTotalSpend / (lastMonthCustomers.length || 1);
 
-        // Calculate growth percentages
         const customerGrowth = currentMonthCustomers.length;
         const customerGrowthPercentage = CustomerService.calculateGrowthPercentage(
             currentMonthCustomers.length,
@@ -277,8 +278,13 @@ export class CustomerService {
     }
 
     async findOne(id: string, clientId: string) {
-        // Use $in operator for clientIds matching
-        const customer = await this.customerModel.findOne({ _id: id, clientIds: { $in: [clientId] } });
+        const allClientIds = await this.getConnectedClientIds([clientId]);
+
+        const customer = await this.customerModel.findOne({
+            _id: id,
+            clientIds: { $in: allClientIds }
+        });
+
         if (!customer) {
             throw new NotFoundException('Customer not found');
         }
@@ -286,16 +292,20 @@ export class CustomerService {
     }
 
     async findByEmail(email: string, clientId: string): Promise<Customer | null> {
+        const allClientIds = await this.getConnectedClientIds([clientId]);
+
         return this.customerModel.findOne({
             email: email,
-            clientIds: { $in: [clientId] },
+            clientIds: { $in: allClientIds },
             isActive: true
         });
     }
 
     async update(id: string, clientId: string, updateCustomerDto: UpdateCustomerDto) {
+        const allClientIds = await this.getConnectedClientIds([clientId]);
+
         const customer = await this.customerModel.findOneAndUpdate(
-            { _id: id, clientIds: { $in: [clientId] } },
+            { _id: id, clientIds: { $in: allClientIds } },
             { $set: updateCustomerDto },
             { new: true }
         );
@@ -308,7 +318,13 @@ export class CustomerService {
     }
 
     async remove(id: string, clientId: string) {
-        const customer = await this.customerModel.findOne({ _id: id, clientIds: { $in: [clientId] } });
+        const allClientIds = await this.getConnectedClientIds([clientId]);
+
+        const customer = await this.customerModel.findOne({
+            _id: id,
+            clientIds: { $in: allClientIds }
+        });
+
         if (!customer) {
             throw new NotFoundException('Customer not found');
         }
@@ -323,7 +339,13 @@ export class CustomerService {
     }
 
     async hardDelete(id: string, clientId: string) {
-        const customer = await this.customerModel.findOne({ _id: id, clientIds: { $in: [clientId] } });
+        const allClientIds = await this.getConnectedClientIds([clientId]);
+
+        const customer = await this.customerModel.findOne({
+            _id: id,
+            clientIds: { $in: allClientIds }
+        });
+
         if (!customer) {
             throw new NotFoundException('Customer not found');
         }
@@ -333,8 +355,10 @@ export class CustomerService {
     }
 
     async partialUpdate(id: string, clientId: string, updateCustomerDto: Partial<UpdateCustomerDto>): Promise<Customer> {
+        const allClientIds = await this.getConnectedClientIds([clientId]);
+
         const customer = await this.customerModel.findOneAndUpdate(
-            { _id: id, clientIds: clientId },
+            { _id: id, clientIds: { $in: allClientIds } },
             { $set: updateCustomerDto },
             { new: true }
         );
