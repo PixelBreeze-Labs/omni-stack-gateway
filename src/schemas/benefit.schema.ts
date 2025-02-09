@@ -20,10 +20,13 @@ export class Benefit extends Document {
     type: BenefitType;
 
     @Prop({ type: Number, required: true })
-    value: number; // Percentage or fixed amount
+    value: number;
 
     @Prop({ type: Boolean, default: true })
     isActive: boolean;
+
+    @Prop({ type: [String], default: [] })
+    applicableTiers: string[];
 }
 
 export const BenefitSchema = SchemaFactory.createForClass(Benefit);
