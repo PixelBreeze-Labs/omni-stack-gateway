@@ -239,7 +239,6 @@ export class CampaignTrackingService {
     /**
      * Get detailed campaign statistics with timeframe filter
      */
-
     async getCampaignDetails(clientId: string, campaignId: string, timeframe?: string) {
         const client = await this.clientModel.findById(clientId);
         const connectedClientIds = await this.getConnectedClientIds(client);
@@ -253,11 +252,34 @@ export class CampaignTrackingService {
             throw new NotFoundException('Campaign not found');
         }
 
-        const stats = await this.getCampaignStats(campaign.clientId, campaignId);
+        const dateFilter = this.getTimeframeFilter(timeframe);
+        const matchQuery = {
+            campaignId,
+            ...(dateFilter ? { createdAt: dateFilter } : {})
+        };
+
+        const events = await this.campaignEventModel
+            .find(matchQuery)
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const viewCount = events.filter(e => e.eventType === 'view_product').length;
+        const cartCount = events.filter(e => e.eventType === 'add_to_cart').length;
+        const purchaseCount = events.filter(e => e.eventType === 'purchase').length;
+        const revenue = events
+            .filter(e => e.eventType === 'purchase')
+            .reduce((sum, e) => sum + (e.eventData?.total || 0), 0);
+
         return {
             campaign,
-            stats,
-            isConnectedCampaign: campaign.clientId.toString() !== clientId
+            stats: {
+                viewCount,
+                cartCount,
+                purchaseCount,
+                revenue,
+                conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
+                events
+            }
         };
     }
 
@@ -274,4 +296,17 @@ export class CampaignTrackingService {
 
         return connectedClients.map(c => c._id.toString());
     }
+
+
+
+    private getTimeframeFilter(timeframe?: string) {
+        if (!timeframe) return null;
+
+        const now = new Date();
+        return {
+            $gte: new Date(now.setDate(now.getDate() - parseInt(timeframe)))
+        };
+    }
+
+
 }
