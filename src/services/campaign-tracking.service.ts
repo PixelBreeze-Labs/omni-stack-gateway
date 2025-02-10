@@ -125,51 +125,19 @@ export class CampaignTrackingService {
      * The query parameter can be a campaign ID string or a filter DTO.
      */
     async getCampaignStats(clientId: string, query: string | ListCampaignStatsDto) {
-        let matchQuery: any = { clientId };
+        let matchQuery: any = {
+            clientId,
+            campaignId: query // This ensures events match specific campaign
+        };
 
-        if (typeof query === 'string') {
-            matchQuery.campaignId = new Types.ObjectId(query);
-        } else {
-            if (query.utmSource) matchQuery['campaign.utmSource'] = query.utmSource;
-            if (query.utmCampaign) matchQuery['campaign.utmCampaign'] = query.utmCampaign;
-            if (query.startDate) matchQuery.createdAt = { $gte: new Date(query.startDate) };
-            if (query.endDate) matchQuery.createdAt = { ...matchQuery.createdAt, $lte: new Date(query.endDate) };
-        }
+        const events = await this.campaignEventModel.find(matchQuery).lean();
 
-        const [events, stats] = await Promise.all([
-            // Get raw events for debugging
-            this.campaignEventModel.find(matchQuery).lean(),
-
-            // Original stats aggregation
-            this.campaignEventModel.aggregate([
-                { $match: matchQuery },
-                {
-                    $group: {
-                        _id: '$eventType',
-                        count: { $sum: 1 },
-                        revenue: {
-                            $sum: {
-                                $cond: [
-                                    { $eq: ['$eventType', 'purchase'] },
-                                    '$eventData.total',
-                                    0
-                                ]
-                            }
-                        }
-                    }
-                }
-            ])
-        ]);
-
-        const statsMap = stats.reduce((acc, curr) => {
-            acc[curr._id] = { count: curr.count, revenue: curr.revenue };
-            return acc;
-        }, {});
-
-        const viewCount = statsMap['view_product']?.count || 0;
-        const cartCount = statsMap['add_to_cart']?.count || 0;
-        const purchaseCount = statsMap['purchase']?.count || 0;
-        const revenue = statsMap['purchase']?.revenue || 0;
+        const viewCount = events.filter(e => e.eventType === 'view_product').length;
+        const cartCount = events.filter(e => e.eventType === 'add_to_cart').length;
+        const purchaseCount = events.filter(e => e.eventType === 'purchase').length;
+        const revenue = events
+            .filter(e => e.eventType === 'purchase')
+            .reduce((sum, e) => sum + (e.eventData?.total || 0), 0);
 
         return {
             viewCount,
@@ -177,10 +145,9 @@ export class CampaignTrackingService {
             purchaseCount,
             revenue,
             conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
-            events // Raw events for debugging
+            events
         };
     }
-
     /**
      * Get campaigns list with pagination and search
      */
