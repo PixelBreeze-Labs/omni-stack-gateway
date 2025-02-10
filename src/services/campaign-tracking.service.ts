@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Campaign } from '../schemas/campaign.schema';
@@ -21,7 +21,7 @@ export class CampaignTrackingService {
     /**
      * Get an existing campaign matching the provided UTM parameters or create a new one.
      */
-    private async getOrCreateCampaign(clientId: string, params: CampaignParamsDto): Promise<Campaign> {
+    async getOrCreateCampaign(clientId: string, params: CampaignParamsDto): Promise<Campaign> {
         const campaign = await this.campaignModel.findOneAndUpdate(
             {
                 clientId,
@@ -137,6 +137,131 @@ export class CampaignTrackingService {
             purchaseCount,
             revenue,
             conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
+        };
+    }
+
+    /**
+     * Get campaigns list with pagination and search
+     */
+    async listCampaigns(clientId: string, options: {
+        page?: number;
+        limit?: number;
+        search?: string;
+    }) {
+        const page = options.page || 1;
+        const limit = options.limit || 10;
+        const skip = (page - 1) * limit;
+
+        let query: any = { clientId };
+        if (options.search) {
+            query = {
+                ...query,
+                $or: [
+                    { utmCampaign: { $regex: options.search, $options: 'i' } },
+                    { utmSource: { $regex: options.search, $options: 'i' } },
+                    { utmMedium: { $regex: options.search, $options: 'i' } },
+                ]
+            };
+        }
+
+        const [campaigns, total] = await Promise.all([
+            this.campaignModel
+                .find(query)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            this.campaignModel.countDocuments(query)
+        ]);
+
+        // Get stats for each campaign
+        const campaignsWithStats = await Promise.all(
+            campaigns.map(async (campaign) => {
+                const stats = await this.getCampaignStats(clientId, campaign._id);
+                return {
+                    ...campaign,
+                    stats
+                };
+            })
+        );
+
+        return {
+            items: campaignsWithStats,
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit)
+        };
+    }
+
+    /**
+     * Get overview statistics for all campaigns
+     */
+    async getOverviewStats(clientId: string, timeframe?: string) {
+        let dateFilter: any = {};
+
+        // Apply timeframe filter if provided
+        if (timeframe) {
+            const now = new Date();
+            switch (timeframe) {
+                case '7d':
+                    dateFilter = { $gte: new Date(now.setDate(now.getDate() - 7)) };
+                    break;
+                case '30d':
+                    dateFilter = { $gte: new Date(now.setDate(now.getDate() - 30)) };
+                    break;
+                case '90d':
+                    dateFilter = { $gte: new Date(now.setDate(now.getDate() - 90)) };
+                    break;
+            }
+        }
+
+        const matchQuery = {
+            clientId,
+            ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
+        };
+
+        const [viewCount, cartCount, purchaseCount, revenue] = await Promise.all([
+            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'view_product' }),
+            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'add_to_cart' }),
+            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'purchase' }),
+            this.campaignEventModel
+                .aggregate([
+                    {
+                        $match: { ...matchQuery, eventType: 'purchase' }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: '$eventData.total' }
+                        }
+                    }
+                ])
+                .then((result) => result[0]?.total || 0)
+        ]);
+
+        return {
+            viewCount,
+            cartCount,
+            purchaseCount,
+            revenue,
+            conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%'
+        };
+    }
+
+    /**
+     * Get detailed campaign statistics with timeframe filter
+     */
+    async getCampaignDetails(clientId: string, campaignId: string, timeframe?: string) {
+        const campaign = await this.campaignModel.findOne({ _id: campaignId, clientId });
+        if (!campaign) {
+            throw new NotFoundException('Campaign not found');
+        }
+
+        const stats = await this.getCampaignStats(clientId, campaignId);
+        return {
+            campaign,
+            stats
         };
     }
 }
