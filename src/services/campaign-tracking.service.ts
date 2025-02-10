@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Campaign } from '../schemas/campaign.schema';
 import { Product } from '../schemas/product.schema';
 import { Order } from '../schemas/order.schema';
@@ -128,44 +128,51 @@ export class CampaignTrackingService {
         let matchQuery: any = { clientId };
 
         if (typeof query === 'string') {
-            // If query is a string, assume it's a campaignId
-            matchQuery = {
-                clientId,
-                campaignId: query  // This is where the fix is
-            };
+            // For single campaign stats
+            matchQuery.campaignId = new Types.ObjectId(query);
         } else {
-            // Apply additional filters based on DTO values
+            // For filtered stats
             if (query.utmSource) matchQuery['campaign.utmSource'] = query.utmSource;
             if (query.utmCampaign) matchQuery['campaign.utmCampaign'] = query.utmCampaign;
             if (query.startDate) matchQuery.createdAt = { $gte: new Date(query.startDate) };
             if (query.endDate) matchQuery.createdAt = { ...matchQuery.createdAt, $lte: new Date(query.endDate) };
         }
 
-        const [viewCount, cartCount, purchaseCount, revenue] = await Promise.all([
-            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'view_product' }),
-            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'add_to_cart' }),
-            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'purchase' }),
-            this.campaignEventModel
-                .aggregate([
-                    {
-                        $match: { ...matchQuery, eventType: 'purchase' },
-                    },
-                    {
-                        $group: {
-                            _id: null,
-                            total: { $sum: '$eventData.total' },
-                        },
-                    },
-                ])
-                .then((result) => result[0]?.total || 0),
+        const stats = await this.campaignEventModel.aggregate([
+            { $match: matchQuery },
+            {
+                $group: {
+                    _id: '$eventType',
+                    count: { $sum: 1 },
+                    revenue: {
+                        $sum: {
+                            $cond: [
+                                { $eq: ['$eventType', 'purchase'] },
+                                '$eventData.total',
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
         ]);
+
+        const statsMap = stats.reduce((acc, curr) => {
+            acc[curr._id] = { count: curr.count, revenue: curr.revenue };
+            return acc;
+        }, {});
+
+        const viewCount = statsMap['view_product']?.count || 0;
+        const cartCount = statsMap['add_to_cart']?.count || 0;
+        const purchaseCount = statsMap['purchase']?.count || 0;
+        const revenue = statsMap['purchase']?.revenue || 0;
 
         return {
             viewCount,
             cartCount,
             purchaseCount,
             revenue,
-            conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
+            conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%'
         };
     }
 
