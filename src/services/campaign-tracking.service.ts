@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Campaign } from '../schemas/campaign.schema';
 import { Product } from '../schemas/product.schema';
 import { Order } from '../schemas/order.schema';
+import { Client } from '../schemas/client.schema';
 import { CampaignEvent } from '../schemas/campaign-event.schema';
 import {
     CampaignParamsDto,
@@ -19,6 +20,7 @@ export class CampaignTrackingService {
         @InjectModel(Campaign.name) private campaignModel: Model<Campaign>,
         @InjectModel(Product.name) private productModel: Model<Product>,
         @InjectModel(Order.name) private orderModel: Model<Order>,
+        @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(CampaignEvent.name) private campaignEventModel: Model<CampaignEvent>,
     ) {}
 
@@ -168,25 +170,21 @@ export class CampaignTrackingService {
     /**
      * Get campaigns list with pagination and search
      */
-    async listCampaigns(clientId: string, options: {
-        page?: number;
-        limit?: number;
-        search?: string;
-    }) {
+    async listCampaigns(clientId: string, options: { page?: number; limit?: number; search?: string }) {
         const page = options.page || 1;
         const limit = options.limit || 10;
         const skip = (page - 1) * limit;
 
-        let query: any = { clientId };
+        const client = await this.clientModel.findById(clientId);
+        const connectedClientIds = await this.getConnectedClientIds(client);
+
+        let query: any = { clientId: { $in: connectedClientIds } };
         if (options.search) {
-            query = {
-                ...query,
-                $or: [
-                    { utmCampaign: { $regex: options.search, $options: 'i' } },
-                    { utmSource: { $regex: options.search, $options: 'i' } },
-                    { utmMedium: { $regex: options.search, $options: 'i' } },
-                ]
-            };
+            query.$or = [
+                { utmCampaign: { $regex: options.search, $options: 'i' } },
+                { utmSource: { $regex: options.search, $options: 'i' } },
+                { utmMedium: { $regex: options.search, $options: 'i' } },
+            ];
         }
 
         const [campaigns, total] = await Promise.all([
@@ -199,13 +197,13 @@ export class CampaignTrackingService {
             this.campaignModel.countDocuments(query)
         ]);
 
-        // Get stats for each campaign
         const campaignsWithStats = await Promise.all(
             campaigns.map(async (campaign) => {
-                const stats = await this.getCampaignStats(clientId, campaign._id);
+                const stats = await this.getCampaignStats(campaign.clientId, campaign._id);
                 return {
                     ...campaign,
-                    stats
+                    stats,
+                    isConnectedCampaign: campaign.clientId.toString() !== clientId
                 };
             })
         );
@@ -223,26 +221,19 @@ export class CampaignTrackingService {
      * Get overview statistics for all campaigns
      */
     async getOverviewStats(clientId: string, timeframe?: string) {
-        let dateFilter: any = {};
+        const client = await this.clientModel.findById(clientId);
+        const connectedClientIds = await this.getConnectedClientIds(client);
 
-        // Apply timeframe filter if provided
+        let dateFilter: any = {};
         if (timeframe) {
             const now = new Date();
-            switch (timeframe) {
-                case '7d':
-                    dateFilter = { $gte: new Date(now.setDate(now.getDate() - 7)) };
-                    break;
-                case '30d':
-                    dateFilter = { $gte: new Date(now.setDate(now.getDate() - 30)) };
-                    break;
-                case '90d':
-                    dateFilter = { $gte: new Date(now.setDate(now.getDate() - 90)) };
-                    break;
-            }
+            dateFilter = {
+                $gte: new Date(now.setDate(now.getDate() - parseInt(timeframe)))
+            };
         }
 
         const matchQuery = {
-            clientId,
+            clientId: { $in: connectedClientIds },
             ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
         };
 
@@ -252,15 +243,8 @@ export class CampaignTrackingService {
             this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'purchase' }),
             this.campaignEventModel
                 .aggregate([
-                    {
-                        $match: { ...matchQuery, eventType: 'purchase' }
-                    },
-                    {
-                        $group: {
-                            _id: null,
-                            total: { $sum: '$eventData.total' }
-                        }
-                    }
+                    { $match: { ...matchQuery, eventType: 'purchase' } },
+                    { $group: { _id: null, total: { $sum: '$eventData.total' } } }
                 ])
                 .then((result) => result[0]?.total || 0)
         ]);
@@ -277,16 +261,39 @@ export class CampaignTrackingService {
     /**
      * Get detailed campaign statistics with timeframe filter
      */
+
     async getCampaignDetails(clientId: string, campaignId: string, timeframe?: string) {
-        const campaign = await this.campaignModel.findOne({ _id: campaignId, clientId });
+        const client = await this.clientModel.findById(clientId);
+        const connectedClientIds = await this.getConnectedClientIds(client);
+
+        const campaign = await this.campaignModel.findOne({
+            _id: campaignId,
+            clientId: { $in: connectedClientIds }
+        });
+
         if (!campaign) {
             throw new NotFoundException('Campaign not found');
         }
 
-        const stats = await this.getCampaignStats(clientId, campaignId);
+        const stats = await this.getCampaignStats(campaign.clientId, campaignId);
         return {
             campaign,
-            stats
+            stats,
+            isConnectedCampaign: campaign.clientId.toString() !== clientId
         };
+    }
+
+
+    private async getConnectedClientIds(client: any): Promise<string[]> {
+        if (!client?.venueBoostConnection?.venueShortCode) {
+            return [client._id.toString()];
+        }
+
+        const connectedClients = await this.clientModel.find({
+            'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
+            'venueBoostConnection.status': 'connected'
+        });
+
+        return connectedClients.map(c => c._id.toString());
     }
 }
