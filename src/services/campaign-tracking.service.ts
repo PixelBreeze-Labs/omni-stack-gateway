@@ -218,17 +218,14 @@ export class CampaignTrackingService {
             ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
         };
 
-        const [viewCount, cartCount, purchaseCount, revenue] = await Promise.all([
-            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'view_product' }),
-            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'add_to_cart' }),
-            this.campaignEventModel.countDocuments({ ...matchQuery, eventType: 'purchase' }),
-            this.campaignEventModel
-                .aggregate([
-                    { $match: { ...matchQuery, eventType: 'purchase' } },
-                    { $group: { _id: null, total: { $sum: '$eventData.total' } } }
-                ])
-                .then((result) => result[0]?.total || 0)
-        ]);
+        const events = await this.campaignEventModel.find(matchQuery).lean();
+
+        const viewCount = events.filter(e => e.eventType === 'view_product').length;
+        const cartCount = events.filter(e => e.eventType === 'add_to_cart').length;
+        const purchaseCount = events.filter(e => e.eventType === 'purchase').length;
+        const revenue = events
+            .filter(e => e.eventType === 'purchase')
+            .reduce((sum, e) => sum + (e.eventData?.total || 0), 0);
 
         return {
             viewCount,
