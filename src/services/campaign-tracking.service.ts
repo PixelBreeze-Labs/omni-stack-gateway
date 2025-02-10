@@ -128,33 +128,37 @@ export class CampaignTrackingService {
         let matchQuery: any = { clientId };
 
         if (typeof query === 'string') {
-            // For single campaign stats
             matchQuery.campaignId = new Types.ObjectId(query);
         } else {
-            // For filtered stats
             if (query.utmSource) matchQuery['campaign.utmSource'] = query.utmSource;
             if (query.utmCampaign) matchQuery['campaign.utmCampaign'] = query.utmCampaign;
             if (query.startDate) matchQuery.createdAt = { $gte: new Date(query.startDate) };
             if (query.endDate) matchQuery.createdAt = { ...matchQuery.createdAt, $lte: new Date(query.endDate) };
         }
 
-        const stats = await this.campaignEventModel.aggregate([
-            { $match: matchQuery },
-            {
-                $group: {
-                    _id: '$eventType',
-                    count: { $sum: 1 },
-                    revenue: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ['$eventType', 'purchase'] },
-                                '$eventData.total',
-                                0
-                            ]
+        const [events, stats] = await Promise.all([
+            // Get raw events for debugging
+            this.campaignEventModel.find(matchQuery).lean(),
+
+            // Original stats aggregation
+            this.campaignEventModel.aggregate([
+                { $match: matchQuery },
+                {
+                    $group: {
+                        _id: '$eventType',
+                        count: { $sum: 1 },
+                        revenue: {
+                            $sum: {
+                                $cond: [
+                                    { $eq: ['$eventType', 'purchase'] },
+                                    '$eventData.total',
+                                    0
+                                ]
+                            }
                         }
                     }
                 }
-            }
+            ])
         ]);
 
         const statsMap = stats.reduce((acc, curr) => {
@@ -172,7 +176,8 @@ export class CampaignTrackingService {
             cartCount,
             purchaseCount,
             revenue,
-            conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%'
+            conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
+            events // Raw events for debugging
         };
     }
 
