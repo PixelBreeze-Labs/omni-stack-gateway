@@ -128,15 +128,17 @@ export class CampaignTrackingService {
         let matchQuery: any = { clientId };
 
         if (typeof query === 'string') {
-            // If query is a string, assume it's a campaignId.
-            matchQuery.campaignId = query;
+            // If query is a string, assume it's a campaignId
+            matchQuery = {
+                clientId,
+                campaignId: query  // This is where the fix is
+            };
         } else {
-            // Apply additional filters based on DTO values.
+            // Apply additional filters based on DTO values
             if (query.utmSource) matchQuery['campaign.utmSource'] = query.utmSource;
             if (query.utmCampaign) matchQuery['campaign.utmCampaign'] = query.utmCampaign;
             if (query.startDate) matchQuery.createdAt = { $gte: new Date(query.startDate) };
-            if (query.endDate)
-                matchQuery.createdAt = { ...matchQuery.createdAt, $lte: new Date(query.endDate) };
+            if (query.endDate) matchQuery.createdAt = { ...matchQuery.createdAt, $lte: new Date(query.endDate) };
         }
 
         const [viewCount, cartCount, purchaseCount, revenue] = await Promise.all([
