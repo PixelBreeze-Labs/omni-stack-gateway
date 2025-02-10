@@ -12,11 +12,17 @@ export class CampaignEvent extends Document {
     @Prop({ required: true, enum: ['view_product', 'add_to_cart', 'purchase'] })
     eventType: string;
 
+    @Prop({ type: Object, default: {} })
+    external_product_ids: Record<string, any>;
+
+    @Prop({ type: Object, default: {} })
+    external_order_ids: Record<string, any>;
+
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product' })
-    productId?: string;
+    internalProductId?: string;
 
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Order' })
-    orderId?: string;
+    internalOrderId?: string;
 
     @Prop({ type: Object })
     eventData: {
@@ -30,5 +36,5 @@ export class CampaignEvent extends Document {
 export const CampaignEventSchema = SchemaFactory.createForClass(CampaignEvent);
 // Add indexes for frequent queries
 CampaignEventSchema.index({ clientId: 1, campaignId: 1, eventType: 1 });
-CampaignEventSchema.index({ clientId: 1, productId: 1 });
-CampaignEventSchema.index({ clientId: 1, orderId: 1 });
+CampaignEventSchema.index({ clientId: 1, externalProductId: 1 });
+CampaignEventSchema.index({ clientId: 1, externalOrderId: 1 });

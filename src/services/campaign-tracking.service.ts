@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Campaign } from '../schemas/campaign.schema';
+import { Product } from '../schemas/product.schema';
+import { Order } from '../schemas/order.schema';
 import { CampaignEvent } from '../schemas/campaign-event.schema';
 import {
     CampaignParamsDto,
@@ -15,6 +17,8 @@ import {
 export class CampaignTrackingService {
     constructor(
         @InjectModel(Campaign.name) private campaignModel: Model<Campaign>,
+        @InjectModel(Product.name) private productModel: Model<Product>,
+        @InjectModel(Order.name) private orderModel: Model<Order>,
         @InjectModel(CampaignEvent.name) private campaignEventModel: Model<CampaignEvent>,
     ) {}
 
@@ -47,13 +51,20 @@ export class CampaignTrackingService {
     /**
      * Track a product view event.
      */
-    async trackViewProduct(clientId: string, productId: string, campaignParams: CampaignParamsDto): Promise<void> {
-        const campaign = await this.getOrCreateCampaign(clientId, campaignParams);
+    async trackViewProduct(clientId: string, data: TrackViewProductDto): Promise<void> {
+        const campaign = await this.getOrCreateCampaign(clientId, data.campaignParams);
+
+        const product = await this.productModel.findOne({
+            clientId,
+            external_ids: data.external_product_ids
+        });
+
         await this.campaignEventModel.create({
             clientId,
             campaignId: campaign._id,
             eventType: 'view_product',
-            productId,
+            external_product_ids: data.external_product_ids,
+            internalProductId: product?._id,
             eventData: {},
         });
     }
@@ -63,11 +74,18 @@ export class CampaignTrackingService {
      */
     async trackAddToCart(clientId: string, data: TrackAddToCartDto): Promise<void> {
         const campaign = await this.getOrCreateCampaign(clientId, data.campaignParams);
+
+        const product = await this.productModel.findOne({
+            clientId,
+            external_ids: data.external_product_ids
+        });
+
         await this.campaignEventModel.create({
             clientId,
             campaignId: campaign._id,
             eventType: 'add_to_cart',
-            productId: data.productId,
+            external_product_ids: data.external_product_ids,
+            internalProductId: product?._id,
             eventData: {
                 quantity: data.quantity,
                 price: data.price,
@@ -81,11 +99,18 @@ export class CampaignTrackingService {
      */
     async trackPurchase(clientId: string, data: TrackPurchaseDto): Promise<void> {
         const campaign = await this.getOrCreateCampaign(clientId, data.campaignParams);
+
+        const order = await this.orderModel.findOne({
+            clientId,
+            external_ids: data.external_order_ids
+        });
+
         await this.campaignEventModel.create({
             clientId,
             campaignId: campaign._id,
             eventType: 'purchase',
-            orderId: data.orderId,
+            external_order_ids: data.external_order_ids,
+            internalOrderId: order?._id,
             eventData: {
                 total: data.total,
                 currency: data.currency,

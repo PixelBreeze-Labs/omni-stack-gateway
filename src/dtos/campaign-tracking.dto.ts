@@ -31,10 +31,9 @@ export class CampaignParamsDto {
 }
 
 export class TrackViewProductDto {
-    @ApiProperty()
-    @IsString()
-    @IsNotEmpty()
-    productId: string;
+    @ApiProperty({ description: 'External product IDs object' })
+    @IsObject()
+    external_product_ids: Record<string, any>;
 
     @ApiProperty({ type: CampaignParamsDto })
     @IsObject()
@@ -43,11 +42,11 @@ export class TrackViewProductDto {
     campaignParams: CampaignParamsDto;
 }
 
+
 export class TrackAddToCartDto {
-    @ApiProperty()
-    @IsString()
-    @IsNotEmpty()
-    productId: string;
+    @ApiProperty({ description: 'External product IDs object' })
+    @IsObject()
+    external_product_ids: Record<string, any>;
 
     @ApiProperty()
     @IsNumber()
@@ -72,10 +71,9 @@ export class TrackAddToCartDto {
 }
 
 export class TrackPurchaseDto {
-    @ApiProperty()
-    @IsString()
-    @IsNotEmpty()
-    orderId: string;
+    @ApiProperty({ description: 'External order IDs object' })
+    @IsObject()
+    external_order_ids: Record<string, any>;
 
     @ApiProperty()
     @IsNumber()
