@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { CampaignTrackingService } from '../services/campaign-tracking.service';
@@ -7,6 +7,7 @@ import {
     TrackAddToCartDto,
     TrackPurchaseDto,
     ListCampaignStatsDto,
+    CampaignParamsDto
 } from '../dtos/campaign-tracking.dto';
 import { Client } from '../schemas/client.schema';
 
@@ -16,6 +17,17 @@ import { Client } from '../schemas/client.schema';
 @UseGuards(ClientAuthGuard)
 export class CampaignTrackingController {
     constructor(private readonly campaignTrackingService: CampaignTrackingService) {}
+
+    // Campaign Management
+    @Post()
+    @ApiOperation({ summary: 'Create a new campaign' })
+    @ApiResponse({ status: 201, description: 'Campaign created successfully' })
+    async createCampaign(
+        @Req() req: Request & { client: Client },
+        @Body() campaignDto: CampaignParamsDto,
+    ) {
+        return this.campaignTrackingService.getOrCreateCampaign(req.client.id, campaignDto);
+    }
 
     @ApiOperation({ summary: 'Track product view event' })
     @ApiResponse({ status: 201, description: 'Product view tracked successfully' })
@@ -54,17 +66,42 @@ export class CampaignTrackingController {
         return { success: true };
     }
 
-    @ApiOperation({ summary: 'Get campaign statistics' })
-    @ApiResponse({ status: 200, description: 'Return campaign statistics' })
-    @Get('stats')
-    async getCampaignStats(
+
+
+    @ApiOperation({ summary: 'List campaigns with stats' })
+    @ApiResponse({ status: 200, description: 'Return campaigns list with stats' })
+    @Get()
+    async listCampaigns(
         @Req() req: Request & { client: Client },
-        @Query() query: ListCampaignStatsDto,
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
     ) {
-        // If a campaignId is provided in the query, use it for filtering
-        if (query.campaignId) {
-            return this.campaignTrackingService.getCampaignStats(req.client.id, query.campaignId);
-        }
-        return this.campaignTrackingService.getCampaignStats(req.client.id, query);
+        return this.campaignTrackingService.listCampaigns(req.client.id, {
+            page,
+            limit,
+            search,
+        });
+    }
+
+    @ApiOperation({ summary: 'Get campaign overview stats' })
+    @ApiResponse({ status: 200, description: 'Return campaign overview statistics' })
+    @Get('overview')
+    async getOverviewStats(
+        @Req() req: Request & { client: Client },
+        @Query('timeframe') timeframe?: string,
+    ) {
+        return this.campaignTrackingService.getOverviewStats(req.client.id, timeframe);
+    }
+
+    @ApiOperation({ summary: 'Get campaign details with stats' })
+    @ApiResponse({ status: 200, description: 'Return campaign details and statistics' })
+    @Get(':id')
+    async getCampaignDetails(
+        @Req() req: Request & { client: Client },
+        @Param('id') id: string,
+        @Query('timeframe') timeframe?: string,
+    ) {
+        return this.campaignTrackingService.getCampaignDetails(req.client.id, id, timeframe);
     }
 }
