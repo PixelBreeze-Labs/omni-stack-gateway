@@ -11,16 +11,21 @@ export class WalletService {
     ) {}
 
     async findOrCreateWallet(userId: string, clientId: string, currency: string = 'EUR'): Promise<Wallet> {
-        let wallet = await this.walletModel.findOne({ userId, clientId });
+        let wallet = await this.walletModel.findOne({
+            userId: userId,
+            clientId: clientId
+        }).exec();
 
         if (!wallet) {
-            wallet = await this.walletModel.create({
+            const newWallet = new this.walletModel({
                 userId,
                 clientId,
                 currency,
                 balance: 0,
-                isActive: true
+                isActive: true,
+                transactions: []
             });
+            wallet = await newWallet.save();
         }
 
         return wallet;
