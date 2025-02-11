@@ -7,8 +7,9 @@ import * as bcrypt from 'bcrypt';
 import { Store } from "../schemas/store.schema";
 import { Client } from "../schemas/client.schema";
 import * as crypto from 'crypto';
-import {WalletService} from "./wallet.service";
-import {CustomerService} from "./customer.service";
+import { WalletService } from "./wallet.service";
+import { CustomerService } from "./customer.service";
+import { EmailService } from "./email.service";
 
 @Injectable()
 export class UserService {
@@ -18,8 +19,9 @@ export class UserService {
         @InjectModel(Client.name) private clientModel: Model<Client>,
         private walletService: WalletService,
         @Inject(forwardRef(() => CustomerService))
-        private customerService: CustomerService
-) {}
+        private customerService: CustomerService,
+        private emailService: EmailService,
+    ) {}
 
     private generateReferralCode(): string {
         return crypto.randomBytes(6).toString('hex').toUpperCase();
@@ -250,6 +252,19 @@ export class UserService {
                 status: 'ACTIVE'
             });
         }
+
+        // Last. After saving the user, send the welcome email using your HTML template
+        await this.emailService.sendTemplateEmail(
+            'Metroshop',                          // fromName: The display name of the sender
+            'metroshop@omnistackhub.xyz',            // fromEmail: The verified sender email address
+            savedUser.email,                          // to: Recipient email address
+            'Mirë se vjen në Metroshop!',           // subject: Email subject
+            'templates/metroshop/welcome-email-template.html', // templatePath: Relative path to your template file
+            {
+                discount_percentage: '10%',             // Data for {{discount_percentage}}
+                promo_code: 'WELCOME10',                  // Data for {{promo_code}}
+            },
+        );
 
         // 13. Return the saved user with the wallet populated.
         return this.userModel.findById(savedUser._id)
