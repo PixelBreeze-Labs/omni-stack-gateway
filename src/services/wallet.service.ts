@@ -147,4 +147,16 @@ export class WalletService {
         }
         return wallet.balance;
     }
+
+    async getTransactions(walletId: string): Promise<any[]> {
+        const wallet = await this.walletModel.findById(walletId);
+        if (!wallet) {
+            throw new NotFoundException('Wallet not found');
+        }
+
+        // Return transactions sorted by timestamp in descending order (newest first)
+        return wallet.transactions.sort((a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+    }
 }
