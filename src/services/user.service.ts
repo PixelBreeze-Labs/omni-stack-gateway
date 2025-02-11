@@ -353,7 +353,7 @@ export class UserService {
         venueShortCode: string,
         webhookApiKey: string,
         userData: GetOrCreateUserDto
-    ): Promise<UserRegistrationResponse> {
+    ): Promise<any> {
         const requestClient = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
             'venueBoostConnection.webhookApiKey': webhookApiKey,
@@ -366,6 +366,8 @@ export class UserService {
 
         // Convert external_id to string
         const externalId = userData.external_id.toString();
+
+        return externalId;
 
         // Find existing user
         const existingUser = await this.userModel.findOne({
