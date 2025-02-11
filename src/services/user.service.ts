@@ -294,7 +294,7 @@ export class UserService {
         let customer;
         // 12. Handle additional registration logic for metroshop.
         if (createUserDto.registrationSource === 'metroshop') {
-            await this.customerService.create({
+            customer = await this.customerService.create({
                 firstName: createUserDto.name,
                 lastName: createUserDto.surname,
                 email: createUserDto.email,
@@ -365,9 +365,12 @@ export class UserService {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
-        // Find existing user
-        const existingUser = await this.userModel.findOne({
-            'external_ids.venueBoostId': userData.external_id
+        // Find existing user - check both venueBoostId and omniStackGateway
+        let existingUser = await this.userModel.findOne({
+            $or: [
+                { 'external_ids.venueBoostId': userData.external_id },
+                { _id: userData.external_id } // This matches omniStackGateway ID which is our MongoDB _id
+            ]
         }).populate('walletId');
 
         if (!existingUser) {
@@ -378,11 +381,11 @@ export class UserService {
             });
         }
 
-        // For existing users, just get or create their wallet and use stored tier
+        // For existing users, get or create their wallet
         const wallet = await this.walletService.findOrCreateWallet(
             existingUser._id.toString(),
             requestClient._id.toString(),
-            requestClient.defaultCurrency || 'EUR'
+            requestClient.defaultCurrency || 'ALL'
         );
 
         // Use the stored tier data - no need to look up loyalty program
@@ -396,6 +399,7 @@ export class UserService {
             referralCode: existingUser.referralCode,
         };
     }
+
     // Example of how systems interact in UserService
     // async awardPoints(userId: string, amount: number, source: string) {
     //     const user = await this.userModel.findById(userId);
