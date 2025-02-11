@@ -502,23 +502,60 @@ export class UserService {
         return { wallet_info: walletInfo };
     }
     private async findClientWithLoyalty(primaryClient: any): Promise<any> {
-        if (primaryClient.loyaltyProgram?.membershipTiers?.length > 0) {
+        // Check if primary client has valid loyalty program
+        if (
+            primaryClient.loyaltyProgram &&
+            Array.isArray(primaryClient.loyaltyProgram.membershipTiers) &&
+            primaryClient.loyaltyProgram.membershipTiers.length > 0
+        ) {
             return primaryClient;
         }
 
+        // If primary client has venue connection, look for connected clients
         if (primaryClient.venueBoostConnection?.venueShortCode) {
-            const connectedClient = await this.clientModel.findOne({
-                _id: { $ne: primaryClient._id },
-                'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
-                'venueBoostConnection.status': 'connected',
-                'loyaltyProgram.membershipTiers.0': { $exists: true }
-            }).select('+loyaltyProgram');
+            try {
+                // Find all connected clients with explicit loyalty program query
+                const connectedClients = await this.clientModel.aggregate([
+                    {
+                        $match: {
+                            _id: { $ne: primaryClient._id },
+                            'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
+                            'venueBoostConnection.status': 'connected',
+                            'loyaltyProgram.membershipTiers': { $exists: true, $ne: [] }
+                        }
+                    },
+                    {
+                        $match: {
+                            $expr: { $gt: [{ $size: '$loyaltyProgram.membershipTiers' }, 0] }
+                        }
+                    }
+                ]);
 
-            if (connectedClient) {
-                return connectedClient;
+                if (connectedClients.length > 0) {
+                    return connectedClients[0];
+                }
+
+                // If no connected client has loyalty, try fetching primary client with explicit query
+                const primaryWithLoyalty = await this.clientModel.findOne({
+                    _id: primaryClient._id,
+                    'loyaltyProgram.membershipTiers': { $exists: true, $ne: [] }
+                });
+
+                if (
+                    primaryWithLoyalty?.loyaltyProgram?.membershipTiers &&
+                    primaryWithLoyalty.loyaltyProgram.membershipTiers.length > 0
+                ) {
+                    return primaryWithLoyalty;
+                }
+            } catch (error) {
+                console.error('Error finding client with loyalty:', error, {
+                    primaryClientId: primaryClient._id,
+                    venueShortCode: primaryClient.venueBoostConnection.venueShortCode
+                });
             }
         }
 
+        // If no client with loyalty found, return primary client
         return primaryClient;
     }
 }
