@@ -11,6 +11,12 @@ import { WalletService } from "./wallet.service";
 import { CustomerService } from "./customer.service";
 import { EmailService } from "./email.service";
 
+interface UserRegistrationResponse {
+    user: User;
+    userId: string;
+    customerId: string;
+}
+
 @Injectable()
 export class UserService {
     constructor(
@@ -68,7 +74,7 @@ export class UserService {
         return this.userModel.findByIdAndDelete(id).exec();
     }
 
-    async registerUser(createUserDto: CreateUserDto & { client_ids: string[] }): Promise<User> {
+    async registerUser(createUserDto: CreateUserDto & { client_ids: string[] }): Promise<UserRegistrationResponse> {
         // 1. Check referral code if provided
         let referredByUser = null;
         if (createUserDto.referralCode) {
@@ -145,6 +151,9 @@ export class UserService {
         // 6. Create the new user with the membership tier stored as a plain object.
         const user = new this.userModel({
             ...createUserDto,
+            external_ids: {
+                venueBoostId: createUserDto.external_ids.venueBoostUserId,
+            },
             password: hashedPassword,
             referralCode,
             clientTiers: initialClientTiers,
@@ -240,7 +249,7 @@ export class UserService {
                 clientId: primaryClient._id.toString(), // remain with primary client
                 userId: savedUser._id.toString(),
                 external_ids: {
-                    venueBoostId: createUserDto.external_id
+                    venueBoostId: createUserDto.external_ids.venueBoostCustomerId
                 },
                 address: {
                     addressLine1: createUserDto.address.addressLine1,
@@ -267,9 +276,15 @@ export class UserService {
         );
 
         // 13. Return the saved user with the wallet populated.
-        return this.userModel.findById(savedUser._id)
+        const userWithWallet = await this.userModel.findById(savedUser._id)
             .populate('walletId')
             .exec();
+
+        return {
+            user: userWithWallet,
+            userId: savedUser._id.toString(),
+            customerId: customer._id.toString()  // Assuming customer is available from step 12
+        };
     }
 
     async getOrCreateWithLoyalty(venueShortCode: string, webhookApiKey: string, userData: CreateUserDto) {
