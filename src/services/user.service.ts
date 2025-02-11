@@ -8,8 +8,8 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { User } from '../schemas/user.schema';
-import { CreateUserDto } from '../dtos/user.dto';
+import {RegistrationSource, User} from '../schemas/user.schema';
+import { CreateUserDto, GetOrCreateUserDto } from '../dtos/user.dto';
 import * as bcrypt from 'bcrypt';
 import { Store } from "../schemas/store.schema";
 import { Client } from "../schemas/client.schema";
@@ -352,17 +352,8 @@ export class UserService {
     async getOrCreateWithLoyalty(
         venueShortCode: string,
         webhookApiKey: string,
-        userData: {
-            external_id: number;
-            registrationSource: string;
-            name: string;
-            surname: string;
-            email: string;
-            phone: string;
-            password: string;
-        }
+        userData: GetOrCreateUserDto
     ): Promise<UserRegistrationResponse> {
-        // Find requesting client
         const requestClient = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
             'venueBoostConnection.webhookApiKey': webhookApiKey,
@@ -373,7 +364,7 @@ export class UserService {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
-        // Convert external_id to string since MongoDB expects string IDs
+        // Convert external_id to string
         const externalId = userData.external_id.toString();
 
         // Find existing user
@@ -382,14 +373,14 @@ export class UserService {
         }).populate('walletId');
 
         if (!existingUser) {
-            // For new users, prepare the data
-            const createUserDto = {
+            // Create new user with proper type casting
+            const createUserDto: CreateUserDto & { client_ids: string[] } = {
                 name: userData.name,
-                surname: userData.surname === '-' ? '' : userData.surname, // Handle special case
+                surname: userData.surname === '-' ? '' : userData.surname,
                 email: userData.email,
                 phone: userData.phone,
                 password: userData.password,
-                registrationSource: userData.registrationSource.toLowerCase(),
+                registrationSource: userData.registrationSource.toLowerCase() as RegistrationSource,
                 external_ids: {
                     venueBoostUserId: externalId
                 },
@@ -399,7 +390,7 @@ export class UserService {
             return await this.registerUser(createUserDto);
         }
 
-        // For existing users, get/create wallet
+        // Get or create wallet
         const wallet = await this.walletService.findOrCreateWallet(
             existingUser._id.toString(),
             requestClient._id.toString(),

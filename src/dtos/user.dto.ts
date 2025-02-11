@@ -89,3 +89,13 @@ export class SalesAssociateLoginDto {
     @IsString()
     password: string;
 }
+
+export class GetOrCreateUserDto {
+    external_id: string | number;  // Accept both since it could come as either
+    registrationSource: RegistrationSource;
+    name: string;
+    surname: string;
+    email: string;
+    phone: string;
+    password: string;
+}
