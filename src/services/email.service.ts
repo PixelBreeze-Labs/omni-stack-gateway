@@ -84,7 +84,7 @@ export class EmailService {
     ): Promise<void> {
         try {
             // Construct the absolute path to the template file.
-            const fullTemplatePath = path.join(__dirname, '..', templatePath);
+            const fullTemplatePath = path.join(process.cwd(), 'src', templatePath);
 
             // Read and compile the template using Handlebars.
             const templateSource = fs.readFileSync(fullTemplatePath, 'utf-8');
