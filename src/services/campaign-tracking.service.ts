@@ -143,6 +143,7 @@ export class CampaignTrackingService {
             viewCount,
             cartCount,
             purchaseCount,
+            // TODO(Release-priority): decide what revenue to use here
             revenue,
             conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
             events
@@ -231,6 +232,7 @@ export class CampaignTrackingService {
             viewCount,
             cartCount,
             purchaseCount,
+            // TODO(Release-priority): decide what revenue to use here
             revenue,
             conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%'
         };
@@ -276,6 +278,7 @@ export class CampaignTrackingService {
                 viewCount,
                 cartCount,
                 purchaseCount,
+                // TODO(Release-priority): decide what revenue to use here
                 revenue,
                 conversionRate: viewCount ? (purchaseCount / viewCount * 100).toFixed(2) + '%' : '0%',
                 events
