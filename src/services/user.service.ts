@@ -238,6 +238,7 @@ export class UserService {
             );
         }
 
+        let customer;
         // 12. Handle additional registration logic for metroshop.
         if (createUserDto.registrationSource === 'metroshop') {
             await this.customerService.create({
@@ -280,10 +281,15 @@ export class UserService {
             .populate('walletId')
             .exec();
 
+        const currentTierName = userWithWallet.clientTiers?.[primaryClient._id.toString()] || 'Default Tier';
+
         return {
             user: userWithWallet,
             userId: savedUser._id.toString(),
-            customerId: customer._id.toString()  // Assuming customer is available from step 12
+            customerId: customer?._id.toString(), // Make it optional in case it's not a metroshop registration
+            walletBalance: userWithWallet.walletId?.balance || 0,
+            currentTierName: currentTierName,
+            referralCode: userWithWallet.referralCode
         };
     }
 
