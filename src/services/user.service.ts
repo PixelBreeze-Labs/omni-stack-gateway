@@ -374,8 +374,6 @@ export class UserService {
             'external_ids.venueBoostId': externalId
         }).populate('walletId');
 
-        return existingUser;
-
         if (!existingUser) {
             // Create new user with proper type casting
             const createUserDto: CreateUserDto & { client_ids: string[] } = {
