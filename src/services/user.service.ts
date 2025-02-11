@@ -483,9 +483,9 @@ export class UserService {
             money_value: moneyValue.toFixed(2),
             walletActivities: walletTransactions.map(t => ({
                 amount: t.amount,
-                description: t.metadata.description,
+                description: t.description,
                 type: t.type,
-                created_at: t.createdAt,
+                created_at: t.timestamp,
                 points: t.metadata.points || t.amount
             })),
             referralsList: user.referrals.map(r => ({
