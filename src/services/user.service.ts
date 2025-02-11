@@ -354,50 +354,76 @@ export class UserService {
         webhookApiKey: string,
         userData: CreateUserDto
     ): Promise<UserRegistrationResponse> {
-        // Find requesting client
-        const requestClient = await this.clientModel.findOne({
-            'venueBoostConnection.venueShortCode': venueShortCode,
-            'venueBoostConnection.webhookApiKey': webhookApiKey,
-            'venueBoostConnection.status': 'connected'
-        });
+        try {
+            // Find requesting client
+            const requestClient = await this.clientModel.findOne({
+                'venueBoostConnection.venueShortCode': venueShortCode,
+                'venueBoostConnection.webhookApiKey': webhookApiKey,
+                'venueBoostConnection.status': 'connected'
+            });
 
-        if (!requestClient) {
-            throw new UnauthorizedException('Invalid venue or webhook key');
-        }
+            if (!requestClient) {
+                throw new UnauthorizedException({
+                    message: 'Invalid venue or webhook key',
+                    debug: { venueShortCode, providedApiKey: webhookApiKey }
+                });
+            }
 
-        // Find existing user - check both venueBoostId and omniStackGateway
-        let existingUser = await this.userModel.findOne({
-            $or: [
-                { 'external_ids.venueBoostId': userData.external_id },
-                { _id: userData.external_id } // This matches omniStackGateway ID which is our MongoDB _id
-            ]
-        }).populate('walletId');
+            // Find existing user by either venueBoostId or MongoDB _id
+            const existingUser = await this.userModel.findOne({
+                $or: [
+                    { 'external_ids.venueBoostId': userData.external_id },
+                    { _id: userData.external_id }
+                ]
+            }).populate('walletId').lean();
 
-        if (!existingUser) {
-            // For new users, use registerUser which handles loyalty program lookup correctly
-            return await this.registerUser({
-                ...userData,
-                client_ids: [requestClient._id.toString()],
+            if (!existingUser) {
+                return await this.registerUser({
+                    ...userData,
+                    client_ids: [requestClient._id.toString()],
+                });
+            }
+
+            // Get or create wallet with error details
+            try {
+                const wallet = await this.walletService.findOrCreateWallet(
+                    existingUser._id.toString(),
+                    requestClient._id.toString(),
+                    requestClient.defaultCurrency || 'ALL'
+                );
+
+                const currentTierName = existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
+
+                return {
+                    user: existingUser,
+                    userId: existingUser._id.toString(),
+                    walletBalance: wallet?.balance || 0,
+                    currentTierName,
+                    referralCode: existingUser.referralCode
+                };
+            } catch (walletError) {
+                throw new BadRequestException({
+                    message: 'Wallet operation failed',
+                    error: walletError.message,
+                    details: {
+                        userId: existingUser._id,
+                        clientId: requestClient._id,
+                        operation: 'findOrCreateWallet'
+                    }
+                });
+            }
+        } catch (error) {
+            // Return error details in response
+            throw new BadRequestException({
+                message: 'Operation failed',
+                error: error.message,
+                stack: error.stack,
+                details: {
+                    venueShortCode,
+                    externalId: userData.external_id,
+                }
             });
         }
-
-        // For existing users, get or create their wallet
-        const wallet = await this.walletService.findOrCreateWallet(
-            existingUser._id.toString(),
-            requestClient._id.toString(),
-            requestClient.defaultCurrency || 'ALL'
-        );
-
-        // Use the stored tier data - no need to look up loyalty program
-        const currentTierName = existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
-
-        return {
-            user: existingUser,
-            userId: existingUser._id.toString(),
-            walletBalance: wallet.balance || 0,
-            currentTierName,
-            referralCode: existingUser.referralCode,
-        };
     }
 
     // Example of how systems interact in UserService

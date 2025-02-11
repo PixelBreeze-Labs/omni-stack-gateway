@@ -11,24 +11,41 @@ export class WalletService {
     ) {}
 
     async findOrCreateWallet(userId: string, clientId: string, currency: string = 'EUR'): Promise<Wallet> {
-        let wallet = await this.walletModel.findOne({
-            userId: userId,
-            clientId: clientId
-        }).exec();
-
-        if (!wallet) {
-            const newWallet = new this.walletModel({
+        try {
+            const wallet = await this.walletModel.findOne({
                 userId,
-                clientId,
-                currency,
-                balance: 0,
-                isActive: true,
-                transactions: []
-            });
-            wallet = await newWallet.save();
-        }
+                clientId
+            }).lean();
 
-        return wallet;
+            if (!wallet) {
+                try {
+                    const newWallet = new this.walletModel({
+                        userId,
+                        clientId,
+                        currency,
+                        balance: 0,
+                        isActive: true,
+                        transactions: []
+                    });
+                    return await newWallet.save();
+                } catch (createError) {
+                    throw new BadRequestException({
+                        message: 'Failed to create wallet',
+                        error: createError.message,
+                        details: { userId, clientId, currency }
+                    });
+                }
+            }
+
+            return wallet;
+        } catch (error) {
+            throw new BadRequestException({
+                message: 'Wallet operation failed',
+                error: error.message,
+                stack: error.stack,
+                details: { userId, clientId, operation: 'findOrCreateWallet' }
+            });
+        }
     }
 
     async addCredit(walletId: string, amount: number, data: {
