@@ -91,4 +91,15 @@ export class UserController {
             client_ids: [client._id.toString()],
         });
     }
+
+
+    @Post(':venueShortCode/users/get-or-create')
+    async getOrCreateUser(
+        @Param('venueShortCode') venueShortCode: string,
+        @Headers('webhook-api-key') webhookApiKey: string,
+        @Headers('x-api-key') apiKey: string,
+        @Body() userData: CreateUserDto
+    ) {
+        return this.userService.getOrCreateWithLoyalty(venueShortCode, webhookApiKey, userData);
+    }
 }
