@@ -365,7 +365,7 @@ export class UserService {
         }
 
         // Convert external_id to string
-        const externalId = userData.external_id.toString();
+        const externalId = userData.external_id;
 
 
 
@@ -386,7 +386,7 @@ export class UserService {
                 password: userData.password,
                 registrationSource: userData.registrationSource.toLowerCase() as RegistrationSource,
                 external_ids: {
-                    venueBoostUserId: externalId
+                    venueBoostId: externalId
                 },
                 client_ids: [requestClient._id.toString()]
             };
