@@ -93,7 +93,7 @@ export class UserController {
     }
 
 
-    @Post(':venueShortCode/users/get-or-create')
+    @Post(':venueShortCode/get-or-create')
     async getOrCreateUser(
         @Param('venueShortCode') venueShortCode: string,
         @Headers('webhook-api-key') webhookApiKey: string,
