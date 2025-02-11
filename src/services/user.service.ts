@@ -10,13 +10,16 @@ import * as crypto from 'crypto';
 import { WalletService } from "./wallet.service";
 import { CustomerService } from "./customer.service";
 import { EmailService } from "./email.service";
+import { Wallet } from '../schemas/wallet.schema';
 
-interface UserRegistrationResponse {
+export interface UserRegistrationResponse {
     user: User;
     userId: string;
-    customerId: string;
+    customerId?: string;
+    walletBalance: number;
+    currentTierName: string;
+    referralCode: string;
 }
-
 @Injectable()
 export class UserService {
     constructor(
@@ -283,52 +286,70 @@ export class UserService {
 
         const currentTierName = userWithWallet.clientTiers?.[primaryClient._id.toString()] || 'Default Tier';
 
+        const populatedUser = userWithWallet as User & { walletId: Wallet };
+
+
         return {
             user: userWithWallet,
             userId: savedUser._id.toString(),
-            customerId: customer?._id.toString(), // Make it optional in case it's not a metroshop registration
-            walletBalance: userWithWallet.walletId?.balance || 0,
+            customerId: customer?._id.toString(),
+            walletBalance: (populatedUser.walletId as Wallet)?.balance || 0,
             currentTierName: currentTierName,
             referralCode: userWithWallet.referralCode
         };
     }
 
-    async getOrCreateWithLoyalty(venueShortCode: string, webhookApiKey: string, userData: CreateUserDto) {
-        const client = await this.clientModel.findOne({
+    async getOrCreateWithLoyalty(
+        venueShortCode: string,
+        webhookApiKey: string,
+        userData: CreateUserDto
+    ): Promise<UserRegistrationResponse> {
+        // Find requesting client
+        const requestClient = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
             'venueBoostConnection.webhookApiKey': webhookApiKey,
             'venueBoostConnection.status': 'connected'
         }).select('+loyaltyProgram');
 
-        if (!client) {
+        if (!requestClient) {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
-        let user: User = await this.userModel.findOne({
+        // Find existing user
+        let userResponse: UserRegistrationResponse;
+        const existingUser = await this.userModel.findOne({
             'external_ids.venueBoostId': userData.external_id
         }).populate('walletId');
 
-        if (!user) {
-            user = await this.registerUser({
+        if (!existingUser) {
+            // Register new user
+            userResponse = await this.registerUser({
                 ...userData,
-                client_ids: [client._id.toString()],
+                client_ids: [requestClient._id.toString()],
             });
+        } else {
+            // Find connected client with loyalty program if main client doesn't have one
+            const clientWithLoyalty = await this.findClientWithLoyalty(requestClient);
+
+            // Get or create wallet
+            const wallet = await this.walletService.findOrCreateWallet(
+                existingUser._id.toString(),
+                requestClient._id.toString(),
+                requestClient.defaultCurrency || 'EUR'
+            );
+
+            const currentTierName = existingUser.clientTiers?.[clientWithLoyalty._id.toString()] || 'Default Tier';
+
+            userResponse = {
+                user: existingUser,
+                userId: existingUser._id.toString(),
+                walletBalance: wallet.balance || 0,
+                currentTierName,
+                referralCode: existingUser.referralCode,
+            };
         }
 
-        const currentTierName = user.clientTiers?.[client._id.toString()] || 'Default Tier';
-        const wallet = await this.walletService.findOrCreateWallet(
-            user._id.toString(),
-            client._id.toString(),
-            client.defaultCurrency
-        );
-
-        return {
-            referralCode: user.referralCode,
-            currentTierName: currentTierName,
-            wallet: {
-                balance: wallet.balance
-            }
-        };
+        return userResponse;
     }
 
     // Example of how systems interact in UserService
@@ -356,4 +377,25 @@ export class UserService {
     //
     //     return finalPoints;
     // }
+
+    private async findClientWithLoyalty(primaryClient: any): Promise<any> {
+        if (primaryClient.loyaltyProgram?.membershipTiers?.length > 0) {
+            return primaryClient;
+        }
+
+        if (primaryClient.venueBoostConnection?.venueShortCode) {
+            const connectedClient = await this.clientModel.findOne({
+                _id: { $ne: primaryClient._id },
+                'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
+                'venueBoostConnection.status': 'connected',
+                'loyaltyProgram.membershipTiers.0': { $exists: true }
+            }).select('+loyaltyProgram');
+
+            if (connectedClient) {
+                return connectedClient;
+            }
+        }
+
+        return primaryClient;
+    }
 }

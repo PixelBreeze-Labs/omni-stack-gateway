@@ -1,6 +1,7 @@
 // src/schemas/user.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
+import { Wallet } from "./wallet.schema";
 
 export enum RegistrationSource {
     METROSUITES = 'metrosuites',
@@ -94,7 +95,7 @@ export class User extends Document {
 
     // Wallet
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Wallet' })
-    walletId?: string;
+    walletId: string | Wallet;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
