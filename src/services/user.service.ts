@@ -352,7 +352,15 @@ export class UserService {
     async getOrCreateWithLoyalty(
         venueShortCode: string,
         webhookApiKey: string,
-        userData: any  // Changed to any to handle the incoming format
+        userData: {
+            external_id: number;
+            registrationSource: string;
+            name: string;
+            surname: string;
+            email: string;
+            phone: string;
+            password: string;
+        }
     ): Promise<UserRegistrationResponse> {
         // Find requesting client
         const requestClient = await this.clientModel.findOne({
@@ -365,38 +373,39 @@ export class UserService {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
+        // Convert external_id to string since MongoDB expects string IDs
+        const externalId = userData.external_id.toString();
+
         // Find existing user
         const existingUser = await this.userModel.findOne({
-            'external_ids.venueBoostId': userData.external_id
+            'external_ids.venueBoostId': externalId
         }).populate('walletId');
 
         if (!existingUser) {
-            // Format the data for registration
+            // For new users, prepare the data
             const createUserDto = {
                 name: userData.name,
-                surname: userData.surname,
+                surname: userData.surname === '-' ? '' : userData.surname, // Handle special case
                 email: userData.email,
                 phone: userData.phone,
                 password: userData.password,
-                registrationSource: userData.registrationSource,
+                registrationSource: userData.registrationSource.toLowerCase(),
                 external_ids: {
-                    venueBoostUserId: userData.external_id
+                    venueBoostUserId: externalId
                 },
-                client_ids: [requestClient._id.toString()],
-                address: userData.address
+                client_ids: [requestClient._id.toString()]
             };
 
             return await this.registerUser(createUserDto);
         }
 
-        // Get wallet for existing user
+        // For existing users, get/create wallet
         const wallet = await this.walletService.findOrCreateWallet(
             existingUser._id.toString(),
             requestClient._id.toString(),
             requestClient.defaultCurrency || 'ALL'
         );
 
-        // Return in format PHP expects
         return {
             user: existingUser,
             userId: existingUser._id.toString(),
