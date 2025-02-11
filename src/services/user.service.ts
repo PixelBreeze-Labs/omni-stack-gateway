@@ -1,4 +1,4 @@
-import {BadRequestException, forwardRef, Inject, Injectable} from '@nestjs/common';
+import {BadRequestException, forwardRef, Inject, Injectable, UnauthorizedException} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User } from '../schemas/user.schema';
@@ -270,6 +270,44 @@ export class UserService {
         return this.userModel.findById(savedUser._id)
             .populate('walletId')
             .exec();
+    }
+
+    async getOrCreateWithLoyalty(venueShortCode: string, webhookApiKey: string, userData: CreateUserDto) {
+        const client = await this.clientModel.findOne({
+            'venueBoostConnection.venueShortCode': venueShortCode,
+            'venueBoostConnection.webhookApiKey': webhookApiKey,
+            'venueBoostConnection.status': 'connected'
+        }).select('+loyaltyProgram');
+
+        if (!client) {
+            throw new UnauthorizedException('Invalid venue or webhook key');
+        }
+
+        let user: User = await this.userModel.findOne({
+            'external_ids.venueBoostId': userData.external_id
+        }).populate('walletId');
+
+        if (!user) {
+            user = await this.registerUser({
+                ...userData,
+                client_ids: [client._id.toString()],
+            });
+        }
+
+        const currentTierName = user.clientTiers?.[client._id.toString()] || 'Default Tier';
+        const wallet = await this.walletService.findOrCreateWallet(
+            user._id.toString(),
+            client._id.toString(),
+            client.defaultCurrency
+        );
+
+        return {
+            referralCode: user.referralCode,
+            currentTierName: currentTierName,
+            wallet: {
+                balance: wallet.balance
+            }
+        };
     }
 
     // Example of how systems interact in UserService
