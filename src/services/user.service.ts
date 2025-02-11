@@ -1,4 +1,11 @@
-import {BadRequestException, forwardRef, Inject, Injectable, UnauthorizedException} from '@nestjs/common';
+import {
+    BadRequestException,
+    forwardRef,
+    Inject,
+    Injectable,
+    NotFoundException,
+    UnauthorizedException
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User } from '../schemas/user.schema';
@@ -11,6 +18,49 @@ import { WalletService } from "./wallet.service";
 import { CustomerService } from "./customer.service";
 import { EmailService } from "./email.service";
 import { Wallet } from '../schemas/wallet.schema';
+
+
+export interface PopulatedReferral {
+    name: string;
+    email: string;
+    clientTiers: Record<string, string>;
+    totalSpend: number;
+    points: number;
+    createdAt: Date;
+}
+
+
+export interface WalletActivity {
+    amount: number;
+    description: string;
+    type: string;
+    created_at: Date;
+    points: number;
+}
+
+export interface ReferralInfo {
+    name: string;
+    email: string;
+    tier: string;
+    total_spend: number;
+    points: number;
+    joined_date: Date;
+}
+
+export interface WalletInfo {
+    balance: number;
+    currency: string;
+    money_value: string;
+    walletActivities: WalletActivity[];
+    referralsList: ReferralInfo[];
+    loyaltyTier: string | null;
+    referralCode: string;
+}
+
+interface WalletWithPopulatedRefs extends Omit<User, 'referrals'> {
+    walletId: Wallet;
+    referrals: PopulatedReferral[];
+}
 
 export interface UserRegistrationResponse {
     user: User;
@@ -378,6 +428,79 @@ export class UserService {
     //     return finalPoints;
     // }
 
+    async getWalletInfo(
+        venueShortCode: string,
+        webhookApiKey: string,
+        userId: string
+    ): Promise<{ wallet_info: WalletInfo }> {
+        // Find requesting client - same pattern as getOrCreateWithLoyalty
+        const requestClient = await this.clientModel.findOne({
+            'venueBoostConnection.venueShortCode': venueShortCode,
+            'venueBoostConnection.webhookApiKey': webhookApiKey,
+            'venueBoostConnection.status': 'connected'
+        }).select('+loyaltyProgram');
+
+        if (!requestClient) {
+            throw new UnauthorizedException('Invalid venue or webhook key');
+        }
+
+        // Find user with populated wallet and referrals
+        const user = await this.userModel.findById(userId)
+            .populate('walletId')
+            .populate({
+                path: 'referrals',
+                select: 'name email clientTiers totalSpend points createdAt'
+            })
+            .exec() as unknown as WalletWithPopulatedRefs;
+
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        // Find client with loyalty program (either primary or connected)
+        const clientWithLoyalty = await this.findClientWithLoyalty(requestClient);
+
+        // Get wallet transactions - now walletId is properly typed
+        const walletTransactions = await this.walletService.getTransactions(user.walletId._id.toString());
+
+        // Format wallet transactions
+        const formattedTransactions = walletTransactions.map(transaction => ({
+            amount: transaction.amount,
+            description: transaction.metadata.description,
+            type: transaction.type,
+            created_at: transaction.createdAt,
+            points: transaction.metadata.points || transaction.amount
+        }));
+
+        // Format referrals data - now referrals are properly typed
+        const referrals = user.referrals.map(referral => ({
+            name: referral.name,
+            email: referral.email,
+            tier: referral.clientTiers[requestClient._id.toString()] || 'Default Tier',
+            total_spend: referral.totalSpend,
+            points: referral.points,
+            joined_date: referral.createdAt
+        }));
+
+        // Calculate money value (100 points = 1 EUR)
+        const balance = user.walletId.balance || 0;
+        const moneyValue = balance > 0 ? (balance / 100) : 0;
+
+        // Get current tier name from the client with loyalty program
+        const currentTierName = user.clientTiers?.[clientWithLoyalty._id.toString()] || 'Default Tier';
+
+        const walletInfo: WalletInfo = {
+            balance: balance,
+            currency: requestClient.defaultCurrency || 'EUR',
+            money_value: moneyValue.toFixed(2),
+            walletActivities: formattedTransactions,
+            referralsList: referrals,
+            loyaltyTier: currentTierName,
+            referralCode: user.referralCode || ''
+        };
+
+        return { wallet_info: walletInfo };
+    }
     private async findClientWithLoyalty(primaryClient: any): Promise<any> {
         if (primaryClient.loyaltyProgram?.membershipTiers?.length > 0) {
             return primaryClient;
