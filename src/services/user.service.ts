@@ -359,49 +359,43 @@ export class UserService {
             'venueBoostConnection.venueShortCode': venueShortCode,
             'venueBoostConnection.webhookApiKey': webhookApiKey,
             'venueBoostConnection.status': 'connected'
-        }).select('+loyaltyProgram');
+        });
 
         if (!requestClient) {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
         // Find existing user
-        let userResponse: UserRegistrationResponse;
         const existingUser = await this.userModel.findOne({
             'external_ids.venueBoostId': userData.external_id
         }).populate('walletId');
 
         if (!existingUser) {
-            // Register new user
-            userResponse = await this.registerUser({
+            // For new users, use registerUser which handles loyalty program lookup correctly
+            return await this.registerUser({
                 ...userData,
                 client_ids: [requestClient._id.toString()],
             });
-        } else {
-            // Find connected client with loyalty program if main client doesn't have one
-            const clientWithLoyalty = await this.findClientWithLoyalty(requestClient);
-
-            // Get or create wallet
-            const wallet = await this.walletService.findOrCreateWallet(
-                existingUser._id.toString(),
-                requestClient._id.toString(),
-                requestClient.defaultCurrency || 'EUR'
-            );
-
-            const currentTierName = existingUser.clientTiers?.[clientWithLoyalty._id.toString()] || 'Default Tier';
-
-            userResponse = {
-                user: existingUser,
-                userId: existingUser._id.toString(),
-                walletBalance: wallet.balance || 0,
-                currentTierName,
-                referralCode: existingUser.referralCode,
-            };
         }
 
-        return userResponse;
-    }
+        // For existing users, just get or create their wallet and use stored tier
+        const wallet = await this.walletService.findOrCreateWallet(
+            existingUser._id.toString(),
+            requestClient._id.toString(),
+            requestClient.defaultCurrency || 'EUR'
+        );
 
+        // Use the stored tier data - no need to look up loyalty program
+        const currentTierName = existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
+
+        return {
+            user: existingUser,
+            userId: existingUser._id.toString(),
+            walletBalance: wallet.balance || 0,
+            currentTierName,
+            referralCode: existingUser.referralCode,
+        };
+    }
     // Example of how systems interact in UserService
     // async awardPoints(userId: string, amount: number, source: string) {
     //     const user = await this.userModel.findById(userId);
@@ -433,7 +427,7 @@ export class UserService {
         webhookApiKey: string,
         userId: string
     ): Promise<{ wallet_info: WalletInfo }> {
-        // Find requesting client
+        // 1. Verify requesting client
         const requestClient = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
             'venueBoostConnection.webhookApiKey': webhookApiKey,
@@ -444,13 +438,7 @@ export class UserService {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
-        // Validate that the user belongs to this client or its connected clients
-        const hasAccess = await this.validateClientAccess(requestClient, userId);
-        if (!hasAccess) {
-            throw new UnauthorizedException('User not found for this client');
-        }
-
-        // Find user with populated wallet and referrals
+        // 2. Get user with populated data
         const user = await this.userModel.findById(userId)
             .populate('walletId')
             .populate({
@@ -463,48 +451,45 @@ export class UserService {
             throw new NotFoundException('User not found');
         }
 
-        // Get wallet transactions
+        // 3. Check if user belongs to requesting client
+        if (!user.client_ids.includes(requestClient._id.toString())) {
+            throw new UnauthorizedException('User not found for this client');
+        }
+
+        // 4. Get wallet transactions
         const walletTransactions = await this.walletService.getTransactions(user.walletId._id.toString());
 
-        // Format wallet transactions
-        const formattedTransactions = walletTransactions.map(transaction => ({
-            amount: transaction.amount,
-            description: transaction.metadata.description,
-            type: transaction.type,
-            created_at: transaction.createdAt,
-            points: transaction.metadata.points || transaction.amount
-        }));
+        // 5. Use the stored tier data
+        const currentTierName = user.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
 
-        // Format referrals data using the stored client tiers
-        const referrals = user.referrals.map(referral => ({
-            name: referral.name,
-            email: referral.email,
-            tier: referral.clientTiers[requestClient._id.toString()] || 'Default Tier',
-            total_spend: referral.totalSpend,
-            points: referral.points,
-            joined_date: referral.createdAt
-        }));
-
-        // Calculate money value (100 points = 1 EUR)
         const balance = user.walletId.balance || 0;
         const moneyValue = balance > 0 ? (balance / 100) : 0;
-
-        // Use the stored tier directly from user.clientTiers
-        const currentTierName = user.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
 
         const walletInfo: WalletInfo = {
             balance: balance,
             currency: requestClient.defaultCurrency || 'EUR',
             money_value: moneyValue.toFixed(2),
-            walletActivities: formattedTransactions,
-            referralsList: referrals,
+            walletActivities: walletTransactions.map(t => ({
+                amount: t.amount,
+                description: t.metadata.description,
+                type: t.type,
+                created_at: t.createdAt,
+                points: t.metadata.points || t.amount
+            })),
+            referralsList: user.referrals.map(r => ({
+                name: r.name,
+                email: r.email,
+                tier: r.clientTiers[requestClient._id.toString()] || 'Default Tier',
+                total_spend: r.totalSpend,
+                points: r.points,
+                joined_date: r.createdAt
+            })),
             loyaltyTier: currentTierName,
             referralCode: user.referralCode || ''
         };
 
         return { wallet_info: walletInfo };
     }
-
 
     private async findClientWithLoyalty(primaryClient: any): Promise<any> {
         if (
