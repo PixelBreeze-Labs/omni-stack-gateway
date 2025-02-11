@@ -367,12 +367,14 @@ export class UserService {
         // Convert external_id to string
         const externalId = userData.external_id.toString();
 
-        return externalId;
+
 
         // Find existing user
         const existingUser = await this.userModel.findOne({
             'external_ids.venueBoostId': externalId
         }).populate('walletId');
+
+        return existingUser;
 
         if (!existingUser) {
             // Create new user with proper type casting
