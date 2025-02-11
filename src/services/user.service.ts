@@ -352,61 +352,58 @@ export class UserService {
     async getOrCreateWithLoyalty(
         venueShortCode: string,
         webhookApiKey: string,
-        userData: CreateUserDto
+        userData: any  // Changed to any to handle the incoming format
     ): Promise<UserRegistrationResponse> {
-        try {
-            // Find requesting client
-            const requestClient = await this.clientModel.findOne({
-                'venueBoostConnection.venueShortCode': venueShortCode,
-                'venueBoostConnection.webhookApiKey': webhookApiKey,
-                'venueBoostConnection.status': 'connected'
-            });
+        // Find requesting client
+        const requestClient = await this.clientModel.findOne({
+            'venueBoostConnection.venueShortCode': venueShortCode,
+            'venueBoostConnection.webhookApiKey': webhookApiKey,
+            'venueBoostConnection.status': 'connected'
+        });
 
-            if (!requestClient) {
-                throw new UnauthorizedException('Invalid venue or webhook key');
-            }
-
-            // Find existing user - removed .lean() to keep Mongoose document
-            const existingUser = await this.userModel.findOne({
-                $or: [
-                    { 'external_ids.venueBoostId': userData.external_id },
-                    { _id: userData.external_id }
-                ]
-            }).populate('walletId');
-
-            if (!existingUser) {
-                return await this.registerUser({
-                    ...userData,
-                    client_ids: [requestClient._id.toString()],
-                });
-            }
-
-            // Get or create wallet
-            const wallet = await this.walletService.findOrCreateWallet(
-                existingUser._id.toString(),
-                requestClient._id.toString(),
-                requestClient.defaultCurrency || 'ALL'
-            );
-
-            const currentTierName = existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
-
-            return {
-                user: existingUser,  // Now this is a proper Mongoose document
-                userId: existingUser._id.toString(),
-                walletBalance: wallet?.balance || 0,
-                currentTierName,
-                referralCode: existingUser.referralCode
-            };
-        } catch (error) {
-            throw new BadRequestException({
-                message: 'Operation failed',
-                error: error.message,
-                details: {
-                    venueShortCode,
-                    externalId: userData.external_id,
-                }
-            });
+        if (!requestClient) {
+            throw new UnauthorizedException('Invalid venue or webhook key');
         }
+
+        // Find existing user
+        const existingUser = await this.userModel.findOne({
+            'external_ids.venueBoostId': userData.external_id
+        }).populate('walletId');
+
+        if (!existingUser) {
+            // Format the data for registration
+            const createUserDto = {
+                name: userData.name,
+                surname: userData.surname,
+                email: userData.email,
+                phone: userData.phone,
+                password: userData.password,
+                registrationSource: userData.registrationSource,
+                external_ids: {
+                    venueBoostUserId: userData.external_id
+                },
+                client_ids: [requestClient._id.toString()],
+                address: userData.address
+            };
+
+            return await this.registerUser(createUserDto);
+        }
+
+        // Get wallet for existing user
+        const wallet = await this.walletService.findOrCreateWallet(
+            existingUser._id.toString(),
+            requestClient._id.toString(),
+            requestClient.defaultCurrency || 'ALL'
+        );
+
+        // Return in format PHP expects
+        return {
+            user: existingUser,
+            userId: existingUser._id.toString(),
+            walletBalance: wallet.balance || 0,
+            currentTierName: existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier',
+            referralCode: existingUser.referralCode
+        };
     }
 
     // Example of how systems interact in UserService
