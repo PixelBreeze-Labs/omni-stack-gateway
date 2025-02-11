@@ -433,15 +433,21 @@ export class UserService {
         webhookApiKey: string,
         userId: string
     ): Promise<{ wallet_info: WalletInfo }> {
-        // Find requesting client - same pattern as getOrCreateWithLoyalty
+        // Find requesting client
         const requestClient = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
             'venueBoostConnection.webhookApiKey': webhookApiKey,
             'venueBoostConnection.status': 'connected'
-        }).select('+loyaltyProgram');
+        });
 
         if (!requestClient) {
             throw new UnauthorizedException('Invalid venue or webhook key');
+        }
+
+        // Validate that the user belongs to this client or its connected clients
+        const hasAccess = await this.validateClientAccess(requestClient, userId);
+        if (!hasAccess) {
+            throw new UnauthorizedException('User not found for this client');
         }
 
         // Find user with populated wallet and referrals
@@ -457,10 +463,7 @@ export class UserService {
             throw new NotFoundException('User not found');
         }
 
-        // Find client with loyalty program (either primary or connected)
-        const clientWithLoyalty = await this.findClientWithLoyalty(requestClient);
-
-        // Get wallet transactions - now walletId is properly typed
+        // Get wallet transactions
         const walletTransactions = await this.walletService.getTransactions(user.walletId._id.toString());
 
         // Format wallet transactions
@@ -472,7 +475,7 @@ export class UserService {
             points: transaction.metadata.points || transaction.amount
         }));
 
-        // Format referrals data - now referrals are properly typed
+        // Format referrals data using the stored client tiers
         const referrals = user.referrals.map(referral => ({
             name: referral.name,
             email: referral.email,
@@ -486,8 +489,8 @@ export class UserService {
         const balance = user.walletId.balance || 0;
         const moneyValue = balance > 0 ? (balance / 100) : 0;
 
-        // Get current tier name from the client with loyalty program
-        const currentTierName = user.clientTiers?.[clientWithLoyalty._id.toString()] || 'Default Tier';
+        // Use the stored tier directly from user.clientTiers
+        const currentTierName = user.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
 
         const walletInfo: WalletInfo = {
             balance: balance,
@@ -501,8 +504,9 @@ export class UserService {
 
         return { wallet_info: walletInfo };
     }
+
+
     private async findClientWithLoyalty(primaryClient: any): Promise<any> {
-        // Check if primary client has valid loyalty program
         if (
             primaryClient.loyaltyProgram &&
             Array.isArray(primaryClient.loyaltyProgram.membershipTiers) &&
@@ -511,51 +515,48 @@ export class UserService {
             return primaryClient;
         }
 
-        // If primary client has venue connection, look for connected clients
         if (primaryClient.venueBoostConnection?.venueShortCode) {
-            try {
-                // Find all connected clients with explicit loyalty program query
-                const connectedClients = await this.clientModel.aggregate([
-                    {
-                        $match: {
-                            _id: { $ne: primaryClient._id },
-                            'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
-                            'venueBoostConnection.status': 'connected',
-                            'loyaltyProgram.membershipTiers': { $exists: true, $ne: [] }
-                        }
-                    },
-                    {
-                        $match: {
-                            $expr: { $gt: [{ $size: '$loyaltyProgram.membershipTiers' }, 0] }
-                        }
-                    }
-                ]);
+            const connectedClient = await this.clientModel.findOne({
+                _id: { $ne: primaryClient._id },
+                'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
+                'venueBoostConnection.status': 'connected',
+                'loyaltyProgram.membershipTiers.0': { $exists: true }
+            });
 
-                if (connectedClients.length > 0) {
-                    return connectedClients[0];
-                }
-
-                // If no connected client has loyalty, try fetching primary client with explicit query
-                const primaryWithLoyalty = await this.clientModel.findOne({
-                    _id: primaryClient._id,
-                    'loyaltyProgram.membershipTiers': { $exists: true, $ne: [] }
-                });
-
-                if (
-                    primaryWithLoyalty?.loyaltyProgram?.membershipTiers &&
-                    primaryWithLoyalty.loyaltyProgram.membershipTiers.length > 0
-                ) {
-                    return primaryWithLoyalty;
-                }
-            } catch (error) {
-                console.error('Error finding client with loyalty:', error, {
-                    primaryClientId: primaryClient._id,
-                    venueShortCode: primaryClient.venueBoostConnection.venueShortCode
-                });
+            if (connectedClient?.loyaltyProgram?.membershipTiers?.length > 0) {
+                return connectedClient;
             }
         }
 
-        // If no client with loyalty found, return primary client
         return primaryClient;
+    }
+
+    private async validateClientAccess(requestClient: any, userId: string): Promise<boolean> {
+        // Get all connected client IDs for the requesting client
+        const connectedClientIds = await this.getConnectedClientIds(requestClient);
+
+        // Find the user and check if they belong to any of the connected clients
+        const user = await this.userModel.findById(userId);
+        if (!user) return false;
+
+        return user.client_ids.some(clientId =>
+            connectedClientIds.includes(clientId.toString())
+        );
+    }
+
+
+    private async getConnectedClientIds(client: any): Promise<string[]> {
+        const clientIds = new Set<string>([client._id.toString()]);
+
+        if (client.venueBoostConnection?.venueShortCode) {
+            const connectedClients = await this.clientModel.find({
+                'venueBoostConnection.venueShortCode': client.venueBoostConnection.venueShortCode,
+                'venueBoostConnection.status': 'connected'
+            });
+
+            connectedClients.forEach(cc => clientIds.add(cc._id.toString()));
+        }
+
+        return Array.from(clientIds);
     }
 }
