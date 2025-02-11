@@ -363,19 +363,16 @@ export class UserService {
             });
 
             if (!requestClient) {
-                throw new UnauthorizedException({
-                    message: 'Invalid venue or webhook key',
-                    debug: { venueShortCode, providedApiKey: webhookApiKey }
-                });
+                throw new UnauthorizedException('Invalid venue or webhook key');
             }
 
-            // Find existing user by either venueBoostId or MongoDB _id
+            // Find existing user - removed .lean() to keep Mongoose document
             const existingUser = await this.userModel.findOne({
                 $or: [
                     { 'external_ids.venueBoostId': userData.external_id },
                     { _id: userData.external_id }
                 ]
-            }).populate('walletId').lean();
+            }).populate('walletId');
 
             if (!existingUser) {
                 return await this.registerUser({
@@ -384,40 +381,26 @@ export class UserService {
                 });
             }
 
-            // Get or create wallet with error details
-            try {
-                const wallet = await this.walletService.findOrCreateWallet(
-                    existingUser._id.toString(),
-                    requestClient._id.toString(),
-                    requestClient.defaultCurrency || 'ALL'
-                );
+            // Get or create wallet
+            const wallet = await this.walletService.findOrCreateWallet(
+                existingUser._id.toString(),
+                requestClient._id.toString(),
+                requestClient.defaultCurrency || 'ALL'
+            );
 
-                const currentTierName = existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
+            const currentTierName = existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier';
 
-                return {
-                    user: existingUser,
-                    userId: existingUser._id.toString(),
-                    walletBalance: wallet?.balance || 0,
-                    currentTierName,
-                    referralCode: existingUser.referralCode
-                };
-            } catch (walletError) {
-                throw new BadRequestException({
-                    message: 'Wallet operation failed',
-                    error: walletError.message,
-                    details: {
-                        userId: existingUser._id,
-                        clientId: requestClient._id,
-                        operation: 'findOrCreateWallet'
-                    }
-                });
-            }
+            return {
+                user: existingUser,  // Now this is a proper Mongoose document
+                userId: existingUser._id.toString(),
+                walletBalance: wallet?.balance || 0,
+                currentTierName,
+                referralCode: existingUser.referralCode
+            };
         } catch (error) {
-            // Return error details in response
             throw new BadRequestException({
                 message: 'Operation failed',
                 error: error.message,
-                stack: error.stack,
                 details: {
                     venueShortCode,
                     externalId: userData.external_id,
