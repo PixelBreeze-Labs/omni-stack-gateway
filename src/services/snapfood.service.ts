@@ -9,7 +9,11 @@ import {
     OrderTimeAnalysisResponse,
     FavoriteDishesResponse,
     CuisinePreferencesResponse,
-    OrderCustomizationsResponse
+    OrderCustomizationsResponse,
+    ReviewAndFeedbackResponse,
+    InteractionWithPromotionsResponse,
+    TotalSpendResponse,
+    AverageOrderValueResponse
 } from '../types/snapfood';
 @Injectable()
 export class SnapfoodService {
@@ -209,6 +213,88 @@ export class SnapfoodService {
         } catch (error) {
             this.logger.error(`Failed to fetch order customizations for customer ${customerId}:`, error);
             throw new HttpException('Failed to fetch order customizations', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Spending Behavior
+    async getAverageOrderValue(customerId: string, params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<AverageOrderValueResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/average-order-value`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch average order value for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch average order value', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getTotalSpend(customerId: string, params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<TotalSpendResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/total-spend`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch total spend for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch total spend', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Engagement Metrics
+    async getInteractionWithPromotions(customerId: string, params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<InteractionWithPromotionsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/interaction-with-promotions`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch promotion interactions for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch promotion interactions', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getReviewAndFeedback(customerId: string, params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<ReviewAndFeedbackResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/review-and-feedback`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch reviews and feedback for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch reviews and feedback', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

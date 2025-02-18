@@ -8,7 +8,11 @@ import {
     OrderTimeAnalysisResponse,
     FavoriteDishesResponse,
     CuisinePreferencesResponse,
-    OrderCustomizationsResponse
+    OrderCustomizationsResponse,
+    ReviewAndFeedbackResponse,
+    InteractionWithPromotionsResponse,
+    TotalSpendResponse,
+    AverageOrderValueResponse
 } from '../types/snapfood';
 
 @ApiTags('SnapFood')
@@ -134,6 +138,72 @@ export class SnapFoodController {
         @Query('end_date') endDate?: string,
     ): Promise<OrderCustomizationsResponse> {
         return await this.snapfoodService.getOrderCustomizations(id, {
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    // Spending Behavior endpoints
+    @Get('customer/:id/average-order-value')
+    @ApiOperation({ summary: 'Get average order value for a customer' })
+    @ApiResponse({ status: 200, description: 'Returns average order value in Lek' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getAverageOrderValue(
+        @Param('id') id: string,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<AverageOrderValueResponse> {
+        return await this.snapfoodService.getAverageOrderValue(id, {
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('customer/:id/total-spend')
+    @ApiOperation({ summary: 'Get total spend for a customer' })
+    @ApiResponse({ status: 200, description: 'Returns total spend in Lek' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalSpend(
+        @Param('id') id: string,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<TotalSpendResponse> {
+        return await this.snapfoodService.getTotalSpend(id, {
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    // Engagement Metrics endpoints
+    @Get('customer/:id/interaction-with-promotions')
+    @ApiOperation({ summary: 'Get promotion interactions for a customer' })
+    @ApiResponse({ status: 200, description: 'Returns coupon and discount usage data' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getInteractionWithPromotions(
+        @Param('id') id: string,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<InteractionWithPromotionsResponse> {
+        return await this.snapfoodService.getInteractionWithPromotions(id, {
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('customer/:id/review-and-feedback')
+    @ApiOperation({ summary: 'Get reviews and feedback for a customer' })
+    @ApiResponse({ status: 200, description: 'Returns average ratings for products, vendors, and riders' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getReviewAndFeedback(
+        @Param('id') id: string,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<ReviewAndFeedbackResponse> {
+        return await this.snapfoodService.getReviewAndFeedback(id, {
             start_date: startDate,
             end_date: endDate
         });
