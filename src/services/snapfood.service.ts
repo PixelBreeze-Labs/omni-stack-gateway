@@ -17,6 +17,44 @@ export class SnapfoodService {
         this.apiKey = this.configService.get<string>('snapfood.apiKey');
     }
 
+    // Generic forward method for flexible API calls
+    async forward(endpoint: string, method: string, data?: any) {
+        try {
+            const response$ = this.httpService.request({
+                method,
+                url: `${this.baseUrl}/${endpoint}`,
+                data,
+                headers: {
+                    'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                    'Content-Type': 'application/json',
+                },
+                validateStatus: (status) => status < 500
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`${method} ${endpoint} failed:`, response.data);
+                throw new HttpException(
+                    response.data?.message || 'SnapFood Service Error',
+                    response.status
+                );
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Forward request failed for ${method} ${endpoint}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'SnapFood Service Error',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    // Specific method for listing customers
     async listCustomers(params: {
         page?: number;
         per_page?: number;
