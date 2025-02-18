@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Param, Res } from '@nestjs/common';
+import {Controller, Get, Query, Param, Res, UseGuards} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';  // Add this import
 import { SnapfoodService } from '../services/snapfood.service';
@@ -33,10 +33,14 @@ import {
     PromotionStats,
     CashbackStats
 } from '../types/snapfood.types';
+import {ClientAuthGuard} from "../guards/client-auth.guard";
+import {IsSnapFood} from "../decorators/snapfood.decorator";
 
 @ApiTags('SnapFood')
 @ApiBearerAuth()
 @Controller('sf')
+@UseGuards(ClientAuthGuard)
+@IsSnapFood()
 export class SnapFoodController {
     constructor(private readonly snapfoodService: SnapfoodService) {}
 
