@@ -1,5 +1,6 @@
-import { Controller, Get, Query, Param } from '@nestjs/common';
+import { Controller, Get, Query, Param, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { Response } from 'express';  // Add this import
 import { SnapfoodService } from '../services/snapfood.service';
 import {
     CustomerListResponse,
@@ -12,8 +13,10 @@ import {
     ReviewAndFeedbackResponse,
     InteractionWithPromotionsResponse,
     TotalSpendResponse,
-    AverageOrderValueResponse
-} from '../types/snapfood';
+    AverageOrderValueResponse,
+    CustomerGeneralStatsResponse,
+    GeneralInfoResponse
+} from '../types/snapfood.types';
 
 @ApiTags('SnapFood')
 @ApiBearerAuth()
@@ -207,5 +210,46 @@ export class SnapFoodController {
             start_date: startDate,
             end_date: endDate
         });
+    }
+
+
+    @Get('customer/:id/general-info')
+    @ApiOperation({ summary: 'Get general customer information' })
+    @ApiResponse({ status: 200, description: 'Returns detailed customer information including orders and preferences' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getGeneralInfo(
+        @Param('id') id: string,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<GeneralInfoResponse> {
+        return await this.snapfoodService.getGeneralInfo(id, {
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('export-products')
+    @ApiOperation({ summary: 'Export vendor products to CSV' })
+    @ApiResponse({ status: 200, description: 'Returns CSV file with vendor products' })
+    @ApiQuery({ name: 'vendor_id', required: true })
+    async exportProducts(
+        @Query('vendor_id') vendorId: string,
+        @Res() res: Response
+    ): Promise<void> {
+        const result = await this.snapfoodService.exportProducts(vendorId);
+
+        Object.entries(result.headers).forEach(([key, value]) => {
+            res.setHeader(key, value);
+        });
+
+        res.send(result.data);
+    }
+
+    @Get('statistics/customer-insights/general-report')
+    @ApiOperation({ summary: 'Get general customer statistics' })
+    @ApiResponse({ status: 200, description: 'Returns general customer statistics and insights' })
+    async getCustomerGeneralStats(): Promise<CustomerGeneralStatsResponse> {
+        return await this.snapfoodService.getCustomerGeneralStats();
     }
 }
