@@ -1,3 +1,4 @@
+// src/types/snapfood.ts
 export interface CustomerListResponse {
     customers: {
         current_page: number;
@@ -15,4 +16,31 @@ export interface CustomerListResponse {
     };
     new_today: number;
     deleted_today: number;
+}
+
+export interface TotalOrdersResponse {
+    total_orders: number;
+}
+
+export interface OrderFrequencyResponse {
+    [date: string]: number;
+}
+
+export interface OrderTimeAnalysisResponse {
+    hours_frequency: { [hour: string]: number };
+    days_frequency: { [day: string]: number };
+}
+
+export interface FavoriteDishesResponse {
+    [dish: string]: number;
+}
+
+export interface CuisinePreferencesResponse {
+    [cuisine: string]: number;
+}
+
+export interface OrderCustomizationsResponse {
+    product_options: { [option: string]: number };
+    item_instructions: { [instruction: string]: number };
+    order_notes: { [note: string]: number };
 }

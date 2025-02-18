@@ -2,8 +2,15 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
-import { CustomerListResponse } from '../types/snapfood';
-
+import {
+    CustomerListResponse,
+    TotalOrdersResponse,
+    OrderFrequencyResponse,
+    OrderTimeAnalysisResponse,
+    FavoriteDishesResponse,
+    CuisinePreferencesResponse,
+    OrderCustomizationsResponse
+} from '../types/snapfood';
 @Injectable()
 export class SnapfoodService {
     private readonly logger = new Logger(SnapfoodService.name);
@@ -98,6 +105,110 @@ export class SnapfoodService {
                 'Failed to fetch customers',
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
+        }
+    }
+
+    // Order History and Frequency
+    async getTotalOrders(customerId: string, params?: { start_date?: string; end_date?: string }): Promise<TotalOrdersResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/total-orders`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch total orders for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch total orders', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getOrderFrequency(customerId: string, params?: { start_date?: string; end_date?: string }): Promise<OrderFrequencyResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/order-frequency`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch order frequency for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch order frequency', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getOrderTimeAnalysis(customerId: string, params?: { start_date?: string; end_date?: string }): Promise<OrderTimeAnalysisResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/order-time-analysis`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch order time analysis for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch order time analysis', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Order Preferences
+    async getFavoriteDishes(customerId: string, params?: { start_date?: string; end_date?: string }): Promise<FavoriteDishesResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/favorite-dishes`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch favorite dishes for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch favorite dishes', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getCuisinePreferences(customerId: string, params?: { start_date?: string; end_date?: string }): Promise<CuisinePreferencesResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/cuisine-preferences`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch cuisine preferences for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch cuisine preferences', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getOrderCustomizations(customerId: string, params?: { start_date?: string; end_date?: string }): Promise<OrderCustomizationsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/order-customizations`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch order customizations for customer ${customerId}:`, error);
+            throw new HttpException('Failed to fetch order customizations', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }
