@@ -13,8 +13,8 @@ import {
     ReviewAndFeedbackResponse,
     InteractionWithPromotionsResponse,
     TotalSpendResponse,
-    AverageOrderValueResponse
-} from '../types/snapfood';
+    AverageOrderValueResponse, CustomerGeneralStatsResponse, ExportProductsResponse, GeneralInfoResponse
+} from '../types/snapfood.types';
 @Injectable()
 export class SnapfoodService {
     private readonly logger = new Logger(SnapfoodService.name);
@@ -295,6 +295,101 @@ export class SnapfoodService {
         } catch (error) {
             this.logger.error(`Failed to fetch reviews and feedback for customer ${customerId}:`, error);
             throw new HttpException('Failed to fetch reviews and feedback', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getGeneralInfo(customerId: string, params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<GeneralInfoResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/customer/${customerId}/general-info`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Customer not found', HttpStatus.NOT_FOUND);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch general info for customer ${customerId}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to fetch general info',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async exportProducts(vendorId: string): Promise<ExportProductsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/export-products`,
+                {
+                    params: { vendor_id: vendorId },
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    responseType: 'blob',
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Vendor not found', HttpStatus.NOT_FOUND);
+            }
+
+            return {
+                data: response.data,
+                headers: {
+                    'Content-Type': 'text/csv',
+                    'Content-Disposition': 'attachment; filename="products.csv"'
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Failed to export products for vendor ${vendorId}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to export products',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async getCustomerGeneralStats(): Promise<CustomerGeneralStatsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/customer-insights/general-report`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch customer general stats:', error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to fetch customer general stats',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
         }
     }
 }
