@@ -13,6 +13,11 @@ import {
     ReviewAndFeedbackResponse,
     InteractionWithPromotionsResponse,
     TotalSpendResponse,
+    OrderListResponse,
+    WalletCreditsResponse,
+    WalletCustomersResponse,
+    FeatureUsageResponse,
+    SocialStatsResponse,
     AverageOrderValueResponse, CustomerGeneralStatsResponse, ExportProductsResponse, GeneralInfoResponse
 } from '../types/snapfood.types';
 @Injectable()
@@ -390,6 +395,109 @@ export class SnapfoodService {
                 'Failed to fetch customer general stats',
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
+        }
+    }
+
+    // Orders
+    async listOrders(params?: {
+        page?: number;
+        per_page?: number;
+        start_date?: string;
+        end_date?: string;
+    }): Promise<OrderListResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/api/v3/omni-stack/orders`,
+                {
+                    params: {
+                        page: params?.page || 1,
+                        per_page: params?.per_page || 15,
+                        start_date: params?.start_date,
+                        end_date: params?.end_date
+                    },
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch orders:', error);
+            throw new HttpException('Failed to fetch orders', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Wallet Stats
+    async getWalletCredits(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<WalletCreditsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/api/v3/omni-stack/statistics/wallet/credits`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch wallet credits:', error);
+            throw new HttpException('Failed to fetch wallet credits', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getWalletCustomers(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<WalletCustomersResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/api/v3/omni-stack/statistics/wallet/customers`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch wallet customers:', error);
+            throw new HttpException('Failed to fetch wallet customers', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Feature Usage Stats
+    async getFeatureUsageStats(): Promise<FeatureUsageResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/api/v3/omni-stack/statistics/feature-usage/stats`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch feature usage stats:', error);
+            throw new HttpException('Failed to fetch feature usage stats', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Social Dashboard Stats
+    async getSocialStats(): Promise<SocialStatsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/api/v3/omni-stack/statistics/social/general-report`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch social stats:', error);
+            throw new HttpException('Failed to fetch social stats', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

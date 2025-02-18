@@ -147,3 +147,90 @@ export interface ExportProductsResponse {
         'Content-Disposition': string;
     };
 }
+
+
+export interface OrderListResponse {
+    data: Array<{
+        ID: number;
+        'Order Nr': string;
+        'Ordered Date': string;
+        'Total Price': number;
+        'Total Tax': number;
+        Vendor: string | null;
+        Customer: string | null;
+        Status: string;
+        Source: string;
+    }>;
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    statistics: {
+        total_orders: number;
+        total_revenue: number;
+        total_tax: number;
+        total_customers: number;
+        average_order_value: number;
+        total_delivered_orders: number;
+        total_declined_orders: number;
+        currency: string;
+    };
+}
+
+export interface WalletCreditsResponse {
+    total_transfers: number;
+    total_deposit: number;
+    total_referral: number;
+    total_earnorder: number;
+    total_bonus: number;
+    total_from_cashback: number;
+    outgoing_credits: {
+        total: number;
+        order_payments: {
+            amount: number;
+            percentage: number;
+        };
+        transfers: {
+            amount: number;
+            percentage: number;
+        };
+    };
+}
+
+export interface WalletCustomersResponse {
+    total_customers_has_wallet: number;
+    total_customers_has_wallet_never_used: number;
+    total_customer_has_wallet_used: number;
+    total_customer_recent_wallet_used: number;
+}
+
+export interface FeatureUsageResponse {
+    name: string;
+    click: number;
+    usage: number;
+}[]
+
+export interface SocialStatsResponse {
+    mapInteractions: number;
+    friendRequests: {
+        profile_visits: number;
+        sent: number;
+        rejected: number;
+        friendship_form: number;
+    };
+    newChats: {
+        singleChat: number;
+        groupChat: number;
+    };
+    messageVolumes: {
+        'Single Chat Messages': number;
+        'Group Chat Messages': number;
+    };
+    snapStories: {
+        created: number;
+        total_view: number;
+        total_replies: number;
+        notifications_sent: number;
+    };
+    snapStoriesList: any[];
+}
