@@ -78,6 +78,7 @@ import { LoyaltyProgramController } from './controllers/loyalty-program.controll
 import { LocationController } from './controllers/system/location.controller';
 import { StoreController } from "./controllers/store.controller";
 import { VenueBoostController } from "./controllers/venueboost.controller";
+import { SnapFoodController } from "./controllers/snapfood.controller";
 import { OrderController } from "./controllers/order.controller";
 import { WebhookController } from "./controllers/webhook.controller";
 import { CampaignTrackingController } from './controllers/campaign-tracking.controller';
@@ -239,6 +240,7 @@ import {JwtModule} from "@nestjs/jwt";
     LocationController,
     StoreController,
     VenueBoostController,
+    SnapFoodController,
     OrderController,
     WebhookController,
     CampaignTrackingController,
