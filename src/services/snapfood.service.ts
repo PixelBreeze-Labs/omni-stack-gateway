@@ -18,6 +18,14 @@ import {
     WalletCustomersResponse,
     FeatureUsageResponse,
     SocialStatsResponse,
+    TopVendorsResponse,
+    TopCustomersResponse,
+    OrdersBySourceResponse,
+    OrdersByHoursResponse,
+    RevenueDataResponse,
+    OrderReportResponse,
+    CustomerReportResponse,
+    RecentOrdersResponse,
     AverageOrderValueResponse, CustomerGeneralStatsResponse, ExportProductsResponse, GeneralInfoResponse
 } from '../types/snapfood.types';
 @Injectable()
@@ -407,7 +415,7 @@ export class SnapfoodService {
     }): Promise<OrderListResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/api/v3/omni-stack/orders`,
+                `${this.baseUrl}/v3/omni-stack/orders`,
                 {
                     params: {
                         page: params?.page || 1,
@@ -433,7 +441,7 @@ export class SnapfoodService {
     }): Promise<WalletCreditsResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/api/v3/omni-stack/statistics/wallet/credits`,
+                `${this.baseUrl}/v3/omni-stack/statistics/wallet/credits`,
                 {
                     params,
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
@@ -453,7 +461,7 @@ export class SnapfoodService {
     }): Promise<WalletCustomersResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/api/v3/omni-stack/statistics/wallet/customers`,
+                `${this.baseUrl}/v3/omni-stack/statistics/wallet/customers`,
                 {
                     params,
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
@@ -471,7 +479,7 @@ export class SnapfoodService {
     async getFeatureUsageStats(): Promise<FeatureUsageResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/api/v3/omni-stack/statistics/feature-usage/stats`,
+                `${this.baseUrl}/v3/omni-stack/statistics/feature-usage/stats`,
                 {
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
                     validateStatus: (status) => status < 500
@@ -484,11 +492,10 @@ export class SnapfoodService {
         }
     }
 
-    // Social Dashboard Stats
     async getSocialStats(): Promise<SocialStatsResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/api/v3/omni-stack/statistics/social/general-report`,
+                `${this.baseUrl}/v3/omni-stack/statistics/social/general-report`,
                 {
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
                     validateStatus: (status) => status < 500
@@ -499,5 +506,178 @@ export class SnapfoodService {
             this.logger.error('Failed to fetch social stats:', error);
             throw new HttpException('Failed to fetch social stats', HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    async getTopVendors(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<TopVendorsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/orders/topvendors`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch top vendors:', error);
+            throw new HttpException('Failed to fetch top vendors', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getTopCustomers(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<TopCustomersResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/orders/topcustomers`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch top customers:', error);
+            throw new HttpException('Failed to fetch top customers', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getOrdersBySource(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<OrdersBySourceResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/orders/get-by-source`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch orders by source:', error);
+            throw new HttpException('Failed to fetch orders by source', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getOrdersByHours(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<OrdersByHoursResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/orders/get-by-hours`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch orders by hours:', error);
+            throw new HttpException('Failed to fetch orders by hours', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getRevenueData(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<RevenueDataResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/orders/get-revenue`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch revenue data:', error);
+            throw new HttpException('Failed to fetch revenue data', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getOrderReport(): Promise<OrderReportResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/orders/report`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch order report:', error);
+            throw new HttpException('Failed to fetch order report', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getCustomerReport(): Promise<CustomerReportResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/orders/customer-report`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch customer report:', error);
+            throw new HttpException('Failed to fetch customer report', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getRecentOrders(params?: {
+        page?: number;
+        per_page?: number;
+        start_date?: string;
+        end_date?: string;
+    }): Promise<RecentOrdersResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/orders-recent-ten`,
+                {
+                    params: {
+                        page: params?.page || 1,
+                        per_page: params?.per_page || 10,
+                        ...this.getDefaultDateRange(params)
+                    },
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch recent orders:', error);
+            throw new HttpException('Failed to fetch recent orders', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private getDefaultDateRange(params?: { start_date?: string; end_date?: string }) {
+        if (!params?.start_date) {
+            const today = new Date();
+            const lastMonth = new Date(today.setMonth(today.getMonth() - 1));
+            return {
+                start_date: lastMonth.toISOString().split('T')[0],
+                end_date: new Date().toISOString().split('T')[0]
+            };
+        }
+        return {
+            start_date: params.start_date,
+            end_date: params.end_date || new Date().toISOString().split('T')[0]
+        };
     }
 }
