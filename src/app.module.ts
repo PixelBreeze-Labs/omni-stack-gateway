@@ -84,6 +84,7 @@ import { WebhookController } from "./controllers/webhook.controller";
 import { CampaignTrackingController } from './controllers/campaign-tracking.controller';
 import { WalletController } from './controllers/wallet.controller';
 import { BenefitController } from './controllers/benefit.controller';
+import { SnapfoodAIAssistantController } from './controllers/snapfood-ai-assistant.controller';
 
 
 
@@ -137,6 +138,7 @@ import { OrderService } from "./services/order.service";
 import { CampaignTrackingService } from './services/campaign-tracking.service';
 import { WalletService } from './services/wallet.service';
 import { BenefitService } from './services/benefit.service';
+import { SnapfoodAIAssistantService } from './services/snapfood-ai-assistant.service';
 
 
 // Others
@@ -245,7 +247,8 @@ import {JwtModule} from "@nestjs/jwt";
     WebhookController,
     CampaignTrackingController,
     WalletController,
-    BenefitController
+    BenefitController,
+    SnapfoodAIAssistantController
   ],
   providers: [
     SnapfoodService,
@@ -294,7 +297,8 @@ import {JwtModule} from "@nestjs/jwt";
     OrderService,
     CampaignTrackingService,
     WalletService,
-    BenefitService
+    BenefitService,
+    SnapfoodAIAssistantService
   ],
 })
 export class AppModule implements NestModule {

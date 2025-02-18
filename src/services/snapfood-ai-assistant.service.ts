@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+//TODO: here?
 import { OpenAIApi, Configuration } from 'openai';
 import { SnapfoodService } from './snapfood.service';
 import { AIAssistantType, AIQueryContext, AIQueryResponse } from '../types/ai-assistant.types';
@@ -107,9 +108,49 @@ export class SnapfoodAIAssistantService {
     }
 
     private async gatherFoodData(context: AIQueryContext) {
-        // Gather food-related data
-        // Add your implementation
-        return {};
+        try {
+            // Gather comprehensive food-related data
+            const [
+                favorites,
+                cuisinePrefs,
+                orderCustomizations,
+                topVendors,
+                recentOrders
+            ] = await Promise.all([
+                this.snapfoodService.getFavoriteDishes(context.customerId),
+                this.snapfoodService.getCuisinePreferences(context.customerId),
+                this.snapfoodService.getOrderCustomizations(context.customerId),
+                this.snapfoodService.getTopVendors({
+                    start_date: context.startDate,
+                    end_date: context.endDate
+                }),
+                this.snapfoodService.getRecentOrders({
+                    start_date: context.startDate,
+                    end_date: context.endDate,
+                    per_page: 50 // Get more orders for better analysis
+                })
+            ]);
+
+            return {
+                favorite_dishes: favorites,
+                cuisine_preferences: cuisinePrefs,
+                customizations: orderCustomizations,
+                top_vendors: topVendors,
+                recent_orders: recentOrders,
+                order_patterns: this.analyzeFoodOrderPatterns(recentOrders)
+            };
+        } catch (error) {
+            this.logger.error('Failed to gather food data:', error);
+            return {};
+        }
+    }
+
+    private analyzeFoodOrderPatterns(orders: any) {
+        return {
+            peak_order_times: this.getPeakOrderTimes(orders),
+            popular_combinations: this.getPopularCombinations(orders),
+            average_order_size: this.calculateAverageOrderSize(orders)
+        };
     }
 
     private async gatherSalesData(context: AIQueryContext) {
@@ -118,6 +159,7 @@ export class SnapfoodAIAssistantService {
             revenue,
             orderStats
         ] = await Promise.all([
+            //TODO: context
             this.snapfoodService.getTopVendors(context),
             this.snapfoodService.getRevenueData(context),
             this.snapfoodService.getOrderReport()
@@ -131,9 +173,49 @@ export class SnapfoodAIAssistantService {
     }
 
     private async gatherAnalyticsData(context: AIQueryContext) {
-        // Gather analytics data
-        // Add your implementation
-        return {};
+        try {
+            const [
+                orderStats,
+                customerStats,
+                promotionStats,
+                walletStats,
+                featureUsage
+            ] = await Promise.all([
+                this.snapfoodService.getOrderReport(),
+                this.snapfoodService.getCustomerReport(),
+                this.snapfoodService.getActivePromotions({
+                    start_date: context.startDate,
+                    end_date: context.endDate
+                }),
+                this.snapfoodService.getWalletCredits({
+                    start_date: context.startDate,
+                    end_date: context.endDate
+                }),
+                this.snapfoodService.getFeatureUsageStats()
+            ]);
+
+            // Calculate additional metrics
+            const metrics = {
+                //TODO: here?
+                order_completion_rate: this.calculateOrderCompletionRate(orderStats),
+                customer_retention: this.calculateRetentionRate(customerStats),
+                promotion_effectiveness: this.analyzePromotionEffectiveness(promotionStats),
+                wallet_adoption: this.analyzeWalletAdoption(walletStats),
+                feature_engagement: this.analyzeFeatureEngagement(featureUsage)
+            };
+
+            return {
+                order_stats: orderStats,
+                customer_stats: customerStats,
+                promotion_stats: promotionStats,
+                wallet_stats: walletStats,
+                feature_usage: featureUsage,
+                calculated_metrics: metrics
+            };
+        } catch (error) {
+            this.logger.error('Failed to gather analytics data:', error);
+            return {};
+        }
     }
 
     private async gatherAdminData(context: AIQueryContext) {
@@ -184,6 +266,7 @@ export class SnapfoodAIAssistantService {
 
     private generateSuggestions(assistantType: AIAssistantType): string[] {
         // Add suggested queries based on assistant type
+        // TODO: here?
         const suggestions = {
             [AIAssistantType.CUSTOMER]: [
                 "Show me customers who ordered more than 5 times this month",
@@ -197,7 +280,58 @@ export class SnapfoodAIAssistantService {
     }
 
     private getRelatedQueries(query: string, assistantType: AIAssistantType): string[] {
-        // Add logic to generate related queries
-        return [];
+        // Base patterns for query analysis
+        const patterns = {
+            customer: ['customer', 'user', 'order', 'spend', 'churn'],
+            food: ['dish', 'cuisine', 'menu', 'food', 'restaurant'],
+            sales: ['revenue', 'sales', 'profit', 'performance'],
+            social: ['engagement', 'community', 'interaction', 'social'],
+            analytics: ['stats', 'metrics', 'analysis', 'performance'],
+        };
+
+        // Find matches in the query
+        const matches = Object.entries(patterns)
+            .filter(([_, terms]) =>
+                terms.some(term => query.toLowerCase().includes(term))
+            )
+            .map(([category]) => category);
+
+        // Generate related queries based on matches and assistant type
+        const relatedQueries = new Set<string>();
+
+        matches.forEach(match => {
+            switch (match) {
+                case 'customer':
+                    relatedQueries.add("What's their average order value?");
+                    relatedQueries.add("Show their order history");
+                    break;
+                case 'food':
+                    relatedQueries.add("What other dishes do they like?");
+                    relatedQueries.add("Show similar cuisine preferences");
+                    break;
+                case 'sales':
+                    relatedQueries.add("Compare with previous period");
+                    relatedQueries.add("Show breakdown by category");
+                    break;
+                    //TODO: here?
+                // Add more cases as needed
+            }
+        });
+
+        // Add assistant-type specific related queries
+        switch (assistantType) {
+            case AIAssistantType.CUSTOMER:
+                relatedQueries.add("Show customer segments");
+                relatedQueries.add("Analyze ordering patterns");
+                break;
+            case AIAssistantType.FOOD:
+                relatedQueries.add("Show popular combinations");
+                relatedQueries.add("Analyze peak ordering times");
+                break;
+            //TODO: here?
+            // Add more cases
+        }
+
+        return Array.from(relatedQueries).slice(0, 5); // Return top 5 related queries
     }
 }
