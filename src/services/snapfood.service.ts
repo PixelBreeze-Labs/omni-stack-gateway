@@ -26,6 +26,11 @@ import {
     OrderReportResponse,
     CustomerReportResponse,
     RecentOrdersResponse,
+    CouponStats,
+    DiscountStats,
+    PromotionStats,
+    CashbackStats,
+    DateRangeChartData,
     AverageOrderValueResponse, CustomerGeneralStatsResponse, ExportProductsResponse, GeneralInfoResponse
 } from '../types/snapfood.types';
 @Injectable()
@@ -679,5 +684,209 @@ export class SnapfoodService {
             start_date: params.start_date,
             end_date: params.end_date || new Date().toISOString().split('T')[0]
         };
+    }
+
+    // Coupon Statistics
+    async getTotalCouponsAmount(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/coupons/totalAmount`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total coupons amount:', error);
+            throw new HttpException('Failed to fetch total coupons amount', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getTotalOrdersCoupons(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/coupons/totalOrders`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total orders with coupons:', error);
+            throw new HttpException('Failed to fetch total orders with coupons', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Discount Statistics
+    async getTotalDiscountsAmount(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/discounts/totalAmount`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total discounts amount:', error);
+            throw new HttpException('Failed to fetch total discounts amount', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getTotalOrdersDiscounts(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/discounts/totalOrders`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total orders with discounts:', error);
+            throw new HttpException('Failed to fetch total orders with discounts', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Promotion Statistics
+    async getTotalPromotionsAmount(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/promotions/totalAmount`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total promotions amount:', error);
+            throw new HttpException('Failed to fetch total promotions amount', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getTotalOrdersPromotions(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/promotions/totalOrders`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total orders with promotions:', error);
+            throw new HttpException('Failed to fetch total orders with promotions', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getActivePromotions(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<PromotionStats['active_promotions']> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/promotions`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch active promotions:', error);
+            throw new HttpException('Failed to fetch active promotions', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Cashback Statistics
+    async getTotalCashbackEarned(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/cashback/totalAmountEarned`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total cashback earned:', error);
+            throw new HttpException('Failed to fetch total cashback earned', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getTotalCashbackUsed(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<DateRangeChartData> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/cashback/totalAmountUsed`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch total cashback used:', error);
+            throw new HttpException('Failed to fetch total cashback used', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async getMostUsedCashbackValues(params?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<CashbackStats['most_used_values']> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/statistics/cashback/mostUsedValues`,
+                {
+                    params: this.getDefaultDateRange(params),
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch most used cashback values:', error);
+            throw new HttpException('Failed to fetch most used cashback values', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 }

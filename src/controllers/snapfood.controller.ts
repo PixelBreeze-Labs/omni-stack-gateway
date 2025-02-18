@@ -28,7 +28,10 @@ import {
     RevenueDataResponse,
     OrderReportResponse,
     CustomerReportResponse,
-    RecentOrdersResponse
+    RecentOrdersResponse,
+    DateRangeChartData,
+    PromotionStats,
+    CashbackStats
 } from '../types/snapfood.types';
 
 @ApiTags('SnapFood')
@@ -421,6 +424,160 @@ export class SnapFoodController {
         return await this.snapfoodService.getRecentOrders({
             page,
             per_page: perPage,
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    // Coupon Statistics
+    @Get('statistics/coupons/totalAmount')
+    @ApiOperation({ summary: 'Get total amount of coupons used' })
+    @ApiResponse({ status: 200, description: 'Returns total coupon amount by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalCouponsAmount(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalCouponsAmount({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/coupons/totalOrders')
+    @ApiOperation({ summary: 'Get total orders with coupons' })
+    @ApiResponse({ status: 200, description: 'Returns total orders using coupons by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalOrdersCoupons(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalOrdersCoupons({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    // Discount Statistics
+    @Get('statistics/discounts/totalAmount')
+    @ApiOperation({ summary: 'Get total amount of discounts used' })
+    @ApiResponse({ status: 200, description: 'Returns total discount amount by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalDiscountsAmount(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalDiscountsAmount({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/discounts/totalOrders')
+    @ApiOperation({ summary: 'Get total orders with discounts' })
+    @ApiResponse({ status: 200, description: 'Returns total orders using discounts by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalOrdersDiscounts(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalOrdersDiscounts({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    // Promotion Statistics
+    @Get('statistics/promotions/totalAmount')
+    @ApiOperation({ summary: 'Get total amount of promotions used' })
+    @ApiResponse({ status: 200, description: 'Returns total promotion amount by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalPromotionsAmount(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalPromotionsAmount({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/promotions/totalOrders')
+    @ApiOperation({ summary: 'Get total orders with promotions' })
+    @ApiResponse({ status: 200, description: 'Returns total orders using promotions by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalOrdersPromotions(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalOrdersPromotions({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/promotions')
+    @ApiOperation({ summary: 'Get active promotions' })
+    @ApiResponse({ status: 200, description: 'Returns list of active promotions with usage statistics' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getActivePromotions(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<PromotionStats['active_promotions']> {
+        return await this.snapfoodService.getActivePromotions({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    // Cashback Statistics
+    @Get('statistics/cashback/totalAmountEarned')
+    @ApiOperation({ summary: 'Get total amount of cashback earned' })
+    @ApiResponse({ status: 200, description: 'Returns total cashback earned by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalCashbackEarned(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalCashbackEarned({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/cashback/totalAmountUsed')
+    @ApiOperation({ summary: 'Get total amount of cashback used' })
+    @ApiResponse({ status: 200, description: 'Returns total cashback used by date' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTotalCashbackUsed(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<DateRangeChartData> {
+        return await this.snapfoodService.getTotalCashbackUsed({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/cashback/mostUsedValues')
+    @ApiOperation({ summary: 'Get most used cashback values' })
+    @ApiResponse({ status: 200, description: 'Returns statistics about most frequently used cashback amounts' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getMostUsedCashbackValues(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<CashbackStats['most_used_values']> {
+        return await this.snapfoodService.getMostUsedCashbackValues({
             start_date: startDate,
             end_date: endDate
         });
