@@ -308,3 +308,39 @@ export interface RecentOrdersResponse {
         currency: string;
     };
 }
+
+export interface CouponStats {
+    total_amount: number;
+    total_orders: number;
+}
+
+export interface DiscountStats {
+    total_amount: number;
+    total_orders: number;
+}
+
+export interface PromotionStats {
+    total_amount: number;
+    total_orders: number;
+    active_promotions: Array<{
+        name: string;
+        usage_count: number;
+        total_amount: number;
+    }>;
+}
+
+export interface CashbackStats {
+    total_amount_earned: number;
+    total_amount_used: number;
+    most_used_values: Array<{
+        value: number;
+        count: number;
+        percentage: number;
+    }>;
+}
+
+export interface DateRangeChartData {
+    labels: string[];
+    data: number[];
+    total: number;
+}
