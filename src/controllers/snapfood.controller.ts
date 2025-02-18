@@ -15,7 +15,12 @@ import {
     TotalSpendResponse,
     AverageOrderValueResponse,
     CustomerGeneralStatsResponse,
-    GeneralInfoResponse
+    GeneralInfoResponse,
+    OrderListResponse,
+    WalletCreditsResponse,
+    WalletCustomersResponse,
+    FeatureUsageResponse,
+    SocialStatsResponse
 } from '../types/snapfood.types';
 
 @ApiTags('SnapFood')
@@ -251,5 +256,70 @@ export class SnapFoodController {
     @ApiResponse({ status: 200, description: 'Returns general customer statistics and insights' })
     async getCustomerGeneralStats(): Promise<CustomerGeneralStatsResponse> {
         return await this.snapfoodService.getCustomerGeneralStats();
+    }
+
+    @Get('orders')
+    @ApiOperation({ summary: 'List orders' })
+    @ApiResponse({ status: 200, description: 'Returns orders list with statistics' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'per_page', required: false })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async listOrders(
+        @Query('page') page?: number,
+        @Query('per_page') perPage?: number,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<OrderListResponse> {
+        return await this.snapfoodService.listOrders({
+            page,
+            per_page: perPage,
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/wallet/credits')
+    @ApiOperation({ summary: 'Get wallet credits statistics' })
+    @ApiResponse({ status: 200, description: 'Returns wallet credit usage statistics' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getWalletCredits(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<WalletCreditsResponse> {
+        return await this.snapfoodService.getWalletCredits({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/wallet/customers')
+    @ApiOperation({ summary: 'Get wallet customers statistics' })
+    @ApiResponse({ status: 200, description: 'Returns wallet customer usage statistics' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getWalletCustomers(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<WalletCustomersResponse> {
+        return await this.snapfoodService.getWalletCustomers({
+            start_date: startDate,
+            end_date: endDate
+        });
+    }
+
+    @Get('statistics/feature-usage/stats')
+    @ApiOperation({ summary: 'Get feature usage statistics' })
+    @ApiResponse({ status: 200, description: 'Returns feature usage and click statistics' })
+    async getFeatureUsageStats(): Promise<FeatureUsageResponse> {
+        return await this.snapfoodService.getFeatureUsageStats();
+    }
+
+    @Get('statistics/social/general-report')
+    @ApiOperation({ summary: 'Get social statistics' })
+    @ApiResponse({ status: 200, description: 'Returns social interaction statistics' })
+    async getSocialStats(): Promise<SocialStatsResponse> {
+        return await this.snapfoodService.getSocialStats();
     }
 }
