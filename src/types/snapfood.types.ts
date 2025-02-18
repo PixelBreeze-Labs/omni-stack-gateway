@@ -293,6 +293,17 @@ export interface RecentOrdersResponse {
         Status: string;
         Source: string;
     }>;
+    orders?: Array<{
+        ID: number;
+        'Order Nr': string;
+        'Ordered Date': string;
+        'Total Price': number;
+        'Total Tax': number;
+        Vendor: string | null;
+        Customer: string | null;
+        Status: string;
+        Source: string;
+    }>;
     current_page: number;
     last_page: number;
     per_page: number;

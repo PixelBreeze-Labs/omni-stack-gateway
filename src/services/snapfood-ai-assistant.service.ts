@@ -122,35 +122,57 @@ export class SnapfoodAIAssistantService {
     }
 
     private async gatherFoodData(context: AIQueryContext) {
-        const [
-            favorites,
-            cuisinePrefs,
-            orderCustomizations,
-            topVendors,
-            recentOrders
-        ] = await Promise.all([
-            this.snapfoodService.getFavoriteDishes(context.customerId),
-            this.snapfoodService.getCuisinePreferences(context.customerId),
-            this.snapfoodService.getOrderCustomizations(context.customerId),
-            this.snapfoodService.getTopVendors({
-                start_date: context.startDate,
-                end_date: context.endDate
-            }),
-            this.snapfoodService.getRecentOrders({
-                start_date: context.startDate,
-                end_date: context.endDate,
-                per_page: 50
-            })
-        ]);
+        try {
+            const [
+                favorites,
+                cuisinePrefs,
+                orderCustomizations,
+                topVendors,
+                recentOrdersResponse
+            ] = await Promise.all([
+                this.snapfoodService.getFavoriteDishes(context.customerId),
+                this.snapfoodService.getCuisinePreferences(context.customerId),
+                this.snapfoodService.getOrderCustomizations(context.customerId),
+                this.snapfoodService.getTopVendors({
+                    start_date: context.startDate,
+                    end_date: context.endDate
+                }),
+                this.snapfoodService.getRecentOrders({
+                    start_date: context.startDate,
+                    end_date: context.endDate,
+                    per_page: 50
+                })
+            ]);
 
-        return {
-            favorite_dishes: favorites,
-            cuisine_preferences: cuisinePrefs,
-            customizations: orderCustomizations,
-            top_vendors: topVendors,
-            recent_orders: recentOrders,
-            trends: this.analyzeFoodTrends(recentOrders)
-        };
+            // Extract orders array from the response
+            const recentOrders = recentOrdersResponse?.data ||
+                recentOrdersResponse?.orders ||
+                recentOrdersResponse ||
+                [];
+
+            return {
+                favorite_dishes: favorites,
+                cuisine_preferences: cuisinePrefs,
+                customizations: orderCustomizations,
+                top_vendors: topVendors,
+                recent_orders: recentOrders,
+                trends: this.analyzeFoodTrends(recentOrders)
+            };
+        } catch (error) {
+            this.logger.error('Failed to gather food data:', error);
+            return {
+                favorite_dishes: [],
+                cuisine_preferences: [],
+                customizations: [],
+                top_vendors: [],
+                recent_orders: [],
+                trends: {
+                    peak_times: { peak_hours: [], hourly_distribution: new Array(24).fill(0) },
+                    popular_combinations: [],
+                    cuisine_trends: { popular_cuisines: [], cuisine_distribution: {} }
+                }
+            };
+        }
     }
 
     private async gatherSalesData(context: AIQueryContext) {
@@ -486,17 +508,38 @@ export class SnapfoodAIAssistantService {
         };
     }
 
-    private analyzePeakOrderTimes(orders: any[]): any {
+    private analyzePeakOrderTimes(orders: any): any {
+        // Initialize hourly counts
         const hourCounts = new Array(24).fill(0);
+
+        // Ensure orders is an array and has items
+        if (!Array.isArray(orders)) {
+            // If orders is in a different format (e.g., within an object), try to extract it
+            const orderArray = orders?.data || orders?.orders || [];
+            if (!Array.isArray(orderArray)) {
+                this.logger.warn('No valid orders array found for peak time analysis');
+                return {
+                    peak_hours: [],
+                    hourly_distribution: hourCounts
+                };
+            }
+            orders = orderArray;
+        }
+
+        // Process each order
         orders.forEach(order => {
-            const hour = new Date(order.created_at).getHours();
-            hourCounts[hour]++;
+            if (order?.created_at) {
+                const hour = new Date(order.created_at).getHours();
+                hourCounts[hour]++;
+            }
         });
+
         return {
             peak_hours: this.findPeakHours(hourCounts),
             hourly_distribution: hourCounts
         };
     }
+
 
     private findPeakHours(hourCounts: number[]): number[] {
         const threshold = Math.max(...hourCounts) * 0.8;
@@ -506,13 +549,25 @@ export class SnapfoodAIAssistantService {
             .map(({ hour }) => hour);
     }
 
-    private analyzePopularCombinations(orders: any[]): any {
+    private analyzePopularCombinations(orders: any): any {
         const combinations = {};
+
+        // Ensure orders is an array
+        if (!Array.isArray(orders)) {
+            const orderArray = orders?.data || orders?.orders || [];
+            if (!Array.isArray(orderArray)) {
+                this.logger.warn('No valid orders array found for combinations analysis');
+                return [];
+            }
+            orders = orderArray;
+        }
+
         orders.forEach(order => {
-            if (order.products && order.products.length > 1) {
+            if (order?.products && Array.isArray(order.products) && order.products.length > 1) {
                 this.recordCombinations(order.products, combinations);
             }
         });
+
         return this.sortCombinations(combinations);
     }
 
@@ -539,15 +594,32 @@ export class SnapfoodAIAssistantService {
             .slice(0, limit);
     }
 
-    private analyzeCuisineTrends(orders: any[]): any {
+    private analyzeCuisineTrends(orders: any): any {
         const cuisineCounts = {};
+
+        // Ensure orders is an array
+        if (!Array.isArray(orders)) {
+            const orderArray = orders?.data || orders?.orders || [];
+            if (!Array.isArray(orderArray)) {
+                this.logger.warn('No valid orders array found for cuisine analysis');
+                return {
+                    popular_cuisines: [],
+                    cuisine_distribution: {}
+                };
+            }
+            orders = orderArray;
+        }
+
         orders.forEach(order => {
-            if (order.vendor && order.vendor.foodCategories) {
+            if (order?.vendor?.foodCategories && Array.isArray(order.vendor.foodCategories)) {
                 order.vendor.foodCategories.forEach(category => {
-                    cuisineCounts[category.title] = (cuisineCounts[category.title] || 0) + 1;
+                    if (category?.title) {
+                        cuisineCounts[category.title] = (cuisineCounts[category.title] || 0) + 1;
+                    }
                 });
             }
         });
+
         return {
             popular_cuisines: this.getTopItems(cuisineCounts, 5),
             cuisine_distribution: cuisineCounts
