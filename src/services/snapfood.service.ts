@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
+import { CustomerListResponse } from '../types/snapfood';
 
 @Injectable()
 export class SnapfoodService {
@@ -17,7 +18,6 @@ export class SnapfoodService {
         this.apiKey = this.configService.get<string>('snapfood.apiKey');
     }
 
-    // Generic forward method for flexible API calls
     async forward(endpoint: string, method: string, data?: any) {
         try {
             const response$ = this.httpService.request({
@@ -54,18 +54,21 @@ export class SnapfoodService {
         }
     }
 
-    // Specific method for listing customers
     async listCustomers(params: {
         page?: number;
         per_page?: number;
         search?: string;
-    }) {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<CustomerListResponse> {
         try {
             const response$ = this.httpService.get(`${this.baseUrl}/v3/omni-stack/customers`, {
                 params: {
                     page: params.page || 1,
-                    per_page: params.per_page || 15,
+                    per_page: params.per_page || 10,
                     search: params.search,
+                    start_date: params.start_date,
+                    end_date: params.end_date
                 },
                 headers: {
                     'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
