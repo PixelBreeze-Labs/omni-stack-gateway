@@ -20,7 +20,15 @@ import {
     WalletCreditsResponse,
     WalletCustomersResponse,
     FeatureUsageResponse,
-    SocialStatsResponse
+    SocialStatsResponse,
+    TopVendorsResponse,
+    TopCustomersResponse,
+    OrdersBySourceResponse,
+    OrdersByHoursResponse,
+    RevenueDataResponse,
+    OrderReportResponse,
+    CustomerReportResponse,
+    RecentOrdersResponse
 } from '../types/snapfood.types';
 
 @ApiTags('SnapFood')
@@ -321,5 +329,100 @@ export class SnapFoodController {
     @ApiResponse({ status: 200, description: 'Returns social interaction statistics' })
     async getSocialStats(): Promise<SocialStatsResponse> {
         return await this.snapfoodService.getSocialStats();
+    }
+
+    @Get('statistics/orders/topvendors')
+    @ApiOperation({ summary: 'Get top vendors statistics' })
+    @ApiResponse({ status: 200, description: 'Returns top performing vendors' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTopVendors(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<TopVendorsResponse> {
+        return await this.snapfoodService.getTopVendors({ start_date: startDate, end_date: endDate });
+    }
+
+    @Get('statistics/orders/topcustomers')
+    @ApiOperation({ summary: 'Get top customers statistics' })
+    @ApiResponse({ status: 200, description: 'Returns top customers by orders and spending' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getTopCustomers(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<TopCustomersResponse> {
+        return await this.snapfoodService.getTopCustomers({ start_date: startDate, end_date: endDate });
+    }
+
+    @Get('statistics/orders/get-by-source')
+    @ApiOperation({ summary: 'Get orders by source' })
+    @ApiResponse({ status: 200, description: 'Returns order distribution by source' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getOrdersBySource(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<OrdersBySourceResponse> {
+        return await this.snapfoodService.getOrdersBySource({ start_date: startDate, end_date: endDate });
+    }
+
+    @Get('statistics/orders/get-by-hours')
+    @ApiOperation({ summary: 'Get orders by hours' })
+    @ApiResponse({ status: 200, description: 'Returns order distribution by hours' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getOrdersByHours(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<OrdersByHoursResponse> {
+        return await this.snapfoodService.getOrdersByHours({ start_date: startDate, end_date: endDate });
+    }
+
+    @Get('statistics/orders/get-revenue')
+    @ApiOperation({ summary: 'Get revenue data' })
+    @ApiResponse({ status: 200, description: 'Returns revenue statistics' })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getRevenueData(
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<RevenueDataResponse> {
+        return await this.snapfoodService.getRevenueData({ start_date: startDate, end_date: endDate });
+    }
+
+    @Get('statistics/orders/report')
+    @ApiOperation({ summary: 'Get order report' })
+    @ApiResponse({ status: 200, description: 'Returns order status report' })
+    async getOrderReport(): Promise<OrderReportResponse> {
+        return await this.snapfoodService.getOrderReport();
+    }
+
+    @Get('statistics/orders/customer-report')
+    @ApiOperation({ summary: 'Get customer report' })
+    @ApiResponse({ status: 200, description: 'Returns customer statistics report' })
+    async getCustomerReport(): Promise<CustomerReportResponse> {
+        return await this.snapfoodService.getCustomerReport();
+    }
+
+    @Get('orders-recent-ten')
+    @ApiOperation({ summary: 'Get recent orders' })
+    @ApiResponse({ status: 200, description: 'Returns most recent orders with statistics' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'per_page', required: false })
+    @ApiQuery({ name: 'start_date', required: false })
+    @ApiQuery({ name: 'end_date', required: false })
+    async getRecentOrders(
+        @Query('page') page?: number,
+        @Query('per_page') perPage?: number,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ): Promise<RecentOrdersResponse> {
+        return await this.snapfoodService.getRecentOrders({
+            page,
+            per_page: perPage,
+            start_date: startDate,
+            end_date: endDate
+        });
     }
 }

@@ -234,3 +234,77 @@ export interface SocialStatsResponse {
     };
     snapStoriesList: any[];
 }
+
+export interface TopVendorsResponse {
+    [key: string]: {
+        vendor_name: string;
+        order_count: number;
+        total_revenue: number;
+    };
+}
+
+export interface TopCustomersResponse {
+    [key: string]: {
+        customer_name: string;
+        order_count: number;
+        total_spent: number;
+    };
+}
+
+export interface OrdersBySourceResponse {
+    web: number;
+    ios: number;
+    android: number;
+}
+
+export interface OrdersByHoursResponse {
+    [hour: string]: {
+        count: number;
+        revenue: number;
+    };
+}
+
+export interface RevenueDataResponse {
+    [date: string]: {
+        revenue: number;
+        orders: number;
+    };
+}
+
+export interface OrderReportResponse {
+    delivered_orders: number;
+    declined_orders: number;
+}
+
+export interface CustomerReportResponse {
+    new_customers: number;
+    repeat_customers: number;
+}
+
+export interface RecentOrdersResponse {
+    data: Array<{
+        ID: number;
+        'Order Nr': string;
+        'Ordered Date': string;
+        'Total Price': number;
+        'Total Tax': number;
+        Vendor: string | null;
+        Customer: string | null;
+        Status: string;
+        Source: string;
+    }>;
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    statistics: {
+        total_orders: number;
+        total_revenue: number;
+        total_tax: number;
+        total_customers: number;
+        average_order_value: number;
+        total_delivered_orders: number;
+        total_declined_orders: number;
+        currency: string;
+    };
+}
