@@ -49,6 +49,7 @@ import { Address, AddressSchema } from './schemas/address.schema';
 import { Campaign, CampaignSchema } from './schemas/campaign.schema';
 import { Wallet, WalletSchema } from './schemas/wallet.schema';
 import { CampaignEvent, CampaignEventSchema } from './schemas/campaign-event.schema';
+import { Submission, SubmissionSchema } from './schemas/submission.schema';
 
 
 // Controller imports
@@ -85,6 +86,7 @@ import { CampaignTrackingController } from './controllers/campaign-tracking.cont
 import { WalletController } from './controllers/wallet.controller';
 import { BenefitController } from './controllers/benefit.controller';
 import { SnapfoodAIAssistantController } from './controllers/snapfood-ai-assistant.controller';
+import { SubmissionController } from './controllers/submission.controller';
 
 
 
@@ -139,6 +141,7 @@ import { CampaignTrackingService } from './services/campaign-tracking.service';
 import { WalletService } from './services/wallet.service';
 import { BenefitService } from './services/benefit.service';
 import { SnapfoodAIAssistantService } from './services/snapfood-ai-assistant.service';
+import { SubmissionService } from './services/submission.service';
 
 
 // Others
@@ -204,7 +207,8 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Address.name, schema: AddressSchema },
       { name: Campaign.name, schema: CampaignSchema },
       { name: CampaignEvent.name, schema: CampaignEventSchema },
-      { name: Wallet.name, schema: WalletSchema }
+      { name: Wallet.name, schema: WalletSchema },
+      { name: Submission.name, schema: SubmissionSchema }
     ]),
   ],
   controllers: [
@@ -248,7 +252,8 @@ import {JwtModule} from "@nestjs/jwt";
     CampaignTrackingController,
     WalletController,
     BenefitController,
-    SnapfoodAIAssistantController
+    SnapfoodAIAssistantController,
+    SubmissionController
   ],
   providers: [
     SnapfoodService,
@@ -298,7 +303,8 @@ import {JwtModule} from "@nestjs/jwt";
     CampaignTrackingService,
     WalletService,
     BenefitService,
-    SnapfoodAIAssistantService
+    SnapfoodAIAssistantService,
+    SubmissionService
   ],
 })
 export class AppModule implements NestModule {
