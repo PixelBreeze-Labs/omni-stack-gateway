@@ -6,6 +6,7 @@ import { Client } from './client.schema';
 export enum SubmissionType {
     QUOTE = 'quote',
     CONTACT = 'contact',
+    REQUEST_DEMO = 'request_demo',
     OTHER = 'other'
 }
 
