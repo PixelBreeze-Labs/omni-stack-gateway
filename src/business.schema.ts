@@ -73,8 +73,8 @@ export class Business extends Document {
     @Prop()
     phone?: string;
 
-    @Prop()
-    address?: string;
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Address' })
+    addressId?: string;
 
     @Prop({ type: String, enum: Currency, default: Currency.USD })
     currency: Currency;

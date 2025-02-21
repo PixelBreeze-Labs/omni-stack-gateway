@@ -5,8 +5,8 @@ import { Currency } from '../enums/currency.enum';
 
 @Schema({ timestamps: true })
 export class Price extends Document {
-    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
-    productId: string;
+    @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'StripeProduct' })
+    stripeProductId: string;
 
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
     clientId: string;

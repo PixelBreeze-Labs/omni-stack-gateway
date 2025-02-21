@@ -3,6 +3,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Currency } from '../enums/currency.enum';
 import { LoyaltyProgram, LoyaltyProgramSchema } from './loyalty-program.schema';
+import {SubscriptionConfig, SubscriptionConfigSchema} from "./subscription-config.schema";
 
 @Schema({ timestamps: true })
 export class Client extends Document {
@@ -48,6 +49,9 @@ export class Client extends Document {
         status: 'connected' | 'disconnected';
         webhookApiKey: string;
     };
+
+    @Prop({ type: SubscriptionConfigSchema, required: false })
+    subscriptionConfig?: SubscriptionConfig;
 }
 
 export const ClientSchema = SchemaFactory.createForClass(Client);

@@ -1,6 +1,7 @@
 // src/schemas/address.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
+import {BusinessSchema} from "../business.schema";
 
 @Schema({ timestamps: true })
 export class Address extends Document {
@@ -55,6 +56,13 @@ AddressSchema.virtual('state', {
 AddressSchema.virtual('country', {
     ref: 'Country',
     localField: 'countryId',
+    foreignField: '_id',
+    justOne: true
+});
+
+BusinessSchema.virtual('address', {
+    ref: 'Address',
+    localField: 'addressId',
     foreignField: '_id',
     justOne: true
 });
