@@ -50,6 +50,10 @@ import { Campaign, CampaignSchema } from './schemas/campaign.schema';
 import { Wallet, WalletSchema } from './schemas/wallet.schema';
 import { CampaignEvent, CampaignEventSchema } from './schemas/campaign-event.schema';
 import { Submission, SubmissionSchema } from './schemas/submission.schema';
+import { Business, BusinessSchema } from './schemas/business.schema';
+import { StripePrice, StripePriceSchema} from './schemas/stripe-price.schema';
+import { StripeProduct, StripeProductSchema } from './schemas/stripe-product.schema';
+import { SubscriptionConfig, SubscriptionConfigSchema } from './schemas/subscription-config.schema';
 
 
 // Controller imports
@@ -208,7 +212,11 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Campaign.name, schema: CampaignSchema },
       { name: CampaignEvent.name, schema: CampaignEventSchema },
       { name: Wallet.name, schema: WalletSchema },
-      { name: Submission.name, schema: SubmissionSchema }
+      { name: Submission.name, schema: SubmissionSchema },
+      { name: Business.name, schema: BusinessSchema },
+      { name: StripePrice.name, schema: StripePriceSchema },
+      { name: StripeProduct.name, schema: StripeProductSchema },
+      { name: SubscriptionConfig.name, schema: SubscriptionConfigSchema },
     ]),
   ],
   controllers: [
