@@ -39,37 +39,15 @@ export class VerificationService {
     async verifyEmail(token: string): Promise<VerificationResponse> {
         const verificationToken = await this.verificationTokenModel.findOne({ token });
 
-        // Check if token exists
+        // First check if token exists
         if (!verificationToken) {
-            // Check if user is already verified
-            const user = await this.userModel.findOne({
-                metadata: { email_verified: 'true' }
-            });
-
-            if (user) {
-                return {
-                    status: 'already_verified',
-                    message: 'This email has already been verified.',
-                    userId: user._id.toString()
-                };
-            }
-
             return {
                 status: 'invalid',
                 message: 'Invalid verification token.'
             };
         }
 
-        // Check if token is expired
-        if (verificationToken.expiresAt < new Date()) {
-            await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
-            return {
-                status: 'expired',
-                message: 'Verification token has expired.'
-            };
-        }
-
-        // Get user and verify
+        // Get user first
         const user = await this.userModel.findById(verificationToken.userId);
         if (!user) {
             await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
@@ -82,10 +60,21 @@ export class VerificationService {
         // Check if already verified
         const metadata = new Map(user.metadata);
         if (metadata.get('email_verified') === 'true') {
+            // Clean up token if it exists
+            await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
             return {
                 status: 'already_verified',
                 message: 'This email has already been verified.',
                 userId: user._id.toString()
+            };
+        }
+
+        // Check if token is expired
+        if (verificationToken.expiresAt < new Date()) {
+            await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
+            return {
+                status: 'expired',
+                message: 'Verification token has expired.'
             };
         }
 
