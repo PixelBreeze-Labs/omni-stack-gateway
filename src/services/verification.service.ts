@@ -6,6 +6,12 @@ import { VerificationToken } from '../schemas/verification-token.schema';
 import { User } from '../schemas/user.schema';
 import { generateVerificationToken } from '../utils/token.utils';
 
+interface VerificationResponse {
+    status: 'success' | 'already_verified' | 'expired' | 'invalid';
+    message: string;
+    userId?: string;
+}
+
 @Injectable()
 export class VerificationService {
     constructor(
@@ -30,26 +36,60 @@ export class VerificationService {
         return token;
     }
 
-    async verifyEmail(token: string): Promise<{ userId: string }> {
+    async verifyEmail(token: string): Promise<VerificationResponse> {
         const verificationToken = await this.verificationTokenModel.findOne({ token });
 
+        // Check if token exists
         if (!verificationToken) {
-            throw new NotFoundException('Invalid or expired verification token');
+            // Check if user is already verified
+            const user = await this.userModel.findOne({
+                metadata: { email_verified: 'true' }
+            });
+
+            if (user) {
+                return {
+                    status: 'already_verified',
+                    message: 'This email has already been verified.',
+                    userId: user._id.toString()
+                };
+            }
+
+            return {
+                status: 'invalid',
+                message: 'Invalid verification token.'
+            };
         }
 
+        // Check if token is expired
         if (verificationToken.expiresAt < new Date()) {
             await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
-            throw new BadRequestException('Verification token has expired');
+            return {
+                status: 'expired',
+                message: 'Verification token has expired.'
+            };
         }
 
-        // Get the user and update verification status
+        // Get user and verify
         const user = await this.userModel.findById(verificationToken.userId);
         if (!user) {
-            throw new NotFoundException('User not found');
+            await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
+            return {
+                status: 'invalid',
+                message: 'User not found.'
+            };
         }
 
-        // Add email_verified field to metadata if it doesn't exist
+        // Check if already verified
         const metadata = new Map(user.metadata);
+        if (metadata.get('email_verified') === 'true') {
+            return {
+                status: 'already_verified',
+                message: 'This email has already been verified.',
+                userId: user._id.toString()
+            };
+        }
+
+        // Update verification status
         metadata.set('email_verified', 'true');
         metadata.set('email_verified_at', new Date().toISOString());
 
@@ -58,6 +98,11 @@ export class VerificationService {
         // Delete the used token
         await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
 
-        return { userId: user._id.toString() };
+        return {
+            status: 'success',
+            message: 'Email verified successfully.',
+            userId: user._id.toString()
+        };
     }
+
 }

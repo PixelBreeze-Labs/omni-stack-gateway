@@ -8,6 +8,12 @@ import { Client } from '../schemas/client.schema';
 import { Get, Query } from '@nestjs/common';
 import { VerificationService } from '../services/verification.service';
 
+interface VerificationResponse {
+    status: 'success' | 'already_verified' | 'expired' | 'invalid';
+    message: string;
+    userId?: string;
+}
+
 @ApiTags('Business Registration')
 @ApiBearerAuth()
 @Controller('business-registration')
@@ -35,7 +41,7 @@ export class BusinessRegistrationController {
     @ApiResponse({ status: 200, description: 'Email verified successfully' })
     @ApiResponse({ status: 404, description: 'Invalid or expired token' })
     @Get('verify-email')
-    async verifyEmail(@Query('token') token: string) {
+    async verifyEmail(@Query('token') token: string): Promise<VerificationResponse> {
         return this.verificationService.verifyEmail(token);
     }
 }
