@@ -54,6 +54,8 @@ import { Business, BusinessSchema } from './schemas/business.schema';
 import { StripePrice, StripePriceSchema} from './schemas/stripe-price.schema';
 import { StripeProduct, StripeProductSchema } from './schemas/stripe-product.schema';
 import { SubscriptionConfig, SubscriptionConfigSchema } from './schemas/subscription-config.schema';
+import { VerificationToken, VerificationTokenSchema } from './schemas/verification-token.schema';
+
 
 
 // Controller imports
@@ -91,6 +93,7 @@ import { WalletController } from './controllers/wallet.controller';
 import { BenefitController } from './controllers/benefit.controller';
 import { SnapfoodAIAssistantController } from './controllers/snapfood-ai-assistant.controller';
 import { SubmissionController } from './controllers/submission.controller';
+import { BusinessRegistrationController } from './controllers/business-registration.controller';
 
 
 
@@ -146,6 +149,8 @@ import { WalletService } from './services/wallet.service';
 import { BenefitService } from './services/benefit.service';
 import { SnapfoodAIAssistantService } from './services/snapfood-ai-assistant.service';
 import { SubmissionService } from './services/submission.service';
+import { BusinessRegistrationService } from './services/business-registration.service';
+import { VerificationService } from './services/verification.service';
 
 
 // Others
@@ -217,6 +222,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: StripePrice.name, schema: StripePriceSchema },
       { name: StripeProduct.name, schema: StripeProductSchema },
       { name: SubscriptionConfig.name, schema: SubscriptionConfigSchema },
+      { name: VerificationToken.name, schema: VerificationTokenSchema },
     ]),
   ],
   controllers: [
@@ -261,7 +267,8 @@ import {JwtModule} from "@nestjs/jwt";
     WalletController,
     BenefitController,
     SnapfoodAIAssistantController,
-    SubmissionController
+    SubmissionController,
+    BusinessRegistrationController
   ],
   providers: [
     SnapfoodService,
@@ -312,7 +319,9 @@ import {JwtModule} from "@nestjs/jwt";
     WalletService,
     BenefitService,
     SnapfoodAIAssistantService,
-    SubmissionService
+    SubmissionService,
+    BusinessRegistrationService,
+    VerificationService,
   ],
 })
 export class AppModule implements NestModule {
