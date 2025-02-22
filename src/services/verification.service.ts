@@ -33,6 +33,13 @@ export class VerificationService {
             expiresAt
         });
 
+        // Store token in user metadata
+        await this.userModel.findByIdAndUpdate(userId, {
+            $set: {
+                'metadata.verification_token': token
+            }
+        });
+
         return token;
     }
 
@@ -41,6 +48,20 @@ export class VerificationService {
 
         // First check if token exists
         if (!verificationToken) {
+            // Check if any user is verified with this token
+            const verifiedUser = await this.userModel.findOne({
+                'metadata.verification_token': token,
+                'metadata.email_verified': 'true'
+            });
+
+            if (verifiedUser) {
+                return {
+                    status: 'already_verified',
+                    message: 'This email has already been verified.',
+                    userId: verifiedUser._id.toString()
+                };
+            }
+
             return {
                 status: 'invalid',
                 message: 'Invalid verification token.'
@@ -60,7 +81,6 @@ export class VerificationService {
         // Check if already verified
         const metadata = new Map(user.metadata);
         if (metadata.get('email_verified') === 'true') {
-            // Clean up token if it exists
             await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
             return {
                 status: 'already_verified',
@@ -78,20 +98,33 @@ export class VerificationService {
             };
         }
 
-        // Update verification status
-        metadata.set('email_verified', 'true');
-        metadata.set('email_verified_at', new Date().toISOString());
+        try {
+            // Update verification status
+            metadata.set('email_verified', 'true');
+            metadata.set('email_verified_at', new Date().toISOString());
 
-        await user.updateOne({ metadata });
+            await this.userModel.findByIdAndUpdate(user._id, {
+                $set: {
+                    metadata: Object.fromEntries(metadata)
+                }
+            });
 
-        // Delete the used token
-        await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
+            // Delete the used token
+            await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
 
-        return {
-            status: 'success',
-            message: 'Email verified successfully.',
-            userId: user._id.toString()
-        };
+            return {
+                status: 'success',
+                message: 'Email verified successfully.',
+                userId: user._id.toString()
+            };
+        } catch (error) {
+            // Log the error
+            console.error('Error verifying email:', error);
+
+            return {
+                status: 'invalid',
+                message: 'Failed to verify email. Please try again later.'
+            };
+        }
     }
-
 }
