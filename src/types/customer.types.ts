@@ -4,7 +4,7 @@ export type CustomerStatus = 'ACTIVE' | 'INACTIVE' | 'PENDING';
 export type CustomerType = 'REGULAR' | 'VIP';
 export type FilterStatus = 'ACTIVE' | 'INACTIVE' | 'ALL';
 export type FilterType = 'REGULAR' | 'VIP' | 'ALL';
-export type RegistrationSource = 'manual' | 'metroshop' | 'metrosuites' | 'bookmaster' | 'trackmaster' | 'other';
+export type RegistrationSource = 'manual' | 'metroshop' | 'metrosuites' | 'bookmaster' | 'trackmaster' | 'other' |  'staffluent';
 
 export interface CustomerMetrics {
     totalCustomers: number;

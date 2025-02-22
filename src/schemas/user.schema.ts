@@ -9,7 +9,8 @@ export enum RegistrationSource {
     BOOKMASTER = 'bookmaster',
     TRACKMASTER = 'trackmaster',
     OTHER = 'other',
-    MANUAL = 'manual'
+    MANUAL = 'manual',
+    STAFFLUENT = 'staffluent',
 }
 
 

@@ -8,6 +8,8 @@ import { Business, BusinessType } from '../schemas/business.schema';
 import { EmailService } from './email.service';
 import { BusinessRegistrationDto } from '../dtos/business-registration.dto';;
 import { VerificationService } from './verification.service';
+import { generateRandomPassword } from "../utils/password.utils";
+import * as bcrypt from 'bcrypt';
 
 
 @Injectable()
@@ -25,13 +27,15 @@ export class BusinessRegistrationService {
         // Create admin user first
         const [firstName, ...lastNameParts] = fullName.split(' ');
         const lastName = lastNameParts.join(' ');
+        const temporaryPassword = generateRandomPassword(); // From our utils
+        const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
         const adminUser = await this.userModel.create({
             name: firstName,
             surname: lastName,
             email: businessEmail,
-            password: null, // Password will be set after email verification
-            registrationSource: RegistrationSource.METROSUITES,
+            password: hashedPassword,
+            registrationSource: RegistrationSource.STAFFLUENT,
             client_ids: [clientId],
             isActive: true
         });
