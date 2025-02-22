@@ -4,7 +4,7 @@ import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Currency } from '../enums/currency.enum';
 
 @Schema({ timestamps: true })
-export class Price extends Document {
+export class StripePrice extends Document {
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'StripeProduct' })
     stripeProductId: string;
 
@@ -36,4 +36,4 @@ export class Price extends Document {
     metadata: Map<string, any>;
 }
 
-export const PriceSchema = SchemaFactory.createForClass(Price);
+export const StripePriceSchema = SchemaFactory.createForClass(StripePrice);

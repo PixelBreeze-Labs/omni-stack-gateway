@@ -126,3 +126,10 @@ BusinessSchema.index({ clientId: 1 });
 BusinessSchema.index({ adminUserId: 1 });
 BusinessSchema.index({ stripeCustomerId: 1 });
 BusinessSchema.index({ subscriptionStatus: 1 });
+
+BusinessSchema.virtual('address', {
+    ref: 'Address',
+    localField: 'addressId',
+    foreignField: '_id',
+    justOne: true
+});
