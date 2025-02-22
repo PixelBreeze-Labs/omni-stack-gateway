@@ -5,6 +5,8 @@ import { BusinessRegistrationDto } from '../dtos/business-registration.dto';
 import { BusinessRegistrationService } from '../services/business-registration.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
+import { Get, Query } from '@nestjs/common';
+import { VerificationService } from '../services/verification.service';
 
 @ApiTags('Business Registration')
 @ApiBearerAuth()
@@ -12,7 +14,8 @@ import { Client } from '../schemas/client.schema';
 @UseGuards(ClientAuthGuard)
 export class BusinessRegistrationController {
     constructor(
-        private businessRegistrationService: BusinessRegistrationService
+        private businessRegistrationService: BusinessRegistrationService,
+        private verificationService: VerificationService
     ) {}
 
     @ApiOperation({ summary: 'Register new business with trial account' })
@@ -26,5 +29,13 @@ export class BusinessRegistrationController {
             ...registrationData,
             clientId: req.client.id
         });
+    }
+
+    @ApiOperation({ summary: 'Verify email address' })
+    @ApiResponse({ status: 200, description: 'Email verified successfully' })
+    @ApiResponse({ status: 404, description: 'Invalid or expired token' })
+    @Get('verify-email')
+    async verifyEmail(@Query('token') token: string) {
+        return this.verificationService.verifyEmail(token);
     }
 }
