@@ -94,6 +94,7 @@ import { BenefitController } from './controllers/benefit.controller';
 import { SnapfoodAIAssistantController } from './controllers/snapfood-ai-assistant.controller';
 import { SubmissionController } from './controllers/submission.controller';
 import { BusinessRegistrationController } from './controllers/business-registration.controller';
+import { PasswordResetController } from './controllers/sf-password-reset.controller';
 
 
 
@@ -268,7 +269,8 @@ import {JwtModule} from "@nestjs/jwt";
     BenefitController,
     SnapfoodAIAssistantController,
     SubmissionController,
-    BusinessRegistrationController
+    BusinessRegistrationController,
+    PasswordResetController
   ],
   providers: [
     SnapfoodService,
