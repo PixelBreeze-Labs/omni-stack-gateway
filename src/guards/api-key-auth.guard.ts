@@ -14,7 +14,7 @@ export class ApiKeyAuthGuard implements CanActivate {
             throw new UnauthorizedException('API key is missing');
         }
 
-        const isValid = await this.clientApiKeyService.validateApiKey(apiKey);
+        const isValid = await this.clientApiKeyService.validateClientAppApiKey(apiKey);
         if (!isValid) {
             throw new UnauthorizedException('Invalid API key');
         }
