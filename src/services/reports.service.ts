@@ -3,45 +3,86 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Report } from '../interfaces/report.interface';
+import {FileAttachment, Report} from '../interfaces/report.interface';
 import { ClientApp } from '../interfaces/client-app.interface';
 import { EmailService } from './email.service';
+import { SupabaseService } from './supabase.service';
+
 
 @Injectable()
 export class ReportsService {
     constructor(
         @InjectModel('Report') private readonly reportModel: Model<Report>,
         @InjectModel('ClientApp') private readonly clientAppModel: Model<ClientApp>,
-        private readonly emailService: EmailService
+        private readonly emailService: EmailService,
+        private readonly supabaseService: SupabaseService
     ) {}
 
     async create(report: Report): Promise<Report> {
-        const newReport = new this.reportModel(report);
-        const savedReport = await newReport.save();
+        // Process file uploads if any
+        let filesToSave: FileAttachment[] = [];
+        if (report.content.files && report.content.files.length > 0) {
+            // Create a temporary report to get an ID
+            const tempReport = new this.reportModel({
+                ...report,
+                content: {
+                    ...report.content,
+                    files: [] // Start with empty files array
+                }
+            });
+            const savedTempReport = await tempReport.save();
 
-        // Add debug logging
-        console.log('Looking for client app with ID:', report.clientApp.id);
+            // Upload files to Supabase
+            filesToSave = await this.supabaseService.uploadReportFiles(
+                savedTempReport._id.toString(),
+                report.content.files
+            );
 
-        // Find the associated client app
-        const clientApp = await this.clientAppModel.findOne({
-            _id: report.clientApp.id  // Changed from clientApp.id to _id
-        });
+            // Update the report with file URLs
+            await this.reportModel.findByIdAndUpdate(
+                savedTempReport._id,
+                {
+                    'content.files': filesToSave
+                }
+            );
 
-        console.log('Found client app:', clientApp);
+            // Get the updated report
+            const updatedReport = await this.reportModel.findById(savedTempReport._id);
 
-        if (clientApp) {
-            try {
-                console.log('Attempting to send email notification...');
-                await this.emailService.sendReportNotification(savedReport, clientApp);
-                console.log('Email notification sent successfully');
-            } catch (error) {
-                console.error('Failed to send email notification:', error);
+            // Find the associated client app
+            const clientApp = await this.clientAppModel.findOne({
+                _id: report.clientApp.id
+            });
+
+            if (clientApp) {
+                try {
+                    await this.emailService.sendReportNotification(updatedReport, clientApp);
+                } catch (error) {
+                    console.error('Failed to send email notification:', error);
+                }
             }
-        } else {
-            console.log('No client app found for ID:', report.clientApp.id);
-        }
 
-        return savedReport;
+            return updatedReport;
+        } else {
+            // No files to process, continue with normal flow
+            const newReport = new this.reportModel(report);
+            const savedReport = await newReport.save();
+
+            // Find the associated client app
+            const clientApp = await this.clientAppModel.findOne({
+                _id: report.clientApp.id
+            });
+
+            if (clientApp) {
+                try {
+                    await this.emailService.sendReportNotification(savedReport, clientApp);
+                } catch (error) {
+                    console.error('Failed to send email notification:', error);
+                }
+            }
+
+            return savedReport;
+        }
     }
     async findAll(query: any): Promise<Report[]> {
         const filter = {};

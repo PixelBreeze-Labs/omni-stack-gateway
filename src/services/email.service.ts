@@ -20,24 +20,45 @@ export class EmailService {
     /**
      * Sends a simple report notification email.
      */
+    /**
+     * Sends a simple report notification email.
+     */
     async sendReportNotification(report: Report, clientApp: ClientApp): Promise<void> {
         const { reportConfig } = clientApp;
         const { email } = reportConfig;
 
+        // Generate file attachments HTML if files exist
+        let filesHtml = '';
+        if (report.content.files && report.content.files.length > 0) {
+            filesHtml = `
+                <h3>Attached Files:</h3>
+                <ul>
+                    ${report.content.files.map(file => `
+                        <li>
+                            <a href="${file.url}" target="_blank">${file.name}</a> 
+                            (${file.type}, ${this.formatFileSize(file.size)})
+                        </li>
+                    `).join('')}
+                </ul>
+            `;
+        }
+
         const emailBody = `
-      <h2>New Report Submitted</h2>
-      <p>A new report has been submitted from ${clientApp.name}</p>
+            <h2>New Report Submitted</h2>
+            <p>A new report has been submitted from ${clientApp.name}</p>
 
-      <h3>Report Details:</h3>
-      <p><strong>Timestamp:</strong> ${report.metadata.timestamp}</p>
-      ${report.content.name ? `<p><strong>Submitted by:</strong> ${report.content.name}</p>` : ''}
+            <h3>Report Details:</h3>
+            <p><strong>Timestamp:</strong> ${report.metadata.timestamp}</p>
+            ${report.content.name ? `<p><strong>Submitted by:</strong> ${report.content.name}</p>` : ''}
 
-      <h3>Message:</h3>
-      <p>${report.content.message}</p>
+            <h3>Message:</h3>
+            <p>${report.content.message}</p>
 
-      <hr>
-      <p><small>This is an automated message.</small></p>
-    `;
+            ${filesHtml}
+
+            <hr>
+            <p><small>This is an automated message.</small></p>
+        `;
 
         try {
             const response = await axios.post(
@@ -62,6 +83,16 @@ export class EmailService {
                 `Failed to send email: ${error.response?.data?.message || error.message}`,
             );
         }
+    }
+
+    private formatFileSize(bytes: number): string {
+        if (!bytes) return '0 Bytes';
+
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
     /**
