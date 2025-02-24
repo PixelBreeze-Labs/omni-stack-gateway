@@ -3,6 +3,21 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
 @Schema()
+class FileAttachment {
+    @Prop({ required: true })
+    name: string;
+
+    @Prop({ required: true })
+    type: string;
+
+    @Prop({ required: true })
+    url: string;
+
+    @Prop()
+    size: number;
+}
+
+@Schema()
 export class Report extends Document {
     @Prop({ type: Object, required: true })
     clientApp: {
@@ -16,6 +31,7 @@ export class Report extends Document {
     content: {
         message: string;
         name?: string;
+        files?: FileAttachment[];
     };
 
     @Prop({ type: Object, required: true })
