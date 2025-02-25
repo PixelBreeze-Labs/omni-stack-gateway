@@ -96,6 +96,8 @@ import { SubmissionController } from './controllers/submission.controller';
 import { BusinessRegistrationController } from './controllers/business-registration.controller';
 import { PasswordResetController } from './controllers/sf-password-reset.controller';
 import { SubscriptionConfigController } from './controllers/subscription-config.controller';
+import { SubscriptionController } from './controllers/subscription.contoller';
+import { BusinessController } from './controllers/business.controller';
 
 
 
@@ -154,6 +156,8 @@ import { SubmissionService } from './services/submission.service';
 import { BusinessRegistrationService } from './services/business-registration.service';
 import { VerificationService } from './services/verification.service';
 import { SubscriptionConfigService } from './services/subscription-config.service';
+import { SubscriptionService } from './services/subscription.service';
+import { BusinessService } from './services/business.service';
 
 
 // Others
@@ -273,7 +277,9 @@ import {JwtModule} from "@nestjs/jwt";
     SubmissionController,
     BusinessRegistrationController,
     PasswordResetController,
-    SubscriptionConfigController
+    SubscriptionConfigController,
+    SubscriptionController,
+    BusinessController,
   ],
   providers: [
     SnapfoodService,
@@ -327,7 +333,9 @@ import {JwtModule} from "@nestjs/jwt";
     SubmissionService,
     BusinessRegistrationService,
     VerificationService,
-    SubscriptionConfigService
+    SubscriptionConfigService,
+    SubscriptionService,
+    BusinessService
   ],
 })
 export class AppModule implements NestModule {
