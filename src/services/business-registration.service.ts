@@ -51,7 +51,7 @@ export class BusinessRegistrationService {
             userIds: [adminUser._id],
             type: BusinessType.OTHER,
             email: businessEmail,
-            subscriptionStatus: 'trialing',
+            subscriptionStatus: 'incomplete',
             isActive: true
         });
 
