@@ -126,7 +126,7 @@ export class BusinessService {
             // Get price for the requested plan
             const price = await this.priceModel.findOne({
                 clientId,
-                'metadata.planId': subscription.planId,
+                stripePriceId: subscription.planId,
                 interval: subscription.interval
             });
 
@@ -166,6 +166,9 @@ export class BusinessService {
                     },
                 ],
                 mode: 'subscription',
+                subscription_data: {
+                    trial_period_days: 14,
+                },
                 success_url: `${process.env.FRONTEND_URL}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
                 cancel_url: `${process.env.FRONTEND_URL}/subscription?userId=${business.adminUserId}&businessId=${business._id}`,
                 metadata: {
