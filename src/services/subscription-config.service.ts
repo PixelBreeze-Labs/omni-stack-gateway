@@ -62,48 +62,88 @@ export class SubscriptionConfigService {
             }
         };
     }
-
     private mergeConfigs(existingConfig, updateConfigDto) {
-        // Start with existing config or default
-        const baseConfig = existingConfig || this.getDefaultConfig();
+        // Create a deep copy of the existing config or use default if none exists
+        const baseConfig = existingConfig ? JSON.parse(JSON.stringify(existingConfig)) : this.getDefaultConfig();
 
-        // Create a new merged config
-        const mergedConfig = {
-            ...baseConfig,
-            ...updateConfigDto
-        };
+        // Create a new config object with the base properties
+        const mergedConfig = { ...baseConfig };
 
-        // Handle nested objects carefully to avoid overwriting sensitive fields
+        // Update top-level fields if they exist in the update DTO
+        if (updateConfigDto.productPrefix !== undefined) {
+            mergedConfig.productPrefix = updateConfigDto.productPrefix;
+        }
+
+        if (updateConfigDto.defaultCurrency !== undefined) {
+            mergedConfig.defaultCurrency = updateConfigDto.defaultCurrency;
+        }
+
+        // Handle nested objects
         if (updateConfigDto.webhook) {
-            mergedConfig.webhook = {
-                ...baseConfig.webhook,
-                ...updateConfigDto.webhook,
-                // Keep the secret if not explicitly provided
-                secret: updateConfigDto.webhook.secret || baseConfig.webhook?.secret
-            };
+            mergedConfig.webhook = mergedConfig.webhook || {};
+
+            // Only update fields that are specified in the DTO
+            if (updateConfigDto.webhook.endpoint !== undefined) {
+                mergedConfig.webhook.endpoint = updateConfigDto.webhook.endpoint;
+            }
+
+            if (updateConfigDto.webhook.enabled !== undefined) {
+                mergedConfig.webhook.enabled = updateConfigDto.webhook.enabled;
+            }
+
+            if (updateConfigDto.webhook.events !== undefined) {
+                mergedConfig.webhook.events = updateConfigDto.webhook.events;
+            }
+
+            // Only update secret if it's provided and not empty
+            if (updateConfigDto.webhook.secret) {
+                mergedConfig.webhook.secret = updateConfigDto.webhook.secret;
+            }
         }
 
         if (updateConfigDto.stripeAccount) {
-            mergedConfig.stripeAccount = {
-                ...baseConfig.stripeAccount,
-                ...updateConfigDto.stripeAccount,
-                // Keep the secretKey if not explicitly provided
-                secretKey: updateConfigDto.stripeAccount.secretKey || baseConfig.stripeAccount?.secretKey
-            };
+            mergedConfig.stripeAccount = mergedConfig.stripeAccount || {};
+
+            if (updateConfigDto.stripeAccount.accountId !== undefined) {
+                mergedConfig.stripeAccount.accountId = updateConfigDto.stripeAccount.accountId;
+            }
+
+            if (updateConfigDto.stripeAccount.publicKey !== undefined) {
+                mergedConfig.stripeAccount.publicKey = updateConfigDto.stripeAccount.publicKey;
+            }
+
+            // Only update secretKey if it's provided and not empty
+            if (updateConfigDto.stripeAccount.secretKey) {
+                mergedConfig.stripeAccount.secretKey = updateConfigDto.stripeAccount.secretKey;
+            }
         }
 
         if (updateConfigDto.trial) {
-            mergedConfig.trial = {
-                ...baseConfig.trial,
-                ...updateConfigDto.trial
-            };
+            mergedConfig.trial = mergedConfig.trial || {};
+
+            if (updateConfigDto.trial.enabled !== undefined) {
+                mergedConfig.trial.enabled = updateConfigDto.trial.enabled;
+            }
+
+            if (updateConfigDto.trial.durationDays !== undefined) {
+                mergedConfig.trial.durationDays = updateConfigDto.trial.durationDays;
+            }
         }
 
         if (updateConfigDto.invoiceSettings) {
-            mergedConfig.invoiceSettings = {
-                ...baseConfig.invoiceSettings,
-                ...updateConfigDto.invoiceSettings
-            };
+            mergedConfig.invoiceSettings = mergedConfig.invoiceSettings || {};
+
+            if (updateConfigDto.invoiceSettings.generateInvoice !== undefined) {
+                mergedConfig.invoiceSettings.generateInvoice = updateConfigDto.invoiceSettings.generateInvoice;
+            }
+
+            if (updateConfigDto.invoiceSettings.daysUntilDue !== undefined) {
+                mergedConfig.invoiceSettings.daysUntilDue = updateConfigDto.invoiceSettings.daysUntilDue;
+            }
+
+            if (updateConfigDto.invoiceSettings.footer !== undefined) {
+                mergedConfig.invoiceSettings.footer = updateConfigDto.invoiceSettings.footer;
+            }
         }
 
         return mergedConfig;
