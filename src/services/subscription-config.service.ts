@@ -25,7 +25,9 @@ export class SubscriptionConfigService {
     }
 
     async updateConfig(clientId: string, updateConfigDto: UpdateSubscriptionConfigDto) {
-        const client = await this.clientModel.findById(clientId);
+        const client = await this.clientModel.findById(clientId)
+            .select('+subscriptionConfig.stripeAccount.secretKey +subscriptionConfig.webhook.secret');
+
         if (!client) {
             throw new NotFoundException('Client not found');
         }
