@@ -43,4 +43,33 @@ export class SubscriptionController {
     ) {
         return this.subscriptionService.getProductsWithPrices(req.client.id);
     }
+
+
+    @ApiOperation({ summary: 'Get all subscriptions' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
+    @ApiQuery({ name: 'search', required: false, type: String })
+    @ApiQuery({ name: 'status', required: false, enum: ['active', 'past_due', 'canceled', 'trialing', 'incomplete'] })
+    @ApiQuery({ name: 'businessId', required: false, type: String })
+    @ApiResponse({ status: 200, description: 'Returns a list of subscriptions' })
+    @Get()
+    async getSubscriptions(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('status') status?: string,
+        @Query('businessId') businessId?: string
+    ) {
+        return this.subscriptionService.getSubscriptions(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                status,
+                businessId
+            }
+        );
+    }
 }
