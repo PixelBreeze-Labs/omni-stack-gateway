@@ -113,11 +113,10 @@ export class SubscriptionConfigService {
             }
 
             // Only update secretKey if it's provided and not empty
-            if (updateConfigDto.stripeAccount.secretKey && updateConfigDto.stripeAccount.secretKey.trim() !== '') {
-                mergedConfig.stripeAccount.secretKey = updateConfigDto.stripeAccount.secretKey;
-            } else if (baseConfig.stripeAccount && baseConfig.stripeAccount.secretKey) {
-                // Explicitly preserve the existing secret key
+            if (updateConfigDto.stripeAccount.secretKey && updateConfigDto.stripeAccount.secretKey == '00-DONT-USE-11') {
                 mergedConfig.stripeAccount.secretKey = baseConfig.stripeAccount.secretKey;
+            } else {
+                mergedConfig.stripeAccount.secretKey = updateConfigDto.stripeAccount.secretKey;
             }
         }
 
