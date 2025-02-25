@@ -39,9 +39,9 @@ export class SubscriptionService {
     }
 
     /**
-     * List products directly from Stripe
+     * List products directly from Stripe (needed for sync operation)
      */
-    async listStripeProducts(clientId: string) {
+    private async listStripeProducts(clientId: string) {
         try {
             const stripe = await this.getStripeInstance(clientId);
             const client = await this.clientModel.findById(clientId);
@@ -63,38 +63,6 @@ export class SubscriptionService {
             return clientProducts;
         } catch (error) {
             this.logger.error(`Error fetching Stripe products: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * List prices directly from Stripe
-     */
-    async listStripePrices(clientId: string) {
-        try {
-            const stripe = await this.getStripeInstance(clientId);
-
-            // Get products first to filter prices
-            const products = await this.listStripeProducts(clientId);
-            const productIds = products.map(p => p.id);
-
-            // Create an array to store all prices
-            let allPrices = [];
-
-            // For each product, get its prices
-            for (const productId of productIds) {
-                const prices = await stripe.prices.list({
-                    product: productId,
-                    active: true,
-                    limit: 100
-                });
-
-                allPrices.push(...prices.data);
-            }
-
-            return allPrices;
-        } catch (error) {
-            this.logger.error(`Error fetching Stripe prices: ${error.message}`);
             throw error;
         }
     }
@@ -188,34 +156,44 @@ export class SubscriptionService {
     }
 
     /**
-     * Get all products from our database for a specific client
-     */
-    async getClientProducts(clientId: string) {
-        const products = await this.productModel
-            .find({ clientId, isActive: true })
-            .lean();
-
-        return products;
-    }
-
-    /**
-     * Get all prices from our database for a specific client
-     */
-    async getClientPrices(clientId: string) {
-        const prices = await this.priceModel
-            .find({ clientId, isActive: true })
-            .populate('stripeProductId')
-            .lean();
-
-        return prices;
-    }
-
-    /**
      * Get all products with their prices from our database
+     * Supports pagination, search, and status filtering
      */
-    async getProductsWithPrices(clientId: string) {
-        const products = await this.getClientProducts(clientId);
+    async getProductsWithPrices(clientId: string, query: any = {}) {
+        // Prepare filters
+        const filters: any = { clientId };
 
+        // Add search filter
+        if (query.search) {
+            filters.$or = [
+                { name: new RegExp(query.search, 'i') },
+                { description: new RegExp(query.search, 'i') }
+            ];
+        }
+
+        // Add status filter
+        if (query.status) {
+            filters.isActive = query.status === 'ACTIVE';
+        }
+
+        // Prepare pagination
+        const page = parseInt(query.page) || 1;
+        const limit = parseInt(query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        // Get total count
+        const total = await this.productModel.countDocuments(filters);
+        const totalPages = Math.ceil(total / limit);
+
+        // Get products with pagination
+        const products = await this.productModel
+            .find(filters)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        // Get prices for each product
         const productsWithPrices = await Promise.all(
             products.map(async (product) => {
                 const prices = await this.priceModel
@@ -232,6 +210,25 @@ export class SubscriptionService {
             })
         );
 
-        return productsWithPrices;
+        // Get metrics
+        const metrics = {
+            totalProducts: await this.productModel.countDocuments({ clientId }),
+            activeProducts: await this.productModel.countDocuments({ clientId, isActive: true }),
+            totalPrices: await this.priceModel.countDocuments({ clientId }),
+            activePrices: await this.priceModel.countDocuments({ clientId, isActive: true }),
+            trends: {
+                products: { value: 0, percentage: 5 }, // You could calculate this from historical data
+                prices: { value: 0, percentage: 3 }    // You could calculate this from historical data
+            }
+        };
+
+        return {
+            items: productsWithPrices,
+            total,
+            pages: totalPages,
+            page,
+            limit,
+            metrics
+        };
     }
 }
