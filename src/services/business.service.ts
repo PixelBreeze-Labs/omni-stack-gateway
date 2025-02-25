@@ -190,32 +190,38 @@ export class BusinessService {
         }
     }
 
-    async finalizeSubscription(sessionId: string) {
+    async finalizeSubscription(clientId: string, sessionId: string) {
         try {
-            // Get session ID from query params
             if (!sessionId) {
                 throw new BadRequestException('Session ID is required');
             }
 
-            // Initialize generic Stripe to retrieve session
-            const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-                apiVersion: '2025-02-24.acacia',
-            });
+            this.logger.log(`Starting subscription finalization for session: ${sessionId}`);
 
-            // Retrieve session first to get client ID
-            const session = await stripe.checkout.sessions.retrieve(sessionId, {
-                expand: ['subscription']
-            });
+            // Get the client's Stripe instance using the client ID from auth
+            const stripe = await this.getStripeInstance(clientId);
 
-            if (!session || !session.metadata || !session.metadata.clientId || !session.metadata.businessId) {
-                throw new BadRequestException('Invalid session');
+            // Retrieve the session
+            const session = await stripe.checkout.sessions.retrieve(
+                sessionId,
+                { expand: ['subscription'] }
+            );
+
+            if (!session.metadata?.businessId) {
+                throw new BadRequestException('Session metadata missing businessId');
             }
 
-            const clientId = session.metadata.clientId;
             const businessId = session.metadata.businessId;
 
-            // Initialize Stripe with client's API key for further operations
-            const clientStripe = await this.getStripeInstance(clientId);
+            // Verify the business belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
 
             // Verify the session is complete
             if (session.status !== 'complete') {
@@ -223,8 +229,11 @@ export class BusinessService {
             }
 
             // Get subscription info
-            const subscriptionId = session.subscription as string;
-            const subscription = await clientStripe.subscriptions.retrieve(subscriptionId);
+            const subscriptionId = typeof session.subscription === 'string'
+                ? session.subscription
+                : session.subscription.id;
+
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
             // Update business with subscription details
             await this.businessModel.updateOne(
@@ -252,7 +261,7 @@ export class BusinessService {
                 status: subscription.status
             };
         } catch (error) {
-            this.logger.error(`Error finalizing subscription: ${error.message}`);
+            this.logger.error(`Error finalizing subscription: ${error.message}`, error.stack);
             throw error;
         }
     }
