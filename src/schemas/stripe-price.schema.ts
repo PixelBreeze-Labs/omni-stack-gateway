@@ -1,4 +1,4 @@
-// src/schemas/price.schema.ts
+// src/schemas/stripe-price.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Currency } from '../enums/currency.enum';
