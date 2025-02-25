@@ -4,19 +4,23 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { VerificationToken } from '../schemas/verification-token.schema';
 import { User } from '../schemas/user.schema';
+import { Business } from '../schemas/business.schema';
 import { generateVerificationToken } from '../utils/token.utils';
 
 interface VerificationResponse {
     status: 'success' | 'already_verified' | 'expired' | 'invalid';
     message: string;
     userId?: string;
+    businessId?: string;
+    subscriptionStatus?: string;
 }
 
 @Injectable()
 export class VerificationService {
     constructor(
         @InjectModel(VerificationToken.name) private verificationTokenModel: Model<VerificationToken>,
-        @InjectModel(User.name) private userModel: Model<User>
+        @InjectModel(User.name) private userModel: Model<User>,
+        @InjectModel(Business.name) private businessModel: Model<Business>
     ) {}
 
     async createVerificationToken(userId: string): Promise<string> {
@@ -55,10 +59,15 @@ export class VerificationService {
             });
 
             if (verifiedUser) {
+                // Find the business associated with this user
+                const business = await this.businessModel.findOne({ adminUserId: verifiedUser._id });
+
                 return {
                     status: 'already_verified',
                     message: 'This email has already been verified.',
-                    userId: verifiedUser._id.toString()
+                    userId: verifiedUser._id.toString(),
+                    businessId: business?._id.toString(),
+                    subscriptionStatus: business?.subscriptionStatus
                 };
             }
 
@@ -81,11 +90,16 @@ export class VerificationService {
         // Check if already verified
         const metadata = new Map(user.metadata);
         if (metadata.get('email_verified') === 'true') {
+            // Find the business associated with this user
+            const business = await this.businessModel.findOne({ adminUserId: user._id });
+
             await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
             return {
                 status: 'already_verified',
                 message: 'This email has already been verified.',
-                userId: user._id.toString()
+                userId: user._id.toString(),
+                businessId: business?._id.toString(),
+                subscriptionStatus: business?.subscriptionStatus
             };
         }
 
@@ -109,13 +123,18 @@ export class VerificationService {
                 }
             });
 
+            // Find the business associated with this user
+            const business = await this.businessModel.findOne({ adminUserId: user._id });
+
             // Delete the used token
             await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
 
             return {
                 status: 'success',
                 message: 'Email verified successfully.',
-                userId: user._id.toString()
+                userId: user._id.toString(),
+                businessId: business?._id.toString(),
+                subscriptionStatus: business?.subscriptionStatus
             };
         } catch (error) {
             // Log the error
