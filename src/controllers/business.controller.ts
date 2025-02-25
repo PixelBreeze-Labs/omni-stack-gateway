@@ -56,4 +56,52 @@ export class BusinessController {
     ) {
         return this.businessService.finalizeSubscription(req.client.id, sessionId);
     }
+
+    @Get()
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get all businesses' })
+    @ApiResponse({ status: 200, description: 'Returns a list of businesses' })
+    async getBusinesses(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('status') status?: string,
+        @Query('isTrialing') isTrialing?: boolean
+    ) {
+        return this.businessService.getBusinesses(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                status,
+                isTrialing
+            }
+        );
+    }
+
+    @Get('trials')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get businesses in trial period' })
+    @ApiResponse({ status: 200, description: 'Returns a list of businesses in trial period' })
+    async getTrialBusinesses(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('sort') sort?: string
+    ) {
+        return this.businessService.getTrialBusinesses(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                sort
+            }
+        );
+    }
 }

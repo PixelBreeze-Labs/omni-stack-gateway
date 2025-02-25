@@ -265,4 +265,233 @@ export class BusinessService {
             throw error;
         }
     }
+
+    async getBusinesses(
+        clientId: string,
+        options: {
+            page?: number;
+            limit?: number;
+            search?: string;
+            status?: string;
+            isTrialing?: boolean;
+        } = {}
+    ) {
+        try {
+            const {
+                page = 1,
+                limit = 10,
+                search = '',
+                status,
+                isTrialing = false
+            } = options;
+
+            const skip = (page - 1) * limit;
+
+            // Build the filter
+            const filter: any = { clientId };
+
+            // Add status filter if provided
+            if (status) {
+                filter.subscriptionStatus = status;
+            }
+
+            // Add trialing filter if specifically requested
+            if (isTrialing) {
+                filter.subscriptionStatus = 'trialing';
+            }
+
+            // Add search filter if provided
+            if (search) {
+                filter.$or = [
+                    { name: new RegExp(search, 'i') },
+                    { email: new RegExp(search, 'i') }
+                ];
+            }
+
+            // Get total count
+            const total = await this.businessModel.countDocuments(filter);
+            const totalPages = Math.ceil(total / limit);
+
+            // Get businesses with pagination
+            const businesses = await this.businessModel
+                .find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate('address')
+                .populate({
+                    path: 'adminUserId',
+                    select: 'name email',
+                    model: 'User'
+                })
+                .lean();
+
+            // Format businesses to match the expected response structure
+            const formattedBusinesses = businesses.map(business => {
+                // Map adminUserId to adminUser with selected fields using a type assertion
+                const adminUserData = business.adminUserId && typeof business.adminUserId !== 'string'
+                    ? business.adminUserId as any  // Type assertion to avoid TypeScript errors
+                    : null;
+
+                const adminUser = adminUserData ? {
+                    _id: adminUserData._id,
+                    name: adminUserData.name,
+                    email: adminUserData.email,
+                } : undefined;
+
+                // Remove the actual adminUserId object to avoid duplication
+                const { adminUserId, ...rest } = business;
+
+                return {
+                    ...rest,
+                    adminUser
+                };
+            });
+
+            // Get metrics for all statuses
+            const metrics = await this.getBusinessMetrics(clientId);
+
+            return {
+                items: formattedBusinesses,
+                total,
+                pages: totalPages,
+                page,
+                limit,
+                metrics
+            };
+        } catch (error) {
+            this.logger.error(`Error fetching businesses: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async getTrialBusinesses(
+        clientId: string,
+        options: {
+            page?: number;
+            limit?: number;
+            search?: string;
+            sort?: string;
+        } = {}
+    ) {
+        try {
+            // Override options to ensure we only get trial businesses
+            return this.getBusinesses(clientId, {
+                ...options,
+                status: 'trialing',
+                isTrialing: true
+            });
+        } catch (error) {
+            this.logger.error(`Error fetching trial businesses: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get business metrics for the dashboard
+     */
+    private async getBusinessMetrics(clientId: string) {
+        try {
+            // Total businesses
+            const totalBusinesses = await this.businessModel.countDocuments({ clientId });
+
+            // Active businesses
+            const activeBusinesses = await this.businessModel.countDocuments({
+                clientId,
+                subscriptionStatus: 'active'
+            });
+
+            // Trial businesses
+            const trialBusinesses = await this.businessModel.countDocuments({
+                clientId,
+                subscriptionStatus: 'trialing'
+            });
+
+            // Businesses by status
+            const businessesByStatus = {
+                active: activeBusinesses,
+                trialing: trialBusinesses,
+                pastDue: await this.businessModel.countDocuments({
+                    clientId,
+                    subscriptionStatus: 'past_due'
+                }),
+                canceled: await this.businessModel.countDocuments({
+                    clientId,
+                    subscriptionStatus: 'canceled'
+                }),
+                incomplete: await this.businessModel.countDocuments({
+                    clientId,
+                    subscriptionStatus: 'incomplete'
+                })
+            };
+
+            // Calculate trends (new businesses in the last 30 days)
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            const sixtyDaysAgo = new Date();
+            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+            // New businesses in last 30 days
+            const newBusinessesLast30Days = await this.businessModel.countDocuments({
+                clientId,
+                createdAt: { $gte: thirtyDaysAgo }
+            });
+
+            // New businesses in previous 30 days (30-60 days ago)
+            const newBusinessesPrevious30Days = await this.businessModel.countDocuments({
+                clientId,
+                createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }
+            });
+
+            // Calculate percentage change
+            let newBusinessesPercentage = 0;
+            if (newBusinessesPrevious30Days > 0) {
+                newBusinessesPercentage = ((newBusinessesLast30Days - newBusinessesPrevious30Days) / newBusinessesPrevious30Days) * 100;
+            }
+
+            // Calculate churn rate (businesses that canceled in the last 30 days)
+            const canceledLast30Days = await this.businessModel.countDocuments({
+                clientId,
+                subscriptionStatus: 'canceled',
+                updatedAt: { $gte: thirtyDaysAgo }
+            });
+
+            // Churn rate calculation (canceled / total active at the beginning of period)
+            const activeAtBeginning = activeBusinesses + canceledLast30Days;
+            const churnRate = activeAtBeginning > 0 ? (canceledLast30Days / activeAtBeginning) * 100 : 0;
+
+            // Calculate churn rate trend
+            const canceledPrevious30Days = await this.businessModel.countDocuments({
+                clientId,
+                subscriptionStatus: 'canceled',
+                updatedAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }
+            });
+
+            let churnRatePercentage = 0;
+            if (canceledPrevious30Days > 0) {
+                churnRatePercentage = ((canceledLast30Days - canceledPrevious30Days) / canceledPrevious30Days) * 100;
+            }
+
+            return {
+                totalBusinesses,
+                activeBusinesses,
+                trialBusinesses,
+                businessesByStatus,
+                trends: {
+                    newBusinesses: {
+                        value: newBusinessesLast30Days,
+                        percentage: Math.round(newBusinessesPercentage * 10) / 10
+                    },
+                    churnRate: {
+                        value: Math.round(churnRate * 10) / 10,
+                        percentage: Math.round(churnRatePercentage * 10) / 10
+                    }
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error calculating business metrics: ${error.message}`);
+            throw error;
+        }
+    }
 }
