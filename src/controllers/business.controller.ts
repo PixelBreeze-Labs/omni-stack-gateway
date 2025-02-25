@@ -46,9 +46,14 @@ export class BusinessController {
     }
 
     @Get('subscription/finalize')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Finalize subscription after successful payment' })
     @ApiResponse({ status: 200, description: 'Subscription finalized successfully' })
-    async finalizeSubscription(@Query('session_id') sessionId: string) {
-        return this.businessService.finalizeSubscription(sessionId);
+    async finalizeSubscription(
+        @Req() req: Request & { client: Client },
+        @Query('session_id') sessionId: string
+    ) {
+        return this.businessService.finalizeSubscription(req.client.id, sessionId);
     }
 }
