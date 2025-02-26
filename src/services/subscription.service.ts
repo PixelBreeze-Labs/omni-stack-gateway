@@ -547,42 +547,43 @@ export class SubscriptionService {
         };
     }
 
+
     /**
-     * Helper method to calculate subscription metrics
+     * Helper method to calculate subscription metrics with dynamic trends
      */
     private async calculateSubscriptionMetrics(clientId: string, baseFilters: any): Promise<SubscriptionMetrics> {
         try {
             console.log('Calculating subscription metrics');
 
-            // Basic metrics
-            const totalSubscriptions = await this.businessModel.countDocuments(baseFilters);
-            const activeSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: 'ACTIVE'
-            });
-            const pastDueSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: 'PAST_DUE'
-            });
-            const canceledSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: 'CANCELED'
-            });
-            const trialingSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: 'TRIALING'
-            });
+            // Get all businesses with subscriptions for metrics calculation
+            const allBusinesses = await this.businessModel.find(baseFilters).lean() as any[];
+            console.log(`Found ${allBusinesses.length} businesses for metrics calculation`);
 
-            console.log('Basic metrics calculated');
+            // Count by directly iterating through businesses
+            let totalSubscriptions = allBusinesses.length;
+            let activeSubscriptions = 0;
+            let pastDueSubscriptions = 0;
+            let canceledSubscriptions = 0;
+            let trialingSubscriptions = 0;
+
+            // Count by status
+            allBusinesses.forEach(business => {
+                const status = business.subscriptionStatus;
+
+                if (status === SubscriptionStatus.ACTIVE) {
+                    activeSubscriptions++;
+                } else if (status === SubscriptionStatus.PAST_DUE) {
+                    pastDueSubscriptions++;
+                } else if (status === SubscriptionStatus.CANCELED) {
+                    canceledSubscriptions++;
+                } else if (status === SubscriptionStatus.TRIALING) {
+                    trialingSubscriptions++;
+                }
+            });
 
             // Calculate MRR
-            const businesses = await this.businessModel
-                .find(baseFilters)
-                .select('subscriptionDetails')
-                .lean();
-
             let totalMRR = 0;
-            businesses.forEach(business => {
+            allBusinesses.forEach(business => {
                 const details = business.subscriptionDetails;
                 if (details && typeof details.amount === 'number') {
                     let monthlyAmount = details.amount;
@@ -594,16 +595,106 @@ export class SubscriptionService {
             });
 
             const averageMRR = totalSubscriptions > 0 ? totalMRR / totalSubscriptions : 0;
-            console.log('MRR calculated');
 
-            // Calculate simple trends as fallback
-            const trends = {
-                subscriptions: { value: 0, percentage: 0 },
-                mrr: { value: 0, percentage: 0 },
-                churnRate: { value: 0, percentage: 0 }
-            };
+            // Calculate dynamic trends using type-safe methods
+            const now = new Date();
 
-            console.log('Returning metrics');
+            // First, get creation dates for all businesses in a type-safe way
+            const businessesWithDates = allBusinesses.map(b => {
+                // Extract date from _id (MongoDB ObjectId has creation timestamp in first 4 bytes)
+                let dateValue;
+
+                try {
+                    // Try to extract date directly from ObjectId string
+                    if (b._id && typeof b._id === 'object' && b._id.toString) {
+                        const idString = b._id.toString();
+                        // Extract timestamp from ObjectId
+                        if (idString.length >= 24) {
+                            const timestamp = parseInt(idString.substring(0, 8), 16) * 1000;
+                            dateValue = new Date(timestamp);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error extracting date from _id:', e);
+                }
+
+                // If we couldn't get a date, use current date as fallback
+                if (!dateValue || isNaN(dateValue.getTime())) {
+                    dateValue = now;
+                }
+
+                return {
+                    ...b,
+                    extractedDate: dateValue
+                };
+            });
+
+            // Set up date ranges for this month and last month
+            const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+            // Count by month (using our extracted dates)
+            const currentMonthBusinesses = businessesWithDates.filter(b =>
+                b.extractedDate >= startOfCurrentMonth
+            );
+
+            const previousMonthBusinesses = businessesWithDates.filter(b =>
+                b.extractedDate >= startOfPreviousMonth && b.extractedDate < startOfCurrentMonth
+            );
+
+            // Current month metrics
+            const currentMonthCount = currentMonthBusinesses.length;
+
+            // Previous month metrics
+            const previousMonthCount = previousMonthBusinesses.length;
+
+            // Calculate subscription trend
+            const subscriptionTrendValue = currentMonthCount - previousMonthCount;
+            const subscriptionTrendPercentage = previousMonthCount > 0
+                ? (subscriptionTrendValue / previousMonthCount) * 100
+                : (currentMonthCount > 0 ? 100 : 0);
+
+            // Calculate MRR trend
+            let currentMonthMRR = 0;
+            currentMonthBusinesses.forEach(business => {
+                const details = business.subscriptionDetails;
+                if (details && typeof details.amount === 'number') {
+                    let monthlyAmount = details.amount;
+                    if (details.interval === 'year') {
+                        monthlyAmount = details.amount / 12;
+                    }
+                    currentMonthMRR += monthlyAmount;
+                }
+            });
+
+            let previousMonthMRR = 0;
+            previousMonthBusinesses.forEach(business => {
+                const details = business.subscriptionDetails;
+                if (details && typeof details.amount === 'number') {
+                    let monthlyAmount = details.amount;
+                    if (details.interval === 'year') {
+                        monthlyAmount = details.amount / 12;
+                    }
+                    previousMonthMRR += monthlyAmount;
+                }
+            });
+
+            const mrrTrendValue = currentMonthMRR - previousMonthMRR;
+            const mrrTrendPercentage = previousMonthMRR > 0
+                ? (mrrTrendValue / previousMonthMRR) * 100
+                : (currentMonthMRR > 0 ? 100 : 0);
+
+            // Calculate churn rate (canceled vs. total)
+            const churnRate = totalSubscriptions > 0
+                ? (canceledSubscriptions / totalSubscriptions) * 100
+                : 0;
+
+            // For churn trend, compare to industry average (arbitrary)
+            const churnTrendValue = churnRate;
+            const churnTrendPercentage = churnRate > 0 ? 0 : 100; // Lower is better
+
+            // Return actual, calculated metrics
             return {
                 totalSubscriptions,
                 activeSubscriptions,
@@ -612,11 +703,39 @@ export class SubscriptionService {
                 trialingSubscriptions,
                 averageMRR,
                 totalMRR,
-                trends
+                trends: {
+                    subscriptions: {
+                        value: subscriptionTrendValue,
+                        percentage: subscriptionTrendPercentage
+                    },
+                    mrr: {
+                        value: mrrTrendValue,
+                        percentage: mrrTrendPercentage
+                    },
+                    churnRate: {
+                        value: churnRate,
+                        percentage: churnTrendPercentage
+                    }
+                }
             };
         } catch (error) {
             console.error('Error calculating subscription metrics:', error);
-            return this.getDefaultMetrics();
+
+            // Return empty metrics instead of throwing
+            return {
+                totalSubscriptions: 0,
+                activeSubscriptions: 0,
+                pastDueSubscriptions: 0,
+                canceledSubscriptions: 0,
+                trialingSubscriptions: 0,
+                averageMRR: 0,
+                totalMRR: 0,
+                trends: {
+                    subscriptions: { value: 0, percentage: 0 },
+                    mrr: { value: 0, percentage: 0 },
+                    churnRate: { value: 0, percentage: 0 }
+                }
+            };
         }
     }
     /**
