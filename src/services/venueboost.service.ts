@@ -7,6 +7,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {Client} from "../schemas/client.schema";
 import {Store} from "../schemas/store.schema";
+import {User} from "../schemas/user.schema";
 
 @Injectable()
 export class VenueBoostService {
@@ -329,6 +330,60 @@ export class VenueBoostService {
         } catch (error) {
             this.logger.error('Error creating venue and user in VenueBoost:', error);
             throw error;
+        }
+    }
+
+
+    /**
+     * Notify VenueBoost that a user's email has been verified
+     *
+     * @param user User object with all necessary information
+     * @returns Success status and message
+     */
+    async notifyEmailVerified(user: User): Promise<{success: boolean; message: string}> {
+        try {
+            // Make sure we have the VenueBoost user ID
+            if (!user.external_ids || !user.external_ids.venueBoostId) {
+                return {
+                    success: false,
+                    message: 'No VenueBoost user ID found for user. Skipping notification.'
+                };
+            }
+
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/auth-os/verify-user-email`,
+                {
+                    email: user.email,
+                    venueboost_user_id: user.external_ids.venueBoostId
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (!response.data.success) {
+                this.logger.error('Failed to notify VenueBoost about email verification', response.data);
+                return {
+                    success: false,
+                    message: response.data.message || 'Failed to notify VenueBoost about email verification'
+                };
+            }
+
+            return {
+                success: true,
+                message: 'Successfully notified VenueBoost about email verification',
+            };
+        } catch (error) {
+            this.logger.error(`Error notifying VenueBoost about email verification: ${error.message}`, error.stack);
+            return {
+                success: false,
+                message: `Error notifying VenueBoost: ${error.message}`
+            };
         }
     }
 

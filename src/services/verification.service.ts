@@ -6,6 +6,7 @@ import { VerificationToken } from '../schemas/verification-token.schema';
 import { User } from '../schemas/user.schema';
 import { Business } from '../schemas/business.schema';
 import { generateVerificationToken } from '../utils/token.utils';
+import {VenueBoostService} from "./venueboost.service";
 
 interface VerificationResponse {
     status: 'success' | 'already_verified' | 'expired' | 'invalid';
@@ -20,7 +21,8 @@ export class VerificationService {
     constructor(
         @InjectModel(VerificationToken.name) private verificationTokenModel: Model<VerificationToken>,
         @InjectModel(User.name) private userModel: Model<User>,
-        @InjectModel(Business.name) private businessModel: Model<Business>
+        @InjectModel(Business.name) private businessModel: Model<Business>,
+        private venueBoostService: VenueBoostService
     ) {}
 
     async createVerificationToken(userId: string): Promise<string> {
@@ -117,14 +119,25 @@ export class VerificationService {
             metadata.set('email_verified', 'true');
             metadata.set('email_verified_at', new Date().toISOString());
 
-            await this.userModel.findByIdAndUpdate(user._id, {
-                $set: {
-                    metadata: Object.fromEntries(metadata)
-                }
-            });
+            const updatedUser = await this.userModel.findByIdAndUpdate(
+                user._id,
+                {
+                    $set: {
+                        metadata: Object.fromEntries(metadata)
+                    }
+                },
+                { new: true }
+            );
 
             // Find the business associated with this user
             const business = await this.businessModel.findOne({ adminUserId: user._id });
+
+            // Notify VenueBoost about the email verification - pass the full user object
+            try {
+                await this.venueBoostService.notifyEmailVerified(updatedUser);
+            } catch {
+                /// do nothing
+            }
 
             // Delete the used token
             await this.verificationTokenModel.deleteOne({ _id: verificationToken._id });
@@ -137,9 +150,6 @@ export class VerificationService {
                 subscriptionStatus: business?.subscriptionStatus
             };
         } catch (error) {
-            // Log the error
-            console.error('Error verifying email:', error);
-
             return {
                 status: 'invalid',
                 message: 'Failed to verify email. Please try again later.'
