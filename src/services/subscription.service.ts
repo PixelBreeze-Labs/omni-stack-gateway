@@ -249,107 +249,87 @@ export class SubscriptionService {
     private calculateMetricsFromSubscriptions(subscriptions: Subscription[]): SubscriptionMetrics {
         console.log(`Calculating metrics from ${subscriptions.length} subscription objects`);
 
-        // This uses the final formatted subscription objects, not the raw DB objects
         const totalSubscriptions = subscriptions.length;
-
-        // Count by status
         let activeSubscriptions = 0;
         let pastDueSubscriptions = 0;
         let canceledSubscriptions = 0;
         let trialingSubscriptions = 0;
 
         subscriptions.forEach(sub => {
-            if (sub.status === SubscriptionStatus.ACTIVE) {
+            // Use toLowerCase() to compare in a case-insensitive way
+            const status = sub.status.toLowerCase();
+            if (status === 'active') {
                 activeSubscriptions++;
-            } else if (sub.status === SubscriptionStatus.PAST_DUE) {
+            } else if (status === 'past_due') {
                 pastDueSubscriptions++;
-            } else if (sub.status === SubscriptionStatus.CANCELED) {
+            } else if (status === 'canceled') {
                 canceledSubscriptions++;
-            } else if (sub.status === SubscriptionStatus.TRIALING) {
+            } else if (status === 'trialing') {
                 trialingSubscriptions++;
             }
         });
 
-        // Calculate MRR
-        let totalMRR = 0;
-        subscriptions.forEach(sub => {
-            if (typeof sub.amount === 'number') {
-                let monthlyAmount = sub.amount;
-                if (sub.interval === 'year') {
-                    monthlyAmount = sub.amount / 12;
-                }
-                totalMRR += monthlyAmount;
+        // Calculate total MRR; convert yearly amounts to monthly
+        let totalMRR = subscriptions.reduce((sum, sub) => {
+            let monthlyAmount = sub.amount;
+            if (sub.interval.toLowerCase() === 'year') {
+                monthlyAmount = sub.amount / 12;
             }
-        });
-
+            return sum + monthlyAmount;
+        }, 0);
         const averageMRR = totalSubscriptions > 0 ? totalMRR / totalSubscriptions : 0;
 
-        // Calculate basic trends based on creation dates
+        // Calculate trends based on createdAt dates
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
-        // Count subscriptions created this month vs last month
         const currentMonthSubs = subscriptions.filter(sub => {
             try {
-                const date = new Date(sub.createdAt);
-                return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+                const d = new Date(sub.createdAt);
+                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
             } catch (e) {
                 return false;
             }
         });
-
         const previousMonthSubs = subscriptions.filter(sub => {
             try {
-                const date = new Date(sub.createdAt);
-                return (date.getMonth() === currentMonth - 1 || (currentMonth === 0 && date.getMonth() === 11))
-                    && (currentMonth > 0 ? date.getFullYear() === currentYear : date.getFullYear() === currentYear - 1);
+                const d = new Date(sub.createdAt);
+                const targetMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+                const targetYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+                return d.getMonth() === targetMonth && d.getFullYear() === targetYear;
             } catch (e) {
                 return false;
             }
         });
 
-        // Calculate subscription trend
-        const currentMonthCount = currentMonthSubs.length;
-        const previousMonthCount = previousMonthSubs.length;
+        const subscriptionTrendValue = currentMonthSubs.length - previousMonthSubs.length;
+        const subscriptionTrendPercentage = previousMonthSubs.length > 0
+            ? (subscriptionTrendValue / previousMonthSubs.length) * 100
+            : (currentMonthSubs.length > 0 ? 100 : 0);
 
-        const subscriptionTrendValue = currentMonthCount - previousMonthCount;
-        const subscriptionTrendPercentage = previousMonthCount > 0
-            ? (subscriptionTrendValue / previousMonthCount) * 100
-            : (currentMonthCount > 0 ? 100 : 0);
-
-        // Calculate MRR trend
-        let currentMonthMRR = 0;
-        currentMonthSubs.forEach(sub => {
-            if (typeof sub.amount === 'number') {
-                let monthlyAmount = sub.amount;
-                if (sub.interval === 'year') {
-                    monthlyAmount = sub.amount / 12;
-                }
-                currentMonthMRR += monthlyAmount;
+        const currentMonthMRR = currentMonthSubs.reduce((sum, sub) => {
+            let monthly = sub.amount;
+            if (sub.interval.toLowerCase() === 'year') {
+                monthly = sub.amount / 12;
             }
-        });
-
-        let previousMonthMRR = 0;
-        previousMonthSubs.forEach(sub => {
-            if (typeof sub.amount === 'number') {
-                let monthlyAmount = sub.amount;
-                if (sub.interval === 'year') {
-                    monthlyAmount = sub.amount / 12;
-                }
-                previousMonthMRR += monthlyAmount;
+            return sum + monthly;
+        }, 0);
+        const previousMonthMRR = previousMonthSubs.reduce((sum, sub) => {
+            let monthly = sub.amount;
+            if (sub.interval.toLowerCase() === 'year') {
+                monthly = sub.amount / 12;
             }
-        });
+            return sum + monthly;
+        }, 0);
 
         const mrrTrendValue = currentMonthMRR - previousMonthMRR;
         const mrrTrendPercentage = previousMonthMRR > 0
             ? (mrrTrendValue / previousMonthMRR) * 100
             : (currentMonthMRR > 0 ? 100 : 0);
 
-        // Calculate churn rate
-        const churnRate = totalSubscriptions > 0
-            ? (canceledSubscriptions / totalSubscriptions) * 100
-            : 0;
+        // Calculate churn rate (percentage of canceled subscriptions)
+        const churnRate = totalSubscriptions > 0 ? (canceledSubscriptions / totalSubscriptions) * 100 : 0;
 
         return {
             totalSubscriptions,
@@ -370,12 +350,11 @@ export class SubscriptionService {
                 },
                 churnRate: {
                     value: churnRate,
-                    percentage: 0  // No historical churn data for comparison
+                    percentage: 0  // No historical churn data to compare against for now
                 }
             }
         };
     }
-
     /**
      * Get all subscriptions with populated business and product data
      */
@@ -819,26 +798,30 @@ export class SubscriptionService {
      * Get active subscriptions
      */
     async getActiveSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
-        // First, get active subscriptions
-        const activeResults = await this.getSubscriptions(clientId, {
-            ...params,
-            status: SubscriptionStatus.ACTIVE
-        });
+        // Get active subscriptions
+        const activeResults = await this.getSubscriptions(clientId, { ...params, status: SubscriptionStatus.ACTIVE });
+        // Get trialing subscriptions
+        const trialingResults = await this.getSubscriptions(clientId, { ...params, status: SubscriptionStatus.TRIALING });
 
-        // Then get trialing subscriptions
-        const trialingResults = await this.getSubscriptions(clientId, {
-            ...params,
-            status: SubscriptionStatus.TRIALING
-        });
+        // Combine the subscription items from both queries
+        const combinedSubscriptions = [...activeResults.items, ...trialingResults.items];
 
-        // Combine the results
+        // Recalculate metrics based on the combined list
+        const combinedMetrics = this.calculateMetricsFromSubscriptions(combinedSubscriptions);
+
+        // Determine pagination values based on the combined list
+        const total = combinedSubscriptions.length;
+        const limit = params.limit ? Number(params.limit) : 10;
+        const pages = Math.ceil(total / limit);
+        const page = params.page ? Number(params.page) : 1;
+
         return {
-            items: [...activeResults.items, ...trialingResults.items],
-            total: activeResults.total + trialingResults.total,
-            pages: Math.max(activeResults.pages, trialingResults.pages),
-            page: params.page || 1,
-            limit: params.limit || 10,
-            metrics: activeResults.metrics // Use metrics from active subscriptions for simplicity
+            items: combinedSubscriptions,
+            total,
+            pages,
+            page,
+            limit,
+            metrics: combinedMetrics
         };
     }
 
