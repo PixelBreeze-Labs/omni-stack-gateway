@@ -293,7 +293,7 @@ export class BusinessService {
                         'staffluent@omnistackhub.xyz',
                         user.email,
                         'Access Your Staffluent Account',
-                        'templates/business/magic-link.html',
+                        'templates/business/magic-link-login.html',
                         {
                             userName: user.name,
                             businessName: business.name,

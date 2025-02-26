@@ -88,7 +88,7 @@ export class MagicLinkService {
                 'staffluent@omnistackhub.xyz',
                 email,
                 'Login to Staffluent',
-                'templates/business/magic-link.html',
+                'templates/business/magic-link-login.html',
                 {
                     userName: user.name,
                     businessName,
@@ -154,7 +154,7 @@ export class MagicLinkService {
                 'staffluent@omnistackhub.xyz',
                 user.email,
                 'Access Your Staffluent Account',
-                'templates/business/magic-link.html',
+                'templates/business/magic-link-login.html',
                 {
                     userName: user.name,
                     businessName: business.name,
