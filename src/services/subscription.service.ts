@@ -12,7 +12,8 @@ import {
     SubscriptionParams,
     SubscriptionsResponse
 } from "../interfaces/subscription.interface";
-import {Business, SubscriptionStatus} from "../schemas/business.schema";
+import { Business, SubscriptionStatus } from "../schemas/business.schema";
+import { User } from '../schemas/user.schema';
 
 @Injectable()
 export class SubscriptionService {
@@ -23,6 +24,7 @@ export class SubscriptionService {
         @InjectModel(StripePrice.name) private priceModel: Model<StripePrice>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
+        @InjectModel(User.name) private userModel: Model<User>,
     ) {
     }
 
@@ -241,17 +243,28 @@ export class SubscriptionService {
         };
     }
 
+    /**
+     * Get all subscriptions with populated business and product data
+     */
     async getSubscriptions(clientId: string, query: SubscriptionParams = {}): Promise<SubscriptionsResponse> {
         // Prepare filters: only include businesses that have a Stripe subscription
         const filters: any = { clientId, stripeSubscriptionId: { $exists: true, $ne: null } };
+
+        // Add status filter
+        if (query.status) {
+            filters.subscriptionStatus = query.status;
+        }
 
         if (query.businessId) {
             filters._id = query.businessId;
         }
 
-        // Optional search on business name
+        // Optional search on business name or email
         if (query.search) {
-            filters.name = { $regex: query.search, $options: 'i' };
+            filters.$or = [
+                { name: { $regex: query.search, $options: 'i' } },
+                { email: { $regex: query.search, $options: 'i' } }
+            ];
         }
 
         // Pagination setup
@@ -259,35 +272,80 @@ export class SubscriptionService {
         const limit = query.limit ? Number(query.limit) : 10;
         const skip = (page - 1) * limit;
 
-        // Get total count and fetch businesses
+        // Get total count
         const total = await this.businessModel.countDocuments(filters);
         const totalPages = Math.ceil(total / limit);
+
+        // Fetch businesses with their admin users
         const businesses = await this.businessModel.find(filters)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
 
-        // Map Business documents to the Subscription interface.
-        const subscriptions: Subscription[] = businesses.map(business => ({
-            _id: business._id.toString(),
-            clientId: business.clientId.toString(),
-            businessId: business._id.toString(),
-            stripeSubscriptionId: business.stripeSubscriptionId || '',
-            status: business.subscriptionStatus,
-            currentPeriodStart: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
-            currentPeriodEnd: business.subscriptionEndDate ? new Date(business.subscriptionEndDate).toISOString() : '',
-            cancelAtPeriodEnd: false, // default as not stored in Business schema
-            productId: business.subscriptionDetails?.planId || '',
-            priceId: business.subscriptionDetails?.priceId || '',
-            quantity: 1, // default value
-            amount: business.subscriptionDetails?.amount || 0,
-            currency: business.subscriptionDetails?.currency || 'USD',
-            interval: business.subscriptionDetails?.interval || 'month',
-            metadata: business.metadata || {},
-            createdAt: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
-            updatedAt: (business as any).updatedAt ? new Date((business as any).updatedAt).toISOString() : '',
-        }));
+        // Get admin users for each business
+        const adminUserIds = businesses.map(b => b.adminUserId).filter(id => id);
+        const adminUsers = await this.userModel.find({ _id: { $in: adminUserIds } }).lean();
+        const adminUserMap = adminUsers.reduce((map, user) => {
+            map[user._id.toString()] = user;
+            return map;
+        }, {});
+
+        // Fetch products for the businesses
+        const productIds = businesses
+            .map(b => b.subscriptionDetails?.planId)
+            .filter(id => id);
+        const products = await this.productModel.find({ _id: { $in: productIds } }).lean();
+        const productMap = products.reduce((map, product) => {
+            map[product._id.toString()] = product;
+            return map;
+        }, {});
+
+        // Map Business documents to the Subscription interface with populated fields
+        const subscriptions: Subscription[] = businesses.map(business => {
+            const adminUser = business.adminUserId ? adminUserMap[business.adminUserId.toString()] : null;
+            const product = business.subscriptionDetails?.planId ? productMap[business.subscriptionDetails.planId.toString()] : null;
+
+            // Create a simplified business object with just what you need
+            const businessData = {
+                _id: business._id.toString(),
+                name: business.name,
+                email: business.email,
+                adminUser: adminUser ? {
+                    _id: adminUser._id.toString(),
+                    name: adminUser.name,
+                    email: adminUser.email,
+                    avatar: adminUser.avatar
+                } : undefined
+            };
+
+            return {
+                _id: business._id.toString(),
+                clientId: business.clientId.toString(),
+                businessId: business._id.toString(),
+                stripeSubscriptionId: business.stripeSubscriptionId || '',
+                status: business.subscriptionStatus,
+                currentPeriodStart: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
+                currentPeriodEnd: business.subscriptionEndDate ? new Date(business.subscriptionEndDate).toISOString() : '',
+                cancelAtPeriodEnd: false, // default as not stored in Business schema
+                productId: business.subscriptionDetails?.planId || '',
+                priceId: business.subscriptionDetails?.priceId || '',
+                quantity: 1, // default value
+                amount: business.subscriptionDetails?.amount || 0,
+                currency: business.subscriptionDetails?.currency || 'USD',
+                interval: business.subscriptionDetails?.interval || 'month',
+                metadata: business.metadata || {},
+                createdAt: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
+                updatedAt: (business as any).updatedAt ? new Date((business as any).updatedAt).toISOString() : '',
+                // Use the simplified business object
+                business: businessData,
+                product: product ? {
+                    _id: product._id.toString(),
+                    name: product.name,
+                    description: product.description
+                } : undefined
+            } as unknown as Subscription; // Cast to unknown first, then to Subscription
+        });
 
         // Calculate overall metrics (totals)
         const totalSubscriptions = total;
@@ -402,7 +460,7 @@ export class SubscriptionService {
         const trends = {
             subscriptions: { value: subscriptionsTrendValue, percentage: subscriptionsTrendPercentage },
             mrr: { value: mrrTrendValue, percentage: mrrTrendPercentage },
-            churnRate: { value: churnTrendValue, percentage: churnTrendPercentage }
+            churnRate: { value: currentChurnRate, percentage: churnTrendPercentage }
         };
 
         // -------------------------------
@@ -429,4 +487,24 @@ export class SubscriptionService {
         };
     }
 
+    /**
+     * Get active subscriptions
+     */
+    async getActiveSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
+        return this.getSubscriptions(clientId, { ...params, status: SubscriptionStatus.ACTIVE });
+    }
+
+    /**
+     * Get past due subscriptions
+     */
+    async getPastDueSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
+        return this.getSubscriptions(clientId, { ...params, status: SubscriptionStatus.PAST_DUE });
+    }
+
+    /**
+     * Get canceled subscriptions
+     */
+    async getCanceledSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
+        return this.getSubscriptions(clientId, { ...params, status: SubscriptionStatus.CANCELED });
+    }
 }

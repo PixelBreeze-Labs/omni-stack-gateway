@@ -72,4 +72,61 @@ export class SubscriptionController {
             }
         );
     }
+
+    @Get('active')
+    async getActiveSubscriptions(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('businessId') businessId?: string
+    ) {
+        return this.subscriptionService.getActiveSubscriptions(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                businessId
+            }
+        );
+    }
+
+    @Get('past-due')
+    async getPastDueSubscriptions(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('businessId') businessId?: string
+    ) {
+        return this.subscriptionService.getPastDueSubscriptions(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                businessId
+            }
+        );
+    }
+
+    @Get('canceled')
+    async getCanceledSubscriptions(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('businessId') businessId?: string
+    ) {
+        return this.subscriptionService.getCanceledSubscriptions(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                businessId
+            }
+        );
+    }
 }
