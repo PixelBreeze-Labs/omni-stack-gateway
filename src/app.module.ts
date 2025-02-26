@@ -100,6 +100,7 @@ import { SubscriptionConfigController } from './controllers/subscription-config.
 import { SubscriptionController } from './controllers/subscription.contoller';
 import { BusinessController } from './controllers/business.controller';
 import { MagicLinkController } from './controllers/magic-link.controller';
+import { AdminSubscriptionController } from './controllers/admin-subscription.controller';
 
 
 
@@ -162,6 +163,7 @@ import { SubscriptionService } from './services/subscription.service';
 import { BusinessService } from './services/business.service';
 import { SupabaseVbAppService } from "./services/supabase-vb-app.service";
 import { MagicLinkService } from "./services/magic-link.service";
+import { AdminSubscriptionService } from "./services/admin-subscription.service";
 
 
 // Others
@@ -285,7 +287,8 @@ import {JwtModule} from "@nestjs/jwt";
     SubscriptionConfigController,
     SubscriptionController,
     BusinessController,
-    MagicLinkController
+    MagicLinkController,
+    AdminSubscriptionController
   ],
   providers: [
     SnapfoodService,
