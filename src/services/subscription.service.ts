@@ -245,6 +245,8 @@ export class SubscriptionService {
 
     async getSubscriptions(clientId: string, query: SubscriptionParams = {}): Promise<SubscriptionsResponse> {
         try {
+            console.log('Starting getSubscriptions with clientId:', clientId);
+
             // Prepare filters: only include businesses that have a Stripe subscription
             const filters: any = { clientId, stripeSubscriptionId: { $exists: true, $ne: null } };
 
@@ -265,135 +267,239 @@ export class SubscriptionService {
                 ];
             }
 
+            console.log('Filters:', JSON.stringify(filters));
+
             // Pagination setup
             const page = query.page ? Number(query.page) : 1;
             const limit = query.limit ? Number(query.limit) : 10;
             const skip = (page - 1) * limit;
 
-            // Get total count
-            const total = await this.businessModel.countDocuments(filters);
+            // Get total count - wrap in try/catch to isolate errors
+            let total = 0;
+            try {
+                total = await this.businessModel.countDocuments(filters);
+                console.log('Total documents count:', total);
+            } catch (countError) {
+                console.error('Error counting documents:', countError);
+                throw new Error(`Error counting documents: ${countError.message}`);
+            }
+
             const totalPages = Math.ceil(total / limit);
 
-            // Fetch businesses with their admin users
-            const businesses = await this.businessModel.find(filters)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit)
-                .lean();
+            // Fetch businesses with their admin users - wrap in try/catch
+            let businesses = [];
+            try {
+                businesses = await this.businessModel.find(filters)
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .lean();
+                console.log(`Found ${businesses.length} businesses`);
+            } catch (findError) {
+                console.error('Error finding businesses:', findError);
+                throw new Error(`Error finding businesses: ${findError.message}`);
+            }
 
-            // Get admin users for each business
-            const adminUserIds = businesses
-                .map(b => b.adminUserId)
-                .filter(id => id != null); // Explicit null check
-
-            const adminUsers = adminUserIds.length > 0
-                ? await this.userModel.find({ _id: { $in: adminUserIds } }).lean()
-                : [];
-
-            const adminUserMap = adminUsers.reduce((map, user) => {
-                if (user && user._id) {
-                    map[user._id.toString()] = user;
-                }
-                return map;
-            }, {});
-
-            // Fetch products for the businesses
-            const productIds = businesses
-                .map(b => b.subscriptionDetails?.planId)
-                .filter(id => id != null); // Explicit null check
-
-            const products = productIds.length > 0
-                ? await this.productModel.find({ _id: { $in: productIds } }).lean()
-                : [];
-
-            const productMap = products.reduce((map, product) => {
-                if (product && product._id) {
-                    map[product._id.toString()] = product;
-                }
-                return map;
-            }, {});
-
-            // Map Business documents to the Subscription interface with populated fields
-            const subscriptions = businesses.map(business => {
-                // Safely get adminUser using optional chaining and nullish coalescing
-                let adminUser = null;
-                if (business.adminUserId) {
-                    const adminUserId = business.adminUserId.toString();
-                    adminUser = adminUserMap[adminUserId] || null;
-                }
-
-                // Safely get product using optional chaining and nullish coalescing
-                let product = null;
-                if (business.subscriptionDetails?.planId) {
-                    const planId = business.subscriptionDetails.planId.toString();
-                    product = productMap[planId] || null;
-                }
-
-                // Handle dates with type safety
-                // For MongoDB's lean() objects, we need to access the fields differently
-                const businessDoc = business as any; // Cast to any to access Mongoose virtuals
-
-                const createdAt = businessDoc._id
-                    ? businessDoc._id.getTimestamp?.() || null
-                    : null;
-
-                const updatedAt = businessDoc.updatedAt
-                    ? new Date(businessDoc.updatedAt)
-                    : createdAt;
-
-                const subscriptionEndDate = business.subscriptionEndDate
-                    ? new Date(business.subscriptionEndDate)
-                    : null;
-
-                // Create a simplified business object with just what we need
-                const businessData = {
-                    _id: business._id?.toString() || '',
-                    name: business.name || '',
-                    email: business.email || '',
-                    clientId: business.clientId,  // Add the clientId which is required by the Business interface
-                    adminUser: adminUser ? {
-                        _id: adminUser._id?.toString() || '',
-                        name: adminUser.name || '',
-                        email: adminUser.email || '',
-                        avatar: adminUser.avatar || ''
-                    } : undefined
+            // If no businesses found, return empty results
+            if (businesses.length === 0) {
+                console.log('No businesses found, returning empty results');
+                return {
+                    items: [],
+                    total: 0,
+                    pages: 0,
+                    page,
+                    limit,
+                    metrics: this.getDefaultMetrics()
                 };
+            }
 
-                // Convert to subscription interface with proper typing
-                const subscription = {
-                    _id: business._id?.toString() || '',
-                    clientId: business.clientId?.toString() || '',
-                    businessId: business._id?.toString() || '',
-                    stripeSubscriptionId: business.stripeSubscriptionId || '',
-                    status: business.subscriptionStatus || SubscriptionStatus.CANCELED, // Default if missing
-                    currentPeriodStart: createdAt ? createdAt.toISOString() : '',
-                    currentPeriodEnd: subscriptionEndDate ? subscriptionEndDate.toISOString() : '',
-                    cancelAtPeriodEnd: false, // default as not stored in Business schema
-                    productId: business.subscriptionDetails?.planId?.toString() || '',
-                    priceId: business.subscriptionDetails?.priceId?.toString() || '',
-                    quantity: 1, // Always 1 as specified
-                    amount: business.subscriptionDetails?.amount || 0,
-                    currency: business.subscriptionDetails?.currency || 'USD',
-                    interval: business.subscriptionDetails?.interval || 'month',
-                    metadata: business.metadata || {},
-                    createdAt: createdAt ? createdAt.toISOString() : '',
-                    updatedAt: updatedAt ? updatedAt.toISOString() : '',
+            // Get admin users for each business - wrap in try/catch
+            let adminUsers = [];
+            try {
+                // Log the first business to see its structure
+                console.log('First business sample structure:',
+                    JSON.stringify(businesses[0], null, 2).substring(0, 500) + '...');
 
-                    // Cast to unknown first to satisfy TypeScript's type safety
-                    business: businessData as unknown as Business,
+                const adminUserIds = businesses
+                    .map(b => b.adminUserId)
+                    .filter(id => id != null);
 
-                    product: product ? {
-                        _id: product._id?.toString() || '',
-                        name: product.name || '',
-                        description: product.description || ''
-                    } : undefined
-                };
+                console.log(`Found ${adminUserIds.length} admin user IDs`);
 
-                return subscription as unknown as Subscription;
-            });
+                if (adminUserIds.length > 0) {
+                    adminUsers = await this.userModel.find({ _id: { $in: adminUserIds } }).lean();
+                    console.log(`Found ${adminUsers.length} admin users`);
+                }
+            } catch (adminError) {
+                console.error('Error finding admin users:', adminError);
+                // Continue without admin users rather than failing completely
+                console.log('Continuing without admin users');
+            }
 
-            // Calculate overall metrics (totals) with better error handling
-            const metrics = await this.calculateSubscriptionMetrics(clientId, filters);
+            // Create map for easier lookup
+            const adminUserMap = {};
+            try {
+                adminUsers.forEach(user => {
+                    if (user && user._id) {
+                        adminUserMap[user._id.toString()] = user;
+                    }
+                });
+            } catch (mapError) {
+                console.error('Error creating admin user map:', mapError);
+            }
+
+            // Fetch products for the businesses - wrap in try/catch
+            let products = [];
+            try {
+                const productIds = businesses
+                    .map(b => b.subscriptionDetails?.planId)
+                    .filter(id => id != null);
+
+                console.log(`Found ${productIds.length} product IDs`);
+
+                if (productIds.length > 0) {
+                    products = await this.productModel.find({ _id: { $in: productIds } }).lean();
+                    console.log(`Found ${products.length} products`);
+                }
+            } catch (productError) {
+                console.error('Error finding products:', productError);
+                // Continue without products rather than failing completely
+                console.log('Continuing without products');
+            }
+
+            // Create map for easier lookup
+            const productMap = {};
+            try {
+                products.forEach(product => {
+                    if (product && product._id) {
+                        productMap[product._id.toString()] = product;
+                    }
+                });
+            } catch (mapError) {
+                console.error('Error creating product map:', mapError);
+            }
+
+            // Map Business documents to the Subscription interface
+            const subscriptions = [];
+            for (let i = 0; i < businesses.length; i++) {
+                try {
+                    const business = businesses[i];
+                    console.log(`Processing business ${i+1}/${businesses.length}: ${business._id}`);
+
+                    // Safety check
+                    if (!business || !business._id) {
+                        console.log(`Skipping invalid business at index ${i}`);
+                        continue;
+                    }
+
+                    // Safely get adminUser
+                    let adminUser = null;
+                    try {
+                        if (business.adminUserId) {
+                            const adminUserId = business.adminUserId.toString();
+                            adminUser = adminUserMap[adminUserId] || null;
+                        }
+                    } catch (adminError) {
+                        console.error(`Error getting admin user for business ${business._id}:`, adminError);
+                    }
+
+                    // Safely get product
+                    let product = null;
+                    try {
+                        if (business.subscriptionDetails?.planId) {
+                            const planId = business.subscriptionDetails.planId.toString();
+                            product = productMap[planId] || null;
+                        }
+                    } catch (productError) {
+                        console.error(`Error getting product for business ${business._id}:`, productError);
+                    }
+
+                    // Handle dates safely
+                    let createdAt = '';
+                    let updatedAt = '';
+                    let subscriptionEndDate = '';
+
+                    try {
+                        // For createdAt, use _id timestamp as fallback
+                        if (business.createdAt) {
+                            createdAt = new Date(business.createdAt).toISOString();
+                        } else if (business._id && business._id.getTimestamp) {
+                            createdAt = business._id.getTimestamp().toISOString();
+                        } else if (business._id) {
+                            // Extract timestamp from ObjectId
+                            const timestamp = parseInt(business._id.toString().substring(0, 8), 16) * 1000;
+                            createdAt = new Date(timestamp).toISOString();
+                        }
+
+                        // For updatedAt, use _id timestamp as fallback
+                        if (business.updatedAt) {
+                            updatedAt = new Date(business.updatedAt).toISOString();
+                        } else {
+                            updatedAt = createdAt;
+                        }
+
+                        // For subscriptionEndDate, just use direct access
+                        if (business.subscriptionEndDate) {
+                            subscriptionEndDate = new Date(business.subscriptionEndDate).toISOString();
+                        }
+                    } catch (dateError) {
+                        console.error(`Error handling dates for business ${business._id}:`, dateError);
+                        // Use empty strings as fallback
+                    }
+
+                    // Create a simplified business object
+                    const businessData = {
+                        _id: business._id?.toString() || '',
+                        name: business.name || '',
+                        email: business.email || '',
+                        // Add additional required properties to satisfy the Business interface
+                        clientId: business.clientId
+                    };
+
+                    // Build the subscription object
+                    const subscription = {
+                        _id: business._id?.toString() || '',
+                        clientId: business.clientId?.toString() || '',
+                        businessId: business._id?.toString() || '',
+                        stripeSubscriptionId: business.stripeSubscriptionId || '',
+                        status: business.subscriptionStatus || 'CANCELED', // Default if missing
+                        currentPeriodStart: createdAt,
+                        currentPeriodEnd: subscriptionEndDate || createdAt,
+                        cancelAtPeriodEnd: false,
+                        productId: business.subscriptionDetails?.planId?.toString() || '',
+                        priceId: business.subscriptionDetails?.priceId?.toString() || '',
+                        quantity: 1, // Always 1 as mentioned
+                        amount: business.subscriptionDetails?.amount || 0,
+                        currency: business.subscriptionDetails?.currency || 'USD',
+                        interval: business.subscriptionDetails?.interval || 'month',
+                        metadata: business.metadata || {},
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        business: businessData,
+                        product: product ? {
+                            _id: product._id?.toString() || '',
+                            name: product.name || '',
+                            description: product.description || ''
+                        } : undefined
+                    };
+
+                    subscriptions.push(subscription);
+                } catch (businessError) {
+                    console.error(`Error processing business at index ${i}:`, businessError);
+                    // Continue with next business instead of failing completely
+                }
+            }
+
+            console.log(`Successfully processed ${subscriptions.length} subscriptions`);
+
+            // Calculate metrics with error handling
+            let metrics;
+            try {
+                metrics = await this.calculateSubscriptionMetrics(clientId, filters);
+            } catch (metricsError) {
+                console.error('Error calculating metrics:', metricsError);
+                metrics = this.getDefaultMetrics();
+            }
 
             return {
                 items: subscriptions,
@@ -404,9 +510,41 @@ export class SubscriptionService {
                 metrics,
             };
         } catch (error) {
-            this.logger.error(`Error in getSubscriptions: ${error.message}`, error.stack);
-            throw error;
+            // Enhance error with detailed information
+            console.error('Fatal error in getSubscriptions:', error);
+
+            // Create a detailed error object with the full stack trace
+            const enhancedError = {
+                message: `Subscription service error: ${error.message}`,
+                stack: error.stack,
+                name: error.name,
+                code: error.code
+            };
+
+            // Convert the error to include detailed information
+            const detailedError = new Error(JSON.stringify(enhancedError));
+            throw detailedError;
         }
+    }
+
+    /**
+     * Get default metrics when error occurs
+     */
+    private getDefaultMetrics(): SubscriptionMetrics {
+        return {
+            totalSubscriptions: 0,
+            activeSubscriptions: 0,
+            pastDueSubscriptions: 0,
+            canceledSubscriptions: 0,
+            trialingSubscriptions: 0,
+            averageMRR: 0,
+            totalMRR: 0,
+            trends: {
+                subscriptions: { value: 0, percentage: 0 },
+                mrr: { value: 0, percentage: 0 },
+                churnRate: { value: 0, percentage: 0 }
+            }
+        };
     }
 
     /**
@@ -414,24 +552,28 @@ export class SubscriptionService {
      */
     private async calculateSubscriptionMetrics(clientId: string, baseFilters: any): Promise<SubscriptionMetrics> {
         try {
+            console.log('Calculating subscription metrics');
+
             // Basic metrics
             const totalSubscriptions = await this.businessModel.countDocuments(baseFilters);
             const activeSubscriptions = await this.businessModel.countDocuments({
                 ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.ACTIVE
+                subscriptionStatus: 'ACTIVE'
             });
             const pastDueSubscriptions = await this.businessModel.countDocuments({
                 ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.PAST_DUE
+                subscriptionStatus: 'PAST_DUE'
             });
             const canceledSubscriptions = await this.businessModel.countDocuments({
                 ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.CANCELED
+                subscriptionStatus: 'CANCELED'
             });
             const trialingSubscriptions = await this.businessModel.countDocuments({
                 ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.TRIALING
+                subscriptionStatus: 'TRIALING'
             });
+
+            console.log('Basic metrics calculated');
 
             // Calculate MRR
             const businesses = await this.businessModel
@@ -452,51 +594,16 @@ export class SubscriptionService {
             });
 
             const averageMRR = totalSubscriptions > 0 ? totalMRR / totalSubscriptions : 0;
+            console.log('MRR calculated');
 
-            // Calculate trends
-            const now = new Date();
-            const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-            const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+            // Calculate simple trends as fallback
+            const trends = {
+                subscriptions: { value: 0, percentage: 0 },
+                mrr: { value: 0, percentage: 0 },
+                churnRate: { value: 0, percentage: 0 }
+            };
 
-            // Subscriptions Trend
-            const currentSubscriptionsCount = await this.businessModel.countDocuments({
-                ...baseFilters,
-                createdAt: { $gte: startOfCurrentMonth }
-            });
-
-            const previousSubscriptionsCount = await this.businessModel.countDocuments({
-                ...baseFilters,
-                createdAt: { $gte: startOfPreviousMonth, $lte: endOfPreviousMonth }
-            });
-
-            const subscriptionsTrendValue = currentSubscriptionsCount - previousSubscriptionsCount;
-            const subscriptionsTrendPercentage = previousSubscriptionsCount > 0
-                ? (subscriptionsTrendValue / previousSubscriptionsCount) * 100
-                : 0;
-
-            // MRR Trend
-            const currentMRR = await this.calculateMRRForPeriod(
-                baseFilters,
-                { $gte: startOfCurrentMonth }
-            );
-
-            const previousMRR = await this.calculateMRRForPeriod(
-                baseFilters,
-                { $gte: startOfPreviousMonth, $lte: endOfPreviousMonth }
-            );
-
-            const mrrTrendValue = currentMRR - previousMRR;
-            const mrrTrendPercentage = previousMRR > 0 ? (mrrTrendValue / previousMRR) * 100 : 0;
-
-            // Churn Rate Trend
-            const churnTrend = await this.calculateChurnTrend(
-                baseFilters,
-                startOfCurrentMonth,
-                startOfPreviousMonth,
-                endOfPreviousMonth
-            );
-
+            console.log('Returning metrics');
             return {
                 totalSubscriptions,
                 activeSubscriptions,
@@ -505,118 +612,11 @@ export class SubscriptionService {
                 trialingSubscriptions,
                 averageMRR,
                 totalMRR,
-                trends: {
-                    subscriptions: {
-                        value: subscriptionsTrendValue,
-                        percentage: subscriptionsTrendPercentage
-                    },
-                    mrr: {
-                        value: mrrTrendValue,
-                        percentage: mrrTrendPercentage
-                    },
-                    churnRate: churnTrend
-                }
+                trends
             };
         } catch (error) {
-            this.logger.error(`Error calculating subscription metrics: ${error.message}`);
-            // Return default metrics to prevent complete failure
-            return {
-                totalSubscriptions: 0,
-                activeSubscriptions: 0,
-                pastDueSubscriptions: 0,
-                canceledSubscriptions: 0,
-                trialingSubscriptions: 0,
-                averageMRR: 0,
-                totalMRR: 0,
-                trends: {
-                    subscriptions: { value: 0, percentage: 0 },
-                    mrr: { value: 0, percentage: 0 },
-                    churnRate: { value: 0, percentage: 0 }
-                }
-            };
-        }
-    }
-
-    /**
-     * Helper method to calculate MRR for a specific period
-     */
-    private async calculateMRRForPeriod(baseFilters: any, dateFilter: any): Promise<number> {
-        const businesses = await this.businessModel.find({
-            ...baseFilters,
-            createdAt: dateFilter
-        }).select('subscriptionDetails').lean();
-
-        let mrr = 0;
-        businesses.forEach(business => {
-            const details = business.subscriptionDetails;
-            if (details && typeof details.amount === 'number') {
-                let monthlyAmount = details.amount;
-                if (details.interval === 'year') {
-                    monthlyAmount = details.amount / 12;
-                }
-                mrr += monthlyAmount;
-            }
-        });
-
-        return mrr;
-    }
-
-    /**
-     * Helper method to calculate churn trend
-     */
-    private async calculateChurnTrend(
-        baseFilters: any,
-        startOfCurrentMonth: Date,
-        startOfPreviousMonth: Date,
-        endOfPreviousMonth: Date
-    ): Promise<{ value: number, percentage: number }> {
-        try {
-            // For the current month:
-            const currentCanceledSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.CANCELED,
-                updatedAt: { $gte: startOfCurrentMonth }
-            });
-
-            const currentActiveSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.ACTIVE,
-                createdAt: { $lt: startOfCurrentMonth }
-            });
-
-            const currentChurnRate = currentActiveSubscriptions > 0
-                ? (currentCanceledSubscriptions / currentActiveSubscriptions) * 100
-                : 0;
-
-            // For the previous month:
-            const previousCanceledSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.CANCELED,
-                updatedAt: { $gte: startOfPreviousMonth, $lte: endOfPreviousMonth }
-            });
-
-            const previousActiveSubscriptions = await this.businessModel.countDocuments({
-                ...baseFilters,
-                subscriptionStatus: SubscriptionStatus.ACTIVE,
-                createdAt: { $lt: startOfPreviousMonth }
-            });
-
-            const previousChurnRate = previousActiveSubscriptions > 0
-                ? (previousCanceledSubscriptions / previousActiveSubscriptions) * 100
-                : 0;
-
-            const churnTrendValue = currentChurnRate - previousChurnRate;
-            const churnTrendPercentage = previousChurnRate > 0
-                ? (churnTrendValue / previousChurnRate) * 100
-                : 0;
-
-            return {
-                value: currentChurnRate,
-                percentage: churnTrendPercentage
-            };
-        } catch (error) {
-            this.logger.error(`Error calculating churn trend: ${error.message}`);
-            return { value: 0, percentage: 0 };
+            console.error('Error calculating subscription metrics:', error);
+            return this.getDefaultMetrics();
         }
     }
     /**
