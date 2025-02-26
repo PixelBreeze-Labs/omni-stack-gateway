@@ -488,173 +488,33 @@ export class SubscriptionService {
     }
 
     /**
-     * Get active subscriptions - including both active and trialing statuses
+     * Get active subscriptions
      */
+    // In subscription.service.ts
     async getActiveSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
-        // Use a simpler, more direct filter that's guaranteed to work
-        const filters: any = {
-            clientId,
-            $or: [
-                { subscriptionStatus: "active" },
-                { subscriptionStatus: "trialing" }
-            ]
-        };
-
-        // Add stripeSubscriptionId check if needed
-        if (params.businessId) {
-            filters._id = params.businessId;
-        }
-
-        if (params.search) {
-            filters.$and = [
-                {
-                    $or: [
-                        { name: { $regex: params.search, $options: 'i' } },
-                        { email: { $regex: params.search, $options: 'i' } }
-                    ]
-                }
-            ];
-        }
-
-        // Pagination setup
-        const page = params.page ? Number(params.page) : 1;
-        const limit = params.limit ? Number(params.limit) : 10;
-        const skip = (page - 1) * limit;
-
-        // Get total count
-        const total = await this.businessModel.countDocuments(filters);
-        const totalPages = Math.ceil(total / limit);
-
-        // Get businesses
-        const businesses = await this.businessModel.find(filters)
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
-
-        // Get admin users
-        const adminUserIds = businesses.map(b => b.adminUserId).filter(Boolean);
-        const adminUsers = adminUserIds.length > 0 ?
-            await this.userModel.find({ _id: { $in: adminUserIds } }).lean() :
-            [];
-
-        const adminUserMap = adminUsers.reduce((map, user) => {
-            map[user._id.toString()] = user;
-            return map;
-        }, {});
-
-        // Get products
-        const productIds = businesses
-            .map(b => b.subscriptionDetails?.planId)
-            .filter(Boolean);
-
-        const products = productIds.length > 0 ?
-            await this.productModel.find({ _id: { $in: productIds } }).lean() :
-            [];
-
-        const productMap = products.reduce((map, product) => {
-            map[product._id.toString()] = product;
-            return map;
-        }, {});
-
-        // Map to subscription interface
-        const subscriptions: Subscription[] = businesses.map(business => {
-            const adminUser = business.adminUserId && adminUserMap[business.adminUserId.toString()];
-            const product = business.subscriptionDetails?.planId &&
-                productMap[business.subscriptionDetails.planId.toString()];
-
-            return {
-                _id: business._id.toString(),
-                clientId: business.clientId.toString(),
-                businessId: business._id.toString(),
-                stripeSubscriptionId: business.stripeSubscriptionId || '',
-                status: business.subscriptionStatus,
-                currentPeriodStart: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
-                currentPeriodEnd: business.subscriptionEndDate ? new Date(business.subscriptionEndDate).toISOString() : '',
-                cancelAtPeriodEnd: false,
-                productId: business.subscriptionDetails?.planId || '',
-                priceId: business.subscriptionDetails?.priceId || '',
-                quantity: 1,
-                amount: business.subscriptionDetails?.amount || 0,
-                currency: business.subscriptionDetails?.currency || 'USD',
-                interval: business.subscriptionDetails?.interval || 'month',
-                metadata: business.metadata || {},
-                createdAt: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
-                updatedAt: (business as any).updatedAt ? new Date((business as any).updatedAt).toISOString() : '',
-                business: {
-                    _id: business._id.toString(),
-                    name: business.name,
-                    email: business.email,
-                    adminUser: adminUser ? {
-                        _id: adminUser._id.toString(),
-                        name: adminUser.name,
-                        email: adminUser.email,
-                        avatar: adminUser.avatar
-                    } : undefined
-                },
-                product: product ? {
-                    _id: product._id.toString(),
-                    name: product.name,
-                    description: product.description
-                } : undefined
-            } as unknown as Subscription;
+        // First, get active subscriptions
+        const activeResults = await this.getSubscriptions(clientId, {
+            ...params,
+            status: SubscriptionStatus.ACTIVE
         });
 
-        // Simplified metrics calculation to avoid issues
-        const activeCount = await this.businessModel.countDocuments({
-            ...filters,
-            subscriptionStatus: "active"
+        // Then get trialing subscriptions
+        const trialingResults = await this.getSubscriptions(clientId, {
+            ...params,
+            status: SubscriptionStatus.TRIALING
         });
 
-        const trialingCount = await this.businessModel.countDocuments({
-            ...filters,
-            subscriptionStatus: "trialing"
-        });
-
-        const pastDueCount = await this.businessModel.countDocuments({
-            clientId,
-            subscriptionStatus: "past_due"
-        });
-
-        const canceledCount = await this.businessModel.countDocuments({
-            clientId,
-            subscriptionStatus: "canceled"
-        });
-
-        // Simple MRR calculation
-        let totalMRR = 0;
-        businesses.forEach(business => {
-            if (business.subscriptionDetails?.amount) {
-                const amount = business.subscriptionDetails.amount;
-                const interval = business.subscriptionDetails.interval;
-                totalMRR += interval === 'year' ? amount / 12 : amount;
-            }
-        });
-
-        const metrics = {
-            totalSubscriptions: total,
-            activeSubscriptions: activeCount,
-            trialingSubscriptions: trialingCount,
-            pastDueSubscriptions: pastDueCount,
-            canceledSubscriptions: canceledCount,
-            totalMRR,
-            averageMRR: total > 0 ? totalMRR / total : 0,
-            trends: {
-                subscriptions: { value: 0, percentage: 0 },
-                mrr: { value: 0, percentage: 0 },
-                churnRate: { value: 0, percentage: 0 }
-            }
-        };
-
+        // Combine the results
         return {
-            items: subscriptions,
-            total,
-            pages: totalPages,
-            page,
-            limit,
-            metrics
+            items: [...activeResults.items, ...trialingResults.items],
+            total: activeResults.total + trialingResults.total,
+            pages: Math.max(activeResults.pages, trialingResults.pages),
+            page: params.page || 1,
+            limit: params.limit || 10,
+            metrics: activeResults.metrics // Use metrics from active subscriptions for simplicity
         };
     }
+
     /**
      * Get past due subscriptions
      */
