@@ -285,5 +285,53 @@ export class VenueBoostService {
     }
 
 
+    /**
+     * Create venue and user in VenueBoost for Staffluent
+     *
+     * @param data Object containing user and business details
+     * @returns Created user and venue IDs
+     */
+    async createVenueUserForStaffluent(data: {
+        first_name: string;
+        last_name: string;
+        email: string;
+        password: string;
+        business_name: string;
+        supabase_id: string;
+        omnistack_user_id: string;
+        phone_number?: string;
+    }) {
+        try {
+            this.logger.log('Creating venue and user in VenueBoost for Staffluent');
+
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/auth-os/create-venue-user-for-staffluent`,
+                data,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status !== 201 || !response.data.success) {
+                this.logger.error('Failed to create venue and user in VenueBoost', response.data);
+                throw new Error(response.data.message || 'Failed to create venue and user');
+            }
+
+            return {
+                userId: response.data.user_id,
+                venueId: response.data.venue_id
+            };
+        } catch (error) {
+            this.logger.error('Error creating venue and user in VenueBoost:', error);
+            throw error;
+        }
+    }
+
+
 
 }
