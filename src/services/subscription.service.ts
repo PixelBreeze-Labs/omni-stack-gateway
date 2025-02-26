@@ -565,7 +565,7 @@ export class SubscriptionService {
             let activeSubscriptions = 0;
             let pastDueSubscriptions = 0;
             let canceledSubscriptions = 0;
-            let trialingSubscriptions = 0;
+            let trialingSubscriptions = 10;
 
             // Count by status
             allBusinesses.forEach(business => {
