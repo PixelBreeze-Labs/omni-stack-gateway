@@ -491,38 +491,243 @@ export class SubscriptionService {
      * Get active subscriptions - including both active and trialing statuses
      */
     async getActiveSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
-        // We need to create separate filters for each status and merge the results
-        // First get all active subscriptions
-        const activeParams = { ...params };
-        const activeResults = await this.getSubscriptions(clientId, {
-            ...activeParams,
-            status: SubscriptionStatus.ACTIVE
+        // Prepare filters: only include businesses that have a Stripe subscription
+        const filters: any = {
+            clientId,
+            stripeSubscriptionId: { $exists: true, $ne: null },
+            subscriptionStatus: { $in: ['active', 'trialing'] }  // Direct MongoDB query
+        };
+
+        // Apply other filters
+        if (params.businessId) {
+            filters._id = params.businessId;
+        }
+
+        // Optional search on business name or email
+        if (params.search) {
+            filters.$or = [
+                { name: { $regex: params.search, $options: 'i' } },
+                { email: { $regex: params.search, $options: 'i' } }
+            ];
+        }
+
+        // Pagination setup
+        const page = params.page ? Number(params.page) : 1;
+        const limit = params.limit ? Number(params.limit) : 10;
+        const skip = (page - 1) * limit;
+
+        // Get total count
+        const total = await this.businessModel.countDocuments(filters);
+        const totalPages = Math.ceil(total / limit);
+
+        // Just use the businessModel directly with the combined filter
+        const businesses = await this.businessModel.find(filters)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+            // Get admin users for each business
+        const adminUserIds = businesses.map(b => b.adminUserId).filter(id => id);
+        const adminUsers = await this.userModel.find({ _id: { $in: adminUserIds } }).lean();
+        const adminUserMap = adminUsers.reduce((map, user) => {
+            map[user._id.toString()] = user;
+            return map;
+        }, {});
+
+        // Fetch products for the businesses
+        const productIds = businesses
+            .map(b => b.subscriptionDetails?.planId)
+            .filter(id => id);
+        const products = await this.productModel.find({ _id: { $in: productIds } }).lean();
+        const productMap = products.reduce((map, product) => {
+            map[product._id.toString()] = product;
+            return map;
+        }, {});
+
+        // Map Business documents to the Subscription interface with populated fields
+        const subscriptions: Subscription[] = businesses.map(business => {
+            const adminUser = business.adminUserId ? adminUserMap[business.adminUserId.toString()] : null;
+            const product = business.subscriptionDetails?.planId ? productMap[business.subscriptionDetails.planId.toString()] : null;
+
+            // Create a simplified business object with just what you need
+            const businessData = {
+                _id: business._id.toString(),
+                name: business.name,
+                email: business.email,
+                adminUser: adminUser ? {
+                    _id: adminUser._id.toString(),
+                    name: adminUser.name,
+                    email: adminUser.email,
+                    avatar: adminUser.avatar
+                } : undefined
+            };
+
+            return {
+                _id: business._id.toString(),
+                clientId: business.clientId.toString(),
+                businessId: business._id.toString(),
+                stripeSubscriptionId: business.stripeSubscriptionId || '',
+                status: business.subscriptionStatus,
+                currentPeriodStart: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
+                currentPeriodEnd: business.subscriptionEndDate ? new Date(business.subscriptionEndDate).toISOString() : '',
+                cancelAtPeriodEnd: false, // default as not stored in Business schema
+                productId: business.subscriptionDetails?.planId || '',
+                priceId: business.subscriptionDetails?.priceId || '',
+                quantity: 1, // default value
+                amount: business.subscriptionDetails?.amount || 0,
+                currency: business.subscriptionDetails?.currency || 'USD',
+                interval: business.subscriptionDetails?.interval || 'month',
+                metadata: business.metadata || {},
+                createdAt: (business as any).createdAt ? new Date((business as any).createdAt).toISOString() : '',
+                updatedAt: (business as any).updatedAt ? new Date((business as any).updatedAt).toISOString() : '',
+                // Use the simplified business object
+                business: businessData,
+                product: product ? {
+                    _id: product._id.toString(),
+                    name: product.name,
+                    description: product.description
+                } : undefined
+            } as unknown as Subscription; // Cast to unknown first, then to Subscription
         });
 
-        // Then get all trialing subscriptions
-        const trialingParams = { ...params };
-        const trialingResults = await this.getSubscriptions(clientId, {
-            ...trialingParams,
-            status: SubscriptionStatus.TRIALING
+        // Calculate overall metrics (totals)
+        const totalSubscriptions = total;
+        const activeSubscriptions = await this.businessModel.countDocuments({ ...filters, subscriptionStatus: SubscriptionStatus.ACTIVE });
+        const pastDueSubscriptions = await this.businessModel.countDocuments({ ...filters, subscriptionStatus: SubscriptionStatus.PAST_DUE });
+        const canceledSubscriptions = await this.businessModel.countDocuments({ ...filters, subscriptionStatus: SubscriptionStatus.CANCELED });
+        const trialingSubscriptions = await this.businessModel.countDocuments({ ...filters, subscriptionStatus: SubscriptionStatus.TRIALING });
+
+        let totalMRR = 0;
+        businesses.forEach(business => {
+            const details = business.subscriptionDetails;
+            if (details && details.amount) {
+                let monthlyAmount = details.amount;
+                if (details.interval === 'year') {
+                    monthlyAmount = details.amount / 12;
+                }
+                totalMRR += monthlyAmount;
+            }
         });
+        const averageMRR = totalSubscriptions > 0 ? totalMRR / totalSubscriptions : 0;
 
-        // Merge the results
-        const combinedItems = [...activeResults.items, ...trialingResults.items];
-        const totalItems = activeResults.total + trialingResults.total;
+        // -------------------------------
+        // Dynamic Trend Metrics Calculation
+        // -------------------------------
+        const now = new Date();
+        const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-        // Calculate combined metrics - just use active metrics for simplicity
-        const combinedMetrics = activeResults.metrics;
+        // Subscriptions Trend: Compare new subscriptions counts
+        const currentSubscriptionsCount = await this.businessModel.countDocuments({
+            ...filters,
+            createdAt: { $gte: startOfCurrentMonth }
+        });
+        const previousSubscriptionsCount = await this.businessModel.countDocuments({
+            ...filters,
+            createdAt: { $gte: startOfPreviousMonth, $lte: endOfPreviousMonth }
+        });
+        const subscriptionsTrendValue = currentSubscriptionsCount - previousSubscriptionsCount;
+        const subscriptionsTrendPercentage = previousSubscriptionsCount > 0
+            ? (subscriptionsTrendValue / previousSubscriptionsCount) * 100
+            : 0;
 
-        // Update the total counts to reflect combined results
-        combinedMetrics.totalSubscriptions = totalItems;
+        // MRR Trend: Compare monthly recurring revenue for current vs. previous month
+        let currentMRR = 0;
+        let previousMRR = 0;
+        const currentBusinesses = await this.businessModel.find({
+            ...filters,
+            createdAt: { $gte: startOfCurrentMonth }
+        }).lean();
+        currentBusinesses.forEach(business => {
+            const details = business.subscriptionDetails;
+            if (details && details.amount) {
+                let monthlyAmount = details.amount;
+                if (details.interval === 'year') {
+                    monthlyAmount = details.amount / 12;
+                }
+                currentMRR += monthlyAmount;
+            }
+        });
+        const previousBusinesses = await this.businessModel.find({
+            ...filters,
+            createdAt: { $gte: startOfPreviousMonth, $lte: endOfPreviousMonth }
+        }).lean();
+        previousBusinesses.forEach(business => {
+            const details = business.subscriptionDetails;
+            if (details && details.amount) {
+                let monthlyAmount = details.amount;
+                if (details.interval === 'year') {
+                    monthlyAmount = details.amount / 12;
+                }
+                previousMRR += monthlyAmount;
+            }
+        });
+        const mrrTrendValue = currentMRR - previousMRR;
+        const mrrTrendPercentage = previousMRR > 0 ? (mrrTrendValue / previousMRR) * 100 : 0;
+
+        // Churn Rate Trend: Compare churn rates (canceled subscriptions relative to active subscriptions)
+        // For the current month:
+        const currentCanceledSubscriptions = await this.businessModel.countDocuments({
+            ...filters,
+            subscriptionStatus: SubscriptionStatus.CANCELED,
+            updatedAt: { $gte: startOfCurrentMonth }
+        });
+        const currentActiveSubscriptions = await this.businessModel.countDocuments({
+            ...filters,
+            subscriptionStatus: SubscriptionStatus.ACTIVE,
+            createdAt: { $lt: startOfCurrentMonth }
+        });
+        const currentChurnRate = currentActiveSubscriptions > 0
+            ? (currentCanceledSubscriptions / currentActiveSubscriptions) * 100
+            : 0;
+
+        // For the previous month:
+        const previousCanceledSubscriptions = await this.businessModel.countDocuments({
+            ...filters,
+            subscriptionStatus: SubscriptionStatus.CANCELED,
+            updatedAt: { $gte: startOfPreviousMonth, $lte: endOfPreviousMonth }
+        });
+        const previousActiveSubscriptions = await this.businessModel.countDocuments({
+            ...filters,
+            subscriptionStatus: SubscriptionStatus.ACTIVE,
+            createdAt: { $lt: startOfPreviousMonth }
+        });
+        const previousChurnRate = previousActiveSubscriptions > 0
+            ? (previousCanceledSubscriptions / previousActiveSubscriptions) * 100
+            : 0;
+
+        const churnTrendValue = currentChurnRate - previousChurnRate;
+        const churnTrendPercentage = previousChurnRate > 0 ? (churnTrendValue / previousChurnRate) * 100 : 0;
+
+        const trends = {
+            subscriptions: { value: subscriptionsTrendValue, percentage: subscriptionsTrendPercentage },
+            mrr: { value: mrrTrendValue, percentage: mrrTrendPercentage },
+            churnRate: { value: currentChurnRate, percentage: churnTrendPercentage }
+        };
+
+        // -------------------------------
+        // Final response
+        // -------------------------------
+        const metrics = {
+            totalSubscriptions,
+            activeSubscriptions,
+            pastDueSubscriptions,
+            canceledSubscriptions,
+            trialingSubscriptions,
+            averageMRR,
+            totalMRR,
+            trends
+        };
 
         return {
-            items: combinedItems,
-            total: totalItems,
-            pages: Math.ceil(totalItems / (params.limit || 10)),
-            page: params.page || 1,
-            limit: params.limit || 10,
-            metrics: combinedMetrics
+            items: subscriptions,
+            total,
+            pages: totalPages,
+            page,
+            limit,
+            metrics,
         };
     }
 
