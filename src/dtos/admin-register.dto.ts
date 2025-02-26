@@ -1,3 +1,4 @@
+// src/dtos/admin-register.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsString, IsEnum, IsOptional, IsBoolean, ValidateNested, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
