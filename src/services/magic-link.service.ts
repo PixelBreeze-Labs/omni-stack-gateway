@@ -6,15 +6,8 @@ import { User } from '../schemas/user.schema';
 import { Business } from '../schemas/business.schema';
 import { EmailService } from './email.service';
 import { VenueBoostService } from './venueboost.service';
+import { MagicLinkResponse } from '../interfaces/magic-link.interface';
 import * as crypto from 'crypto';
-
-interface MagicLinkResponse {
-    status: 'success' | 'expired' | 'used' | 'invalid';
-    message: string;
-    userId?: string;
-    businessId?: string;
-    auth_response?: any;
-}
 
 @Injectable()
 export class MagicLinkService {

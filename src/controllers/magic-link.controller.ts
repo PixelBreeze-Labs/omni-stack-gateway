@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { MagicLinkService } from '../services/magic-link.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
+import { MagicLinkResponse } from '../interfaces/magic-link.interface';
 
 @ApiTags('Magic Link')
 @Controller('magic-link')
@@ -15,7 +16,7 @@ export class MagicLinkController {
     @ApiOperation({ summary: 'Send a magic link to the specified email' })
     @ApiResponse({ status: 200, description: 'Magic link sent successfully' })
     @Post('send')
-    async sendMagicLink(@Body() body: { email: string }) {
+    async sendMagicLink(@Body() body: { email: string }): Promise<{ success: boolean; message: string }> {
         return this.magicLinkService.sendMagicLinkByEmail(body.email);
     }
 
@@ -26,7 +27,7 @@ export class MagicLinkController {
     @ApiResponse({ status: 200, description: 'Token verified successfully' })
     @ApiResponse({ status: 400, description: 'Invalid, expired, or used token' })
     @Get('verify')
-    async verifyMagicLink(@Query('token') token: string) {
+    async verifyMagicLink(@Query('token') token: string): Promise<MagicLinkResponse> {
         return this.magicLinkService.verifyMagicLink(token);
     }
 
@@ -42,7 +43,7 @@ export class MagicLinkController {
     async sendAfterSubscription(
         @Req() req: Request & { client: Client },
         @Body() body: { businessId: string }
-    ) {
+    ): Promise<{ success: boolean; message: string }> {
         return this.magicLinkService.sendMagicLinkAfterSubscription(
             body.businessId,
             req.client.id

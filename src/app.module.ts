@@ -55,6 +55,7 @@ import { StripePrice, StripePriceSchema} from './schemas/stripe-price.schema';
 import { StripeProduct, StripeProductSchema } from './schemas/stripe-product.schema';
 import { SubscriptionConfig, SubscriptionConfigSchema } from './schemas/subscription-config.schema';
 import { VerificationToken, VerificationTokenSchema } from './schemas/verification-token.schema';
+import { MagicLinkToken, MagicLinkTokenSchema } from './schemas/magic-link-token.schema';
 
 
 
@@ -98,6 +99,7 @@ import { PasswordResetController } from './controllers/sf-password-reset.control
 import { SubscriptionConfigController } from './controllers/subscription-config.controller';
 import { SubscriptionController } from './controllers/subscription.contoller';
 import { BusinessController } from './controllers/business.controller';
+import { MagicLinkController } from './controllers/magic-link.controller';
 
 
 
@@ -159,6 +161,7 @@ import { SubscriptionConfigService } from './services/subscription-config.servic
 import { SubscriptionService } from './services/subscription.service';
 import { BusinessService } from './services/business.service';
 import { SupabaseVbAppService } from "./services/supabase-vb-app.service";
+import { MagicLinkService } from "./services/magic-link.service";
 
 
 // Others
@@ -231,6 +234,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: StripeProduct.name, schema: StripeProductSchema },
       { name: SubscriptionConfig.name, schema: SubscriptionConfigSchema },
       { name: VerificationToken.name, schema: VerificationTokenSchema },
+      { name: MagicLinkToken.name, schema: MagicLinkTokenSchema },
     ]),
   ],
   controllers: [
@@ -337,7 +341,8 @@ import {JwtModule} from "@nestjs/jwt";
     SubscriptionConfigService,
     SubscriptionService,
     BusinessService,
-    SupabaseVbAppService
+    SupabaseVbAppService,
+    MagicLinkService
   ],
 })
 export class AppModule implements NestModule {
