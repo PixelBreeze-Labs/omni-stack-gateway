@@ -490,8 +490,29 @@ export class SubscriptionService {
     /**
      * Get active subscriptions
      */
+    // In subscription.service.ts
     async getActiveSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
-        return this.getSubscriptions(clientId, { ...params, status: SubscriptionStatus.ACTIVE });
+        // First, get active subscriptions
+        const activeResults = await this.getSubscriptions(clientId, {
+            ...params,
+            status: SubscriptionStatus.ACTIVE
+        });
+
+        // Then get trialing subscriptions
+        const trialingResults = await this.getSubscriptions(clientId, {
+            ...params,
+            status: SubscriptionStatus.TRIALING
+        });
+
+        // Combine the results
+        return {
+            items: [...activeResults.items, ...trialingResults.items],
+            total: activeResults.total + trialingResults.total,
+            pages: Math.max(activeResults.pages, trialingResults.pages),
+            page: params.page || 1,
+            limit: params.limit || 10,
+            metrics: activeResults.metrics // Use metrics from active subscriptions for simplicity
+        };
     }
 
     /**
