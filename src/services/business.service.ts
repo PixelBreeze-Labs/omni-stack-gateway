@@ -10,6 +10,7 @@ import Stripe from 'stripe';
 import { VenueBoostService } from "./venueboost.service";
 import { MagicLinkService } from "./magic-link.service";
 import {User} from "../schemas/user.schema";
+import {EmailService} from "./email.service";
 
 @Injectable()
 export class BusinessService {
@@ -22,7 +23,8 @@ export class BusinessService {
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(User.name) private userModel: Model<User>,
         private venueBoostService: VenueBoostService,
-        private magicLinkService: MagicLinkService
+        private magicLinkService: MagicLinkService,
+        private emailService: EmailService,
     ) {}
 
     /**
@@ -278,8 +280,32 @@ export class BusinessService {
 
             // Send magic link to user
             try {
-                await this.magicLinkService.sendMagicLinkAfterSubscription(businessId, clientId);
-                this.logger.log(`Sent magic link to user after subscription finalization`);
+                if (user) {
+                    // Create a magic link token
+                    const token = await this.magicLinkService.createMagicLinkToken(user._id.toString());
+
+                    // Build the magic link URL
+                    const magicLink = `${process.env.WEB_FRONTEND_URL}/subscription-success/login?token=${token}`;
+
+                    // Send the email
+                    await this.emailService.sendTemplateEmail(
+                        'Staffluent',
+                        'staffluent@omnistackhub.xyz',
+                        user.email,
+                        'Access Your Staffluent Account',
+                        'templates/business/magic-link.html',
+                        {
+                            userName: user.name,
+                            businessName: business.name,
+                            magicLink
+                        }
+                    );
+
+                    this.logger.log(`Sent magic link to user after subscription finalization`);
+                } else {
+                    this.logger.error(`Could not find admin user for business ${businessId}`);
+                }
+
             } catch (error) {
                 this.logger.error(`Error sending magic link: ${error.message}`);
                 // Continue even if sending magic link fails

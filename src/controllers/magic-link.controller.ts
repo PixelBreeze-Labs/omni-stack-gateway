@@ -13,6 +13,8 @@ export class MagicLinkController {
     /**
      * Send a magic link to the provided email
      */
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Send a magic link to the specified email' })
     @ApiResponse({ status: 200, description: 'Magic link sent successfully' })
     @Post('send')
@@ -23,6 +25,8 @@ export class MagicLinkController {
     /**
      * Verify a magic link token and return authentication data
      */
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Verify a magic link token' })
     @ApiResponse({ status: 200, description: 'Token verified successfully' })
     @ApiResponse({ status: 400, description: 'Invalid, expired, or used token' })
@@ -31,22 +35,4 @@ export class MagicLinkController {
         return this.magicLinkService.verifyMagicLink(token);
     }
 
-    /**
-     * Send a magic link after subscription
-     * This endpoint requires client authentication
-     */
-    @ApiOperation({ summary: 'Send a magic link after subscription completion' })
-    @ApiResponse({ status: 200, description: 'Magic link sent successfully' })
-    @ApiBearerAuth()
-    @UseGuards(ClientAuthGuard)
-    @Post('send-after-subscription')
-    async sendAfterSubscription(
-        @Req() req: Request & { client: Client },
-        @Body() body: { businessId: string }
-    ): Promise<{ success: boolean; message: string }> {
-        return this.magicLinkService.sendMagicLinkAfterSubscription(
-            body.businessId,
-            req.client.id
-        );
-    }
 }
