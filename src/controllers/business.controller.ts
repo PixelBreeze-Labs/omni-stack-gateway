@@ -68,7 +68,9 @@ export class BusinessController {
         @Query('limit') limit?: number,
         @Query('search') search?: string,
         @Query('status') status?: string,
-        @Query('isTrialing') isTrialing?: boolean
+        @Query('isTrialing') isTrialing?: boolean,
+        @Query('isTestAccount') isTestAccount?: boolean,
+        @Query('sort') sort?: string
     ) {
         return this.businessService.getBusinesses(
             req.client.id,
@@ -77,7 +79,9 @@ export class BusinessController {
                 limit,
                 search,
                 status,
-                isTrialing
+                isTrialing,
+                isTestAccount,
+                sort
             }
         );
     }
