@@ -522,7 +522,10 @@ export class SubscriptionService {
                         clientId: business.clientId,
                         adminUser: adminUser ? {
                             _id: adminUser._id?.toString() || '',
-                            name: adminUser.name || '',
+                            // Combine name and surname if surname exists
+                            name: adminUser.surname
+                                ? `${adminUser.name || ''} ${adminUser.surname}`.trim()
+                                : (adminUser.name || ''),
                             email: adminUser.email || '',
                             avatar: adminUser.avatar || ''
                         } : undefined
