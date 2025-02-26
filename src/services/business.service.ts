@@ -340,6 +340,7 @@ export class BusinessService {
                         ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
                         : (adminUserData.name || ''),
                     email: adminUserData.email,
+                    all: adminUserData
                 } : undefined;
 
                 // Remove the actual adminUserId object to avoid duplication
