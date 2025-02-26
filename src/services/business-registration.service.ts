@@ -99,23 +99,13 @@ export class BusinessRegistrationService {
                         adminUser._id,  // Fixed: was using business._id incorrectly
                         {
                             $set: {
-                                'externalIds.venueBoostUserId': venueBoostIds.userId,
+                                'external_ids.venueBoostId': venueBoostIds.userId,
                             }
                         }
                     );
                     this.logger.log(`Updated user with VenueBoost IDs`);
                 }
             } catch (error) {
-                throw new HttpException(`vb error: ${{
-                    first_name: firstName,
-                    last_name: lastName,
-                    email: businessEmail,
-                    password: temporaryPassword,
-                    business_name: businessName,
-                    supabase_id: supabaseUserId,
-                    omnistack_user_id: adminUser._id.toString(),
-                    phone_number: '-'
-                }}`, HttpStatus.BAD_REQUEST);
                 // Log the error but continue - VenueBoost integration is not critical
                 this.logger.error(`VenueBoost integration failed: ${error.message}`);
             }
