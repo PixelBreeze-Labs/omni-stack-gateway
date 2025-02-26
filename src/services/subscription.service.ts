@@ -488,30 +488,41 @@ export class SubscriptionService {
     }
 
     /**
-     * Get active subscriptions
+     * Get active subscriptions - including both active and trialing statuses
      */
-    // In subscription.service.ts
     async getActiveSubscriptions(clientId: string, params: Omit<SubscriptionParams, 'status'> = {}): Promise<SubscriptionsResponse> {
-        // First, get active subscriptions
+        // We need to create separate filters for each status and merge the results
+        // First get all active subscriptions
+        const activeParams = { ...params };
         const activeResults = await this.getSubscriptions(clientId, {
-            ...params,
+            ...activeParams,
             status: SubscriptionStatus.ACTIVE
         });
 
-        // Then get trialing subscriptions
+        // Then get all trialing subscriptions
+        const trialingParams = { ...params };
         const trialingResults = await this.getSubscriptions(clientId, {
-            ...params,
+            ...trialingParams,
             status: SubscriptionStatus.TRIALING
         });
 
-        // Combine the results
+        // Merge the results
+        const combinedItems = [...activeResults.items, ...trialingResults.items];
+        const totalItems = activeResults.total + trialingResults.total;
+
+        // Calculate combined metrics - just use active metrics for simplicity
+        const combinedMetrics = activeResults.metrics;
+
+        // Update the total counts to reflect combined results
+        combinedMetrics.totalSubscriptions = totalItems;
+
         return {
-            items: [...activeResults.items, ...trialingResults.items],
-            total: activeResults.total + trialingResults.total,
-            pages: Math.max(activeResults.pages, trialingResults.pages),
+            items: combinedItems,
+            total: totalItems,
+            pages: Math.ceil(totalItems / (params.limit || 10)),
             page: params.page || 1,
             limit: params.limit || 10,
-            metrics: activeResults.metrics // Use metrics from active subscriptions for simplicity
+            metrics: combinedMetrics
         };
     }
 
