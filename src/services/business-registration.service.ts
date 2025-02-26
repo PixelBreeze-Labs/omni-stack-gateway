@@ -49,6 +49,7 @@ export class BusinessRegistrationService {
                 password: hashedPassword,
                 registrationSource: RegistrationSource.STAFFLUENT,
                 client_ids: [clientId],
+                external_ids: {}, // Explicitly initialize
                 isActive: true
             });
 
