@@ -346,7 +346,8 @@ import {JwtModule} from "@nestjs/jwt";
     SubscriptionService,
     BusinessService,
     SupabaseVbAppService,
-    MagicLinkService
+    MagicLinkService,
+    AdminSubscriptionService
   ],
 })
 export class AppModule implements NestModule {
