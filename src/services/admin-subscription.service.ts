@@ -25,10 +25,10 @@ interface AdminRegistrationData {
     // Address details (optional)
     address?: {
         street?: string;
-        city?: string;
-        state?: string;
+        cityId?: string;
+        stateId?: string;
         zip?: string;
-        country?: string;
+        countryId?: string;
     };
 
     // Subscription details
@@ -170,7 +170,11 @@ export class AdminSubscriptionService {
             // 5. Create address if provided
             if (addressData && Object.values(addressData).some(val => val)) {
                 address = await this.addressModel.create({
-                    ...addressData,
+                    addressLine1: addressData.street || '',
+                    cityId: addressData.cityId || null,
+                    stateId: addressData.stateId || null,
+                    countryId: addressData.countryId || null,
+                    zip: addressData.zip || '',
                     businessId: business._id,
                     clientId
                 });
