@@ -720,6 +720,7 @@ export class SubscriptionService {
             };
         } catch (error) {
             console.error('Error calculating subscription metrics:', error);
+            throw error;
 
             // Return empty metrics instead of throwing
             return {
