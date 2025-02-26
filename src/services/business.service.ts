@@ -8,6 +8,7 @@ import { StripePrice } from '../schemas/stripe-price.schema';
 import { Client } from '../schemas/client.schema';
 import Stripe from 'stripe';
 import { VenueBoostService } from "./venueboost.service";
+import { MagicLinkService } from "./magic-link.service";
 import {User} from "../schemas/user.schema";
 
 @Injectable()
@@ -20,7 +21,8 @@ export class BusinessService {
         @InjectModel(StripePrice.name) private priceModel: Model<StripePrice>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(User.name) private userModel: Model<User>,
-        private venueBoostService: VenueBoostService
+        private venueBoostService: VenueBoostService,
+        private magicLinkService: MagicLinkService
     ) {}
 
     /**
@@ -272,6 +274,15 @@ export class BusinessService {
                 }
             } catch (error) {
                 this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
+            }
+
+            // Send magic link to user
+            try {
+                await this.magicLinkService.sendMagicLinkAfterSubscription(businessId, clientId);
+                this.logger.log(`Sent magic link to user after subscription finalization`);
+            } catch (error) {
+                this.logger.error(`Error sending magic link: ${error.message}`);
+                // Continue even if sending magic link fails
             }
 
             return {
