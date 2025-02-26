@@ -106,6 +106,7 @@ export class BusinessRegistrationService {
                     this.logger.log(`Updated user with VenueBoost IDs`);
                 }
             } catch (error) {
+                throw new HttpException(`Supabase error: ${error.message}`, HttpStatus.BAD_REQUEST);
                 // Log the error but continue - VenueBoost integration is not critical
                 this.logger.error(`VenueBoost integration failed: ${error.message}`);
             }
