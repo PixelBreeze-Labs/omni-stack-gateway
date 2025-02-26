@@ -1,21 +1,20 @@
-
-// src/services/business-registration.service.ts
-import {HttpException, HttpStatus, Injectable} from '@nestjs/common';
+import {HttpException, HttpStatus, Injectable, Logger} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, RegistrationSource } from '../schemas/user.schema';
 import { Business, BusinessType } from '../schemas/business.schema';
 import { EmailService } from './email.service';
-import { BusinessRegistrationDto } from '../dtos/business-registration.dto';;
+import { BusinessRegistrationDto } from '../dtos/business-registration.dto';
 import { VerificationService } from './verification.service';
 import { generateRandomPassword } from "../utils/password.utils";
 import * as bcrypt from 'bcrypt';
 import {SupabaseVbAppService} from "./supabase-vb-app.service";
 import {VenueBoostService} from "./venueboost.service";
 
-
 @Injectable()
 export class BusinessRegistrationService {
+    private readonly logger = new Logger(BusinessRegistrationService.name);
+
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
@@ -26,16 +25,24 @@ export class BusinessRegistrationService {
     ) {}
 
     async registerTrialBusiness(registrationData: BusinessRegistrationDto & { clientId: string }) {
+        let adminUser = null;
+
         try {
             const { fullName, businessEmail, businessName, clientId } = registrationData;
 
-            // 1. Create admin user in our system
+            // 1. Check if user with email already exists
+            const existingUser = await this.userModel.findOne({ email: businessEmail });
+            if (existingUser) {
+                throw new HttpException('User with this email already exists', HttpStatus.CONFLICT);
+            }
+
+            // 2. Create admin user in our system
             const [firstName, ...lastNameParts] = fullName.split(' ');
             const lastName = lastNameParts.join(' ');
             const temporaryPassword = generateRandomPassword();
             const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
-            const adminUser = await this.userModel.create({
+            adminUser = await this.userModel.create({
                 name: firstName,
                 surname: lastName,
                 email: businessEmail,
@@ -45,8 +52,9 @@ export class BusinessRegistrationService {
                 isActive: true
             });
 
-            // 2. Create Supabase user
+            this.logger.log(`Created admin user with ID: ${adminUser._id}`);
 
+            // 3. Create Supabase user - SupabaseVbAppService will now throw exceptions instead of returning null
             const supabaseUserId = await this.supabaseVbAppService.createUser(
                 businessEmail,
                 temporaryPassword,
@@ -56,10 +64,9 @@ export class BusinessRegistrationService {
                 }
             );
 
-            if (!supabaseUserId) {
-                throw new HttpException('Failed to create Supabase user', HttpStatus.INTERNAL_SERVER_ERROR);
-            }
+            this.logger.log(`Created Supabase user with ID: ${supabaseUserId}`);
 
+            // 4. Create business
             const business = await this.businessModel.create({
                 name: businessName,
                 clientId,
@@ -71,7 +78,9 @@ export class BusinessRegistrationService {
                 isActive: true
             });
 
-            // 4. Create venue and user in VenueBoost
+            this.logger.log(`Created business with ID: ${business._id}`);
+
+            // 5. Create venue and user in VenueBoost
             try {
                 const venueBoostIds = await this.venueBoostService.createVenueUserForStaffluent({
                     first_name: firstName,
@@ -85,27 +94,26 @@ export class BusinessRegistrationService {
                 });
 
                 if (venueBoostIds) {
-                    // Update usere with VenueBoost IDs
+                    // Update user with VenueBoost IDs
                     await this.userModel.findByIdAndUpdate(
-                        business._id,
+                        adminUser._id,  // Fixed: was using business._id incorrectly
                         {
                             $set: {
                                 'externalIds.venueBoostUserId': venueBoostIds.userId,
                             }
                         }
                     );
+                    this.logger.log(`Updated user with VenueBoost IDs`);
                 }
             } catch (error) {
-                // Do nothing
-                // if VenueBoost integration fails
-
+                // Log the error but continue - VenueBoost integration is not critical
+                this.logger.error(`VenueBoost integration failed: ${error.message}`);
             }
 
-            // 5. Create verification token and send email
+            // 6. Create verification token and send email
             const verificationToken = await this.verificationService.createVerificationToken(adminUser._id.toString());
 
-            // 6. Send verification email
-
+            // 7. Send verification email
             await this.emailService.sendTemplateEmail(
                 'Staffluent',
                 'staffluent@omnistackhub.xyz',
@@ -126,6 +134,16 @@ export class BusinessRegistrationService {
                 userId: adminUser._id
             };
         } catch (error) {
+            // If we created a user but the process failed later, clean up the user
+            if (adminUser) {
+                try {
+                    await this.userModel.findByIdAndDelete(adminUser._id);
+                    this.logger.log(`Cleaned up admin user ${adminUser._id} after registration failure`);
+                } catch (cleanupError) {
+                    this.logger.error(`Failed to clean up user after registration error: ${cleanupError.message}`);
+                }
+            }
+
             throw new HttpException(
                 error.message || 'Failed to register business',
                 error.status || HttpStatus.INTERNAL_SERVER_ERROR
