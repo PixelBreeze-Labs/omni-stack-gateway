@@ -335,7 +335,10 @@ export class BusinessService {
 
                 const adminUser = adminUserData ? {
                     _id: adminUserData._id,
-                    name: adminUserData.name,
+                    // Combine name and surname if surname exists
+                    name: adminUserData.surname
+                        ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
+                        : (adminUserData.name || ''),
                     email: adminUserData.email,
                 } : undefined;
 
