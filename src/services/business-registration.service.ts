@@ -65,7 +65,19 @@ export class BusinessRegistrationService {
                 }
             );
 
-            this.logger.log(`Created Supabase user with ID: ${supabaseUserId}`);
+            if (supabaseUserId) {
+                // Update user with supabaseId
+                await this.userModel.findByIdAndUpdate(
+                    adminUser._id,
+                    {
+                        $set: {
+                            'external_ids.supabaseId': supabaseUserId,
+                        }
+                    }
+                );
+                this.logger.log(`Created Supabase user with ID: ${supabaseUserId}`);
+            }
+
 
             // 4. Create business
             const business = await this.businessModel.create({

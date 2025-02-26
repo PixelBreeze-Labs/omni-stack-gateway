@@ -7,6 +7,8 @@ import { Address } from '../schemas/address.schema';
 import { StripePrice } from '../schemas/stripe-price.schema';
 import { Client } from '../schemas/client.schema';
 import Stripe from 'stripe';
+import { VenueBoostService } from "./venueboost.service";
+import {User} from "../schemas/user.schema";
 
 @Injectable()
 export class BusinessService {
@@ -17,6 +19,8 @@ export class BusinessService {
         @InjectModel(Address.name) private addressModel: Model<Address>,
         @InjectModel(StripePrice.name) private priceModel: Model<StripePrice>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
+        @InjectModel(User.name) private userModel: Model<User>,
+        private venueBoostService: VenueBoostService
     ) {}
 
     /**
@@ -254,11 +258,28 @@ export class BusinessService {
                 }
             );
 
+            // Get user details
+            const user = await this.userModel.findById(business.adminUserId).select('email external_ids');
+
+            // Get VenueBoost connection
+            let auth_response = null;
+            try {
+                if (user && user.email && user.external_ids && user.external_ids.supabaseId) {
+                    auth_response = await this.venueBoostService.getConnection(
+                        user.email,
+                        user.external_ids.supabaseId
+                    );
+                }
+            } catch (error) {
+                this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
+            }
+
             return {
                 success: true,
                 message: 'Subscription activated successfully',
                 businessId,
-                status: subscription.status
+                status: subscription.status,
+                auth_response
             };
         } catch (error) {
             this.logger.error(`Error finalizing subscription: ${error.message}`, error.stack);
