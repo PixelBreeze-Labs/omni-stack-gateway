@@ -257,6 +257,8 @@ export class AdminSubscriptionService {
                         quantity: 1,
                     },
                 ],
+                trial_period_days: 14, // or however many days you want for the trial
+                payment_behavior: 'default_incomplete', // Will not require payment method immediately
                 metadata: {
                     businessId: business._id.toString(),
                     clientId,
