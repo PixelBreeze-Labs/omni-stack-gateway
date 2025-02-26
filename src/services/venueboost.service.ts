@@ -400,6 +400,11 @@ export class VenueBoostService {
             name: string;
             email: string;
         };
+        venue: {
+            id: number;
+            name: string;
+            short_code: string
+        },
         token: string;
         account_type: string;
         refresh_token: string;
@@ -431,13 +436,18 @@ export class VenueBoostService {
             }
 
             // Extract only the fields we need
-            const { user, token, account_type, refresh_token } = response.data;
+            const { user, venue, token, account_type, refresh_token } = response.data;
 
             return {
                 user: {
                     id: user.id,
                     name: user.name,
                     email: user.email
+                },
+                venue: {
+                    id: venue.id,
+                    name: venue.name,
+                    short_code: venue.short_code
                 },
                 token,
                 account_type,
