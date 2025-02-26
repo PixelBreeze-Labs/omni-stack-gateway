@@ -498,6 +498,7 @@ export class SubscriptionService {
                 metrics = await this.calculateSubscriptionMetrics(clientId, filters);
             } catch (metricsError) {
                 console.error('Error calculating metrics:', metricsError);
+                throw metricsError;
                 metrics = this.getDefaultMetrics();
             }
 
