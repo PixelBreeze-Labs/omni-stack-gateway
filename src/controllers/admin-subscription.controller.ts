@@ -5,11 +5,11 @@ import { Client } from '../schemas/client.schema';
 import { AdminSubscriptionService } from '../services/admin-subscription.service';
 import { AdminRegisterDto } from '../dtos/admin-register.dto';
 
-@ApiTags('Subscription Management')
+@ApiTags('Admin Subscription Management')
 @ApiBearerAuth()
-@Controller('subscription')
+@Controller('admin-subscription')
 @UseGuards(ClientAuthGuard)
-export class SubscriptionController {
+export class AdminSubscriptionController {
     constructor(
         private adminSubscriptionService: AdminSubscriptionService
     ) {}
