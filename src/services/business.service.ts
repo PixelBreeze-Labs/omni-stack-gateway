@@ -332,6 +332,8 @@ export class BusinessService {
             search?: string;
             status?: string;
             isTrialing?: boolean;
+            isTestAccount?: boolean;
+            sort?: string;
         } = {}
     ) {
         try {
@@ -340,7 +342,9 @@ export class BusinessService {
                 limit = 10,
                 search = '',
                 status,
-                isTrialing = false
+                isTrialing = false,
+                isTestAccount,
+                sort = 'createdAt_desc'
             } = options;
 
             const skip = (page - 1) * limit;
@@ -358,6 +362,10 @@ export class BusinessService {
                 filter.subscriptionStatus = 'trialing';
             }
 
+            if (isTestAccount !== undefined) {
+                filter['metadata.isTestAccount'] = isTestAccount ? 'true' : 'false';
+            }
+
             // Add search filter if provided
             if (search) {
                 filter.$or = [
@@ -370,10 +378,15 @@ export class BusinessService {
             const total = await this.businessModel.countDocuments(filter);
             const totalPages = Math.ceil(total / limit);
 
+            // Handle sorting
+            const [sortField, sortDirection] = (sort || 'createdAt_desc').split('_');
+            const sortOptions = {};
+            sortOptions[sortField || 'createdAt'] = sortDirection === 'desc' ? -1 : 1;
+
             // Get businesses with pagination
             const businesses = await this.businessModel
                 .find(filter)
-                .sort({ createdAt: -1 })
+                .sort(sortOptions)
                 .skip(skip)
                 .limit(limit)
                 .populate('address')
