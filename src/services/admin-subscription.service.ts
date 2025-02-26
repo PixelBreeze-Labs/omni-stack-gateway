@@ -121,7 +121,7 @@ export class AdminSubscriptionService {
                 surname: lastName,
                 email: businessEmail,
                 password: hashedPassword,
-                registrationSource: RegistrationSource.ADMIN,
+                registrationSource: RegistrationSource.STAFFLUENT,
                 client_ids: [clientId],
                 external_ids: {}, // Explicitly initialize
                 isActive: true
