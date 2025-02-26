@@ -555,4 +555,87 @@ export class BusinessService {
             throw error;
         }
     }
+
+    /**
+     * Update business active status (activate/deactivate)
+     */
+    async updateBusinessStatus(clientId: string, businessId: string, isActive: boolean) {
+        try {
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Update the business status
+            const updatedBusiness = await this.businessModel.findByIdAndUpdate(
+                businessId,
+                { $set: { isActive } },
+                { new: true }
+            );
+
+            // If deactivating, also deactivate associated users
+            if (!isActive) {
+                await this.userModel.updateMany(
+                    { _id: { $in: business.userIds } },
+                    { $set: { isActive: false } }
+                );
+                this.logger.log(`Deactivated ${business.userIds.length} users associated with business ${businessId}`);
+            }
+
+            return {
+                success: true,
+                business: updatedBusiness,
+                message: isActive
+                    ? 'Business activated successfully'
+                    : 'Business deactivated successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error updating business status: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Mark/unmark a business as a test account
+     */
+    async updateBusinessTestStatus(clientId: string, businessId: string, isTestAccount: boolean) {
+        try {
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Update the metadata to mark as test account
+            const updatedBusiness = await this.businessModel.findByIdAndUpdate(
+                businessId,
+                {
+                    $set: {
+                        'metadata.isTestAccount': isTestAccount ? 'true' : 'false'
+                    }
+                },
+                { new: true }
+            );
+
+            return {
+                success: true,
+                business: updatedBusiness,
+                message: isTestAccount
+                    ? 'Business marked as test account successfully'
+                    : 'Test account flag removed successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error updating business test status: ${error.message}`);
+            throw error;
+        }
+    }
 }

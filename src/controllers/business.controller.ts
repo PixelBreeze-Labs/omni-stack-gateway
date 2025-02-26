@@ -1,5 +1,5 @@
 // src/controllers/business.controller.ts
-import { Controller, Post, Get, Param, Body, Query, Req, UseGuards, Patch } from '@nestjs/common';
+import {Controller, Post, Get, Param, Body, Query, Req, UseGuards, Patch} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { BusinessService } from '../services/business.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
@@ -68,8 +68,7 @@ export class BusinessController {
         @Query('limit') limit?: number,
         @Query('search') search?: string,
         @Query('status') status?: string,
-        @Query('isTrialing') isTrialing?: boolean,
-        @Query('isTestAccount') isTestAccount?: boolean
+        @Query('isTrialing') isTrialing?: boolean
     ) {
         return this.businessService.getBusinesses(
             req.client.id,
@@ -78,8 +77,7 @@ export class BusinessController {
                 limit,
                 search,
                 status,
-                isTrialing,
-                isTestAccount
+                isTrialing
             }
         );
     }
@@ -94,8 +92,7 @@ export class BusinessController {
         @Query('page') page?: number,
         @Query('limit') limit?: number,
         @Query('search') search?: string,
-        @Query('sort') sort?: string,
-        @Query('isTestAccount') isTestAccount?: boolean
+        @Query('sort') sort?: string
     ) {
         return this.businessService.getTrialBusinesses(
             req.client.id,
@@ -103,8 +100,7 @@ export class BusinessController {
                 page,
                 limit,
                 search,
-                sort,
-                isTestAccount
+                sort
             }
         );
     }
