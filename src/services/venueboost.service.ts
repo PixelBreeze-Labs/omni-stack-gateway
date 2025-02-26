@@ -387,6 +387,66 @@ export class VenueBoostService {
         }
     }
 
+    /**
+     * Get VenueBoost connection data for a user
+     *
+     * @param email User's email address
+     * @param supabaseId Supabase ID
+     * @returns Connection data including user, venue, and auth tokens
+     */
+    async getConnection(email: string, supabaseId: string): Promise<{
+        user: {
+            id: number;
+            name: string;
+            email: string;
+        };
+        token: string;
+        account_type: string;
+        refresh_token: string;
+        success?: boolean;
+        message?: string;
+    }> {
+        try {
+            this.logger.log(`Getting VenueBoost connection for email: ${email}, supabaseId: ${supabaseId}`);
 
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/auth-os/get-connection`,
+                {
+                    email,
+                    supabase_id: supabaseId
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error('Failed to get VenueBoost connection', response.data);
+                throw new Error(response.data.message || 'Failed to get VenueBoost connection');
+            }
+
+            // Extract only the fields we need
+            const { user, token, account_type, refresh_token } = response.data;
+
+            return {
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email
+                },
+                token,
+                account_type,
+                refresh_token
+            };
+        } catch (error) {
+            this.logger.error(`Error getting VenueBoost connection: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
 
 }
