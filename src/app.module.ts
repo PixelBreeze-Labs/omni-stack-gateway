@@ -285,6 +285,7 @@ import {JwtModule} from "@nestjs/jwt";
     SubscriptionConfigController,
     SubscriptionController,
     BusinessController,
+    MagicLinkController
   ],
   providers: [
     SnapfoodService,

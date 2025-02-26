@@ -80,7 +80,7 @@ export class MagicLinkService {
             const businessName = business ? business.name : 'Your Business';
 
             // Build the magic link URL
-            const magicLink = `${process.env.FRONTEND_URL}/magic-login?token=${token}`;
+            const magicLink = `${process.env.WEB_FRONTEND_URL}/magic-login?token=${token}`;
 
             // Send the email
             await this.emailService.sendTemplateEmail(
@@ -146,7 +146,7 @@ export class MagicLinkService {
             const token = await this.createMagicLinkToken(user._id.toString());
 
             // Build the magic link URL - customize the path as needed
-            const magicLink = `${process.env.FRONTEND_URL}/subscription-success/login?token=${token}`;
+            const magicLink = `${process.env.WEB_FRONTEND_URL}/subscription-success/login?token=${token}`;
 
             // Send the email
             await this.emailService.sendTemplateEmail(
