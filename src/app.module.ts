@@ -158,6 +158,7 @@ import { VerificationService } from './services/verification.service';
 import { SubscriptionConfigService } from './services/subscription-config.service';
 import { SubscriptionService } from './services/subscription.service';
 import { BusinessService } from './services/business.service';
+import { SupabaseVbAppService } from "./services/supabase-vb-app.service";
 
 
 // Others
@@ -335,7 +336,8 @@ import {JwtModule} from "@nestjs/jwt";
     VerificationService,
     SubscriptionConfigService,
     SubscriptionService,
-    BusinessService
+    BusinessService,
+    SupabaseVbAppService
   ],
 })
 export class AppModule implements NestModule {
