@@ -1,5 +1,5 @@
 // src/controllers/business.controller.ts
-import { Controller, Post, Get, Param, Body, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Query, Req, UseGuards, Patch } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { BusinessService } from '../services/business.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
@@ -68,7 +68,8 @@ export class BusinessController {
         @Query('limit') limit?: number,
         @Query('search') search?: string,
         @Query('status') status?: string,
-        @Query('isTrialing') isTrialing?: boolean
+        @Query('isTrialing') isTrialing?: boolean,
+        @Query('isTestAccount') isTestAccount?: boolean
     ) {
         return this.businessService.getBusinesses(
             req.client.id,
@@ -77,7 +78,8 @@ export class BusinessController {
                 limit,
                 search,
                 status,
-                isTrialing
+                isTrialing,
+                isTestAccount
             }
         );
     }
@@ -92,7 +94,8 @@ export class BusinessController {
         @Query('page') page?: number,
         @Query('limit') limit?: number,
         @Query('search') search?: string,
-        @Query('sort') sort?: string
+        @Query('sort') sort?: string,
+        @Query('isTestAccount') isTestAccount?: boolean
     ) {
         return this.businessService.getTrialBusinesses(
             req.client.id,
@@ -100,8 +103,58 @@ export class BusinessController {
                 page,
                 limit,
                 search,
-                sort
+                sort,
+                isTestAccount
             }
+        );
+    }
+
+    @Patch(':id/deactivate')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Deactivate a business' })
+    @ApiResponse({ status: 200, description: 'Business deactivated successfully' })
+    async deactivateBusiness(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string
+    ) {
+        return this.businessService.updateBusinessStatus(
+            req.client.id,
+            businessId,
+            false
+        );
+    }
+
+    @Patch(':id/activate')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Activate a business' })
+    @ApiResponse({ status: 200, description: 'Business activated successfully' })
+    async activateBusiness(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string
+    ) {
+        return this.businessService.updateBusinessStatus(
+            req.client.id,
+            businessId,
+            true
+        );
+    }
+
+    @Patch(':id/mark-test-account')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Mark a business as a test account' })
+    @ApiResponse({ status: 200, description: 'Business marked as test account successfully' })
+    async markAsTestAccount(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Body() data: { isTestAccount: boolean }
+    ) {
+        return this.businessService.updateBusinessTestStatus(
+            req.client.id,
+            businessId,
+            data.isTestAccount
         );
     }
 }
