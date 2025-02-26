@@ -321,7 +321,7 @@ export class BusinessService {
                 .populate('address')
                 .populate({
                     path: 'adminUserId',
-                    select: 'name email',
+                    select: 'name surname email',
                     model: 'User'
                 })
                 .lean();
@@ -339,8 +339,7 @@ export class BusinessService {
                     name: adminUserData.surname
                         ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
                         : (adminUserData.name || ''),
-                    email: adminUserData.email,
-                    all: adminUserData
+                    email: adminUserData.email
                 } : undefined;
 
                 // Remove the actual adminUserId object to avoid duplication
