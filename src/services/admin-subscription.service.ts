@@ -319,8 +319,9 @@ export class AdminSubscriptionService {
                     {
                         businessName,
                         fullName,
+                        businessEmail,
                         temporaryPassword,
-                        loginLink: `${process.env.FRONTEND_URL}/login`
+                        loginLink: `${process.env.WEB_FRONTEND_URL}/login`
                     }
                 );
 
