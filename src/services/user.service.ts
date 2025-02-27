@@ -623,4 +623,77 @@ export class UserService {
             pages
         };
     }
+
+    // src/services/user.service.ts
+// Add this method to your existing UserService
+
+    async getStaffAdminUsers(
+        clientId: string,
+        params: StaffUserParams
+    ): Promise<StaffUserResponse> {
+        const { page = 1, limit = 10, search, sort = '-createdAt' } = params;
+        const skip = (page - 1) * limit;
+
+        // First, find all businesses where the clientId matches
+        const businesses = await this.businessModel
+            .find({ clientId })
+            .select('adminUserId')
+            .exec();
+
+        // Extract all admin user IDs
+        const adminUserIds = businesses.map(business => business.adminUserId);
+
+        // Build the query to find admin users with registrationSource = STAFFLUENT
+        const query: any = {
+            _id: { $in: adminUserIds },
+            client_ids: clientId,
+            registrationSource: RegistrationSource.STAFFLUENT
+        };
+
+        // Add search condition if provided
+        if (search) {
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { surname: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // Count total users matching criteria
+        const total = await this.userModel.countDocuments(query);
+
+        // Calculate total pages
+        const pages = Math.ceil(total / limit);
+
+        // Fetch users with pagination and sorting
+        const users = await this.userModel
+            .find(query)
+            .sort(sort)
+            .skip(skip)
+            .limit(limit)
+            .exec();
+
+        // For each admin user, find the businesses they administer
+        const items = await Promise.all(
+            users.map(async (user) => {
+                const adminBusinesses = await this.businessModel
+                    .find({
+                        clientId,
+                        adminUserId: user._id
+                    })
+                    .exec();
+
+                return {
+                    user,
+                    businesses: adminBusinesses
+                };
+            })
+        );
+
+        return {
+            items,
+            total,
+            pages
+        };
+    }
 }
