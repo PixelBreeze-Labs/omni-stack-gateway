@@ -2,10 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import * as bodyParser from 'body-parser'; // Make sure this is imported
+
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+    app.use(bodyParser.json({ limit: '15mb' }));
+    app.use(bodyParser.urlencoded({ limit: '15mb', extended: true }));
   const config = new DocumentBuilder()
       .setTitle('OmniStack Gateway API')
       .setDescription('API documentation for OmniStack Gateway')
