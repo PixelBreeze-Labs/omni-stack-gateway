@@ -139,4 +139,27 @@ export class UserController {
             }
         );
     }
+
+    @Get('staff/admin')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get admin users registered via Staffluent with their businesses' })
+    @ApiResponse({ status: 200, description: 'Returns a list of staff admin users and their businesses' })
+    async getStaffAdminUsers(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('sort') sort?: string
+    ): Promise<StaffUserResponse> {  // Add the return type here
+        return this.userService.getStaffAdminUsers(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                sort
+            }
+        );
+    }
 }
