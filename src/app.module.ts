@@ -101,6 +101,8 @@ import { SubscriptionController } from './controllers/subscription.contoller';
 import { BusinessController } from './controllers/business.controller';
 import { MagicLinkController } from './controllers/magic-link.controller';
 import { AdminSubscriptionController } from './controllers/admin-subscription.controller';
+import { StaffluentDashboardController } from './controllers/staffluent-dashboard.controller';
+import { StaffluentAnalyticsController } from './controllers/staffluent-analytics.controller';
 
 
 
@@ -164,6 +166,8 @@ import { BusinessService } from './services/business.service';
 import { SupabaseVbAppService } from "./services/supabase-vb-app.service";
 import { MagicLinkService } from "./services/magic-link.service";
 import { AdminSubscriptionService } from "./services/admin-subscription.service";
+import { StaffluentAnalyticsService } from "./services/staffluent-analytics.service";
+import { StaffluentDashboardService } from "./services/staffluent-dashboard.service";
 
 
 // Others
@@ -288,7 +292,9 @@ import {JwtModule} from "@nestjs/jwt";
     SubscriptionController,
     BusinessController,
     MagicLinkController,
-    AdminSubscriptionController
+    AdminSubscriptionController,
+    StaffluentAnalyticsController,
+    StaffluentDashboardController,
   ],
   providers: [
     SnapfoodService,
@@ -347,7 +353,9 @@ import {JwtModule} from "@nestjs/jwt";
     BusinessService,
     SupabaseVbAppService,
     MagicLinkService,
-    AdminSubscriptionService
+    AdminSubscriptionService,
+    StaffluentDashboardService,
+    StaffluentAnalyticsService
   ],
 })
 export class AppModule implements NestModule {
