@@ -18,6 +18,8 @@ import { WalletService } from "./wallet.service";
 import { CustomerService } from "./customer.service";
 import { EmailService } from "./email.service";
 import { Wallet } from '../schemas/wallet.schema';
+import { Business } from '../schemas/business.schema';
+import {StaffUserParams, StaffUserResponse} from "../interfaces/staff-user.interface";
 
 
 export interface PopulatedReferral {
@@ -76,7 +78,8 @@ export class UserService {
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
-        private walletService: WalletService,
+        @InjectModel(Business.name) private businessModel: Model<Business>,
+    private walletService: WalletService,
         @Inject(forwardRef(() => CustomerService))
         private customerService: CustomerService,
         private emailService: EmailService,
@@ -555,5 +558,69 @@ export class UserService {
         }
 
         return Array.from(clientIds);
+    }
+
+
+    async getStaffUsers(
+        clientId: string,
+        params: StaffUserParams
+    ): Promise<StaffUserResponse> {
+        const { page = 1, limit = 10, search, sort = '-createdAt' } = params;
+        const skip = (page - 1) * limit;
+
+        // Build the query to find users with registrationSource = STAFFLUENT
+        const query: any = {
+            client_ids: clientId,
+            registrationSource: RegistrationSource.STAFFLUENT
+        };
+
+        // Add search condition if provided
+        if (search) {
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { surname: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // Count total users matching criteria
+        const total = await this.userModel.countDocuments(query);
+
+        // Calculate total pages
+        const pages = Math.ceil(total / limit);
+
+        // Fetch users with pagination and sorting
+        const users = await this.userModel
+            .find(query)
+            .sort(sort)
+            .skip(skip)
+            .limit(limit)
+            .exec();
+
+        // For each user, find their associated businesses
+        const items = await Promise.all(
+            users.map(async (user) => {
+                const businesses = await this.businessModel
+                    .find({
+                        clientId,
+                        $or: [
+                            { adminUserId: user._id },
+                            { userIds: user._id }
+                        ]
+                    })
+                    .exec();
+
+                return {
+                    user,
+                    businesses
+                };
+            })
+        );
+
+        return {
+            items,
+            total,
+            pages
+        };
     }
 }

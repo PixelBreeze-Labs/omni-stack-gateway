@@ -9,6 +9,7 @@ import {
     Delete,
     Param,
     Headers,
+    Query,
     UnauthorizedException
 } from '@nestjs/common';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
@@ -18,6 +19,7 @@ import { CreateUserDto, GetOrCreateUserDto } from '../dtos/user.dto';
 import { Client } from '../schemas/client.schema';
 import {InjectModel} from "@nestjs/mongoose";
 import {Model} from "mongoose";
+import {StaffUserResponse} from "../interfaces/staff-user.interface";
 
 @ApiTags('Users')
 @Controller('users')
@@ -113,5 +115,28 @@ export class UserController {
         @Headers('x-api-key') apiKey: string,
     ) {
         return this.userService.getWalletInfo(venueShortCode, webhookApiKey, userId);
+    }
+
+    @Get('staff')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get users registered via Staffluent with their businesses' })
+    @ApiResponse({ status: 200, description: 'Returns a list of staff users and their businesses' })
+    async getStaffUsers(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('sort') sort?: string
+    ): Promise<StaffUserResponse> {
+        return this.userService.getStaffUsers(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                sort
+            }
+        );
     }
 }
