@@ -189,12 +189,31 @@ export class StaffluentDashboardService {
     }
 
     private async getSubscriptionStatusDistribution(clientId: string) {
-        const statusCounts = await this.businessModel.aggregate([
-            { $match: { clientId } },
-            { $group: { _id: { $ifNull: ['$subscriptionStatus', 'unknown'] }, count: { $sum: 1 } } }
-        ]);
+        // Direct count approach instead of aggregation
+        const activeCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'active'
+        });
 
-        console.log('Status counts from aggregation:', JSON.stringify(statusCounts));
+        const trialingCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'trialing'
+        });
+
+        const pastDueCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'past_due'
+        });
+
+        const canceledCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'canceled'
+        });
+
+        const incompleteCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'incomplete'
+        });
 
         const labels = [];
         const data = [];
@@ -206,26 +225,31 @@ export class StaffluentDashboardService {
             '#9E9E9E'  // incomplete - grey
         ];
 
-        // Map status labels to user-friendly names
-        const statusMap = {
-            'active': 'Active',
-            'trialing': 'Trial',
-            'past_due': 'Past Due',
-            'canceled': 'Canceled',
-            'incomplete': 'Incomplete',
-            'unknown': 'Unknown'
-        };
+        // Only add statuses that have at least one business
+        if (activeCount > 0) {
+            labels.push('Active');
+            data.push(activeCount);
+        }
 
-        // Handle case where _id might be an object from $ifNull
-        statusCounts.forEach(item => {
-            const status = typeof item._id === 'object' ? item._id.$ifNull[0] || 'unknown' : item._id || 'unknown';
-            console.log('Processing status:', status, 'with count:', item.count);
-            labels.push(statusMap[status] || status);
-            data.push(item.count);
-        });
+        if (trialingCount > 0) {
+            labels.push('Trial');
+            data.push(trialingCount);
+        }
 
-        console.log('Final labels:', labels);
-        console.log('Final data:', data);
+        if (pastDueCount > 0) {
+            labels.push('Past Due');
+            data.push(pastDueCount);
+        }
+
+        if (canceledCount > 0) {
+            labels.push('Canceled');
+            data.push(canceledCount);
+        }
+
+        if (incompleteCount > 0) {
+            labels.push('Incomplete');
+            data.push(incompleteCount);
+        }
 
         return { labels, data, backgroundColor };
     }
