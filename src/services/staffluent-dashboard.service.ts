@@ -191,8 +191,10 @@ export class StaffluentDashboardService {
     private async getSubscriptionStatusDistribution(clientId: string) {
         const statusCounts = await this.businessModel.aggregate([
             { $match: { clientId } },
-            { $group: { _id: '$subscriptionStatus', count: { $sum: 1 } } }
+            { $group: { _id: { $ifNull: ['$subscriptionStatus', 'unknown'] }, count: { $sum: 1 } } }
         ]);
+
+        console.log('Status counts from aggregation:', JSON.stringify(statusCounts));
 
         const labels = [];
         const data = [];
@@ -210,14 +212,20 @@ export class StaffluentDashboardService {
             'trialing': 'Trial',
             'past_due': 'Past Due',
             'canceled': 'Canceled',
-            'incomplete': 'Incomplete'
+            'incomplete': 'Incomplete',
+            'unknown': 'Unknown'
         };
 
+        // Handle case where _id might be an object from $ifNull
         statusCounts.forEach(item => {
-            const status = item._id || 'unknown';
+            const status = typeof item._id === 'object' ? item._id.$ifNull[0] || 'unknown' : item._id || 'unknown';
+            console.log('Processing status:', status, 'with count:', item.count);
             labels.push(statusMap[status] || status);
             data.push(item.count);
         });
+
+        console.log('Final labels:', labels);
+        console.log('Final data:', data);
 
         return { labels, data, backgroundColor };
     }
