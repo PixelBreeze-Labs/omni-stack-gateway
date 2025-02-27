@@ -60,7 +60,7 @@ export class StaffluentAnalyticsService {
             return total + monthlyAmount;
         }, 0);
 
-        // Get subscription status distribution
+        // Get subscription status distribution (original method)
         const statusCounts = await this.businessModel.aggregate([
             { $match: { clientId } },
             { $group: { _id: '$subscriptionStatus', count: { $sum: 1 } } }
@@ -70,6 +70,9 @@ export class StaffluentAnalyticsService {
             obj[item._id || 'unknown'] = item.count;
             return obj;
         }, {});
+
+        // Get subscription status distribution for chart
+        const subscriptionDistribution = await this.getSubscriptionStatusDistribution(clientId);
 
         // Get business growth over time (last 6 months)
         const businessGrowth = await this.getBusinessGrowthTrend(clientId);
@@ -97,6 +100,7 @@ export class StaffluentAnalyticsService {
                 }
             },
             statusDistribution,
+            subscriptionDistribution,
             businessGrowth
         };
     }
@@ -122,7 +126,7 @@ export class StaffluentAnalyticsService {
             registrationSource: RegistrationSource.STAFFLUENT
         });
 
-        // Get users by registration source
+        // Get users by registration source (original method)
         const sourceDistribution = await this.userModel.aggregate([
             { $match: { client_ids: clientId } },
             { $group: { _id: '$registrationSource', count: { $sum: 1 } } }
@@ -132,6 +136,9 @@ export class StaffluentAnalyticsService {
             obj[item._id || 'unknown'] = item.count;
             return obj;
         }, {});
+
+        // Get registration source distribution for chart
+        const registrationSourceDistribution = await this.getRegistrationSourceDistribution(clientId);
 
         // Get user growth over time (last 6 months)
         const userGrowth = await this.getUserGrowthTrend(clientId);
@@ -157,6 +164,7 @@ export class StaffluentAnalyticsService {
                 usersWithBusinesses
             },
             registrationSources,
+            registrationSourceDistribution,
             userGrowth
         };
     }
@@ -215,6 +223,160 @@ export class StaffluentAnalyticsService {
             labels: months,
             data: monthlyData
         };
+    }
+
+    private async getSubscriptionStatusDistribution(clientId: string) {
+        // Direct count approach instead of aggregation
+        const activeCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'active'
+        });
+
+        const trialingCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'trialing'
+        });
+
+        const pastDueCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'past_due'
+        });
+
+        const canceledCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'canceled'
+        });
+
+        const incompleteCount = await this.businessModel.countDocuments({
+            clientId,
+            subscriptionStatus: 'incomplete'
+        });
+
+        const labels = [];
+        const data = [];
+        const backgroundColor = [
+            '#4CAF50', // active - green
+            '#2196F3', // trialing - blue
+            '#FFC107', // past_due - amber
+            '#F44336', // canceled - red
+            '#9E9E9E'  // incomplete - grey
+        ];
+
+        // Only add statuses that have at least one business
+        if (activeCount > 0) {
+            labels.push('Active');
+            data.push(activeCount);
+        }
+
+        if (trialingCount > 0) {
+            labels.push('Trial');
+            data.push(trialingCount);
+        }
+
+        if (pastDueCount > 0) {
+            labels.push('Past Due');
+            data.push(pastDueCount);
+        }
+
+        if (canceledCount > 0) {
+            labels.push('Canceled');
+            data.push(canceledCount);
+        }
+
+        if (incompleteCount > 0) {
+            labels.push('Incomplete');
+            data.push(incompleteCount);
+        }
+
+        return { labels, data, backgroundColor };
+    }
+
+    private async getRegistrationSourceDistribution(clientId: string) {
+        // Direct count approach instead of aggregation
+        const staffluentCount = await this.userModel.countDocuments({
+            client_ids: clientId,
+            registrationSource: 'staffluent'
+        });
+
+        const metrosuitesCount = await this.userModel.countDocuments({
+            client_ids: clientId,
+            registrationSource: 'metrosuites'
+        });
+
+        const metroshopCount = await this.userModel.countDocuments({
+            client_ids: clientId,
+            registrationSource: 'metroshop'
+        });
+
+        const bookmasterCount = await this.userModel.countDocuments({
+            client_ids: clientId,
+            registrationSource: 'bookmaster'
+        });
+
+        const trackmasterCount = await this.userModel.countDocuments({
+            client_ids: clientId,
+            registrationSource: 'trackmaster'
+        });
+
+        const manualCount = await this.userModel.countDocuments({
+            client_ids: clientId,
+            registrationSource: 'manual'
+        });
+
+        const otherCount = await this.userModel.countDocuments({
+            client_ids: clientId,
+            registrationSource: 'other'
+        });
+
+        const labels = [];
+        const data = [];
+        const backgroundColor = [
+            '#8884d8', // Purple - staffluent
+            '#82ca9d', // Green - metrosuites
+            '#ffc658', // Yellow - metroshop
+            '#ff8042', // Orange - bookmaster
+            '#0088FE', // Blue - trackmaster
+            '#00C49F', // Teal - manual
+            '#FFBB28'  // Amber - other
+        ];
+
+        // Only add sources that have at least one user
+        if (staffluentCount > 0) {
+            labels.push('Staffluent');
+            data.push(staffluentCount);
+        }
+
+        if (metrosuitesCount > 0) {
+            labels.push('Metrosuites');
+            data.push(metrosuitesCount);
+        }
+
+        if (metroshopCount > 0) {
+            labels.push('Metroshop');
+            data.push(metroshopCount);
+        }
+
+        if (bookmasterCount > 0) {
+            labels.push('Bookmaster');
+            data.push(bookmasterCount);
+        }
+
+        if (trackmasterCount > 0) {
+            labels.push('Trackmaster');
+            data.push(trackmasterCount);
+        }
+
+        if (manualCount > 0) {
+            labels.push('Manual');
+            data.push(manualCount);
+        }
+
+        if (otherCount > 0) {
+            labels.push('Other');
+            data.push(otherCount);
+        }
+
+        return { labels, data, backgroundColor };
     }
 
     private async getUsersWithBusinessesCount(clientId: string) {
