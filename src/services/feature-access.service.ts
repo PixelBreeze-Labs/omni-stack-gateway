@@ -33,9 +33,7 @@ export class FeatureAccessService {
             return null;
         }
 
-        // Check if plan contains tier info - extract from planId or metadata
-        // This assumes the planId format is something like "price_basic_monthly" or "price_enterprise_yearly"
-        // Alternatively, you could store the tier info in metadata
+        // Extract tier from plan ID
         const tierFromPlanId = planId.includes('basic') ? 'basic' :
             planId.includes('professional') ? 'professional' :
                 planId.includes('enterprise') ? 'enterprise' : null;
@@ -66,13 +64,11 @@ export class FeatureAccessService {
             // Get features for the tier
             const features = TIER_FEATURES[tier] || [];
 
-            // Check for feature overrides in metadata
-            const enabledOverrides = this.getEnabledFeatureOverrides(business);
-            const disabledOverrides = this.getDisabledFeatureOverrides(business);
+            // Get custom features from business metadata
+            const customFeatures = this.getCustomFeatures(business);
 
-            // Apply overrides (add enabled features, remove disabled features)
-            return [...new Set([...features, ...enabledOverrides])]
-                .filter(feature => !disabledOverrides.includes(feature));
+            // Combine tier features with custom features and remove duplicates
+            return [...new Set([...features, ...customFeatures])];
         } catch (error) {
             this.logger.error(`Error getting business features: ${error.message}`);
             return [];
@@ -80,33 +76,17 @@ export class FeatureAccessService {
     }
 
     /**
-     * Get any features that are explicitly enabled for this business
+     * Get custom features added to a business
      */
-    private getEnabledFeatureOverrides(business: Business): string[] {
+    private getCustomFeatures(business: Business): string[] {
         try {
-            const enabledFeaturesStr = business.metadata?.get('enabledFeatures');
-            if (enabledFeaturesStr) {
-                return JSON.parse(enabledFeaturesStr);
+            const customFeaturesStr = business.metadata?.get('customFeatures');
+            if (customFeaturesStr) {
+                return JSON.parse(customFeaturesStr);
             }
             return [];
         } catch (error) {
-            this.logger.error(`Error parsing enabled features: ${error.message}`);
-            return [];
-        }
-    }
-
-    /**
-     * Get any features that are explicitly disabled for this business
-     */
-    private getDisabledFeatureOverrides(business: Business): string[] {
-        try {
-            const disabledFeaturesStr = business.metadata?.get('disabledFeatures');
-            if (disabledFeaturesStr) {
-                return JSON.parse(disabledFeaturesStr);
-            }
-            return [];
-        } catch (error) {
-            this.logger.error(`Error parsing disabled features: ${error.message}`);
+            this.logger.error(`Error parsing custom features: ${error.message}`);
             return [];
         }
     }
@@ -139,11 +119,11 @@ export class FeatureAccessService {
             // Get limits for the tier
             const tierLimits = TIER_LIMITS[tier] || {};
 
-            // Check for limit overrides in metadata
-            const limitsOverride = this.getLimitsOverrides(business);
+            // Get custom limits from business metadata
+            const customLimits = this.getCustomLimits(business);
 
-            // Merge tier limits with overrides
-            return { ...tierLimits, ...limitsOverride };
+            // Merge tier limits with custom limits (custom limits override tier limits)
+            return { ...tierLimits, ...customLimits };
         } catch (error) {
             this.logger.error(`Error getting business limits: ${error.message}`);
             return {};
@@ -151,17 +131,17 @@ export class FeatureAccessService {
     }
 
     /**
-     * Get any feature limit overrides for this business
+     * Get custom limits for a business
      */
-    private getLimitsOverrides(business: Business): Record<string, any> {
+    private getCustomLimits(business: Business): Record<string, any> {
         try {
-            const limitsStr = business.metadata?.get('featureLimits');
-            if (limitsStr) {
-                return JSON.parse(limitsStr);
+            const customLimitsStr = business.metadata?.get('customLimits');
+            if (customLimitsStr) {
+                return JSON.parse(customLimitsStr);
             }
             return {};
         } catch (error) {
-            this.logger.error(`Error parsing feature limits: ${error.message}`);
+            this.logger.error(`Error parsing custom limits: ${error.message}`);
             return {};
         }
     }
@@ -195,108 +175,131 @@ export class FeatureAccessService {
     }
 
     /**
-     * Enable a specific feature for a business
+     * Add a custom feature to a business
      */
-    async enableFeature(businessId: string, featureKey: string): Promise<boolean> {
+    async addCustomFeature(businessId: string, featureKey: string): Promise<boolean> {
         try {
             const business = await this.businessModel.findById(businessId);
             if (!business) {
                 return false;
             }
 
-            // Get current enabled features
-            const enabledFeatures = this.getEnabledFeatureOverrides(business);
+            // Get current custom features
+            const customFeatures = this.getCustomFeatures(business);
 
-            // Add the feature if not already enabled
-            if (!enabledFeatures.includes(featureKey)) {
-                enabledFeatures.push(featureKey);
+            // Add the feature if not already in the list
+            if (!customFeatures.includes(featureKey)) {
+                customFeatures.push(featureKey);
             }
-
-            // Remove from disabled features if present
-            const disabledFeatures = this.getDisabledFeatureOverrides(business);
-            const updatedDisabledFeatures = disabledFeatures.filter(f => f !== featureKey);
 
             // Update metadata
             if (!business.metadata) {
                 business.metadata = new Map<string, string>();
             }
 
-            business.metadata.set('enabledFeatures', JSON.stringify(enabledFeatures));
-            business.metadata.set('disabledFeatures', JSON.stringify(updatedDisabledFeatures));
-
+            business.metadata.set('customFeatures', JSON.stringify(customFeatures));
             await business.save();
+
             return true;
         } catch (error) {
-            this.logger.error(`Error enabling feature: ${error.message}`);
+            this.logger.error(`Error adding custom feature: ${error.message}`);
             return false;
         }
     }
 
     /**
-     * Disable a specific feature for a business
+     * Remove a custom feature from a business
      */
-    async disableFeature(businessId: string, featureKey: string): Promise<boolean> {
+    async removeCustomFeature(businessId: string, featureKey: string): Promise<boolean> {
         try {
             const business = await this.businessModel.findById(businessId);
             if (!business) {
                 return false;
             }
 
-            // Get current disabled features
-            const disabledFeatures = this.getDisabledFeatureOverrides(business);
+            // Get current custom features
+            const customFeatures = this.getCustomFeatures(business);
 
-            // Add the feature if not already disabled
-            if (!disabledFeatures.includes(featureKey)) {
-                disabledFeatures.push(featureKey);
+            // Remove the feature if present
+            const updatedFeatures = customFeatures.filter(f => f !== featureKey);
+
+            // Update metadata only if there was a change
+            if (customFeatures.length !== updatedFeatures.length) {
+                if (!business.metadata) {
+                    business.metadata = new Map<string, string>();
+                }
+
+                business.metadata.set('customFeatures', JSON.stringify(updatedFeatures));
+                await business.save();
             }
 
-            // Remove from enabled features if present
-            const enabledFeatures = this.getEnabledFeatureOverrides(business);
-            const updatedEnabledFeatures = enabledFeatures.filter(f => f !== featureKey);
-
-            // Update metadata
-            if (!business.metadata) {
-                business.metadata = new Map<string, string>();
-            }
-
-            business.metadata.set('enabledFeatures', JSON.stringify(updatedEnabledFeatures));
-            business.metadata.set('disabledFeatures', JSON.stringify(disabledFeatures));
-
-            await business.save();
             return true;
         } catch (error) {
-            this.logger.error(`Error disabling feature: ${error.message}`);
+            this.logger.error(`Error removing custom feature: ${error.message}`);
             return false;
         }
     }
 
     /**
-     * Set a custom limit for a specific feature
+     * Set a custom limit for a business
      */
-    async setFeatureLimit(businessId: string, limitKey: string, value: number): Promise<boolean> {
+    async setCustomLimit(businessId: string, limitKey: string, value: number): Promise<boolean> {
         try {
             const business = await this.businessModel.findById(businessId);
             if (!business) {
                 return false;
             }
 
-            // Get current limits
-            const limits = this.getLimitsOverrides(business);
+            // Get current custom limits
+            const customLimits = this.getCustomLimits(business);
 
             // Set the new limit value
-            limits[limitKey] = value;
+            customLimits[limitKey] = value;
 
             // Update metadata
             if (!business.metadata) {
                 business.metadata = new Map<string, string>();
             }
 
-            business.metadata.set('featureLimits', JSON.stringify(limits));
-
+            business.metadata.set('customLimits', JSON.stringify(customLimits));
             await business.save();
+
             return true;
         } catch (error) {
-            this.logger.error(`Error setting feature limit: ${error.message}`);
+            this.logger.error(`Error setting custom limit: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Remove a custom limit from a business
+     */
+    async removeCustomLimit(businessId: string, limitKey: string): Promise<boolean> {
+        try {
+            const business = await this.businessModel.findById(businessId);
+            if (!business) {
+                return false;
+            }
+
+            // Get current custom limits
+            const customLimits = this.getCustomLimits(business);
+
+            // Remove the limit if present
+            if (limitKey in customLimits) {
+                delete customLimits[limitKey];
+
+                // Update metadata
+                if (!business.metadata) {
+                    business.metadata = new Map<string, string>();
+                }
+
+                business.metadata.set('customLimits', JSON.stringify(customLimits));
+                await business.save();
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error removing custom limit: ${error.message}`);
             return false;
         }
     }

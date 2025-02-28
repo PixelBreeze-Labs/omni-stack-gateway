@@ -161,7 +161,7 @@ export class AuthService {
     /**
      * Get business features and subscription details for login response
      */
-    private async getBusinessFeaturesForLogin(businessId: string) {
+    async getBusinessFeaturesForLogin(businessId: string) {
         try {
             // Get business and determine tier
             const business = await this.businessModel.findById(businessId);
@@ -169,6 +169,8 @@ export class AuthService {
                 return {
                     features: [],
                     featureLimits: {},
+                    customFeatures: [],
+                    customLimits: {},
                     subscription: { status: 'not_found' }
                 };
             }
@@ -178,6 +180,30 @@ export class AuthService {
 
             // Get feature limits
             const featureLimits = await this.featureAccessService.getBusinessLimits(businessId);
+
+            // Get custom features
+            let customFeatures = [];
+            try {
+                const customFeaturesStr = business.metadata?.get('customFeatures');
+                if (customFeaturesStr) {
+                    customFeatures = JSON.parse(customFeaturesStr);
+                }
+            } catch (error) {
+                this.logger.error(`Error parsing custom features: ${error.message}`);
+                customFeatures = [];
+            }
+
+            // Get custom limits
+            let customLimits = {};
+            try {
+                const customLimitsStr = business.metadata?.get('customLimits');
+                if (customLimitsStr) {
+                    customLimits = JSON.parse(customLimitsStr);
+                }
+            } catch (error) {
+                this.logger.error(`Error parsing custom limits: ${error.message}`);
+                customLimits = {};
+            }
 
             // Determine tier for frontend information
             let tier = 'basic';
@@ -200,6 +226,8 @@ export class AuthService {
             return {
                 features,
                 featureLimits,
+                customFeatures,
+                customLimits,
                 subscription: {
                     status: business.subscriptionStatus,
                     endDate: business.subscriptionEndDate,
@@ -214,6 +242,8 @@ export class AuthService {
             return {
                 features: [],
                 featureLimits: {},
+                customFeatures: [],
+                customLimits: {},
                 subscription: { status: 'error' }
             };
         }
