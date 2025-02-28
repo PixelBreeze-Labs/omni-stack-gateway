@@ -5,4 +5,5 @@ export interface MagicLinkResponse {
     userId?: string;
     businessId?: string;
     auth_response?: any;
+    has_changed_password?: boolean;
 }
