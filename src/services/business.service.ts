@@ -57,10 +57,10 @@ export class BusinessService {
                 phone?: string;
                 address?: {
                     street?: string;
-                    city?: string;
-                    state?: string;
+                    cityId?: string;  // Changed from city
+                    stateId?: string; // Changed from state
                     zip?: string;
-                    country?: string;
+                    countryId?: string; // Changed from country
                 };
                 taxId?: string;
                 vatNumber?: string;
@@ -105,16 +105,25 @@ export class BusinessService {
                     // Check if address exists
                     let addressId = business.addressId;
 
+                    // Map fields to use proper ID fields
+                    const addressData = {
+                        addressLine1: businessDetails.address.street || '',
+                        cityId: businessDetails.address.cityId || null,
+                        stateId: businessDetails.address.stateId || null,
+                        countryId: businessDetails.address.countryId || null,
+                        zip: businessDetails.address.zip || '',
+                    };
+
                     if (addressId) {
                         // Update existing address
                         await this.addressModel.updateOne(
                             { _id: addressId },
-                            { $set: businessDetails.address }
+                            { $set: addressData }
                         );
                     } else {
-                        // Create new address
+                        // Create new address with proper ID fields
                         const newAddress = await this.addressModel.create({
-                            ...businessDetails.address,
+                            ...addressData,
                             businessId,
                             clientId
                         });
