@@ -10,7 +10,8 @@ import {
     Param,
     Headers,
     Query,
-    UnauthorizedException
+    Patch,
+    UnauthorizedException, NotFoundException
 } from '@nestjs/common';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { UserService } from '../services/user.service';
@@ -20,6 +21,7 @@ import { Client } from '../schemas/client.schema';
 import {InjectModel} from "@nestjs/mongoose";
 import {Model} from "mongoose";
 import {StaffUserResponse} from "../interfaces/staff-user.interface";
+import {ChangePasswordDto} from "../dtos/user.dto";
 
 @ApiTags('Users')
 @Controller('users')
@@ -160,6 +162,35 @@ export class UserController {
                 search,
                 sort
             }
+        );
+    }
+    // Updated controller method that uses ClientAuthGuard and extracts userId from request
+    @Patch('password/:userId')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Change user password' })
+    @ApiResponse({ status: 200, description: 'Password changed successfully' })
+    @ApiResponse({ status: 400, description: 'Invalid request' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 404, description: 'User not found' })
+    async changePassword(
+        @Param('userId') userId: string,
+        @Req() req: Request & { client: Client },
+        @Body() changePasswordDto: ChangePasswordDto
+    ) {
+        // Verify that the user belongs to the authenticated client
+        const user = await this.userService.findById(userId);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        if (!user.client_ids.includes(req.client.id)) {
+            throw new UnauthorizedException('User does not belong to this client');
+        }
+
+        return this.userService.changePassword(
+            userId,
+            changePasswordDto
         );
     }
 }

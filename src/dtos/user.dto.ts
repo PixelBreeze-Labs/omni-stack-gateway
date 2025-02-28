@@ -1,6 +1,6 @@
 // src/dtos/user.dto.ts
 import { IsString, IsEmail, IsOptional, IsObject, IsNumber, IsArray, IsEnum, IsNotEmpty, IsDate, ValidateNested } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {RegistrationSource} from "../schemas/user.schema";
 import { Type } from 'class-transformer';
 import { CreateAddressDto } from './address.dto';
@@ -98,4 +98,12 @@ export class GetOrCreateUserDto {
     email: string;
     phone: string;
     password: string;
+}
+
+export class ChangePasswordDto {
+    @ApiPropertyOptional({ description: 'Current password (required for users who have changed their password before)' })
+    currentPassword?: string;
+
+    @ApiProperty({ description: 'New password' })
+    newPassword: string;
 }

@@ -696,4 +696,106 @@ export class UserService {
             pages
         };
     }
+
+    /**
+     * Change user password
+     * Handles both first-time password change and regular password changes
+     */
+    async changePassword(userId: string, passwordData: {
+        currentPassword?: string;
+        newPassword: string;
+    }): Promise<{ success: boolean; message: string }> {
+        try {
+
+            // Find the user
+            const user = await this.userModel.findById(userId);
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Check if user has changed password before
+            const hasChangedPassword = user.metadata?.get('has_changed_password') === 'true';
+
+            // If user has changed password before, verify current password
+            if (hasChangedPassword) {
+                if (!passwordData.currentPassword) {
+                    throw new BadRequestException('Current password is required');
+                }
+
+                // Verify current password
+                const isPasswordValid = await bcrypt.compare(passwordData.currentPassword, user.password);
+                if (!isPasswordValid) {
+                    throw new BadRequestException('Current password is incorrect');
+                }
+            }
+
+            // Validate the new password
+            if (passwordData.newPassword.length < 8) {
+                throw new BadRequestException('New password must be at least 8 characters long');
+            }
+
+            // Hash the new password
+            const hashedPassword = await bcrypt.hash(passwordData.newPassword, 10);
+
+            // Update user with new password and set flag
+            await this.userModel.updateOne(
+                { _id: userId },
+                {
+                    $set: {
+                        password: hashedPassword,
+                        'metadata.has_changed_password': 'true',
+                        'metadata.password_last_changed': new Date().toISOString()
+                    }
+                }
+            );
+
+            // Send confirmation email
+            try {
+                await this.sendPasswordChangeEmail(user);
+            } catch (emailError) {
+                // Continue even if email sending fails
+            }
+
+            return {
+                success: true,
+                message: hasChangedPassword
+                    ? 'Password changed successfully'
+                    : 'Initial password set successfully'
+            };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    /**
+     * Send password change confirmation email
+     */
+    private async sendPasswordChangeEmail(user: User): Promise<void> {
+        // Find user's business if they are an admin
+        let businessName = 'your account';
+        try {
+            const business = await this.businessModel.findOne({ adminUserId: user._id });
+            if (business) {
+                businessName = business.name;
+            }
+        } catch (error) {
+            // Continue with generic business name
+        }
+
+        // Send email notification
+        await this.emailService.sendTemplateEmail(
+            'Staffluent',
+            'staffluent@omnistackhub.xyz',
+            user.email,
+            'Your Staffluent Password Has Been Changed',
+            'templates/user/password-changed.html',
+            {
+                userName: user.surname ? `${user.name} ${user.surname}` : user.name,
+                businessName,
+                timestamp: new Date().toLocaleString(),
+                supportEmail: 'support@staffluent.com'
+            }
+        );
+
+    }
 }
