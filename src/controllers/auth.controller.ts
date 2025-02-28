@@ -3,6 +3,7 @@ import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {SalesAssociateLoginDto} from "../dtos/user.dto";
+import {StaffluentsBusinessAdminLoginDto} from "../dtos/staffluent-login.dto";
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -16,5 +17,14 @@ export class AuthController {
     async salesAssociateLogin(@Body() loginDto: SalesAssociateLoginDto) {
         const { token, user } = await this.authService.salesAssociateLogin(loginDto);
         return { token, user };
+    }
+
+    @Post('staffluent/business-admin/login')
+    @ApiOperation({ summary: 'Staffluent business admin login' })
+    @ApiResponse({ status: 200, description: 'Login successful' })
+    @ApiResponse({ status: 401, description: 'Invalid credentials' })
+    async staffluentsBusinessAdminLogin(@Body() loginDto: StaffluentsBusinessAdminLoginDto) {
+        const result = await this.authService.staffluentsBusinessAdminLogin(loginDto);
+        return result;
     }
 }
