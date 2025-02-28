@@ -459,4 +459,59 @@ export class VenueBoostService {
         }
     }
 
+    /**
+     * Change a user's password in VenueBoost
+     *
+     * @param user User object containing necessary identification
+     * @param password New password to set
+     * @returns Success status and message
+     */
+    async changePassword(user: User, password: string): Promise<{success: boolean; message: string}> {
+        try {
+            // Make sure we have the VenueBoost user ID
+            if (!user.external_ids || !user.external_ids.venueBoostId) {
+                return {
+                    success: false,
+                    message: 'No VenueBoost user ID found for user. Skipping password change.'
+                };
+            }
+
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/auth-os/change-password`,
+                {
+                    email: user.email,
+                    venueboost_user_id: user.external_ids.venueBoostId,
+                    new_password: password
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (!response.data.success) {
+                this.logger.error('Failed to change password in VenueBoost', response.data);
+                return {
+                    success: false,
+                    message: response.data.message || 'Failed to change password in VenueBoost'
+                };
+            }
+
+            return {
+                success: true,
+                message: 'Successfully changed password in VenueBoost',
+            };
+        } catch (error) {
+            this.logger.error(`Error changing password in VenueBoost: ${error.message}`, error.stack);
+            return {
+                success: false,
+                message: `Error changing password in VenueBoost: ${error.message}`
+            };
+        }
+    }
+
 }

@@ -324,6 +324,7 @@ export class BusinessService {
                 success: true,
                 message: 'Subscription activated successfully',
                 businessId,
+                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
                 status: subscription.status,
                 auth_response
             };

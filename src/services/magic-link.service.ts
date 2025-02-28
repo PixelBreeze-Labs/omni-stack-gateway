@@ -247,6 +247,7 @@ export class MagicLinkService {
                 status: 'success',
                 message: 'Authentication successful',
                 userId: user._id.toString(),
+                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
                 businessId: business?._id.toString(),
                 auth_response
             };
