@@ -3,6 +3,7 @@ import { Injectable, UnauthorizedException, Logger, NotFoundException } from '@n
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from './user.service';
 import { FeatureAccessService } from './feature-access.service';
+import { SidebarFeatureService } from './sidebar-feature.service';
 import * as bcrypt from 'bcrypt';
 import { SalesAssociateLoginDto } from "../dtos/user.dto";
 import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
@@ -22,6 +23,7 @@ export class AuthService {
         private userService: UserService,
         private jwtService: JwtService,
         private featureAccessService: FeatureAccessService,
+        private sidebarFeatureService: SidebarFeatureService,
         private venueBoostService: VenueBoostService,
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(User.name) private userModel: Model<User>,
@@ -123,6 +125,9 @@ export class AuthService {
             // Get features and subscription details
             const businessFeatures = await this.getBusinessFeaturesForLogin(business._id.toString());
 
+            // Get sidebar links based on features
+            const sidebarLinks = await this.sidebarFeatureService.getBusinessSidebarLinks(business._id.toString());
+
             // Generate JWT token
             const token = this.jwtService.sign({
                 sub: user._id.toString(),
@@ -147,6 +152,7 @@ export class AuthService {
                     subscriptionEndDate: business.subscriptionEndDate
                 },
                 auth_response,
+                sidebarLinks,  // Include sidebar links in the response
                 ...businessFeatures
             };
         } catch (error) {
@@ -161,7 +167,7 @@ export class AuthService {
     /**
      * Get business features and subscription details for login response
      */
-    private async getBusinessFeaturesForLogin(businessId: string) {
+    async getBusinessFeaturesForLogin(businessId: string) {
         try {
             // Get business and determine tier
             const business = await this.businessModel.findById(businessId);
@@ -169,6 +175,8 @@ export class AuthService {
                 return {
                     features: [],
                     featureLimits: {},
+                    customFeatures: [],
+                    customLimits: {},
                     subscription: { status: 'not_found' }
                 };
             }
@@ -178,6 +186,30 @@ export class AuthService {
 
             // Get feature limits
             const featureLimits = await this.featureAccessService.getBusinessLimits(businessId);
+
+            // Get custom features
+            let customFeatures = [];
+            try {
+                const customFeaturesStr = business.metadata?.get('customFeatures');
+                if (customFeaturesStr) {
+                    customFeatures = JSON.parse(customFeaturesStr);
+                }
+            } catch (error) {
+                this.logger.error(`Error parsing custom features: ${error.message}`);
+                customFeatures = [];
+            }
+
+            // Get custom limits
+            let customLimits = {};
+            try {
+                const customLimitsStr = business.metadata?.get('customLimits');
+                if (customLimitsStr) {
+                    customLimits = JSON.parse(customLimitsStr);
+                }
+            } catch (error) {
+                this.logger.error(`Error parsing custom limits: ${error.message}`);
+                customLimits = {};
+            }
 
             // Determine tier for frontend information
             let tier = 'basic';
@@ -200,6 +232,8 @@ export class AuthService {
             return {
                 features,
                 featureLimits,
+                customFeatures,
+                customLimits,
                 subscription: {
                     status: business.subscriptionStatus,
                     endDate: business.subscriptionEndDate,
@@ -214,6 +248,8 @@ export class AuthService {
             return {
                 features: [],
                 featureLimits: {},
+                customFeatures: [],
+                customLimits: {},
                 subscription: { status: 'error' }
             };
         }

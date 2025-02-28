@@ -169,6 +169,7 @@ import { AdminSubscriptionService } from "./services/admin-subscription.service"
 import { StaffluentAnalyticsService } from "./services/staffluent-analytics.service";
 import { StaffluentDashboardService } from "./services/staffluent-dashboard.service";
 import { FeatureAccessService } from "./services/feature-access.service";
+import { SidebarFeatureService } from "./services/sidebar-feature.service";
 
 
 // Others
@@ -357,7 +358,8 @@ import {JwtModule} from "@nestjs/jwt";
     AdminSubscriptionService,
     StaffluentDashboardService,
     FeatureAccessService,
-    StaffluentAnalyticsService
+    StaffluentAnalyticsService,
+    SidebarFeatureService
   ],
 })
 export class AppModule implements NestModule {
