@@ -756,7 +756,6 @@ export class UserService {
             if (user.external_ids && user.external_ids.venueBoostId) {
                 venueBoostResult = await this.venueBoostService.changePassword(user, passwordData.newPassword);
                 if (!venueBoostResult.success) {
-                    this.logger.warn(`Failed to sync password with VenueBoost: ${venueBoostResult.message}`);
                     // Continue anyway since our local password is updated
                 }
             }
