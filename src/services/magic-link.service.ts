@@ -6,6 +6,8 @@ import { User } from '../schemas/user.schema';
 import { Business } from '../schemas/business.schema';
 import { EmailService } from './email.service';
 import { VenueBoostService } from './venueboost.service';
+import { FeatureAccessService } from './feature-access.service';
+import { SidebarFeatureService } from './sidebar-feature.service';
 import { MagicLinkResponse } from '../interfaces/magic-link.interface';
 import * as crypto from 'crypto';
 
@@ -18,7 +20,9 @@ export class MagicLinkService {
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
         private emailService: EmailService,
-        private venueBoostService: VenueBoostService
+        private venueBoostService: VenueBoostService,
+        private featureAccessService: FeatureAccessService,
+        private sidebarFeatureService: SidebarFeatureService
     ) {}
 
     /**
@@ -243,19 +247,134 @@ export class MagicLinkService {
                 // Continue even if getting auth response fails
             }
 
+            // If business exists, get features and sidebar links
+            let businessFeatures = {};
+            let sidebarLinks = [];
+
+            if (business) {
+                try {
+                    // Get features and subscription details
+                    businessFeatures = await this.getBusinessFeaturesForLogin(business._id.toString());
+
+                    // Get sidebar links based on features
+                    sidebarLinks = await this.sidebarFeatureService.getBusinessSidebarLinks(business._id.toString());
+                } catch (error) {
+                    this.logger.error(`Error getting business features and sidebar links: ${error.message}`);
+                }
+            }
+
             return {
                 status: 'success',
                 message: 'Authentication successful',
                 userId: user._id.toString(),
                 has_changed_password: user.metadata?.get('has_changed_password') === 'true',
                 businessId: business?._id.toString(),
-                auth_response
+                auth_response,
+                sidebarLinks,
+                ...businessFeatures
             };
         } catch (error) {
             this.logger.error(`Error verifying magic link: ${error.message}`);
             return {
                 status: 'invalid',
                 message: 'Failed to verify magic link'
+            };
+        }
+    }
+
+    /**
+     * Get business features and subscription details for login response
+     * This is similar to the method in AuthService
+     */
+    private async getBusinessFeaturesForLogin(businessId: string) {
+        try {
+            // Get business and determine tier
+            const business = await this.businessModel.findById(businessId);
+            if (!business) {
+                return {
+                    features: [],
+                    featureLimits: {},
+                    customFeatures: [],
+                    customLimits: {},
+                    subscription: { status: 'not_found' }
+                };
+            }
+
+            // Get available features
+            const features = await this.featureAccessService.getBusinessFeatures(businessId);
+
+            // Get feature limits
+            const featureLimits = await this.featureAccessService.getBusinessLimits(businessId);
+
+            // Get custom features
+            let customFeatures = [];
+            try {
+                const customFeaturesStr = business.metadata?.get('customFeatures');
+                if (customFeaturesStr) {
+                    customFeatures = JSON.parse(customFeaturesStr);
+                }
+            } catch (error) {
+                this.logger.error(`Error parsing custom features: ${error.message}`);
+                customFeatures = [];
+            }
+
+            // Get custom limits
+            let customLimits = {};
+            try {
+                const customLimitsStr = business.metadata?.get('customLimits');
+                if (customLimitsStr) {
+                    customLimits = JSON.parse(customLimitsStr);
+                }
+            } catch (error) {
+                this.logger.error(`Error parsing custom limits: ${error.message}`);
+                customLimits = {};
+            }
+
+            // Determine tier for frontend information
+            let tier = 'basic';
+            if (business.subscriptionStatus === 'trialing') {
+                tier = 'trialing';
+            } else if (business.subscriptionDetails?.planId) {
+                // Extract tier from plan ID or metadata
+                const planId = business.subscriptionDetails.planId;
+                tier = planId.includes('basic') ? 'basic' :
+                    planId.includes('professional') ? 'professional' :
+                        planId.includes('enterprise') ? 'enterprise' : 'basic';
+
+                // Check metadata for tier info as fallback
+                const tierFromMetadata = business.metadata?.get('subscriptionTier') || null;
+                if (tierFromMetadata) {
+                    tier = tierFromMetadata;
+                }
+            }
+
+            return {
+                features,
+                featureLimits,
+                customFeatures,
+                customLimits,
+                subscription: {
+                    status: business.subscriptionStatus,
+                    endDate: business.subscriptionEndDate,
+                    tier,
+                    details: business.subscriptionDetails
+                },
+                business: {
+                    name: business.name,
+                    email: business.email,
+                    type: business.type,
+                    subscriptionStatus: business.subscriptionStatus,
+                    subscriptionEndDate: business.subscriptionEndDate
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error getting business features for login: ${error.message}`);
+            return {
+                features: [],
+                featureLimits: {},
+                customFeatures: [],
+                customLimits: {},
+                subscription: { status: 'error' }
             };
         }
     }
