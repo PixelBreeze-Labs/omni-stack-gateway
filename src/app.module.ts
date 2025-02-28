@@ -56,6 +56,8 @@ import { StripeProduct, StripeProductSchema } from './schemas/stripe-product.sch
 import { SubscriptionConfig, SubscriptionConfigSchema } from './schemas/subscription-config.schema';
 import { VerificationToken, VerificationTokenSchema } from './schemas/verification-token.schema';
 import { MagicLinkToken, MagicLinkTokenSchema } from './schemas/magic-link-token.schema';
+import { AppClient, AppClientSchema } from './schemas/app-client.schema';
+import { Employee, EmployeeSchema } from './schemas/employee.schema';
 
 
 
@@ -244,6 +246,8 @@ import {JwtModule} from "@nestjs/jwt";
       { name: SubscriptionConfig.name, schema: SubscriptionConfigSchema },
       { name: VerificationToken.name, schema: VerificationTokenSchema },
       { name: MagicLinkToken.name, schema: MagicLinkTokenSchema },
+      { name: AppClient.name, schema: AppClientSchema },
+      { name: Employee.name, schema: EmployeeSchema },
     ]),
   ],
   controllers: [
