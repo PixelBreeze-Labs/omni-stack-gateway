@@ -24,10 +24,10 @@ export class BusinessController {
                 phone?: string;
                 address?: {
                     street?: string;
-                    city?: string;
-                    state?: string;
+                    cityId?: string;  // Changed from city
+                    stateId?: string; // Changed from state
                     zip?: string;
-                    country?: string;
+                    countryId?: string; // Changed from country
                 };
                 taxId?: string;
                 vatNumber?: string;
