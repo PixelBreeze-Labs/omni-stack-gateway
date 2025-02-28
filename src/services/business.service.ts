@@ -11,6 +11,8 @@ import { VenueBoostService } from "./venueboost.service";
 import { MagicLinkService } from "./magic-link.service";
 import {User} from "../schemas/user.schema";
 import {EmailService} from "./email.service";
+import {FeatureAccessService} from "./feature-access.service";
+import {SidebarFeatureService} from "./sidebar-feature.service";
 
 @Injectable()
 export class BusinessService {
@@ -25,6 +27,8 @@ export class BusinessService {
         private venueBoostService: VenueBoostService,
         private magicLinkService: MagicLinkService,
         private emailService: EmailService,
+        private featureAccessService: FeatureAccessService,
+        private sidebarFeatureService: SidebarFeatureService
     ) {}
 
     /**
@@ -287,6 +291,18 @@ export class BusinessService {
                 this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
             }
 
+            // Get business features and sidebar links
+            let businessFeatures = {};
+            let sidebarLinks = [];
+
+            try {
+                // Assuming featureAccessService and sidebarFeatureService are injected in the constructor
+                businessFeatures = await this.featureAccessService.getBusinessFeaturesForLogin(businessId);
+                sidebarLinks = await this.sidebarFeatureService.getBusinessSidebarLinks(businessId);
+            } catch (error) {
+                this.logger.error(`Error getting business features and sidebar links: ${error.message}`);
+            }
+
             // Send magic link to user
             try {
                 if (user) {
@@ -326,7 +342,9 @@ export class BusinessService {
                 businessId,
                 has_changed_password: user.metadata?.get('has_changed_password') === 'true',
                 status: subscription.status,
-                auth_response
+                auth_response,
+                sidebarLinks,  // Include sidebar links in the response
+                ...businessFeatures  // Include business features in the response
             };
         } catch (error) {
             this.logger.error(`Error finalizing subscription: ${error.message}`, error.stack);
