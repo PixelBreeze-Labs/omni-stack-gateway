@@ -168,6 +168,7 @@ import { MagicLinkService } from "./services/magic-link.service";
 import { AdminSubscriptionService } from "./services/admin-subscription.service";
 import { StaffluentAnalyticsService } from "./services/staffluent-analytics.service";
 import { StaffluentDashboardService } from "./services/staffluent-dashboard.service";
+import { FeatureAccessService } from "./services/feature-access.service";
 
 
 // Others
@@ -355,6 +356,7 @@ import {JwtModule} from "@nestjs/jwt";
     MagicLinkService,
     AdminSubscriptionService,
     StaffluentDashboardService,
+    FeatureAccessService,
     StaffluentAnalyticsService
   ],
 })
