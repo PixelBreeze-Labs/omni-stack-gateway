@@ -270,7 +270,13 @@ export class SubscriptionService {
         });
 
         // Calculate total MRR; convert yearly amounts to monthly
+        // For calculateMetricsFromSubscriptions:
         let totalMRR = subscriptions.reduce((sum, sub) => {
+            // Only include active subscriptions in MRR calculation
+            if (sub.status.toLowerCase() !== 'active') {
+                return sum;
+            }
+
             let monthlyAmount = sub.amount;
             if (sub.interval.toLowerCase() === 'year') {
                 monthlyAmount = sub.amount / 12;
@@ -642,6 +648,11 @@ export class SubscriptionService {
             // Calculate MRR
             let totalMRR = 0;
             allBusinesses.forEach(business => {
+                // Skip if not active
+                if (business.subscriptionStatus !== SubscriptionStatus.ACTIVE) {
+                    return;
+                }
+
                 const details = business.subscriptionDetails;
                 if (details && typeof details.amount === 'number') {
                     let monthlyAmount = details.amount;
