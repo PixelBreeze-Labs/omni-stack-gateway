@@ -1,16 +1,33 @@
 // src/controllers/venueboost.controller.ts
-import {Controller, Req, Get, Post, Query, Param, Body, UseGuards} from '@nestjs/common';
+import {
+    Controller,
+    Req,
+    Get,
+    Post,
+    Query,
+    Param,
+    Body,
+    UseGuards,
+    NotFoundException,
+    UnauthorizedException
+} from '@nestjs/common';
 import {ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth, ApiBody} from '@nestjs/swagger';
 import { VenueBoostService } from '../services/venueboost.service';
 import {ClientAuthGuard} from "../guards/client-auth.guard";
 import {Client} from "../schemas/client.schema";
+import {InjectModel} from "@nestjs/mongoose";
+import {User} from "../schemas/user.schema";
+import {Model} from "mongoose";
 
 @ApiTags('VenueBoost')
 @ApiBearerAuth()
 @Controller('vb')
 @UseGuards(ClientAuthGuard)
 export class VenueBoostController {
-    constructor(private readonly venueBoostService: VenueBoostService) {}
+    constructor(
+        private readonly venueBoostService: VenueBoostService,
+        @InjectModel(User.name) private userModel: Model<User>,
+    ) {}
 
     @Get('members')
     @ApiOperation({ summary: 'List members' })
@@ -144,5 +161,44 @@ export class VenueBoostController {
         @Req() req: Request & { client: Client }
     ) {
         return this.venueBoostService.connectVenueBoost(req.client.id, body.venueShortCode, body.webhookApiKey);
+    }
+
+    // Add this method to the VenueBoostController
+    @ApiOperation({ summary: 'Change user password in VenueBoost' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                userId: { type: 'string' },
+                newPassword: { type: 'string' }
+            },
+            required: ['userId', 'newPassword']
+        }
+    })
+    @ApiResponse({ status: 200, description: 'Password changed successfully' })
+    @Post('change-password')
+    async changePassword(
+        @Body() body: { userId: string; newPassword: string },
+        @Req() req: Request & { client: Client }
+    ) {
+        // First find the user
+        const user = await this.userModel.findById(body.userId);
+
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        // Verify that the user belongs to the authenticated client
+        if (!user.client_ids.includes(req.client.id)) {
+            throw new UnauthorizedException('User does not belong to this client');
+        }
+
+        // Call VenueBoost service to change the password
+        const result = await this.venueBoostService.changePassword(user, body.newPassword);
+
+        return {
+            success: result.success,
+            message: result.message
+        };
     }
 }

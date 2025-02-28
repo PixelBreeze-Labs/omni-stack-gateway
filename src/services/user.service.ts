@@ -20,6 +20,7 @@ import { EmailService } from "./email.service";
 import { Wallet } from '../schemas/wallet.schema';
 import { Business } from '../schemas/business.schema';
 import {StaffUserParams, StaffUserResponse} from "../interfaces/staff-user.interface";
+import {VenueBoostService} from "./venueboost.service";
 
 
 export interface PopulatedReferral {
@@ -83,6 +84,7 @@ export class UserService {
         @Inject(forwardRef(() => CustomerService))
         private customerService: CustomerService,
         private emailService: EmailService,
+        private venueBoostService: VenueBoostService
     ) {}
 
     private generateReferralCode(): string {
@@ -748,6 +750,16 @@ export class UserService {
                     }
                 }
             );
+
+            // Sync with VenueBoost if user has VenueBoost ID
+            let venueBoostResult = { success: true, message: 'No VenueBoost integration needed' };
+            if (user.external_ids && user.external_ids.venueBoostId) {
+                venueBoostResult = await this.venueBoostService.changePassword(user, passwordData.newPassword);
+                if (!venueBoostResult.success) {
+                    this.logger.warn(`Failed to sync password with VenueBoost: ${venueBoostResult.message}`);
+                    // Continue anyway since our local password is updated
+                }
+            }
 
             // Send confirmation email
             try {
