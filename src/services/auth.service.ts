@@ -3,6 +3,7 @@ import { Injectable, UnauthorizedException, Logger, NotFoundException } from '@n
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from './user.service';
 import { FeatureAccessService } from './feature-access.service';
+import { SidebarFeatureService } from './sidebar-feature.service';
 import * as bcrypt from 'bcrypt';
 import { SalesAssociateLoginDto } from "../dtos/user.dto";
 import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
@@ -22,6 +23,7 @@ export class AuthService {
         private userService: UserService,
         private jwtService: JwtService,
         private featureAccessService: FeatureAccessService,
+        private sidebarFeatureService: SidebarFeatureService,
         private venueBoostService: VenueBoostService,
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(User.name) private userModel: Model<User>,
@@ -123,6 +125,9 @@ export class AuthService {
             // Get features and subscription details
             const businessFeatures = await this.getBusinessFeaturesForLogin(business._id.toString());
 
+            // Get sidebar links based on features
+            const sidebarLinks = await this.sidebarFeatureService.getBusinessSidebarLinks(business._id.toString());
+
             // Generate JWT token
             const token = this.jwtService.sign({
                 sub: user._id.toString(),
@@ -147,6 +152,7 @@ export class AuthService {
                     subscriptionEndDate: business.subscriptionEndDate
                 },
                 auth_response,
+                sidebarLinks,  // Include sidebar links in the response
                 ...businessFeatures
             };
         } catch (error) {
