@@ -13,6 +13,7 @@ import {User} from "../schemas/user.schema";
 import {EmailService} from "./email.service";
 import {FeatureAccessService} from "./feature-access.service";
 import {SidebarFeatureService} from "./sidebar-feature.service";
+import {AuthService} from "./auth.service";
 
 @Injectable()
 export class BusinessService {
@@ -28,7 +29,8 @@ export class BusinessService {
         private magicLinkService: MagicLinkService,
         private emailService: EmailService,
         private featureAccessService: FeatureAccessService,
-        private sidebarFeatureService: SidebarFeatureService
+        private sidebarFeatureService: SidebarFeatureService,
+        private authService: AuthService
     ) {}
 
     /**
@@ -297,7 +299,7 @@ export class BusinessService {
 
             try {
                 // Assuming featureAccessService and sidebarFeatureService are injected in the constructor
-                businessFeatures = await this.featureAccessService.getBusinessFeaturesForLogin(businessId);
+                businessFeatures = await this.authService.getBusinessFeaturesForLogin(businessId);
                 sidebarLinks = await this.sidebarFeatureService.getBusinessSidebarLinks(businessId);
             } catch (error) {
                 this.logger.error(`Error getting business features and sidebar links: ${error.message}`);

@@ -103,6 +103,7 @@ import { MagicLinkController } from './controllers/magic-link.controller';
 import { AdminSubscriptionController } from './controllers/admin-subscription.controller';
 import { StaffluentDashboardController } from './controllers/staffluent-dashboard.controller';
 import { StaffluentAnalyticsController } from './controllers/staffluent-analytics.controller';
+import { AdminFeatureController } from './controllers/admin-feature.controller';
 
 
 
@@ -297,6 +298,7 @@ import {JwtModule} from "@nestjs/jwt";
     AdminSubscriptionController,
     StaffluentAnalyticsController,
     StaffluentDashboardController,
+    AdminFeatureController
   ],
   providers: [
     SnapfoodService,
