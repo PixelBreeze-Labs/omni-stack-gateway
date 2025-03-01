@@ -37,8 +37,16 @@ export class BusinessRegistrationService {
             }
 
             // 2. Create admin user in our system
-            const [firstName, ...lastNameParts] = fullName.split(' ');
-            const lastName = lastNameParts.join(' ');
+            // Fix for single name handling
+            let firstName = fullName;
+            let lastName = '';
+
+            if (fullName.includes(' ')) {
+                const nameParts = fullName.split(' ');
+                firstName = nameParts[0];
+                lastName = nameParts.slice(1).join(' ');
+            }
+
             const temporaryPassword = generateRandomPassword();
             const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
@@ -97,7 +105,7 @@ export class BusinessRegistrationService {
             try {
                 const venueBoostIds = await this.venueBoostService.createVenueUserForStaffluent({
                     first_name: firstName,
-                    last_name: lastName,
+                    last_name: lastName || '-', // Ensure last name is never empty for external service
                     email: businessEmail,
                     password: temporaryPassword,
                     business_name: businessName,
@@ -109,7 +117,7 @@ export class BusinessRegistrationService {
                 if (venueBoostIds) {
                     // Update user with VenueBoost IDs
                     await this.userModel.findByIdAndUpdate(
-                        adminUser._id,  // Fixed: was using business._id incorrectly
+                        adminUser._id,
                         {
                             $set: {
                                 'external_ids.venueBoostId': venueBoostIds.userId,
