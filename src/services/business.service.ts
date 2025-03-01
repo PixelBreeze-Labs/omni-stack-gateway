@@ -969,4 +969,69 @@ export class BusinessService {
             this.logger.error(`Error sending client welcome email: ${error.message}`);
         }
     }
+
+
+    /**
+     * Create a new App Client for a business (simple version without user creation)
+     */
+    async createSimpleAppClient(
+        clientId: string,
+        data: {
+            name: string;
+            adminUserId: string; // Admin user ID to find the business
+            type?: ClientType;
+            contact_person?: string;
+            email?: string;
+            phone?: string;
+            notes?: string;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        try {
+            this.logger.log(`Creating new simple app client for client: ${clientId}`);
+
+            // Step 1: Find business by adminUserId
+            const business = await this.businessModel.findOne({
+                clientId,
+                adminUserId: data.adminUserId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found for the provided admin user');
+            }
+
+            const businessId = business._id.toString();
+
+            // Step 2: Create the app client
+            const appClient = await this.appClientModel.create({
+                clientId,
+                businessId,
+                name: data.name,
+                type: data.type || ClientType.INDIVIDUAL,
+                contact_person: data.contact_person,
+                email: data.email,
+                phone: data.phone,
+                notes: data.notes,
+                external_ids: data.external_ids || {},
+                metadata: data.metadata || {},
+                is_active: true
+            });
+
+            // Step 3: Update the business's client list
+            await this.businessModel.findByIdAndUpdate(
+                businessId,
+                { $addToSet: { appClientIds: appClient._id } }
+            );
+
+            return {
+                success: true,
+                message: 'App client created successfully',
+                appClient
+            };
+        } catch (error) {
+            this.logger.error(`Error creating simple app client: ${error.message}`);
+            throw error;
+        }
+    }
 }
