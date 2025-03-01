@@ -207,4 +207,29 @@ export class BusinessController {
             data
         );
     }
+
+    @Post('simple-app-client')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create a simple app client without user account' })
+    @ApiResponse({ status: 201, description: 'App client created successfully' })
+    async createSimpleAppClient(
+        @Req() req: Request & { client: Client },
+        @Body() data: {
+            name: string;
+            adminUserId: string;
+            type?: ClientType;
+            contact_person?: string;
+            email?: string;
+            phone?: string;
+            notes?: string;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.createSimpleAppClient(
+            req.client.id,
+            data
+        );
+    }
 }
