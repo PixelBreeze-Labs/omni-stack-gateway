@@ -19,3 +19,27 @@ export class StaffluentsBusinessAdminLoginDto {
   @IsNotEmpty()
   password: string;
 }
+
+export class StaffluentsBusinessStaffLoginDto {
+    @ApiProperty({ example: 'staff@example.com' })
+    @IsEmail()
+    @IsNotEmpty()
+    email: string;
+
+    @ApiProperty({ example: 'password123' })
+    @IsString()
+    @IsNotEmpty()
+    password: string;
+}
+
+export class StaffluentsClientLoginDto {
+    @ApiProperty({ example: 'client@example.com' })
+    @IsEmail()
+    @IsNotEmpty()
+    email: string;
+
+    @ApiProperty({ example: 'password123' })
+    @IsString()
+    @IsNotEmpty()
+    password: string;
+}
