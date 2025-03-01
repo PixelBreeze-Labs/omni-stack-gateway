@@ -731,7 +731,6 @@ export class BusinessService {
                     throw new BadRequestException('A user with this email already exists');
                 }
 
-
                 const hashedPassword = data.password;
 
                 // Create the user
@@ -771,6 +770,14 @@ export class BusinessService {
                 businessId,
                 { $addToSet: { appClientIds: appClient._id } }
             );
+
+            // Step 5: Send welcome email if an account was created
+            if (data.createAccount && data.email) {
+                await this.sendClientWelcomeEmail({
+                    name: data.name,
+                    email: data.email
+                }, business.name);
+            }
 
             return {
                 success: true,
@@ -928,6 +935,38 @@ export class BusinessService {
         } catch (error) {
             // Log error but don't fail the process
             this.logger.error(`Error sending employee welcome email: ${error.message}`);
+        }
+    }
+
+    /**
+     * Send welcome email to newly created client
+     */
+    async sendClientWelcomeEmail(client: any, businessName: string): Promise<void> {
+        try {
+            // Extract client name
+            const clientName = client.name || 'Valued Client';
+
+            // Get current year for the copyright
+            const currentYear = new Date().getFullYear();
+
+            // Send welcome email using EmailService
+            await this.emailService.sendTemplateEmail(
+                'Staffluent',
+                'staffluent@omnistackhub.xyz',
+                client.email,
+                'Welcome to Staffluent Client Portal!',
+                'templates/business/new-client-email.html',
+                {
+                    clientName: clientName,
+                    businessName: businessName,
+                    currentYear: currentYear
+                }
+            );
+
+            this.logger.log(`Sent welcome email to client: ${client.email}`);
+        } catch (error) {
+            // Log error but don't fail the process
+            this.logger.error(`Error sending client welcome email: ${error.message}`);
         }
     }
 }
