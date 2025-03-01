@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { BusinessService } from '../services/business.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
+import {ClientType} from "../schemas/app-client.schema";
 
 @ApiTags('Businesses')
 @Controller('businesses')
@@ -155,6 +156,55 @@ export class BusinessController {
             req.client.id,
             businessId,
             data.isTestAccount
+        );
+    }
+
+    @Post('app-client')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create a new app client for a business' })
+    @ApiResponse({ status: 201, description: 'App client created successfully' })
+    async createAppClient(
+        @Req() req: Request & { client: Client },
+        @Body() data: {
+            name: string;
+            adminUserId: string;
+            type?: ClientType;
+            contact_person?: string;
+            email?: string;
+            phone?: string;
+            notes?: string;
+            createAccount?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.createAppClient(
+            req.client.id,
+            data
+        );
+    }
+
+    @Post('employee')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create a new employee for a business' })
+    @ApiResponse({ status: 201, description: 'Employee created successfully' })
+    async createEmployee(
+        @Req() req: Request & { client: Client },
+        @Body() data: {
+            name: string;
+            surname: string;
+            email: string;
+            adminUserId: string;
+            createAccount?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.createEmployee(
+            req.client.id,
+            data
         );
     }
 }
