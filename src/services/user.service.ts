@@ -804,7 +804,7 @@ export class UserService {
                 userName: user.surname ? `${user.name} ${user.surname}` : user.name,
                 businessName,
                 timestamp: new Date().toLocaleString(),
-                supportEmail: 'support@staffluent.com'
+                supportEmail: 'support@staffluent.co'
             }
         );
 
