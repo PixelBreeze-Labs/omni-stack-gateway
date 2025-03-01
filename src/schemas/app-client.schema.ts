@@ -17,6 +17,9 @@ export class AppClient extends Document {
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
     clientId: string;
 
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Business' })
+    businessId?: string;
+
     @Prop({ required: true })
     name: string;
 
@@ -73,3 +76,4 @@ AppClientSchema.index({ name: 1 });
 AppClientSchema.index({ type: 1 });
 AppClientSchema.index({ user_id: 1 });
 AppClientSchema.index({ email: 1 });
+AppClientSchema.index({ businessId: 1 });

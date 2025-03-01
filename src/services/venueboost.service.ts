@@ -514,4 +514,41 @@ export class VenueBoostService {
         }
     }
 
+    /**
+     * Get staff connection data for authentication
+     *
+     * @param email Staff email address
+     * @returns Connection data including user, token and account type
+     */
+    async getStaffConnection(email: string): Promise<any> {
+        try {
+            this.logger.log(`Getting staff connection for email: ${email}`);
+
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/auth-os/get-staff-connection`,
+                {
+                    email
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error('Failed to get staff connection', response.data);
+                throw new Error(response.data.message || 'Failed to get staff connection');
+            }
+
+            // Return the entire response data
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Error getting staff connection: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
 }

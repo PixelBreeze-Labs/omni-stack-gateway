@@ -6,7 +6,7 @@ import { FeatureAccessService } from './feature-access.service';
 import { SidebarFeatureService } from './sidebar-feature.service';
 import * as bcrypt from 'bcrypt';
 import { SalesAssociateLoginDto } from "../dtos/user.dto";
-import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
+import { StaffluentsBusinessAdminLoginDto, StaffluentsBusinessStaffLoginDto, StaffluentsClientLoginDto } from "../dtos/staffluent-login.dto";
 import { Store } from "../schemas/store.schema";
 import { User, RegistrationSource } from "../schemas/user.schema";
 import { Business } from "../schemas/business.schema";
@@ -14,6 +14,7 @@ import { Model } from 'mongoose';
 import { InjectModel } from "@nestjs/mongoose";
 import { VenueBoostService } from './venueboost.service';
 import { TIER_FEATURES, TIER_LIMITS } from '../constants/features.constants';
+import {AppClient} from "../schemas/app-client.schema";
 
 @Injectable()
 export class AuthService {
@@ -27,7 +28,8 @@ export class AuthService {
         private venueBoostService: VenueBoostService,
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(User.name) private userModel: Model<User>,
-        @InjectModel(Business.name) private businessModel: Model<Business>
+        @InjectModel(Business.name) private businessModel: Model<Business>,
+        @InjectModel(AppClient.name) private appClientModel: Model<AppClient>
     ) {}
 
     async salesAssociateLogin(loginDto: SalesAssociateLoginDto) {
@@ -254,4 +256,183 @@ export class AuthService {
             };
         }
     }
+
+    /**
+     * Login for Staffluent business staff users
+     *
+     * @param loginDto Staff login credentials
+     * @returns Login response with token and user data
+     */
+    async staffluentsBusinessStaffLogin(loginDto: StaffluentsBusinessStaffLoginDto) {
+        try {
+            // 1. Find and authenticate user
+            const user = await this.userModel.findOne({
+                email: loginDto.email,
+                registrationSource: RegistrationSource.STAFFLUENT
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Verify password
+            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+            if (!isPasswordValid) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // 2. Find employee record for this user
+            const employee = await this.employeeModel.findOne({ user_id: user._id });
+            if (!employee) {
+                throw new NotFoundException('No employee record found for this user');
+            }
+
+            // 3. Find business where this employee belongs
+            const business = await this.businessModel.findOne({
+                userIds: { $in: [user._id] }
+            });
+
+            if (!business) {
+                throw new NotFoundException('No business found for this employee');
+            }
+
+            // 4. Get VenueBoost connection data
+            let staffConnectionData = null;
+            try {
+
+                staffConnectionData = await this.venueBoostService.getStaffConnection(
+                    user.email
+                );
+
+                this.logger.log(`Retrieved staff connection data for ${user.email}`);
+
+            } catch (error) {
+                this.logger.error(`Error getting staff connection: ${error.message}`);
+                // Continue login process even if VenueBoost connection fails
+            }
+
+            // 5. Generate JWT token with appropriate claims
+            const token = this.jwtService.sign({
+                sub: user._id.toString(),
+                email: user.email,
+                businessId: business._id.toString(),
+                clientId: business.clientId,
+                employeeId: employee._id.toString(),
+                role: 'business_staff'
+            });
+
+            // 6. Construct final response
+            return {
+                status: 'success',
+                message: 'Staff authentication successful',
+                token,
+                userId: user._id.toString(),
+                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
+                businessId: business._id.toString(),
+                employeeId: employee._id.toString(),
+                business: {
+                    name: business.name,
+                    email: business.email,
+                    type: business.type
+                },
+                employee: {
+                    id: employee._id,
+                    name: employee.name,
+                    email: employee.email,
+                    external_ids: employee.external_ids
+                },
+                venueboost_data: staffConnectionData,
+                account_type: staffConnectionData?.account_type || 'staff'
+            };
+        } catch (error) {
+            this.logger.error(`Error in staffluentsBusinessStaffLogin: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Staff login failed');
+        }
+    }
+
+    /**
+     * Login for Staffluent clients
+     *
+     * @param loginDto Client login credentials
+     * @returns Login response with token and user data
+     */
+    async staffluentsClientLogin(loginDto: StaffluentsClientLoginDto) {
+        try {
+            // 1. Find and authenticate user
+            const user = await this.userModel.findOne({
+                email: loginDto.email,
+                registrationSource: RegistrationSource.STAFFLUENT
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Verify password
+            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+            if (!isPasswordValid) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // 2. Find AppClient record for this user
+            const appClient = await this.appClientModel.findOne({ user_id: user._id });
+            if (!appClient) {
+                throw new NotFoundException('No client record found for this user');
+            }
+
+            // 3. Get VenueBoost connection data
+            let clientConnectionData = null;
+            try {
+                    clientConnectionData = await this.venueBoostService.getStaffConnection(
+                        user.email
+                    );
+
+                    this.logger.log(`Retrieved client connection data for ${user.email}`);
+
+            } catch (error) {
+                this.logger.error(`Error getting client connection: ${error.message}`);
+                // Continue login process even if VenueBoost connection fails
+            }
+
+            // 4. Generate JWT token with appropriate claims
+            const token = this.jwtService.sign({
+                sub: user._id.toString(),
+                email: user.email,
+                clientId: appClient.clientId,
+                appClientId: appClient._id.toString(),
+                role: 'app_client'
+            });
+
+            // 5. Construct final response
+            return {
+                status: 'success',
+                message: 'Client authentication successful',
+                token,
+                userId: user._id.toString(),
+                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
+                clientId: appClient.clientId,
+                appClientId: appClient._id.toString(),
+                client: {
+                    id: appClient._id,
+                    name: appClient.name,
+                    type: appClient.type,
+                    email: appClient.email || user.email,
+                    contact_person: appClient.contact_person,
+                    external_ids: appClient.external_ids
+                },
+                venueboost_data: clientConnectionData,
+                account_type: clientConnectionData?.account_type || 'client'
+            };
+        } catch (error) {
+            this.logger.error(`Error in staffluentsClientLogin: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Client login failed');
+        }
+    }
+
 }
