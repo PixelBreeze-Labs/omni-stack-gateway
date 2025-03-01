@@ -598,9 +598,10 @@ export class UserService {
             .limit(limit)
             .exec();
 
-        // For each user, find their associated businesses
+        // For each user, find their associated businesses and app clients
         const items = await Promise.all(
             users.map(async (user) => {
+                // Get businesses where user is admin or staff
                 const businesses = await this.businessModel
                     .find({
                         clientId,
@@ -611,37 +612,46 @@ export class UserService {
                     })
                     .exec();
 
-                // Find if user is a client of any business (add this)
-                const appClient = await this.appClientModel
-                    .findOne({
-                        user_id: user._id,
-                        clientId: clientId
+                // Find all app clients associated with this user
+                const appClients = await this.appClientModel
+                    .find({
+                        user_id: user._id
                     })
+                    .populate('businessId', 'name email') // Populate the business details
                     .exec();
 
-// We need to fetch the business separately to ensure proper typing
-                if (appClient && appClient.businessId) {
-                    // Now fetch the business directly to get the proper typing
-                    const connectedBusiness = await this.businessModel
-                        .findById(appClient.businessId)
-                        .exec();
-
-                    if (connectedBusiness) {
-                        // Add connected business info to user metadata
-                        if (!user.metadata) {
-                            user.metadata = new Map();
-                        }
-                        user.metadata.set('connectedBusinessId', connectedBusiness._id.toString());
-                        user.metadata.set('connectedBusinessName', connectedBusiness.name);
-                        if (connectedBusiness.email) {
-                            user.metadata.set('connectedBusinessEmail', connectedBusiness.email);
-                        }
+                // Add app client info to user metadata
+                if (appClients && appClients.length > 0) {
+                    if (!user.metadata) {
+                        user.metadata = new Map();
                     }
+
+                    // Add all connections to metadata
+                    appClients.forEach((appClient, index) => {
+                        // Store each app client's info
+                        user.metadata.set(`appClient_${index}_id`, appClient._id.toString());
+                        user.metadata.set(`appClient_${index}_name`, appClient.name);
+                        user.metadata.set(`appClient_${index}_type`, appClient.type);
+
+                        // If this app client has a business connection, add that too
+                        if (appClient.businessId) {
+                            const business = appClient.businessId as any; // Using any to handle populated fields
+                            user.metadata.set(`appClient_${index}_businessId`, business._id.toString());
+                            user.metadata.set(`appClient_${index}_businessName`, business.name);
+                            if (business.email) {
+                                user.metadata.set(`appClient_${index}_businessEmail`, business.email);
+                            }
+                        }
+                    });
+
+                    // Store the count of app clients
+                    user.metadata.set('appClientCount', appClients.length.toString());
                 }
 
                 return {
                     user,
-                    businesses
+                    businesses,
+                    appClients // Include app clients directly in the response
                 };
             })
         );
@@ -652,7 +662,6 @@ export class UserService {
             pages
         };
     }
-
     // src/services/user.service.ts
 // Add this method to your existing UserService
 
