@@ -8,6 +8,7 @@ export interface StaffUserParams {
     limit?: number;
     search?: string;
     sort?: string;
+    type?: string;
 }
 
 export interface StaffUserResponse {
