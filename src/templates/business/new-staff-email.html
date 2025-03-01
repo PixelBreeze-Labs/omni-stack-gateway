@@ -1,0 +1,138 @@
+<!-- templates/business/new-staff-email.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to Staffluent!</title>
+    <style>
+        body {
+            font-family: 'Manrope', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            padding: 20px 10px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 24px;
+            border-radius: 16px;
+            background-color: #fff;
+            text-align: left;
+        }
+        .title {
+            color: #000;
+            font-size: 32px;
+            text-align: center;
+            line-height: 46px;
+            font-weight: bold;
+            margin: 24px 0;
+        }
+        .content {
+            font-size: 16px;
+            line-height: 24px;
+            color: #333;
+            margin: 24px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            text-decoration: none;
+            color: #fff!important;
+            background-color: #0A0A0A;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 32px 0;
+            text-align: center;
+        }
+        .button:hover {
+            background-color: #0A0A0A;
+        }
+        .highlight-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0A0A0A;
+            border-radius: 8px;
+            padding: 16px 24px;
+            margin: 24px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .app-buttons {
+            text-align: center;
+            margin: 32px 0;
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+        }
+        .app-button {
+            display: inline-block;
+        }
+        .app-button img {
+            height: 40px;
+        }
+        @media (max-width: 480px) {
+            .app-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            .app-button {
+                margin-bottom: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+<img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/logos/staffluent-logo.png" alt="Staffluent" style="display: block; margin: 24px auto; width: 100px" />
+<div class="container">
+    <div class="title">Welcome to Staffluent!</div>
+
+    <p class="content">
+        Hi {{staffName}},
+    </p>
+
+    <p class="content">
+        You have been successfully added as a staff member at <strong>{{businessName}}</strong>. We're excited to have you on board!
+    </p>
+
+    <div class="highlight-box">
+        <p class="content" style="margin: 0;">
+            Your email and password credentials will be provided by your manager. If you have any questions or need assistance, please reach out to them.
+        </p>
+    </div>
+
+    <p class="content">
+        Download our mobile app to track your schedule, tasks, and stay connected with your team.
+    </p>
+
+    <div class="app-buttons">
+        <a href="https://apps.apple.com/app/id123456789" class="app-button">
+            <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/buttons/app-store-badge.png" alt="Download on iOS" />
+        </a>
+        <a href="https://play.google.com/store/apps/details?id=com.staffluent" class="app-button">
+            <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/buttons/google-play-badge.png" alt="Get it on Android" />
+        </a>
+    </div>
+
+    <p class="content">
+        Thank you for being part of our team!
+    </p>
+
+    <p class="content">
+        Best regards,<br>
+        The Staffluent Team
+    </p>
+</div>
+<div class="footer">
+    &copy; {{currentYear}} Staffluent. All rights reserved.<br>
+    If you need assistance, please contact our support team at <a href="mailto:support@staffluent.com">support@staffluent.com</a>.
+</div>
+</body>
+</html>
