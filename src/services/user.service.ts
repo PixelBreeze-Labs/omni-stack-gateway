@@ -21,6 +21,7 @@ import { Wallet } from '../schemas/wallet.schema';
 import { Business } from '../schemas/business.schema';
 import {StaffUserParams, StaffUserResponse} from "../interfaces/staff-user.interface";
 import {VenueBoostService} from "./venueboost.service";
+import {AppClient} from "../schemas/app-client.schema";
 
 
 export interface PopulatedReferral {
@@ -80,6 +81,7 @@ export class UserService {
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
+        @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
     private walletService: WalletService,
         @Inject(forwardRef(() => CustomerService))
         private customerService: CustomerService,
@@ -563,10 +565,7 @@ export class UserService {
     }
 
 
-    async getStaffUsers(
-        clientId: string,
-        params: StaffUserParams
-    ): Promise<StaffUserResponse> {
+    async getStaffUsers(clientId: string, params: StaffUserParams): Promise<StaffUserResponse> {
         const { page = 1, limit = 10, search, sort = '-createdAt' } = params;
         const skip = (page - 1) * limit;
 
@@ -611,6 +610,34 @@ export class UserService {
                         ]
                     })
                     .exec();
+
+                // Find if user is a client of any business (add this)
+                const appClient = await this.appClientModel
+                    .findOne({
+                        user_id: user._id,
+                        clientId: clientId
+                    })
+                    .exec();
+
+// We need to fetch the business separately to ensure proper typing
+                if (appClient && appClient.businessId) {
+                    // Now fetch the business directly to get the proper typing
+                    const connectedBusiness = await this.businessModel
+                        .findById(appClient.businessId)
+                        .exec();
+
+                    if (connectedBusiness) {
+                        // Add connected business info to user metadata
+                        if (!user.metadata) {
+                            user.metadata = new Map();
+                        }
+                        user.metadata.set('connectedBusinessId', connectedBusiness._id.toString());
+                        user.metadata.set('connectedBusinessName', connectedBusiness.name);
+                        if (connectedBusiness.email) {
+                            user.metadata.set('connectedBusinessEmail', connectedBusiness.email);
+                        }
+                    }
+                }
 
                 return {
                     user,
