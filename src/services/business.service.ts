@@ -878,6 +878,13 @@ export class BusinessService {
                 {$addToSet: {employeeIds: employee._id}}
             );
 
+            // Step 6: Send welcome email
+            await this.sendEmployeeWelcomeEmail({
+                name: data.name,
+                surname: data.surname,
+                email: data.email
+            }, business.name);
+
             return {
                 success: true,
                 message: 'Employee created successfully',
@@ -887,6 +894,40 @@ export class BusinessService {
         } catch (error) {
             this.logger.error(`Error creating employee: ${error.message}`);
             throw error;
+        }
+    }
+
+    /**
+     * Send welcome email to newly created employee
+     */
+    async sendEmployeeWelcomeEmail(employee: any, businessName: string): Promise<void> {
+        try {
+            // Extract employee name
+            const employeeName = employee.name
+                ? (employee.surname ? `${employee.name} ${employee.surname}` : employee.name)
+                : 'New Staff Member';
+
+            // Get current year for the copyright
+            const currentYear = new Date().getFullYear();
+
+            // Send welcome email using EmailService
+            await this.emailService.sendTemplateEmail(
+                'Staffluent',
+                'staffluent@omnistackhub.xyz',
+                employee.email,
+                'Welcome to Staffluent!',
+                'templates/business/new-staff-email.html',
+                {
+                    staffName: employeeName,
+                    businessName: businessName,
+                    currentYear: currentYear
+                }
+            );
+
+            this.logger.log(`Sent welcome email to employee: ${employee.email}`);
+        } catch (error) {
+            // Log error but don't fail the process
+            this.logger.error(`Error sending employee welcome email: ${error.message}`);
         }
     }
 }
