@@ -15,6 +15,7 @@ import { InjectModel } from "@nestjs/mongoose";
 import { VenueBoostService } from './venueboost.service';
 import { TIER_FEATURES, TIER_LIMITS } from '../constants/features.constants';
 import {AppClient} from "../schemas/app-client.schema";
+import {Employee} from "../schemas/employee.schema";
 
 @Injectable()
 export class AuthService {
@@ -29,7 +30,8 @@ export class AuthService {
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
-        @InjectModel(AppClient.name) private appClientModel: Model<AppClient>
+        @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
+        @InjectModel(Employee.name) private employeeModel: Model<Employee>
     ) {}
 
     async salesAssociateLogin(loginDto: SalesAssociateLoginDto) {
