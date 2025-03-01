@@ -14,6 +14,7 @@ import {EmailService} from "./email.service";
 import {FeatureAccessService} from "./feature-access.service";
 import {SidebarFeatureService} from "./sidebar-feature.service";
 import {AuthService} from "./auth.service";
+import {ClientType} from "../schemas/app-client.schema";
 
 @Injectable()
 export class BusinessService {
@@ -678,6 +679,251 @@ export class BusinessService {
             };
         } catch (error) {
             this.logger.error(`Error updating business test status: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a new App Client for a business
+     */
+    async createAppClient(
+        clientId: string,
+        data: {
+            name: string;
+            adminUserId: string; // Admin user ID to find the business
+            type?: ClientType;
+            contact_person?: string;
+            email?: string;
+            phone?: string;
+            notes?: string;
+            createAccount?: boolean; // Flag to create user account
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        try {
+            this.logger.log(`Creating new app client for client: ${clientId}`);
+
+            // Step 1: Find business by adminUserId
+            const business = await this.businessModel.findOne({
+                clientId,
+                adminUserId: data.adminUserId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found for the provided admin user');
+            }
+
+            const businessId = business._id.toString();
+
+            // Step 2: Create user account if requested
+            let userId;
+            if (data.createAccount && data.email) {
+                this.logger.log(`Creating user account for app client`);
+
+                // Check if user already exists
+                const existingUser = await this.userModel.findOne({ email: data.email });
+                if (existingUser) {
+                    throw new BadRequestException('A user with this email already exists');
+                }
+
+                // Generate a random password
+                const password = uuidv4().substring(0, 8);
+                const hashedPassword = await bcrypt.hash(password, 10);
+
+                // Create the user
+                const user = await this.userModel.create({
+                    name: data.name,
+                    surname: data.contact_person || '',
+                    email: data.email,
+                    password: hashedPassword,
+                    registrationSource: RegistrationSource.STAFFLUENT,
+                    external_ids: data.external_ids || {},
+                    client_ids: [clientId],
+                    metadata: new Map(Object.entries(data.metadata || {})),
+                    isActive: true
+                });
+
+                userId = user._id;
+
+                // Send password reset email or welcome email with password
+                try {
+                    await this.emailService.sendTemplateEmail(
+                        'Staffluent',
+                        'staffluent@omnistackhub.xyz',
+                        data.email,
+                        'Your Account Details',
+                        'templates/business/new-account.html',
+                        {
+                            userName: data.name,
+                            businessName: business.name,
+                            password,
+                            loginUrl: `${process.env.WEB_FRONTEND_URL}/login`
+                        }
+                    );
+                } catch (emailError) {
+                    this.logger.error(`Error sending welcome email: ${emailError.message}`);
+                    // Continue even if email fails
+                }
+            }
+
+            // Step 3: Create the app client
+            const appClient = await this.appClientModel.create({
+                clientId,
+                businessId,
+                name: data.name,
+                type: data.type || ClientType.INDIVIDUAL,
+                contact_person: data.contact_person,
+                email: data.email,
+                phone: data.phone,
+                address_id: data.address_id,
+                notes: data.notes,
+                user_id: userId, // Link to the created user if exists
+                external_ids: data.external_ids || {},
+                metadata: data.metadata || {},
+                is_active: true
+            });
+
+            // Step 4: Update the business's client list
+            await this.businessModel.findByIdAndUpdate(
+                businessId,
+                { $addToSet: { appClientIds: appClient._id } }
+            );
+
+            return {
+                success: true,
+                message: 'App client created successfully',
+                appClient,
+                userId: userId || null
+            };
+        } catch (error) {
+            this.logger.error(`Error creating app client: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a new Employee for a business
+     */
+    async createEmployee(
+        clientId: string,
+        data: {
+            name: string;
+            surname: string;
+            email: string;
+            adminUserId: string; // Admin user ID to find the business
+            createAccount?: boolean; // Flag to create user account
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        try {
+            this.logger.log(`Creating new employee for client: ${clientId}`);
+
+            // Step 1: Find business by adminUserId
+            const business = await this.businessModel.findOne({
+                clientId,
+                adminUserId: data.adminUserId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found for the provided admin user');
+            }
+
+            const businessId = business._id.toString();
+
+            // Step 2: Check if an employee with the same email already exists
+            const existingEmployee = await this.employeeModel.findOne({
+                email: data.email,
+                clientId
+            });
+
+            if (existingEmployee) {
+                throw new BadRequestException('An employee with this email already exists');
+            }
+
+            // Step 3: Create user account if requested
+            let userId;
+            if (data.createAccount) {
+                this.logger.log(`Creating user account for employee`);
+
+                // Check if user already exists
+                const existingUser = await this.userModel.findOne({email: data.email});
+                if (existingUser) {
+                    throw new BadRequestException('A user with this email already exists');
+                }
+
+                // Generate a random password
+                const password = uuidv4().substring(0, 8);
+                const hashedPassword = await bcrypt.hash(password, 10);
+
+                // Create the user
+                const user = await this.userModel.create({
+                    name: data.name,
+                    surname: data.surname || '',
+                    email: data.email,
+                    password: hashedPassword,
+                    registrationSource: RegistrationSource.STAFFLUENT,
+                    external_ids: data.external_ids || {},
+                    client_ids: [clientId],
+                    metadata: new Map(Object.entries(data.metadata || {})),
+                    isActive: true
+                });
+
+                userId = user._id;
+
+                // Add user to the business's userIds
+                await this.businessModel.findByIdAndUpdate(
+                    businessId,
+                    {$addToSet: {userIds: userId}}
+                );
+
+                // Send password reset email or welcome email with password
+                try {
+                    await this.emailService.sendTemplateEmail(
+                        'Staffluent',
+                        'staffluent@omnistackhub.xyz',
+                        data.email,
+                        'Your Employee Account Details',
+                        'templates/business/new-employee-account.html',
+                        {
+                            userName: `${data.name} ${data.surname || ''}`.trim(),
+                            businessName: business.name,
+                            password,
+                            loginUrl: `${process.env.WEB_FRONTEND_URL}/login`
+                        }
+                    );
+                } catch (emailError) {
+                    this.logger.error(`Error sending welcome email: ${emailError.message}`);
+                    // Continue even if email fails
+                }
+            }
+
+            // Step 4: Create the employee
+            const employee = await this.employeeModel.create({
+                clientId,
+                businessId,
+                name: data.name,
+                email: data.email,
+                user_id: userId, // Link to the created user if exists
+                external_ids: data.external_ids || {},
+                metadata: data.metadata || {}
+            });
+
+            // Step 5: Update the business's employee list
+            await this.businessModel.findByIdAndUpdate(
+                businessId,
+                {$addToSet: {employeeIds: employee._id}}
+            );
+
+            return {
+                success: true,
+                message: 'Employee created successfully',
+                employee,
+                userId: userId || null
+            };
+        } catch (error) {
+            this.logger.error(`Error creating employee: ${error.message}`);
             throw error;
         }
     }

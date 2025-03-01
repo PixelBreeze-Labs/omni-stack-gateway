@@ -39,8 +39,6 @@ export class AppClient extends Document {
     @Prop()
     phone?: string;
 
-    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Address' })
-    address_id?: string;
 
     @Prop()
     notes?: string;
