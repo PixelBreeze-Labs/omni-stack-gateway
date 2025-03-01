@@ -842,7 +842,7 @@ export class BusinessService {
                 // Create the user
                 const user = await this.userModel.create({
                     name: data.name,
-                    surname: data.surname || '',
+                    surname: data.surname || '-',
                     email: data.email,
                     password: hashedPassword,
                     registrationSource: RegistrationSource.STAFFLUENT,
