@@ -9,12 +9,13 @@ import { Client } from '../schemas/client.schema';
 import Stripe from 'stripe';
 import { VenueBoostService } from "./venueboost.service";
 import { MagicLinkService } from "./magic-link.service";
-import {User} from "../schemas/user.schema";
+import {RegistrationSource, User} from "../schemas/user.schema";
 import {EmailService} from "./email.service";
 import {FeatureAccessService} from "./feature-access.service";
 import {SidebarFeatureService} from "./sidebar-feature.service";
 import {AuthService} from "./auth.service";
-import {ClientType} from "../schemas/app-client.schema";
+import {AppClient, ClientType} from "../schemas/app-client.schema";
+import {Employee} from "../schemas/employee.schema";
 
 @Injectable()
 export class BusinessService {
@@ -26,6 +27,8 @@ export class BusinessService {
         @InjectModel(StripePrice.name) private priceModel: Model<StripePrice>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(User.name) private userModel: Model<User>,
+        @InjectModel(Employee.name) private employeeModel: Model<Employee>,
+        @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
         private venueBoostService: VenueBoostService,
         private magicLinkService: MagicLinkService,
         private emailService: EmailService,
@@ -696,6 +699,7 @@ export class BusinessService {
             email?: string;
             phone?: string;
             notes?: string;
+            password?: string; // Password provided from PHP side
             createAccount?: boolean; // Flag to create user account
             external_ids?: Record<string, any>;
             metadata?: Record<string, any>;
@@ -727,9 +731,8 @@ export class BusinessService {
                     throw new BadRequestException('A user with this email already exists');
                 }
 
-                // Generate a random password
-                const password = uuidv4().substring(0, 8);
-                const hashedPassword = await bcrypt.hash(password, 10);
+
+                const hashedPassword = data.password;
 
                 // Create the user
                 const user = await this.userModel.create({
@@ -745,26 +748,6 @@ export class BusinessService {
                 });
 
                 userId = user._id;
-
-                // Send password reset email or welcome email with password
-                try {
-                    await this.emailService.sendTemplateEmail(
-                        'Staffluent',
-                        'staffluent@omnistackhub.xyz',
-                        data.email,
-                        'Your Account Details',
-                        'templates/business/new-account.html',
-                        {
-                            userName: data.name,
-                            businessName: business.name,
-                            password,
-                            loginUrl: `${process.env.WEB_FRONTEND_URL}/login`
-                        }
-                    );
-                } catch (emailError) {
-                    this.logger.error(`Error sending welcome email: ${emailError.message}`);
-                    // Continue even if email fails
-                }
             }
 
             // Step 3: Create the app client
@@ -776,7 +759,6 @@ export class BusinessService {
                 contact_person: data.contact_person,
                 email: data.email,
                 phone: data.phone,
-                address_id: data.address_id,
                 notes: data.notes,
                 user_id: userId, // Link to the created user if exists
                 external_ids: data.external_ids || {},
@@ -813,6 +795,7 @@ export class BusinessService {
             email: string;
             adminUserId: string; // Admin user ID to find the business
             createAccount?: boolean; // Flag to create user account
+            password?: string; // Password provided from PHP side
             external_ids?: Record<string, any>;
             metadata?: Record<string, any>;
         }
@@ -853,9 +836,8 @@ export class BusinessService {
                     throw new BadRequestException('A user with this email already exists');
                 }
 
-                // Generate a random password
-                const password = uuidv4().substring(0, 8);
-                const hashedPassword = await bcrypt.hash(password, 10);
+                // Use provided password or generate a random one
+                const hashedPassword = data.password;
 
                 // Create the user
                 const user = await this.userModel.create({
@@ -877,26 +859,6 @@ export class BusinessService {
                     businessId,
                     {$addToSet: {userIds: userId}}
                 );
-
-                // Send password reset email or welcome email with password
-                try {
-                    await this.emailService.sendTemplateEmail(
-                        'Staffluent',
-                        'staffluent@omnistackhub.xyz',
-                        data.email,
-                        'Your Employee Account Details',
-                        'templates/business/new-employee-account.html',
-                        {
-                            userName: `${data.name} ${data.surname || ''}`.trim(),
-                            businessName: business.name,
-                            password,
-                            loginUrl: `${process.env.WEB_FRONTEND_URL}/login`
-                        }
-                    );
-                } catch (emailError) {
-                    this.logger.error(`Error sending welcome email: ${emailError.message}`);
-                    // Continue even if email fails
-                }
             }
 
             // Step 4: Create the employee
