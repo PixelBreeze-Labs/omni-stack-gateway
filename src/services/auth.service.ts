@@ -337,7 +337,7 @@ export class AuthService {
                     email: employee.email,
                     external_ids: employee.external_ids
                 },
-                venueboost_data: staffConnectionData,
+                auth_response: staffConnectionData,
                 account_type: role,
                 sidebarLinks,
                 ...featuresInfo
