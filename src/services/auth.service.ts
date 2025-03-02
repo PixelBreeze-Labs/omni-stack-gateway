@@ -599,12 +599,34 @@ export class AuthService {
             case 'business_operations_manager':
             case 'staff_operations_manager':
             case 'operations_manager':
-                // Operations managers get most features except invoice management
-                return features.filter(feature =>
-                    !feature.includes('INVOICE_MANAGEMENT') &&
-                    !feature.includes('API_ACCESS') &&
-                    !feature.includes('MANAGER_DASHBOARD_ENHANCEMENTS')
-                );
+                // Operations managers need substantial access to management features
+                return [
+                    // Keep existing management features but exclude these specific ones
+                    ...features.filter(feature =>
+                        !feature.includes('INVOICE_MANAGEMENT') &&
+                        !feature.includes('API_ACCESS') &&
+                        !feature.includes('MANAGER_DASHBOARD_ENHANCEMENTS')
+                    ),
+                    // Add these specific operations features
+                    STAFFLUENT_FEATURES.OPERATIONS_DASHBOARD,
+                    STAFFLUENT_FEATURES.MANAGER_DASHBOARD_ENHANCEMENTS,
+                    STAFFLUENT_FEATURES.ANALYTICS_DASHBOARD,
+                    STAFFLUENT_FEATURES.CLIENT_PROJECTS,
+                    STAFFLUENT_FEATURES.CLIENT_FEEDBACK,
+                    STAFFLUENT_FEATURES.SERVICE_REQUEST_PROCESSING,
+                    STAFFLUENT_FEATURES.ADVANCED_QUALITY_CONTROL,
+                    STAFFLUENT_FEATURES.COMPLIANCE_MONITORING,
+                    STAFFLUENT_FEATURES.QUALITY_METRICS_DASHBOARD,
+                    STAFFLUENT_FEATURES.ADVANCED_WORK_ORDER_MANAGEMENT,
+                    STAFFLUENT_FEATURES.PRIORITY_MANAGEMENT,
+                    STAFFLUENT_FEATURES.ASSIGNMENT_TRACKING,
+                    STAFFLUENT_FEATURES.ADVANCED_REPORTS,
+                    STAFFLUENT_FEATURES.PERFORMANCE_METRICS,
+                    STAFFLUENT_FEATURES.RESOURCE_UTILIZATION,
+                    STAFFLUENT_FEATURES.PROJECT_PROGRESS_ANALYTICS,
+                    STAFFLUENT_FEATURES.EFFICIENCY_METRICS,
+                    STAFFLUENT_FEATURES.COMPLIANCE_REPORTING
+                ];
 
             case 'business_team_leader':
             case 'staff_team_leader':
@@ -614,27 +636,35 @@ export class AuthService {
                     STAFFLUENT_FEATURES.STAFF_DASHBOARD,
                     STAFFLUENT_FEATURES.TEAM_LEADER_DASHBOARD,
                     STAFFLUENT_FEATURES.BASIC_TIME_TRACKING,
+                    STAFFLUENT_FEATURES.ADVANCED_TIME_TRACKING,
                     STAFFLUENT_FEATURES.TIMESHEET_MANAGEMENT,
                     STAFFLUENT_FEATURES.BASIC_LEAVE_MANAGEMENT,
                     STAFFLUENT_FEATURES.BASIC_PROJECT_MANAGEMENT,
+                    STAFFLUENT_FEATURES.ADVANCED_PROJECT_MANAGEMENT,
                     STAFFLUENT_FEATURES.BASIC_TASK_MANAGEMENT,
+                    STAFFLUENT_FEATURES.ADVANCED_TASK_MANAGEMENT,
                     STAFFLUENT_FEATURES.BASIC_SCHEDULING,
+                    STAFFLUENT_FEATURES.ADVANCED_SCHEDULING,
                     STAFFLUENT_FEATURES.SHIFT_PLANNING,
+                    STAFFLUENT_FEATURES.AVAILABILITY_TRACKING,
                     STAFFLUENT_FEATURES.BASIC_TEAM_MANAGEMENT,
                     STAFFLUENT_FEATURES.TEAM_COLLABORATION,
                     STAFFLUENT_FEATURES.BASIC_QUALITY_CONTROL,
                     STAFFLUENT_FEATURES.INSPECTION_CHECKLISTS,
                     STAFFLUENT_FEATURES.BASIC_COMMUNICATION,
+                    STAFFLUENT_FEATURES.ADVANCED_COMMUNICATION,
                     STAFFLUENT_FEATURES.TEAM_CHAT,
                     STAFFLUENT_FEATURES.NOTIFICATIONS_SYSTEM,
                     STAFFLUENT_FEATURES.BASIC_REPORTS,
-                    STAFFLUENT_FEATURES.BASIC_MOBILE_ACCESS
+                    STAFFLUENT_FEATURES.BASIC_MOBILE_ACCESS,
+                    STAFFLUENT_FEATURES.PERFORMANCE_TRACKING
                 ];
 
             case 'business_staff':
             case 'staff':
                 // Regular staff get basic features only
                 return [
+                    // Basic staff features
                     STAFFLUENT_FEATURES.STAFF_DASHBOARD,
                     STAFFLUENT_FEATURES.BASIC_TIME_TRACKING,
                     STAFFLUENT_FEATURES.BREAK_MANAGEMENT,
@@ -643,7 +673,18 @@ export class AuthService {
                     STAFFLUENT_FEATURES.BASIC_TASK_MANAGEMENT,
                     STAFFLUENT_FEATURES.BASIC_COMMUNICATION,
                     STAFFLUENT_FEATURES.NOTIFICATIONS_SYSTEM,
-                    STAFFLUENT_FEATURES.BASIC_MOBILE_ACCESS
+                    STAFFLUENT_FEATURES.BASIC_MOBILE_ACCESS,
+
+                    // Field worker specific features
+                    STAFFLUENT_FEATURES.GPS_TIME_TRACKING,
+                    STAFFLUENT_FEATURES.PHOTO_DOCUMENT_UPLOAD,
+                    STAFFLUENT_FEATURES.MOBILE_TICKET_MANAGEMENT,
+                    STAFFLUENT_FEATURES.DIGITAL_SIGNATURE_CAPTURE,
+                    STAFFLUENT_FEATURES.SAFETY_INCIDENT_REPORTING,
+                    STAFFLUENT_FEATURES.EQUIPMENT_TIME_TRACKING,
+                    STAFFLUENT_FEATURES.INSPECTION_DOCUMENTATION,
+                    STAFFLUENT_FEATURES.PROGRESS_PHOTO_UPLOADS,
+                    STAFFLUENT_FEATURES.OFFLINE_CAPABILITIES
                 ];
 
             case 'app_client':
@@ -656,7 +697,12 @@ export class AuthService {
                     STAFFLUENT_FEATURES.CLIENT_SIGN_OFFS,
                     STAFFLUENT_FEATURES.BASIC_REPORTS,
                     STAFFLUENT_FEATURES.FILE_SHARING,
-                    STAFFLUENT_FEATURES.CLIENT_COMMUNICATION_CHANNELS
+                    STAFFLUENT_FEATURES.CLIENT_COMMUNICATION_CHANNELS,
+                    STAFFLUENT_FEATURES.CLIENT_PROJECTS, // To view their projects
+                    STAFFLUENT_FEATURES.DIGITAL_SIGNATURE_CAPTURE, // For approvals
+                    STAFFLUENT_FEATURES.PHOTO_VERIFICATION, // To view site progress
+                    STAFFLUENT_FEATURES.WEATHER_MONITORING, // For weather alerts
+                    STAFFLUENT_FEATURES.BASIC_QUALITY_CONTROL // To view quality reports
                 ];
 
             default:
