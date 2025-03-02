@@ -733,10 +733,21 @@ export class BusinessService {
 
                 const hashedPassword = data.password;
 
+                let firstName = data.name;
+                let lastName = '-';
+
+                if (data.name && data.name.includes(' ')) {
+                    const nameParts = data.name.split(' ');
+                    firstName = nameParts[0];
+                    // Join all remaining parts as the surname
+                    lastName = nameParts.slice(1).join(' ');
+                }
+
+
                 // Create the user
                 const user = await this.userModel.create({
-                    name: data.name,
-                    surname: data.contact_person || '',
+                    name: firstName,
+                    surname: lastName,
                     email: data.email,
                     password: hashedPassword,
                     registrationSource: RegistrationSource.STAFFLUENT,
