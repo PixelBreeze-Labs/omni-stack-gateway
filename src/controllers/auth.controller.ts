@@ -24,7 +24,7 @@ export class AuthController {
     @ApiResponse({ status: 200, description: 'Login successful' })
     @ApiResponse({ status: 401, description: 'Invalid credentials' })
     async staffluentsBusinessAdminLogin(@Body() loginDto: StaffluentsBusinessAdminLoginDto) {
-        const result = await this.authService.staffluentsBusinessAdminLogin(loginDto);
+        const result = await this.authService.staffluentsUnifiedLogin(loginDto);
         return result;
     }
 }

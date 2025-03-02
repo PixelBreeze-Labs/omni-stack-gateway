@@ -1,4 +1,4 @@
-// services/auth.service.ts
+// src/services/auth.service.ts
 import { Injectable, UnauthorizedException, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from './user.service';
@@ -13,9 +13,9 @@ import { Business } from "../schemas/business.schema";
 import { Model } from 'mongoose';
 import { InjectModel } from "@nestjs/mongoose";
 import { VenueBoostService } from './venueboost.service';
-import { TIER_FEATURES, TIER_LIMITS } from '../constants/features.constants';
-import {AppClient} from "../schemas/app-client.schema";
-import {Employee} from "../schemas/employee.schema";
+import { TIER_FEATURES, TIER_LIMITS, STAFFLUENT_FEATURES } from '../constants/features.constants';
+import { AppClient } from "../schemas/app-client.schema";
+import { Employee } from "../schemas/employee.schema";
 
 @Injectable()
 export class AuthService {
@@ -88,6 +88,78 @@ export class AuthService {
         };
     }
 
+
+    /**
+     * Unified login method that detects the user type and calls the appropriate login method
+     */
+    async staffluentsUnifiedLogin(loginDto: StaffluentsBusinessAdminLoginDto) {
+        try {
+            // Step 1: Find and authenticate the user
+            const user = await this.userModel.findOne({
+                email: loginDto.email,
+                registrationSource: RegistrationSource.STAFFLUENT
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Verify password
+            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+            if (!isPasswordValid) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Step 2: Check if user is a business admin
+            const businessAsAdmin = await this.businessModel.findOne({ adminUserId: user._id });
+            if (businessAsAdmin) {
+                this.logger.log(`User ${user.email} is a business admin`);
+
+                // Call the existing business admin login logic
+                return await this.staffluentsBusinessAdminLogin({
+                    email: loginDto.email,
+                    password: loginDto.password
+                });
+            }
+
+            // Step 3: Check if user is a business staff
+            const businessAsStaff = await this.businessModel.findOne({
+                userIds: { $in: [user._id] }
+            });
+
+            if (businessAsStaff) {
+                this.logger.log(`User ${user.email} is a business staff member`);
+
+                // Call the existing business staff login logic
+                return await this.staffluentsBusinessStaffLogin({
+                    email: loginDto.email,
+                    password: loginDto.password
+                });
+            }
+
+            // Step 4: Check if user is a client
+            const appClient = await this.appClientModel.findOne({ user_id: user._id });
+            if (appClient) {
+                this.logger.log(`User ${user.email} is a client`);
+
+                // Call the existing client login logic
+                return await this.staffluentsClientLogin({
+                    email: loginDto.email,
+                    password: loginDto.password
+                });
+            }
+
+            // If user doesn't match any type, throw error
+            throw new NotFoundException('User account type could not be determined');
+        } catch (error) {
+            this.logger.error(`Error in staffluentsUnifiedLogin: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Login failed');
+        }
+    }
+
     async staffluentsBusinessAdminLogin(loginDto: StaffluentsBusinessAdminLoginDto) {
         try {
             // Find user by email for Staffluent
@@ -107,7 +179,7 @@ export class AuthService {
             }
 
             // Find the business for this admin user
-            const business = await this.businessModel.findOne({ adminUserId: user._id });
+            const business = await this.businessModel.findOne({adminUserId: user._id});
             if (!business) {
                 throw new NotFoundException('No business found for this user');
             }
@@ -127,10 +199,13 @@ export class AuthService {
             }
 
             // Get features and subscription details
-            const businessFeatures = await this.getBusinessFeaturesForLogin(business._id.toString());
+            const businessFeatures = await this.getBusinessFeaturesForLogin(business._id.toString(), 'business_admin');
 
-            // Get sidebar links based on features
-            const sidebarLinks = await this.sidebarFeatureService.getBusinessSidebarLinks(business._id.toString());
+            // Get sidebar links for business admin
+            const sidebarLinks = await this.sidebarFeatureService.getSidebarLinksByRole(
+                user._id.toString(),
+                'business_admin'
+            );
 
             // Generate JWT token
             const token = this.jwtService.sign({
@@ -156,7 +231,7 @@ export class AuthService {
                     subscriptionEndDate: business.subscriptionEndDate
                 },
                 auth_response,
-                sidebarLinks,  // Include sidebar links in the response
+                sidebarLinks,
                 ...businessFeatures
             };
         } catch (error) {
@@ -169,9 +244,206 @@ export class AuthService {
     }
 
     /**
-     * Get business features and subscription details for login response
+     * Login for business staff users
      */
-    async getBusinessFeaturesForLogin(businessId: string) {
+    async staffluentsBusinessStaffLogin(loginDto: StaffluentsBusinessStaffLoginDto) {
+        try {
+            // Find and authenticate user
+            const user = await this.userModel.findOne({
+                email: loginDto.email,
+                registrationSource: RegistrationSource.STAFFLUENT
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Verify password
+            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+            if (!isPasswordValid) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Find employee record for this user
+            const employee = await this.employeeModel.findOne({user_id: user._id});
+            if (!employee) {
+                throw new NotFoundException('No employee record found for this user');
+            }
+
+            // Find business where this employee belongs
+            const business = await this.businessModel.findOne({
+                userIds: {$in: [user._id]}
+            });
+
+            if (!business) {
+                throw new NotFoundException('No business found for this employee');
+            }
+
+            // Get VenueBoost connection data
+            let staffConnectionData = null;
+            try {
+                staffConnectionData = await this.venueBoostService.getStaffConnection(
+                    user.email
+                );
+            } catch (error) {
+                this.logger.error(`Error getting staff connection: ${error.message}`);
+                // Continue even if VenueBoost connection fails
+            }
+
+            // Determine role from staff connection or employee data
+            const role = staffConnectionData?.account_type ||
+                employee.metadata?.get('role') ||
+                'business_staff';
+
+            // Get features filtered by role
+            const featuresInfo = await this.getBusinessFeaturesForLogin(
+                business._id.toString(),
+                role
+            );
+
+            // Get sidebar links specific to the staff role
+            const sidebarLinks = await this.sidebarFeatureService.getSidebarLinksByRole(
+                user._id.toString(),
+                role
+            );
+
+            // Generate JWT token with appropriate claims
+            const token = this.jwtService.sign({
+                sub: user._id.toString(),
+                email: user.email,
+                businessId: business._id.toString(),
+                clientId: business.clientId,
+                employeeId: employee._id.toString(),
+                role: role
+            });
+
+            // Construct final response
+            return {
+                status: 'success',
+                message: 'Staff authentication successful',
+                token,
+                userId: user._id.toString(),
+                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
+                businessId: business._id.toString(),
+                employeeId: employee._id.toString(),
+                business: {
+                    name: business.name,
+                    email: business.email,
+                    type: business.type
+                },
+                employee: {
+                    id: employee._id,
+                    name: employee.name,
+                    email: employee.email,
+                    external_ids: employee.external_ids
+                },
+                venueboost_data: staffConnectionData,
+                account_type: role,
+                sidebarLinks,
+                ...featuresInfo
+            };
+        } catch (error) {
+            this.logger.error(`Error in staffluentsBusinessStaffLogin: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Staff login failed');
+        }
+    }
+
+    /**
+     * Login for client users
+     */
+    async staffluentsClientLogin(loginDto: StaffluentsClientLoginDto) {
+        try {
+            // Find and authenticate user
+            const user = await this.userModel.findOne({
+                email: loginDto.email,
+                registrationSource: RegistrationSource.STAFFLUENT
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Verify password
+            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+            if (!isPasswordValid) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Find AppClient record for this user
+            const appClient = await this.appClientModel.findOne({user_id: user._id});
+            if (!appClient) {
+                throw new NotFoundException('No client record found for this user');
+            }
+
+            // Get VenueBoost connection data
+            let clientConnectionData = null;
+            try {
+                clientConnectionData = await this.venueBoostService.getStaffConnection(
+                    user.email
+                );
+            } catch (error) {
+                this.logger.error(`Error getting client connection: ${error.message}`);
+                // Continue even if VenueBoost connection fails
+            }
+
+            // Get client-specific sidebar links
+            const sidebarLinks = await this.sidebarFeatureService.getSidebarLinksByRole(
+                user._id.toString(),
+                'app_client'
+            );
+
+            // Get client-specific features
+            const featuresInfo = await this.getClientFeaturesForLogin(
+                appClient.businessId?.toString()
+            );
+
+            // Generate JWT token with appropriate claims
+            const token = this.jwtService.sign({
+                sub: user._id.toString(),
+                email: user.email,
+                clientId: appClient.clientId,
+                appClientId: appClient._id.toString(),
+                role: 'app_client'
+            });
+
+            // Construct final response
+            return {
+                status: 'success',
+                message: 'Client authentication successful',
+                token,
+                userId: user._id.toString(),
+                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
+                clientId: appClient.clientId,
+                appClientId: appClient._id.toString(),
+                client: {
+                    id: appClient._id,
+                    name: appClient.name,
+                    type: appClient.type,
+                    email: appClient.email || user.email,
+                    contact_person: appClient.contact_person,
+                    external_ids: appClient.external_ids
+                },
+                venueboost_data: clientConnectionData,
+                account_type: clientConnectionData?.account_type || 'client',
+                sidebarLinks,
+                ...featuresInfo
+            };
+        } catch (error) {
+            this.logger.error(`Error in staffluentsClientLogin: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Client login failed');
+        }
+    }
+
+    /**
+     * Get business features for login, filtered by role
+     */
+    async getBusinessFeaturesForLogin(businessId: string, role: string = 'business_admin') {
         try {
             // Get business and determine tier
             const business = await this.businessModel.findById(businessId);
@@ -181,12 +453,15 @@ export class AuthService {
                     featureLimits: {},
                     customFeatures: [],
                     customLimits: {},
-                    subscription: { status: 'not_found' }
+                    subscription: {status: 'not_found'}
                 };
             }
 
             // Get available features
-            const features = await this.featureAccessService.getBusinessFeatures(businessId);
+            let features = await this.featureAccessService.getBusinessFeatures(businessId);
+
+            // Filter features based on role
+            features = this.filterFeaturesByRole(features, role);
 
             // Get feature limits
             const featureLimits = await this.featureAccessService.getBusinessLimits(businessId);
@@ -215,18 +490,16 @@ export class AuthService {
                 customLimits = {};
             }
 
-            // Determine tier for frontend information
+            // Determine tier
             let tier = 'basic';
             if (business.subscriptionStatus === 'trialing') {
                 tier = 'trialing';
             } else if (business.subscriptionDetails?.planId) {
-                // Extract tier from plan ID or metadata
                 const planId = business.subscriptionDetails.planId;
                 tier = planId.includes('basic') ? 'basic' :
                     planId.includes('professional') ? 'professional' :
                         planId.includes('enterprise') ? 'enterprise' : 'basic';
 
-                // Check metadata for tier info as fallback
                 const tierFromMetadata = business.metadata?.get('subscriptionTier') || null;
                 if (tierFromMetadata) {
                     tier = tierFromMetadata;
@@ -254,187 +527,144 @@ export class AuthService {
                 featureLimits: {},
                 customFeatures: [],
                 customLimits: {},
-                subscription: { status: 'error' }
+                subscription: {status: 'error'}
             };
         }
     }
 
     /**
-     * Login for Staffluent business staff users
-     *
-     * @param loginDto Staff login credentials
-     * @returns Login response with token and user data
+     * Get client features for login
      */
-    async staffluentsBusinessStaffLogin(loginDto: StaffluentsBusinessStaffLoginDto) {
-        try {
-            // 1. Find and authenticate user
-            const user = await this.userModel.findOne({
-                email: loginDto.email,
-                registrationSource: RegistrationSource.STAFFLUENT
-            });
+    async getClientFeaturesForLogin(businessId: string) {
+        // For clients, we provide a specific set of features
+        const clientFeatures = [
+            STAFFLUENT_FEATURES.CLIENT_PORTAL,
+            STAFFLUENT_FEATURES.CLIENT_COMMUNICATION,
+            STAFFLUENT_FEATURES.CLIENT_FEEDBACK,
+            STAFFLUENT_FEATURES.CLIENT_SIGN_OFFS,
+            STAFFLUENT_FEATURES.BASIC_REPORTS,
+            STAFFLUENT_FEATURES.FILE_SHARING,
+            STAFFLUENT_FEATURES.CLIENT_COMMUNICATION_CHANNELS
+        ];
 
-            if (!user) {
-                throw new UnauthorizedException('Invalid credentials');
-            }
-
-            // Verify password
-            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
-            if (!isPasswordValid) {
-                throw new UnauthorizedException('Invalid credentials');
-            }
-
-            // 2. Find employee record for this user
-            const employee = await this.employeeModel.findOne({ user_id: user._id });
-            if (!employee) {
-                throw new NotFoundException('No employee record found for this user');
-            }
-
-            // 3. Find business where this employee belongs
-            const business = await this.businessModel.findOne({
-                userIds: { $in: [user._id] }
-            });
-
-            if (!business) {
-                throw new NotFoundException('No business found for this employee');
-            }
-
-            // 4. Get VenueBoost connection data
-            let staffConnectionData = null;
+        // If there's a business ID, we can add business-specific features
+        if (businessId) {
             try {
+                // Get the business to determine tier
+                const business = await this.businessModel.findById(businessId);
+                if (business) {
+                    // Determine tier for features
+                    let tier = 'basic';
+                    if (business.subscriptionStatus === 'trialing') {
+                        tier = 'trialing';
+                    } else if (business.subscriptionDetails?.planId) {
+                        const planId = business.subscriptionDetails.planId;
+                        tier = planId.includes('basic') ? 'basic' :
+                            planId.includes('professional') ? 'professional' :
+                                planId.includes('enterprise') ? 'enterprise' : 'basic';
+                    }
 
-                staffConnectionData = await this.venueBoostService.getStaffConnection(
-                    user.email
+                    return {
+                        features: clientFeatures,
+                        featureLimits: TIER_LIMITS[tier] || {},
+                        subscription: {
+                            status: business.subscriptionStatus,
+                            tier
+                        }
+                    };
+                }
+            } catch (error) {
+                this.logger.error(`Error getting business for client features: ${error.message}`);
+            }
+        }
+
+        // Default return if no business found
+        return {
+            features: clientFeatures,
+            featureLimits: {},
+            subscription: {status: 'client'}
+        };
+    }
+
+    /**
+     * Filter features based on user role
+     */
+    private filterFeaturesByRole(features: string[], role: string): string[] {
+        // Define role-specific features
+        switch (role) {
+            case 'business_admin':
+                // Admins get all features
+                return features;
+
+            case 'business_operations_manager':
+            case 'staff_operations_manager':
+            case 'operations_manager':
+                // Operations managers get most features except invoice management
+                return features.filter(feature =>
+                    !feature.includes('INVOICE_MANAGEMENT') &&
+                    !feature.includes('API_ACCESS') &&
+                    !feature.includes('MANAGER_DASHBOARD_ENHANCEMENTS')
                 );
 
-                this.logger.log(`Retrieved staff connection data for ${user.email}`);
+            case 'business_team_leader':
+            case 'staff_team_leader':
+            case 'team_leader':
+                // Team leaders get team management, scheduling, and limited features
+                return [
+                    STAFFLUENT_FEATURES.STAFF_DASHBOARD,
+                    STAFFLUENT_FEATURES.TEAM_LEADER_DASHBOARD,
+                    STAFFLUENT_FEATURES.BASIC_TIME_TRACKING,
+                    STAFFLUENT_FEATURES.TIMESHEET_MANAGEMENT,
+                    STAFFLUENT_FEATURES.BASIC_LEAVE_MANAGEMENT,
+                    STAFFLUENT_FEATURES.BASIC_PROJECT_MANAGEMENT,
+                    STAFFLUENT_FEATURES.BASIC_TASK_MANAGEMENT,
+                    STAFFLUENT_FEATURES.BASIC_SCHEDULING,
+                    STAFFLUENT_FEATURES.SHIFT_PLANNING,
+                    STAFFLUENT_FEATURES.BASIC_TEAM_MANAGEMENT,
+                    STAFFLUENT_FEATURES.TEAM_COLLABORATION,
+                    STAFFLUENT_FEATURES.BASIC_QUALITY_CONTROL,
+                    STAFFLUENT_FEATURES.INSPECTION_CHECKLISTS,
+                    STAFFLUENT_FEATURES.BASIC_COMMUNICATION,
+                    STAFFLUENT_FEATURES.TEAM_CHAT,
+                    STAFFLUENT_FEATURES.NOTIFICATIONS_SYSTEM,
+                    STAFFLUENT_FEATURES.BASIC_REPORTS,
+                    STAFFLUENT_FEATURES.BASIC_MOBILE_ACCESS
+                ];
 
-            } catch (error) {
-                this.logger.error(`Error getting staff connection: ${error.message}`);
-                // Continue login process even if VenueBoost connection fails
-            }
+            case 'business_staff':
+            case 'staff':
+                // Regular staff get basic features only
+                return [
+                    STAFFLUENT_FEATURES.STAFF_DASHBOARD,
+                    STAFFLUENT_FEATURES.BASIC_TIME_TRACKING,
+                    STAFFLUENT_FEATURES.BREAK_MANAGEMENT,
+                    STAFFLUENT_FEATURES.TIMESHEET_MANAGEMENT,
+                    STAFFLUENT_FEATURES.BASIC_LEAVE_MANAGEMENT,
+                    STAFFLUENT_FEATURES.BASIC_TASK_MANAGEMENT,
+                    STAFFLUENT_FEATURES.BASIC_COMMUNICATION,
+                    STAFFLUENT_FEATURES.NOTIFICATIONS_SYSTEM,
+                    STAFFLUENT_FEATURES.BASIC_MOBILE_ACCESS
+                ];
 
-            // 5. Generate JWT token with appropriate claims
-            const token = this.jwtService.sign({
-                sub: user._id.toString(),
-                email: user.email,
-                businessId: business._id.toString(),
-                clientId: business.clientId,
-                employeeId: employee._id.toString(),
-                role: 'business_staff'
-            });
+            case 'app_client':
+            case 'client':
+                // Clients get client-specific features
+                return [
+                    STAFFLUENT_FEATURES.CLIENT_PORTAL,
+                    STAFFLUENT_FEATURES.CLIENT_COMMUNICATION,
+                    STAFFLUENT_FEATURES.CLIENT_FEEDBACK,
+                    STAFFLUENT_FEATURES.CLIENT_SIGN_OFFS,
+                    STAFFLUENT_FEATURES.BASIC_REPORTS,
+                    STAFFLUENT_FEATURES.FILE_SHARING,
+                    STAFFLUENT_FEATURES.CLIENT_COMMUNICATION_CHANNELS
+                ];
 
-            // 6. Construct final response
-            return {
-                status: 'success',
-                message: 'Staff authentication successful',
-                token,
-                userId: user._id.toString(),
-                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
-                businessId: business._id.toString(),
-                employeeId: employee._id.toString(),
-                business: {
-                    name: business.name,
-                    email: business.email,
-                    type: business.type
-                },
-                employee: {
-                    id: employee._id,
-                    name: employee.name,
-                    email: employee.email,
-                    external_ids: employee.external_ids
-                },
-                venueboost_data: staffConnectionData,
-                account_type: staffConnectionData?.account_type || 'staff'
-            };
-        } catch (error) {
-            this.logger.error(`Error in staffluentsBusinessStaffLogin: ${error.message}`);
-            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
-                throw error;
-            }
-            throw new UnauthorizedException('Staff login failed');
+            default:
+                // Default - filter to basic features only
+                return features.filter(feature =>
+                    feature.includes('BASIC_') ||
+                    feature.includes('STAFF_DASHBOARD')
+                );
         }
     }
-
-    /**
-     * Login for Staffluent clients
-     *
-     * @param loginDto Client login credentials
-     * @returns Login response with token and user data
-     */
-    async staffluentsClientLogin(loginDto: StaffluentsClientLoginDto) {
-        try {
-            // 1. Find and authenticate user
-            const user = await this.userModel.findOne({
-                email: loginDto.email,
-                registrationSource: RegistrationSource.STAFFLUENT
-            });
-
-            if (!user) {
-                throw new UnauthorizedException('Invalid credentials');
-            }
-
-            // Verify password
-            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
-            if (!isPasswordValid) {
-                throw new UnauthorizedException('Invalid credentials');
-            }
-
-            // 2. Find AppClient record for this user
-            const appClient = await this.appClientModel.findOne({ user_id: user._id });
-            if (!appClient) {
-                throw new NotFoundException('No client record found for this user');
-            }
-
-            // 3. Get VenueBoost connection data
-            let clientConnectionData = null;
-            try {
-                    clientConnectionData = await this.venueBoostService.getStaffConnection(
-                        user.email
-                    );
-
-                    this.logger.log(`Retrieved client connection data for ${user.email}`);
-
-            } catch (error) {
-                this.logger.error(`Error getting client connection: ${error.message}`);
-                // Continue login process even if VenueBoost connection fails
-            }
-
-            // 4. Generate JWT token with appropriate claims
-            const token = this.jwtService.sign({
-                sub: user._id.toString(),
-                email: user.email,
-                clientId: appClient.clientId,
-                appClientId: appClient._id.toString(),
-                role: 'app_client'
-            });
-
-            // 5. Construct final response
-            return {
-                status: 'success',
-                message: 'Client authentication successful',
-                token,
-                userId: user._id.toString(),
-                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
-                clientId: appClient.clientId,
-                appClientId: appClient._id.toString(),
-                client: {
-                    id: appClient._id,
-                    name: appClient.name,
-                    type: appClient.type,
-                    email: appClient.email || user.email,
-                    contact_person: appClient.contact_person,
-                    external_ids: appClient.external_ids
-                },
-                venueboost_data: clientConnectionData,
-                account_type: clientConnectionData?.account_type || 'client'
-            };
-        } catch (error) {
-            this.logger.error(`Error in staffluentsClientLogin: ${error.message}`);
-            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
-                throw error;
-            }
-            throw new UnauthorizedException('Client login failed');
-        }
-    }
-
 }
