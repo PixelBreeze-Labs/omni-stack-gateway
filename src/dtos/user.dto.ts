@@ -1,5 +1,5 @@
 // src/dtos/user.dto.ts
-import { IsString, IsEmail, IsOptional, IsObject, IsNumber, IsArray, IsEnum, IsNotEmpty, IsDate, ValidateNested } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsObject, IsNumber, IsArray, IsEnum, IsNotEmpty, IsDate, ValidateNested, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {RegistrationSource} from "../schemas/user.schema";
 import { Type } from 'class-transformer';
@@ -105,5 +105,8 @@ export class ChangePasswordDto {
     currentPassword?: string;
 
     @ApiProperty({ description: 'New password' })
+    @IsString()
+    @IsNotEmpty({ message: 'New password is required' })
+    @MinLength(8, { message: 'Password must be at least 8 characters long' })
     newPassword: string;
 }
