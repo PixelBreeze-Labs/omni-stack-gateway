@@ -586,4 +586,19 @@ export class SnapFoodController {
             end_date: endDate
         });
     }
+
+    @Get('vendors')
+    @ApiOperation({ summary: 'List vendors' })
+    @ApiResponse({ status: 200, description: 'Returns vendors list with pagination' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'per_page', required: false })
+    async listVendors(
+        @Query('page') page?: number,
+        @Query('per_page') perPage?: number,
+    ): Promise<any> {
+        return await this.snapfoodService.listVendors({
+            page,
+            per_page: perPage
+        });
+    }
 }

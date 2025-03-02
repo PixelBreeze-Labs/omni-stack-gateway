@@ -889,4 +889,47 @@ export class SnapfoodService {
             throw new HttpException('Failed to fetch most used cashback values', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    // Add this to your SnapfoodService class
+    async listVendors(params: {
+        page?: number;
+        per_page?: number;
+        limit?: number;
+    }): Promise<any> {
+        try {
+            const response$ = this.httpService.get(`${this.baseUrl}/vendors`, {
+                params: {
+                    page: params.page || 1,
+                    limit: params.limit || params.per_page || 100
+                },
+                headers: {
+                    'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                },
+                validateStatus: (status) => status < 500
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new HttpException(response.data.message || 'Bad request', HttpStatus.BAD_REQUEST);
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch vendors:', error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to fetch vendors',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
 }
