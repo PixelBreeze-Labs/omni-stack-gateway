@@ -16,6 +16,7 @@ import {SidebarFeatureService} from "./sidebar-feature.service";
 import {AuthService} from "./auth.service";
 import {AppClient, ClientType} from "../schemas/app-client.schema";
 import {Employee} from "../schemas/employee.schema";
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class BusinessService {
@@ -693,14 +694,14 @@ export class BusinessService {
         clientId: string,
         data: {
             name: string;
-            adminUserId: string; // Admin user ID to find the business
+            adminUserId: string;
             type?: ClientType;
             contact_person?: string;
             email?: string;
             phone?: string;
             notes?: string;
-            password?: string; // Password provided from PHP side
-            createAccount?: boolean; // Flag to create user account
+            password?: string;
+            createAccount?: boolean;
             external_ids?: Record<string, any>;
             metadata?: Record<string, any>;
         }
@@ -731,7 +732,8 @@ export class BusinessService {
                     throw new BadRequestException('A user with this email already exists');
                 }
 
-                const hashedPassword = data.password;
+                // Hash the password
+                const hashedPassword = await bcrypt.hash(data.password, 10);
 
                 let firstName = data.name;
                 let lastName = '-';
@@ -743,13 +745,12 @@ export class BusinessService {
                     lastName = nameParts.slice(1).join(' ');
                 }
 
-
                 // Create the user
                 const user = await this.userModel.create({
                     name: firstName,
                     surname: lastName,
                     email: data.email,
-                    password: hashedPassword,
+                    password: hashedPassword, // Use the hashed password
                     registrationSource: RegistrationSource.STAFFLUENT,
                     external_ids: data.external_ids || {},
                     client_ids: [clientId],
@@ -855,7 +856,7 @@ export class BusinessService {
                 }
 
                 // Use provided password or generate a random one
-                const hashedPassword = data.password;
+                const hashedPassword = await bcrypt.hash(data.password, 10);
 
                 // Create the user
                 const user = await this.userModel.create({
