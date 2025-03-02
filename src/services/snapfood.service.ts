@@ -897,7 +897,7 @@ export class SnapfoodService {
         limit?: number;
     }): Promise<any> {
         try {
-            const response$ = this.httpService.get(`${this.baseUrl}/os-vendors`, {
+            const response$ = this.httpService.get(`${this.baseUrl}/v3/omni-stack/os-vendors`, {
                 params: {
                     page: params.page || 1,
                     limit: params.limit || params.per_page || 100
