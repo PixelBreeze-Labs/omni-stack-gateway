@@ -426,7 +426,7 @@ export class AuthService {
                     contact_person: appClient.contact_person,
                     external_ids: appClient.external_ids
                 },
-                venueboost_data: clientConnectionData,
+                auth_response: clientConnectionData,
                 account_type: clientConnectionData?.account_type || 'client',
                 sidebarLinks,
                 ...featuresInfo
