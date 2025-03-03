@@ -248,13 +248,15 @@ export class MagicLinkService {
             // Get VenueBoost authentication data
             let auth_response = null;
             try {
-                if (user.external_ids?.supabaseId) {
+
                     // If user is a business admin, use getConnection
                     if (businessAsAdmin) {
-                        auth_response = await this.venueBoostService.getConnection(
-                            user.email,
-                            user.external_ids.supabaseId
-                        );
+                        if (user.external_ids?.supabaseId) {
+                            auth_response = await this.venueBoostService.getConnection(
+                                user.email,
+                                user.external_ids.supabaseId
+                            );
+                        }
                     }
                     // For staff and clients, use getStaffConnection
                     else if (businessAsStaff || appClient) {
@@ -265,9 +267,7 @@ export class MagicLinkService {
                     else {
                         this.logger.warn(`Cannot get VenueBoost connection: User ${user._id} is not admin, staff, or client`);
                     }
-                } else {
-                    this.logger.warn(`Cannot get VenueBoost connection: No supabaseId found for user ${user._id}`);
-                }
+
             } catch (error) {
                 this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
                 // Continue even if getting auth response fails
