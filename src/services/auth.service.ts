@@ -418,7 +418,7 @@ export class AuthService {
             }
 
             // Determine role from PHP response or employee data
-            const role = mobileAuthData?.account_type ||
+            const role =
                 employee.metadata?.get('role') ||
                 'business_staff';
 
