@@ -352,6 +352,113 @@ export class AuthService {
     }
 
     /**
+     * Login for mobile staff users
+     */
+    async staffluentMobileLogin(loginDto: {
+        email: string;
+        password: string;
+        source_app?: string;
+        firebase_token?: string;
+        device_id?: string;
+        device_type?: string;
+        device_model?: string;
+        os_version?: string;
+        app_version?: string;
+    }) {
+        try {
+            // Find and authenticate user
+            const user = await this.userModel.findOne({
+                email: loginDto.email,
+                registrationSource: RegistrationSource.STAFFLUENT
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Verify password
+            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+            if (!isPasswordValid) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Find employee record for this user
+            const employee = await this.employeeModel.findOne({user_id: user._id});
+            if (!employee) {
+                throw new NotFoundException('No employee record found for this user');
+            }
+
+            // Find business where this employee belongs
+            const business = await this.businessModel.findOne({
+                userIds: {$in: [user._id]}
+            });
+
+            if (!business) {
+                throw new NotFoundException('No business found for this employee');
+            }
+
+            // Get mobile authentication data from PHP backend
+            let mobileAuthData = null;
+            try {
+                // Pass all the authentication data to PHP
+                mobileAuthData = await this.venueBoostService.getMobileStaffConnection({
+                    email: loginDto.email,
+                    password: loginDto.password,
+                    source_app: loginDto.source_app || 'staff',
+                    firebase_token: loginDto.firebase_token || '',
+                    device_id: loginDto.device_id || '',
+                    device_type: loginDto.device_type || 'mobile',
+                    device_model: loginDto.device_model || '',
+                    os_version: loginDto.os_version || '',
+                    app_version: loginDto.app_version || ''
+                });
+            } catch (error) {
+                this.logger.error(`Error getting mobile staff connection: ${error.message}`);
+                throw new UnauthorizedException('Mobile authentication failed');
+            }
+
+            // Determine role from PHP response or employee data
+            const role = mobileAuthData?.account_type ||
+                employee.metadata?.get('role') ||
+                'business_staff';
+
+            // Get features filtered by role
+            const featuresInfo = await this.getBusinessFeaturesForLogin(
+                business._id.toString(),
+                role
+            );
+
+            // Return mobile auth data augmented with our business info and features
+            // but without sidebar links
+            return {
+                ...mobileAuthData, // Include all PHP response data
+                osUserId: user._id.toString(),
+                osBusinessId: business._id.toString(),
+                osEmployeeId: employee._id.toString(),
+                osBusiness: {
+                    name: business.name,
+                    email: business.email,
+                    type: business.type
+                },
+                osmployee: {
+                    id: employee._id,
+                    name: employee.name,
+                    email: employee.email,
+                    external_ids: employee.external_ids
+                },
+                account_type: role,
+                ...featuresInfo
+            };
+        } catch (error) {
+            this.logger.error(`Error in staffluentMobileLogin: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Mobile staff login failed');
+        }
+    }
+
+    /**
      * Login for client users
      */
     async staffluentsClientLogin(loginDto: StaffluentsClientLoginDto) {

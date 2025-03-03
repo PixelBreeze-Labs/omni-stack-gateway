@@ -2,8 +2,22 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import {SalesAssociateLoginDto} from "../dtos/user.dto";
-import {StaffluentsBusinessAdminLoginDto} from "../dtos/staffluent-login.dto";
+import { SalesAssociateLoginDto } from "../dtos/user.dto";
+import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
+
+
+// Define the mobile login DTO
+class StaffluentMobileLoginDto {
+    email: string;
+    password: string;
+    source_app?: string;
+    firebase_token?: string;
+    device_id?: string;
+    device_type?: string;
+    device_model?: string;
+    os_version?: string;
+    app_version?: string;
+}
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -25,6 +39,16 @@ export class AuthController {
     @ApiResponse({ status: 401, description: 'Invalid credentials' })
     async staffluentsBusinessAdminLogin(@Body() loginDto: StaffluentsBusinessAdminLoginDto) {
         const result = await this.authService.staffluentsUnifiedLogin(loginDto);
+        return result;
+    }
+
+    @Post('staffluent/mobile/login')
+    @ApiOperation({ summary: 'Staffluent mobile staff login' })
+    @ApiResponse({ status: 200, description: 'Login successful' })
+    @ApiResponse({ status: 401, description: 'Invalid credentials' })
+    @ApiResponse({ status: 404, description: 'User or business not found' })
+    async staffluentsMobileLogin(@Body() loginDto: StaffluentMobileLoginDto) {
+        const result = await this.authService.staffluentMobileLogin(loginDto);
         return result;
     }
 }

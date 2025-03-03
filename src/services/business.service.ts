@@ -116,7 +116,7 @@ export class BusinessService {
                     // Check if address exists
                     let addressId = business.addressId;
 
-                    // Map fields to use proper ID fields
+                    // Prepare address data with proper ID fields
                     const addressData = {
                         addressLine1: businessDetails.address.street || '',
                         cityId: businessDetails.address.cityId || null,
@@ -131,8 +131,9 @@ export class BusinessService {
                             { _id: addressId },
                             { $set: addressData }
                         );
+                        this.logger.log(`Updated address for business: ${businessId}`);
                     } else {
-                        // Create new address with proper ID fields
+                        // Create new address
                         const newAddress = await this.addressModel.create({
                             ...addressData,
                             businessId,
@@ -144,6 +145,7 @@ export class BusinessService {
                             { _id: businessId },
                             { $set: { addressId: newAddress._id } }
                         );
+                        this.logger.log(`Created new address for business: ${businessId}`);
                     }
                 }
             }
