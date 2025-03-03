@@ -106,6 +106,7 @@ import { AdminSubscriptionController } from './controllers/admin-subscription.co
 import { StaffluentDashboardController } from './controllers/staffluent-dashboard.controller';
 import { StaffluentAnalyticsController } from './controllers/staffluent-analytics.controller';
 import { AdminFeatureController } from './controllers/admin-feature.controller';
+import { LandingPageController } from './controllers/landing-page.controller';
 
 
 
@@ -302,7 +303,8 @@ import {JwtModule} from "@nestjs/jwt";
     AdminSubscriptionController,
     StaffluentAnalyticsController,
     StaffluentDashboardController,
-    AdminFeatureController
+    AdminFeatureController,
+    LandingPageController
   ],
   providers: [
     SnapfoodService,
