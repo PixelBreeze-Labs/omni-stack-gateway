@@ -422,6 +422,7 @@ export class AuthService {
                 employee.metadata?.get('role') ||
                 'business_staff';
 
+            // TODO: w don't need, subscription, tierFeatures, tierLimits for mobile
             // Get features filtered by role
             const featuresInfo = await this.getBusinessFeaturesForLogin(
                 business._id.toString(),
@@ -446,6 +447,10 @@ export class AuthService {
                     email: employee.email,
                     external_ids: employee.external_ids
                 },
+                // TODO: should be part employee model
+                allow_clockinout: true,
+                // TODO: should be set when creating th useer based on passwor,d tru, but read by employee model
+                has_app_access: true,
                 account_type: role,
                 ...featuresInfo
             };
