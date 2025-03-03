@@ -422,6 +422,7 @@ export class AuthService {
                 employee.metadata?.get('role') ||
                 'business_staff';
 
+            // TODO: w don't need, subscription, tierFeatures, tierLimits for mobile
             // Get features filtered by role
             const featuresInfo = await this.getBusinessFeaturesForLogin(
                 business._id.toString(),
