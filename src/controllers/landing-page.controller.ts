@@ -2,7 +2,7 @@
 import { Controller, Get, Post, Body, Param, UsePipes, ValidationPipe } from '@nestjs/common';
 import { SnapfoodAdminService } from '../services/snapfood-admin.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { LandingPageTrackingDto } from '../dto/landing-page-tracking.dto';
+import { LandingPageTrackingDto } from '../dtos/landing-page-tracking.dto';
 
 @ApiTags('Landing Page')
 @Controller('api/landing-page')
