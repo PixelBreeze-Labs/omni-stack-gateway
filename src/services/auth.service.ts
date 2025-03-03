@@ -414,7 +414,7 @@ export class AuthService {
                 });
             } catch (error) {
                 this.logger.error(`Error getting mobile staff connection: ${error.message}`);
-                throw new UnauthorizedException('Mobile authentication failed');
+                throw new UnauthorizedException(`Error getting mobile staff connection: ${error.message}`);
             }
 
             // Determine role from PHP response or employee data
