@@ -284,7 +284,7 @@ export const businessAdminLinks: SideLink[] = [
     {
         title: 'Dashboard',
         href: '/',
-        icon: null,
+        icon: null, // Icons will be added by the frontend
     },
     {
         title: 'Service Management',
@@ -319,25 +319,25 @@ export const businessAdminLinks: SideLink[] = [
         ],
     },
     {
-        title: 'Project Management',
-        href: '/projects',
+        title: 'Work Orders',
+        href: 'work-orders',
         icon: null,
         sub: [
             {
-                title: 'Projects',
-                href: '/projects/list',
+                title: 'Orders',
+                href: '/work-orders',
                 icon: null,
             },
             {
-                title: 'Tasks',
-                href: '/projects/tasks',
+                title: 'Settings',
+                href: '/work-orders/settings',
                 icon: null,
             },
             {
-                title: 'Time Entries',
-                href: '/projects/time-entries',
+                title: 'Reports',
+                href: '/work-orders/reports',
                 icon: null,
-            }
+            },
         ],
     },
     {
@@ -359,14 +359,51 @@ export const businessAdminLinks: SideLink[] = [
                 title: 'Client Feedback',
                 href: '/admin/clients/feedback',
                 icon: null,
+            },
+            {
+                title: 'Client Sign-offs',
+                href: '/admin/clients/client-sign-off',
+                icon: null,
             }
         ],
+    },
+    {
+        title: 'Invoice Management',
+        href: 'invoices',
+        icon: null,
+        sub: [
+            {
+                title: 'All Invoices',
+                href: '/admin/invoices',
+                icon: null,
+            },
+            {
+                title: 'Generate Invoice',
+                href: '/admin/invoices/create',
+                icon: null,
+            },
+            {
+                title: 'Payment History',
+                href: '/admin/invoices/payments',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Real-Time Activity',
+        href: '/real-time-activity',
+        icon: null,
     },
     {
         title: 'Staff Management',
         href: '/staff-management',
         icon: null,
         sub: [
+            {
+                title: 'Departments',
+                href: '/departments',
+                icon: null,
+            },
             {
                 title: 'Employees',
                 href: '/employees',
@@ -378,15 +415,396 @@ export const businessAdminLinks: SideLink[] = [
                 icon: null,
             },
             {
+                title: 'Shifts',
+                href: '/shifts/list',
+                icon: null,
+            },
+            {
                 title: 'Attendance records',
                 href: '/shifts/attendance-record',
+                icon: null,
+            },
+            {
+                title: 'Time Sheets',
+                href: '/shifts/time-sheets',
+                icon: null,
+            },
+            {
+                title: 'Breaks',
+                href: '/shifts/breaks',
                 icon: null,
             }
         ],
     },
     {
+        title: 'Performance Metrics',
+        href: '/performance-metrics',
+        icon: null,
+    },
+    {
+        title: 'Support',
+        href: '/support',
+        icon: null,
+        sub: [
+            {
+                title: 'Tickets',
+                href: '/admin/support/tickets',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Leave Management',
+        href: '/leave-management',
+        icon: null,
+        sub: [
+            {
+                title: 'Leave Types',
+                href: '/leave-management/leave-types',
+                icon: null,
+            },
+            {
+                title: 'Time-Off Requests',
+                href: '/leave-management/time-off-requests',
+                icon: null,
+            },
+            {
+                title: 'Leave Dashboard',
+                href: '/leave-management/dashboard',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Overtime',
+        href: '/overtime',
+        icon: null,
+        sub: [
+            {
+                title: 'List',
+                href: '/overtime/list',
+                icon: null,
+            },
+            {
+                title: 'Overtime dashboard',
+                href: '/overtime/dashboard',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Reports',
+        href: '/reports',
+        icon: null,
+        sub: [
+            {
+                title: 'Productivity Reports',
+                href: '/reports/productivity',
+                icon: null,
+            },
+            {
+                title: 'Attendance Reports',
+                href: '/reports/attendance',
+                icon: null,
+            },
+            {
+                title: 'Service Analytics',
+                href: '/admin/reports/services',
+                icon: null,
+            },
+            {
+                title: 'Client Analytics',
+                href: '/admin/reports/clients',
+                icon: null,
+            },
+            {
+                title: 'Revenue Reports',
+                href: '/admin/reports/revenue',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Schedule',
+        href: '/schedule',
+        icon: null,
+    },
+    {
+        title: 'Quality Control',
+        href: '/quality-control',
+        icon: null,
+        sub: [
+            {
+                title: 'Compliance',
+                href: '/compliance',
+                icon: null,
+            },
+            {
+                title: 'Inspection Checklists',
+                href: '/quality-control/checklists',
+                icon: null,
+            },
+            {
+                title: 'Quality Metrics',
+                href: '/quality-control/metrics',
+                icon: null,
+            },
+            {
+                title: 'Safety Audits',
+                href: '/quality-control/safety-audits',
+                icon: null,
+            },
+            {
+                title: 'Code Compliance',
+                href: '/quality-control/compliance',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Equipment Management',
+        href: '/equipment',
+        icon: null,
+        sub: [
+            {
+                title: 'Asset Tracking',
+                href: '/equipment/tracking',
+                icon: null,
+            },
+            {
+                title: 'Maintenance Schedule',
+                href: '/equipment/maintenance',
+                icon: null,
+            },
+            {
+                title: 'Usage Monitoring',
+                href: '/equipment/monitoring',
+                icon: null,
+            },
+            {
+                title: 'Equipment Assignment',
+                href: '/equipment/assignment',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Field Operations',
+        href: '/field-ops',
+        icon: null,
+        sub: [
+            {
+                title: 'Team Location',
+                href: '/field-ops/location',
+                icon: null,
+            },
+            {
+                title: 'Route Planning',
+                href: '/field-ops/routes',
+                icon: null,
+            },
+            {
+                title: 'Service Areas',
+                href: '/field-ops/service-areas',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Site Management',
+        href: '/sites',
+        icon: null,
+        sub: [
+            {
+                title: 'Sites Overview',
+                href: '/sites/overview',
+                icon: null,
+            },
+            {
+                title: 'Site Configuration',
+                href: '/sites/configuration',
+                icon: null,
+            },
+            {
+                title: 'Resource Allocation',
+                href: '/sites/resources',
+                icon: null,
+            },
+            {
+                title: 'Site Monitoring',
+                href: '/sites/monitoring',
+                icon: null,
+            },
+            {
+                title: 'Site Documentation',
+                href: '/sites/documents',
+                icon: null,
+            },
+            {
+                title: 'Site Access Control',
+                href: '/sites/access',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Project Management',
+        href: '/projects',
+        icon: null,
+        sub: [
+            {
+                title: 'Projects',
+                href: '/projects/list',
+                icon: null,
+            },
+            {
+                title: 'Tasks',
+                href: '/projects/tasks',
+                icon: null,
+            },
+            {
+                title: 'Time Entries',
+                href: '/projects/time-entries',
+                icon: null,
+            },
+            {
+                title: 'Construction Milestones',
+                href: '/projects/milestones',
+                icon: null,
+            },
+            {
+                title: 'Site Workflows',
+                href: '/projects/workflows',
+                icon: null,
+            },
+            {
+                title: 'Material Tracking',
+                href: '/projects/materials',
+                icon: null,
+            },
+            {
+                title: 'Weather Monitoring',
+                href: '/projects/weather',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Supply Management',
+        href: '/supply-management',
+        icon: null,
+        sub: [
+            {
+                title: 'Inventory',
+                href: '/supply-management/inventory',
+                icon: null,
+            },
+            {
+                title: 'Equipment Allocation',
+                href: '/supply-management/allocation',
+                icon: null,
+            },
+            {
+                title: 'Usage Monitoring',
+                href: '/supply-management/usage',
+                icon: null,
+            },
+            {
+                title: 'Cost Tracking',
+                href: '/supply-management/costs',
+                icon: null,
+            },
+            {
+                title: 'Suppliers',
+                href: '/supply-management/suppliers',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Safety Management',
+        href: '/safety',
+        icon: null,
+        sub: [
+            {
+                title: 'Barrier Management',
+                href: '/safety/barriers',
+                icon: null,
+            },
+            {
+                title: 'OSHA Compliance',
+                href: '/safety/osha',
+                icon: null,
+            },
+            {
+                title: 'ADA Compliance',
+                href: '/safety/ada',
+                icon: null,
+            },
+            {
+                title: 'Site Safety Maps',
+                href: '/safety/maps',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Analytics & Reports',
+        href: '/reports',
+        icon: null,
+        sub: [
+            {
+                title: 'Quality Metrics',
+                href: '/reports/quality',
+                icon: null,
+            },
+            {
+                title: 'Equipment Usage',
+                href: '/reports/equipment',
+                icon: null,
+            },
+            {
+                title: 'Safety Compliance',
+                href: '/reports/safety',
+                icon: null,
+            },
+            {
+                title: 'Site Performance',
+                href: '/reports/sites',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Configuration',
+        href: '/configuration',
+        icon: null,
+        sub: [
+            {
+                title: 'Alerts',
+                href: '/configuration/alerts',
+                icon: null,
+            },
+            {
+                title: 'Messages',
+                href: '/configuration/messages',
+                icon: null,
+            },
+            {
+                title: 'Roles',
+                href: '/configuration/roles',
+                icon: null,
+            },
+        ],
+    },
+    {
+        title: 'Audit Logs',
+        href: '/audit-logs',
+        icon: null,
+    },
+    {
         title: 'Settings',
         href: '/settings',
         icon: null,
-    }
+    },
 ];
