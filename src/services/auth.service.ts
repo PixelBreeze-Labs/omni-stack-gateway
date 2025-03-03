@@ -454,7 +454,7 @@ export class AuthService {
             if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
                 throw error;
             }
-            throw new UnauthorizedException('Mobile staff login failed');
+            throw new UnauthorizedException(error);
         }
     }
 
