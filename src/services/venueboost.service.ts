@@ -551,4 +551,66 @@ export class VenueBoostService {
             throw error;
         }
     }
+
+    /**
+     * Get mobile staff connection via PHP backend with complete authentication data
+     *
+     * @param authData Complete authentication data
+     * @returns PHP authentication response with user and token data
+     */
+    async getMobileStaffConnection(authData: {
+        email: string;
+        password: string;
+        source_app?: string;
+        firebase_token?: string;
+        device_id?: string;
+        device_type?: string;
+        device_model?: string;
+        os_version?: string;
+        app_version?: string;
+    }): Promise<any> {
+        try {
+            this.logger.log(`Getting mobile staff connection for email: ${authData.email}`);
+
+            // Set default values for any missing fields
+            const requestData = {
+                email: authData.email,
+                password: authData.password,
+                source_app: authData.source_app || 'staff',
+                firebase_token: authData.firebase_token || '',
+                device_id: authData.device_id || '',
+                device_type: authData.device_type || 'mobile',
+                device_model: authData.device_model || '',
+                os_version: authData.os_version || '',
+                app_version: authData.app_version || ''
+            };
+
+            // Make request to PHP backend with the exact data structure PHP expects
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/auth-os/get-mobile-staff-connection`,
+                requestData,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error('Failed to get mobile staff connection', response.data);
+                throw new Error(response.data.error || 'Failed to get mobile staff connection');
+            }
+
+            this.logger.log(`Successfully authenticated mobile staff: ${authData.email}`);
+
+            // Return the exact same response PHP would return
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Error getting mobile staff connection: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
 }
