@@ -825,4 +825,88 @@ export class AuthService {
                 );
         }
     }
+
+
+    /**
+     * Retrieves business admin details by user ID without requiring email/password authentication
+     * @param userId The ID of the user to authenticate as a business admin
+     * @returns Authentication and business details similar to staffluentsBusinessAdminLogin
+     */
+    async getBusinessAdminByUserId(userId: string) {
+        try {
+            // Find user by ID
+            const user = await this.userModel.findById(userId);
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Verify user is from Staffluent
+            if (user.registrationSource !== RegistrationSource.STAFFLUENT) {
+                throw new UnauthorizedException('User is not a Staffluent user');
+            }
+
+            // Find the business for this admin user
+            const business = await this.businessModel.findOne({adminUserId: user._id});
+            if (!business) {
+                throw new NotFoundException('No business found for this user');
+            }
+
+            // Get VenueBoost authentication data if available
+            let auth_response = null;
+            try {
+                if (user.external_ids?.supabaseId) {
+                    auth_response = await this.venueBoostService.getConnection(
+                        user.email,
+                        user.external_ids.supabaseId
+                    );
+                }
+            } catch (error) {
+                this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
+                // Continue even if getting auth response fails
+            }
+
+            // Get features and subscription details
+            const businessFeatures = await this.getBusinessFeaturesForLogin(business._id.toString(), 'business_admin');
+
+            // Get sidebar links for business admin
+            const sidebarLinks = await this.sidebarFeatureService.getSidebarLinksByRole(
+                user._id.toString(),
+                'business_admin'
+            );
+
+            // Generate JWT token
+            const token = this.jwtService.sign({
+                sub: user._id.toString(),
+                email: user.email,
+                businessId: business._id.toString(),
+                clientId: business.clientId,
+                role: 'business_admin'
+            });
+
+            return {
+                status: 'success',
+                message: 'Authentication successful',
+                token,
+                userId: user._id.toString(),
+                has_changed_password: user.metadata?.get('has_changed_password') === 'true',
+                businessId: business._id.toString(),
+                business: {
+                    name: business.name,
+                    email: business.email,
+                    type: business.type,
+                    subscriptionStatus: business.subscriptionStatus,
+                    subscriptionEndDate: business.subscriptionEndDate
+                },
+                auth_response,
+                sidebarLinks,
+                ...businessFeatures
+            };
+        } catch (error) {
+            this.logger.error(`Error in getBusinessAdminByUserId: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Authentication failed');
+        }
+    }
 }

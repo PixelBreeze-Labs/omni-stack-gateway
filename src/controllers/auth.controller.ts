@@ -51,4 +51,14 @@ export class AuthController {
         const result = await this.authService.staffluentMobileLogin(loginDto);
         return result;
     }
+
+    @Post('staffluent/business-admin/by-userId')
+    @ApiOperation({ summary: 'Get Staffluent business admin by user ID' })
+    @ApiResponse({ status: 200, description: 'Authentication successful' })
+    @ApiResponse({ status: 401, description: 'Authentication failed' })
+    @ApiResponse({ status: 404, description: 'User or business not found' })
+    async getBusinessAdminByUserId(@Body() payload: { userId: string }) {
+        const result = await this.authService.getBusinessAdminByUserId(payload.userId);
+        return result;
+    }
 }
