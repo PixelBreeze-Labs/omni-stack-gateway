@@ -628,9 +628,9 @@ export class VenueBoostService {
 
 
             // Call the VenueBoost API
-            const response$ = this.httpService.get(`${this.baseUrl}/rental-units-os`, {
+            const response$ = this.httpService.get(`${this.baseUrl}/accommodation-os`, {
                 params: {
-                    omnigateway_api_key: client._id.toString()
+                    omnigateway_api_key: client.apiKey.toString()
                 },
                 headers: {
                     'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
