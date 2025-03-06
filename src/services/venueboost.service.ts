@@ -1,5 +1,5 @@
 // src/services/venueboost.service.ts
-import {BadRequestException, Injectable, Logger, NotFoundException} from '@nestjs/common';
+import {BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
@@ -611,6 +611,48 @@ export class VenueBoostService {
             return response.data;
         } catch (error) {
             this.logger.error(`Error getting mobile staff connection: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * List rental units from VenueBoost for a client
+     *
+     * @param clientId The MongoDB ID of the client
+     * @returns List of rental units
+     */
+    async listRentalUnits(clientId: string) {
+        try {
+            // Get the client to fetch omnigateway_api_key
+            const client = await this.clientModel.findById(clientId);
+
+
+            // Call the VenueBoost API
+            const response$ = this.httpService.get(`${this.baseUrl}/rental-units-os`, {
+                params: {
+                    omnigateway_api_key: client._id.toString()
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                },
+                validateStatus: (status) => status < 500
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new UnauthorizedException(response.data.error || 'Invalid API key');
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch rental units:', error);
             throw error;
         }
     }
