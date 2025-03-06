@@ -58,6 +58,7 @@ import { VerificationToken, VerificationTokenSchema } from './schemas/verificati
 import { MagicLinkToken, MagicLinkTokenSchema } from './schemas/magic-link-token.schema';
 import { AppClient, AppClientSchema } from './schemas/app-client.schema';
 import { Employee, EmployeeSchema } from './schemas/employee.schema';
+import { Property, PropertySchema } from './schemas/property.schema';
 
 
 
@@ -107,6 +108,7 @@ import { StaffluentDashboardController } from './controllers/staffluent-dashboar
 import { StaffluentAnalyticsController } from './controllers/staffluent-analytics.controller';
 import { AdminFeatureController } from './controllers/admin-feature.controller';
 import { LandingPageController } from './controllers/landing-page.controller';
+import { PropertyController } from './controllers/property.controller';
 
 
 
@@ -174,6 +176,7 @@ import { StaffluentAnalyticsService } from "./services/staffluent-analytics.serv
 import { StaffluentDashboardService } from "./services/staffluent-dashboard.service";
 import { FeatureAccessService } from "./services/feature-access.service";
 import { SidebarFeatureService } from "./services/sidebar-feature.service";
+import { PropertyService } from "./services/property.service";
 
 
 // Others
@@ -249,6 +252,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: MagicLinkToken.name, schema: MagicLinkTokenSchema },
       { name: AppClient.name, schema: AppClientSchema },
       { name: Employee.name, schema: EmployeeSchema },
+      { name: Property.name, schema: PropertySchema },
     ]),
   ],
   controllers: [
@@ -304,7 +308,8 @@ import {JwtModule} from "@nestjs/jwt";
     StaffluentAnalyticsController,
     StaffluentDashboardController,
     AdminFeatureController,
-    LandingPageController
+    LandingPageController,
+    PropertyController
   ],
   providers: [
     SnapfoodService,
@@ -367,7 +372,8 @@ import {JwtModule} from "@nestjs/jwt";
     StaffluentDashboardService,
     FeatureAccessService,
     StaffluentAnalyticsService,
-    SidebarFeatureService
+    SidebarFeatureService,
+    PropertyService
   ],
 })
 export class AppModule implements NestModule {

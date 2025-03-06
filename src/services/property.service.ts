@@ -6,6 +6,14 @@ import { Property, PropertyStatus, PropertyType } from '../schemas/property.sche
 import { VenueBoostService } from './venueboost.service';
 import { Client } from '../schemas/client.schema';
 
+interface FindAllOptions {
+    page: number;
+    limit: number;
+    search?: string;
+    status?: PropertyStatus;
+    type?: PropertyType;
+}
+
 @Injectable()
 export class PropertyService {
     private readonly logger = new Logger(PropertyService.name);
@@ -15,6 +23,93 @@ export class PropertyService {
         @InjectModel(Client.name) private clientModel: Model<Client>,
         private readonly venueBoostService: VenueBoostService
     ) {}
+
+    /**
+     * Find all properties with filtering and pagination
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param options Filter and pagination options
+     * @returns Paginated properties list
+     */
+    async findAll(clientId: string, options: FindAllOptions) {
+        try {
+            const { page, limit, search, status, type } = options;
+            const skip = (page - 1) * limit;
+
+            // Build the filter
+            const filter: any = { clientId };
+
+            // Add status filter if provided
+            if (status) {
+                filter.status = status;
+            }
+
+            // Add type filter if provided
+            if (type) {
+                filter.type = type;
+            }
+
+            // Add search filter if provided
+            if (search) {
+                // Search in name and metadata address
+                filter.$or = [
+                    { name: { $regex: search, $options: 'i' } },
+                    { 'metadata.address': { $regex: search, $options: 'i' } }
+                ];
+            }
+
+            // Execute the query with pagination
+            const [properties, total] = await Promise.all([
+                this.propertyModel
+                    .find(filter)
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .lean(),
+                this.propertyModel.countDocuments(filter)
+            ]);
+
+            // Calculate pagination metadata
+            const totalPages = Math.ceil(total / limit);
+            const hasNextPage = page < totalPages;
+            const hasPrevPage = page > 1;
+
+            return {
+                data: properties,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages,
+                    hasNextPage,
+                    hasPrevPage
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error finding properties: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Find a property by ID
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param id The property ID
+     * @returns The property if found
+     */
+    async findById(clientId: string, id: string) {
+        const property = await this.propertyModel.findOne({
+            _id: id,
+            clientId
+        }).lean();
+
+        if (!property) {
+            throw new NotFoundException('Property not found');
+        }
+
+        return { data: property };
+    }
 
     /**
      * Sync properties from VenueBoost for a client
@@ -47,7 +142,7 @@ export class PropertyService {
             for (const rentalUnit of rentalUnits) {
                 // Check if property exists by external ID
                 const existingProperty = await this.propertyModel.findOne({
-                    'externalIds.venueboostId': rentalUnit.id
+                    'externalIds.venueboostId': rentalUnit.id.toString()
                 });
 
                 if (existingProperty) {
@@ -100,7 +195,7 @@ export class PropertyService {
                         status: PropertyStatus.ACTIVE,
                         type: this.mapVenueBoostTypeToPropertyType(rentalUnit.accommodation_type),
                         externalIds: {
-                            venueboostId: rentalUnit.id
+                            venueboostId: rentalUnit.id.toString()
                         },
                         metadata: new Map([
                             ['address', rentalUnit.address],
