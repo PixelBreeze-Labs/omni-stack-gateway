@@ -3,7 +3,15 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
-export type BenefitType = 'DISCOUNT' | 'CASHBACK' | 'POINTS' | 'FREE_SHIPPING';
+export type BenefitType =
+    'DISCOUNT' |
+    'CASHBACK' |
+    'POINTS' |
+    'FREE_SHIPPING' |
+    'ROOM_UPGRADE' |
+    'LATE_CHECKOUT' |
+    'EARLY_CHECKIN' |
+    'FREE_BREAKFAST';
 
 @Schema({ timestamps: true })
 export class Benefit extends Document {
@@ -16,7 +24,19 @@ export class Benefit extends Document {
     @Prop()
     description: string;
 
-    @Prop({ type: String, enum: ['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'] })
+    @Prop({
+        type: String,
+        enum: [
+            'DISCOUNT',
+            'CASHBACK',
+            'POINTS',
+            'FREE_SHIPPING',
+            'ROOM_UPGRADE',
+            'LATE_CHECKOUT',
+            'EARLY_CHECKIN',
+            'FREE_BREAKFAST'
+        ]
+    })
     type: BenefitType;
 
     @Prop({ type: Number, required: true })

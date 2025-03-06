@@ -14,7 +14,18 @@ export class BenefitResponse {
     @ApiProperty()
     description: string;
 
-    @ApiProperty({ enum: ['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'] })
+    @ApiProperty({
+      enum: [
+        'DISCOUNT',
+        'CASHBACK',
+        'POINTS',
+        'FREE_SHIPPING',
+        'ROOM_UPGRADE',
+        'LATE_CHECKOUT',
+        'EARLY_CHECKIN',
+        'FREE_BREAKFAST'
+      ]
+    })
     type: string;
 
     @ApiProperty()
@@ -34,7 +45,18 @@ export class BenefitUsageResponse {
     @ApiProperty()
     savings: number;
 
-    @ApiProperty({ enum: ['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'] })
+    @ApiProperty({
+      enum: [
+        'DISCOUNT',
+        'CASHBACK',
+        'POINTS',
+        'FREE_SHIPPING',
+        'ROOM_UPGRADE',
+        'LATE_CHECKOUT',
+        'EARLY_CHECKIN',
+        'FREE_BREAKFAST'
+      ]
+    })
     type: string;
 
     @ApiProperty()
@@ -51,11 +73,35 @@ export class BenefitDto {
     @IsOptional()
     description?: string;
 
-    @ApiProperty({ enum: ['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'] })
-    @IsEnum(['DISCOUNT', 'CASHBACK', 'POINTS', 'FREE_SHIPPING'])
+    @ApiProperty({
+      enum: [
+        'DISCOUNT',
+        'CASHBACK',
+        'POINTS',
+        'FREE_SHIPPING',
+        'ROOM_UPGRADE',
+        'LATE_CHECKOUT',
+        'EARLY_CHECKIN',
+        'FREE_BREAKFAST'
+      ]
+    })
+    @IsEnum([
+      'DISCOUNT',
+      'CASHBACK',
+      'POINTS',
+      'FREE_SHIPPING',
+      'ROOM_UPGRADE',
+      'LATE_CHECKOUT',
+      'EARLY_CHECKIN',
+      'FREE_BREAKFAST'
+    ])
     type: BenefitType;
 
-    @ApiProperty()
+    @ApiProperty({
+      description: 'The value of the benefit. For DISCOUNT: percentage. For POINTS: number of points. ' +
+                  'For ROOM_UPGRADE: upgrade level. For LATE_CHECKOUT/EARLY_CHECKIN: hours. ' +
+                  'For FREE_BREAKFAST: number of breakfasts included.'
+    })
     @IsNumber()
     value: number;
 
@@ -69,11 +115,10 @@ export class BenefitDto {
     @IsString({ each: true })
     applicableTiers?: string[];
 
-
-   @ApiProperty()
-   @IsOptional()
-   @IsNumber()
-   minSpend?: number;
+    @ApiProperty()
+    @IsOptional()
+    @IsNumber()
+    minSpend?: number;
 }
 
 export class CreateBenefitDto extends BenefitDto {}
