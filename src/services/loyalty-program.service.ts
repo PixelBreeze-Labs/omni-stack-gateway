@@ -2,8 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Client } from '../schemas/client.schema';
 import { Model } from 'mongoose';
-import { UpdateLoyaltyProgramDto, UpdatePointsSystemDto, BonusDayDto } from '../dtos/loyalty-program.dto';
-import { LoyaltyProgram } from '../schemas/loyalty-program.schema';
+import {
+    UpdateLoyaltyProgramDto,
+    UpdatePointsSystemDto,
+    BonusDayDto,
+    StayTrackingDto
+} from '../dtos/loyalty-program.dto';
+import { LoyaltyProgram, StayTracking } from '../schemas/loyalty-program.schema';
 
 @Injectable()
 export class LoyaltyProgramService {
@@ -16,6 +21,11 @@ export class LoyaltyProgramService {
             ...day,
             date: new Date(day.date)
         }));
+    }
+
+    // Transform pointsPerStay from plain object to Map for storage
+    private transformPointsPerStay(pointsPerStay: Record<string, number> = {}): Map<string, number> {
+        return new Map(Object.entries(pointsPerStay));
     }
 
     async getLoyaltyProgram(clientId: string): Promise<LoyaltyProgram> {
@@ -101,11 +111,39 @@ export class LoyaltyProgramService {
             perks: mt.perks ?? []
         }));
 
+        // Initialize with default values for accommodation-specific stayTracking
+        const defaultStayTracking: StayTracking = {
+            evaluationPeriod: { upgrade: 12, downgrade: 6 },
+            pointsPerStay: new Map<string, number>(),
+            stayDefinition: { minimumNights: 1, checkoutRequired: true }
+        };
+
+        // Handle accommodation-specific stayTracking
+        const currentStayTracking = currentLp.stayTracking || defaultStayTracking;
+
+        const updatedStayTracking = updateDto.stayTracking
+            ? {
+                ...currentStayTracking,
+                evaluationPeriod: {
+                    ...currentStayTracking.evaluationPeriod,
+                    ...updateDto.stayTracking.evaluationPeriod
+                },
+                stayDefinition: {
+                    ...currentStayTracking.stayDefinition,
+                    ...updateDto.stayTracking.stayDefinition
+                },
+                pointsPerStay: updateDto.stayTracking.pointsPerStay
+                    ? this.transformPointsPerStay(updateDto.stayTracking.pointsPerStay)
+                    : currentStayTracking.pointsPerStay
+            }
+            : currentStayTracking;
+
         const updatedLoyaltyProgram = {
             ...currentLp,
             ...updateDto,
             pointsSystem: updatedPointsSystem,
             membershipTiers: updatedMembershipTiers,
+            stayTracking: updatedStayTracking
         };
 
         client.loyaltyProgram = updatedLoyaltyProgram as LoyaltyProgram;
@@ -131,6 +169,44 @@ export class LoyaltyProgramService {
                 ...client.loyaltyProgram.pointsSystem,
                 ...transformedUpdateDto
             }
+        };
+
+        client.loyaltyProgram = updatedProgram as LoyaltyProgram;
+        return client.save();
+    }
+
+    async updateStayTracking(clientId: string, updateDto: StayTrackingDto) {
+        const client = await this.clientModel.findById(clientId);
+        if (!client) throw new NotFoundException('Client not found');
+
+        // Initialize with default values for stay tracking
+        const defaultStayTracking: StayTracking = {
+            evaluationPeriod: { upgrade: 12, downgrade: 6 },
+            pointsPerStay: new Map<string, number>(),
+            stayDefinition: { minimumNights: 1, checkoutRequired: true }
+        };
+
+        // Get current stayTracking or initialize if doesn't exist
+        const currentStayTracking = client.loyaltyProgram.stayTracking || defaultStayTracking;
+
+        const updatedStayTracking = {
+            ...currentStayTracking,
+            evaluationPeriod: {
+                ...currentStayTracking.evaluationPeriod,
+                ...updateDto.evaluationPeriod
+            },
+            stayDefinition: {
+                ...currentStayTracking.stayDefinition,
+                ...updateDto.stayDefinition
+            },
+            pointsPerStay: updateDto.pointsPerStay
+                ? this.transformPointsPerStay(updateDto.pointsPerStay)
+                : currentStayTracking.pointsPerStay
+        };
+
+        const updatedProgram = {
+            ...client.loyaltyProgram,
+            stayTracking: updatedStayTracking
         };
 
         client.loyaltyProgram = updatedProgram as LoyaltyProgram;

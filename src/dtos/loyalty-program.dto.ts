@@ -6,7 +6,9 @@ import {
     IsArray,
     ValidateNested,
     IsDateString,
-    IsDate
+    IsDate,
+    IsBoolean,
+    IsObject
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -114,6 +116,53 @@ export class PointsSystemDto {
     redeemingPoints: RedeemingPointsDto;
 }
 
+// New DTO for stay-related configuration
+export class EvaluationPeriodDto {
+    @ApiPropertyOptional({ description: 'Number of months for tier upgrades', default: 12 })
+    @IsNumber()
+    @IsOptional()
+    upgrade?: number;
+
+    @ApiPropertyOptional({ description: 'Number of months for tier downgrades', default: 6 })
+    @IsNumber()
+    @IsOptional()
+    downgrade?: number;
+}
+
+export class StayDefinitionDto {
+    @ApiPropertyOptional({ description: 'Minimum nights required to count as a stay', default: 1 })
+    @IsNumber()
+    @IsOptional()
+    minimumNights?: number;
+
+    @ApiPropertyOptional({ description: 'Whether checkout is required to complete a stay', default: true })
+    @IsBoolean()
+    @IsOptional()
+    checkoutRequired?: boolean;
+}
+
+export class StayTrackingDto {
+    @ApiPropertyOptional({ type: EvaluationPeriodDto })
+    @ValidateNested()
+    @Type(() => EvaluationPeriodDto)
+    @IsOptional()
+    evaluationPeriod?: EvaluationPeriodDto;
+
+    @ApiPropertyOptional({
+        description: 'Points earned per stay based on tier',
+        example: { bronze: 100, silver: 150, gold: 200, platinum: 250 }
+    })
+    @IsObject()
+    @IsOptional()
+    pointsPerStay?: Record<string, number>;
+
+    @ApiPropertyOptional({ type: StayDefinitionDto })
+    @ValidateNested()
+    @Type(() => StayDefinitionDto)
+    @IsOptional()
+    stayDefinition?: StayDefinitionDto;
+}
+
 export class UpdateLoyaltyProgramDto {
     @ApiPropertyOptional({ default: '' })
     @IsString()
@@ -137,6 +186,16 @@ export class UpdateLoyaltyProgramDto {
     @Type(() => MembershipTierDto)
     @IsOptional()
     membershipTiers?: MembershipTierDto[];
+
+    // Add the new stay tracking field
+    @ApiPropertyOptional({
+        type: StayTrackingDto,
+        description: 'Accommodation-specific loyalty settings'
+    })
+    @ValidateNested()
+    @Type(() => StayTrackingDto)
+    @IsOptional()
+    stayTracking?: StayTrackingDto;
 }
 
 export class UpdatePointsSystemDto {
