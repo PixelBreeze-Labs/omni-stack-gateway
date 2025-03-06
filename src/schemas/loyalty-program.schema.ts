@@ -81,6 +81,40 @@ export class PointsSystem {
 }
 export const PointsSystemSchema = SchemaFactory.createForClass(PointsSystem);
 
+// New schemas for accommodation-specific features
+@Schema({ _id: false })
+export class StayDefinition {
+    @Prop({ default: 1 })
+    minimumNights: number;
+
+    @Prop({ default: true })
+    checkoutRequired: boolean;
+}
+export const StayDefinitionSchema = SchemaFactory.createForClass(StayDefinition);
+
+@Schema({ _id: false })
+export class EvaluationPeriod {
+    @Prop({ default: 12 })
+    upgrade: number;
+
+    @Prop({ default: 6 })
+    downgrade: number;
+}
+export const EvaluationPeriodSchema = SchemaFactory.createForClass(EvaluationPeriod);
+
+@Schema({ _id: false })
+export class StayTracking {
+    @Prop({ type: EvaluationPeriodSchema, default: () => ({}) })
+    evaluationPeriod: EvaluationPeriod;
+
+    @Prop({ type: Map, of: Number, default: () => new Map() })
+    pointsPerStay: Map<string, number>;
+
+    @Prop({ type: StayDefinitionSchema, default: () => ({}) })
+    stayDefinition: StayDefinition;
+}
+export const StayTrackingSchema = SchemaFactory.createForClass(StayTracking);
+
 @Schema({ _id: false })
 export class LoyaltyProgram {
     @Prop({ default: '' })
@@ -94,5 +128,9 @@ export class LoyaltyProgram {
 
     @Prop({ type: [MembershipTierSchema], default: [] })
     membershipTiers: MembershipTier[];
+
+    // Add accommodation-specific fields
+    @Prop({ type: StayTrackingSchema, default: () => ({}) })
+    stayTracking: StayTracking;
 }
 export const LoyaltyProgramSchema = SchemaFactory.createForClass(LoyaltyProgram);
