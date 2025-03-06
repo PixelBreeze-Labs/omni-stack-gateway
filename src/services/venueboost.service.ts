@@ -623,14 +623,15 @@ export class VenueBoostService {
      */
     async listRentalUnits(clientId: string) {
         try {
-            // Get the client to fetch omnigateway_api_key
-            const client = await this.clientModel.findById(clientId);
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
 
-
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
             // Call the VenueBoost API
             const response$ = this.httpService.get(`${this.baseUrl}/accommodation-os`, {
                 params: {
-                    omnigateway_api_key: client.apiKey.toString()
+                    omnigateway_api_key: client.apiKey
                 },
                 headers: {
                     'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
