@@ -10,6 +10,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {RegistrationSource, User} from '../schemas/user.schema';
 import { CreateUserDto, GetOrCreateUserDto } from '../dtos/user.dto';
+import { GetOrCreateGuestDto } from '../dtos/guest.dto';
 import * as bcrypt from 'bcrypt';
 import { Store } from "../schemas/store.schema";
 import { Client } from "../schemas/client.schema";
@@ -22,6 +23,7 @@ import { Business } from '../schemas/business.schema';
 import {StaffUserParams, StaffUserResponse} from "../interfaces/staff-user.interface";
 import {VenueBoostService} from "./venueboost.service";
 import {AppClient} from "../schemas/app-client.schema";
+import {Guest} from "../schemas/guest.schema";
 
 
 export interface PopulatedReferral {
@@ -82,6 +84,7 @@ export class UserService {
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
         @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
+        @InjectModel(Guest.name) private guestModel: Model<Guest>,
     private walletService: WalletService,
         @Inject(forwardRef(() => CustomerService))
         private customerService: CustomerService,
@@ -844,5 +847,152 @@ export class UserService {
             }
         );
 
+    }
+
+    async getOrCreateGuest(
+        venueShortCode: string,
+        webhookApiKey: string,
+        guestData: GetOrCreateGuestDto
+    ): Promise<any> {
+        // Verify client credentials
+        const requestClient = await this.clientModel.findOne({
+            'venueBoostConnection.venueShortCode': venueShortCode,
+            'venueBoostConnection.webhookApiKey': webhookApiKey,
+            'venueBoostConnection.status': 'connected'
+        });
+
+        if (!requestClient) {
+            throw new UnauthorizedException('Invalid venue or webhook key');
+        }
+
+        // Convert external_id to string if present
+        const externalId = guestData.external_id;
+
+        // Try to find existing user first by external ID
+        let existingUser = null;
+        if (externalId) {
+            existingUser = await this.userModel.findOne({
+                'external_ids.venueBoostId': externalId
+            }).populate('walletId');
+        }
+
+        // If not found by external ID, try by email
+        if (!existingUser && guestData.email) {
+            existingUser = await this.userModel.findOne({
+                email: guestData.email
+            }).populate('walletId');
+        }
+
+        // Find or create the guest
+        let guest = null;
+        let wallet = null;
+
+        if (existingUser) {
+            // User exists, check if guest exists for this user
+            guest = await this.guestModel.findOne({
+                userId: existingUser._id.toString()
+            });
+
+            // If guest doesn't exist, create it
+            if (!guest) {
+                guest = await this.guestModel.create({
+                    userId: existingUser._id.toString(),
+                    name: `${guestData.name} ${guestData.surname || ''}`.trim(),
+                    email: guestData.email,
+                    phone: guestData.phone,
+                    isActive: true,
+                    clientIds: [requestClient._id.toString()],
+                    external_ids: {
+                        venueBoostId: externalId || null
+                    }
+                });
+            }
+
+            // Get or create wallet
+            wallet = await this.walletService.findOrCreateWallet(
+                existingUser._id.toString(),
+                requestClient._id.toString(),
+                requestClient.defaultCurrency || 'EUR'
+            );
+
+            // Return existing user and guest information
+            return {
+                user: existingUser,
+                userId: existingUser._id.toString(),
+                guestId: guest._id.toString(),
+                walletBalance: wallet.balance || 0,
+                currentTierName: existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier',
+                referralCode: existingUser.referralCode
+            };
+        } else {
+            // User doesn't exist, create new user directly (NOT using registerUser)
+
+            // 1. Generate referral code
+            const referralCode = this.generateReferralCode();
+
+            // 2. Hash password
+            const hashedPassword = await bcrypt.hash(guestData.password, 10);
+
+            // 3. Determine basic tier for user
+            let initialClientTiers: Record<string, string> = {};
+            initialClientTiers[requestClient._id.toString()] = 'Default Tier';
+
+            // 4. Create new user with minimal required fields
+            const newUser = new this.userModel({
+                name: guestData.name,
+                surname: guestData.surname === '-' ? '' : (guestData.surname || ''),
+                email: guestData.email,
+                phone: guestData.phone,
+                password: hashedPassword,
+                registrationSource: (guestData.registrationSource || 'metrosuites').toLowerCase() as RegistrationSource,
+                external_ids: {
+                    venueBoostId: externalId
+                },
+                client_ids: [requestClient._id.toString()],
+                referralCode,
+                clientTiers: initialClientTiers,
+                points: 0,
+                totalSpend: 0
+            });
+
+            // 5. Save the user
+            const savedUser = await newUser.save();
+
+            // 6. Create wallet
+            wallet = await this.walletService.findOrCreateWallet(
+                savedUser._id.toString(),
+                requestClient._id.toString(),
+                requestClient.defaultCurrency || 'EUR'
+            );
+
+            // 7. Update user with wallet ID
+            await this.userModel.updateOne(
+                { _id: savedUser._id },
+                { walletId: wallet._id }
+            );
+
+            // 8. Create guest for the new user
+            guest = await this.guestModel.create({
+                userId: savedUser._id.toString(),
+                name: `${guestData.name} ${guestData.surname || ''}`.trim(),
+                email: guestData.email,
+                phone: guestData.phone,
+                isActive: true,
+                clientIds: [requestClient._id.toString()],
+                external_ids: {
+                    venueBoostId: externalId || null
+                }
+            });
+
+            // 9. Return user and guest information
+            return {
+                user: savedUser,
+                userId: savedUser._id.toString(),
+                guestId: guest._id.toString(),
+                walletBalance: wallet.balance || 0,
+                currentTierName: 'Default Tier',
+                referralCode: referralCode
+            };
+        }
     }
 }
