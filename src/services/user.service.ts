@@ -865,18 +865,14 @@ export class UserService {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
-        // Convert external_id to string if present
-        const externalId = guestData.external_id;
-
-        // Try to find existing user first by external ID
+        // Look for existing user either by external ID or email
         let existingUser = null;
-        if (externalId) {
+        if (guestData.external_ids?.venueBoostUserId) {
             existingUser = await this.userModel.findOne({
-                'external_ids.venueBoostId': externalId
+                'external_ids.venueBoostId': guestData.external_ids.venueBoostUserId
             }).populate('walletId');
         }
 
-        // If not found by external ID, try by email
         if (!existingUser && guestData.email) {
             existingUser = await this.userModel.findOne({
                 email: guestData.email
@@ -889,9 +885,17 @@ export class UserService {
 
         if (existingUser) {
             // User exists, check if guest exists for this user
-            guest = await this.guestModel.findOne({
-                userId: existingUser._id.toString()
-            });
+            if (guestData.external_ids?.venueBoostGuestId) {
+                guest = await this.guestModel.findOne({
+                    'external_ids.venueBoostId': guestData.external_ids.venueBoostGuestId
+                });
+            }
+
+            if (!guest) {
+                guest = await this.guestModel.findOne({
+                    userId: existingUser._id.toString()
+                });
+            }
 
             // If guest doesn't exist, create it
             if (!guest) {
@@ -903,9 +907,16 @@ export class UserService {
                     isActive: true,
                     clientIds: [requestClient._id.toString()],
                     external_ids: {
-                        venueBoostId: externalId || null
+                        venueBoostId: guestData.external_ids?.venueBoostGuestId || null
                     }
                 });
+            } else if (guestData.external_ids?.venueBoostGuestId && (!guest.external_ids || !guest.external_ids.venueBoostId)) {
+                // Update guest with external ID if needed
+                guest.external_ids = {
+                    ...(guest.external_ids || {}),
+                    venueBoostId: guestData.external_ids.venueBoostGuestId
+                };
+                await guest.save();
             }
 
             // Get or create wallet
@@ -925,7 +936,7 @@ export class UserService {
                 referralCode: existingUser.referralCode
             };
         } else {
-            // User doesn't exist, create new user directly (NOT using registerUser)
+            // User doesn't exist, create new user
 
             // 1. Generate referral code
             const referralCode = this.generateReferralCode();
@@ -946,7 +957,7 @@ export class UserService {
                 password: hashedPassword,
                 registrationSource: (guestData.registrationSource || 'metrosuites').toLowerCase() as RegistrationSource,
                 external_ids: {
-                    venueBoostId: externalId
+                    venueBoostId: guestData.external_ids?.venueBoostUserId || null
                 },
                 client_ids: [requestClient._id.toString()],
                 referralCode,
@@ -980,7 +991,7 @@ export class UserService {
                 isActive: true,
                 clientIds: [requestClient._id.toString()],
                 external_ids: {
-                    venueBoostId: externalId || null
+                    venueBoostId: guestData.external_ids?.venueBoostGuestId || null
                 }
             });
 
