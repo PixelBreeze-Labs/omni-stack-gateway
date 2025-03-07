@@ -59,6 +59,7 @@ import { MagicLinkToken, MagicLinkTokenSchema } from './schemas/magic-link-token
 import { AppClient, AppClientSchema } from './schemas/app-client.schema';
 import { Employee, EmployeeSchema } from './schemas/employee.schema';
 import { Property, PropertySchema } from './schemas/property.schema';
+import { Guest, GuestSchema } from './schemas/guest.schema';
 
 
 
@@ -253,6 +254,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: AppClient.name, schema: AppClientSchema },
       { name: Employee.name, schema: EmployeeSchema },
       { name: Property.name, schema: PropertySchema },
+      { name: Guest.name, schema: GuestSchema },
     ]),
   ],
   controllers: [
