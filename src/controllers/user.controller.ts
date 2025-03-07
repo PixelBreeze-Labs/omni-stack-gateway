@@ -22,6 +22,7 @@ import {InjectModel} from "@nestjs/mongoose";
 import {Model} from "mongoose";
 import {StaffUserResponse} from "../interfaces/staff-user.interface";
 import {ChangePasswordDto} from "../dtos/user.dto";
+import { GetOrCreateGuestDto } from '../dtos/guest.dto';
 
 @ApiTags('Users')
 @Controller('users')
@@ -193,4 +194,16 @@ export class UserController {
             changePasswordDto
         );
     }
+
+
+    @Post(':venueShortCode/get-or-create-guest')
+    async getOrCreateGuest(
+        @Param('venueShortCode') venueShortCode: string,
+        @Headers('webhook-api-key') webhookApiKey: string,
+        @Headers('x-api-key') apiKey: string,
+        @Body() guestData: GetOrCreateGuestDto
+    ) {
+        return this.userService.getOrCreateGuest(venueShortCode, webhookApiKey, guestData);
+    }
+
 }
