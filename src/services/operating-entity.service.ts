@@ -19,20 +19,21 @@ export class OperatingEntityService {
         @InjectModel(OperatingEntity.name) private operatingEntityModel: Model<OperatingEntity>
     ) {}
 
-    async findAll(query: ListOperatingEntityDto): Promise<PaginatedResponse<OperatingEntity>> {
+    async findAll(query: ListOperatingEntityDto & { clientId: string }): Promise<PaginatedResponse<OperatingEntity>> {
         const {
             page = 1,
             limit = 10,
             sortBy = 'createdAt',
             sortOrder = 'desc',
             search,
-            type
+            type,
+            clientId
         } = query;
 
         const skip = (page - 1) * limit;
 
-        // Build filter
-        const filter: any = {};
+        // Build filter with clientId always included for security
+        const filter: any = { clientId };
 
         if (search) {
             filter.$or = [
@@ -80,17 +81,23 @@ export class OperatingEntityService {
         return (await entity.save()).toObject();
     }
 
-    async findOne(id: string): Promise<OperatingEntity> {
-        const entity = await this.operatingEntityModel.findById(id).lean().exec();
+    async findOne(id: string, clientId: string): Promise<OperatingEntity> {
+        // Filter by both ID and clientId for security
+        const entity = await this.operatingEntityModel.findOne({
+            _id: id,
+            clientId
+        }).lean().exec();
+
         if (!entity) {
             throw new NotFoundException('Operating entity not found');
         }
         return entity;
     }
 
-    async update(id: string, updateOperatingEntityDto: UpdateOperatingEntityDto): Promise<OperatingEntity> {
-        const entity = await this.operatingEntityModel.findByIdAndUpdate(
-            id,
+    async update(id: string, updateOperatingEntityDto: UpdateOperatingEntityDto, clientId: string): Promise<OperatingEntity> {
+        // Use findOneAndUpdate with clientId filter to ensure only own data can be updated
+        const entity = await this.operatingEntityModel.findOneAndUpdate(
+            { _id: id, clientId }, // Filter by both ID and clientId
             {
                 ...updateOperatingEntityDto,
                 updatedAt: new Date()
@@ -107,8 +114,13 @@ export class OperatingEntityService {
         return entity;
     }
 
-    async remove(id: string): Promise<void> {
-        const result = await this.operatingEntityModel.deleteOne({ _id: id }).exec();
+    async remove(id: string, clientId: string): Promise<void> {
+        // Delete only if both ID and clientId match
+        const result = await this.operatingEntityModel.deleteOne({
+            _id: id,
+            clientId
+        }).exec();
+
         if (result.deletedCount === 0) {
             throw new NotFoundException('Operating entity not found');
         }
