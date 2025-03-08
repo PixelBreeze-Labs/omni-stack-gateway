@@ -856,7 +856,10 @@ export class UserService {
     ): Promise<any> {
         // Verify client credentials
         const requestClient = await this.clientModel.findOne({
-            'venueBoostConnection.venueShortCode': venueShortCode,
+            $or: [
+                { 'venueBoostConnection.venueShortCode': venueShortCode },
+                { 'venueBoostConnection.venueShortCode': encodeURIComponent(venueShortCode) }
+            ],
             'venueBoostConnection.webhookApiKey': webhookApiKey,
             'venueBoostConnection.status': 'connected'
         });
