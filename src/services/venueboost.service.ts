@@ -749,4 +749,51 @@ export class VenueBoostService {
         }
     }
 
+    /**
+     * Update a rental unit in VenueBoost with our OmniStack ID
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param vbRentalUnitId The VenueBoost rental unit ID
+     * @param omnistackId The OmniStack (MongoDB) property ID
+     * @returns Result of the update operation
+     */
+    async updateRentalUnitExternalId(clientId: string, vbRentalUnitId: string, omnistackId: string): Promise<boolean> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to update the rental unit's external ID
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/accommodation-os/${vbRentalUnitId}/external-id`,
+                {
+                    omnistack_id: omnistackId
+                },
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to update rental unit ${vbRentalUnitId} with external ID: ${response.data.error || 'Unknown error'}`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error updating rental unit external ID: ${error.message}`, error.stack);
+            return false;
+        }
+    }
+
 }
