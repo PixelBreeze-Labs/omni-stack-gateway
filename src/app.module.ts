@@ -60,6 +60,7 @@ import { AppClient, AppClientSchema } from './schemas/app-client.schema';
 import { Employee, EmployeeSchema } from './schemas/employee.schema';
 import { Property, PropertySchema } from './schemas/property.schema';
 import { Guest, GuestSchema } from './schemas/guest.schema';
+import { Booking, BookingSchema } from './schemas/booking.schema';
 
 
 
@@ -111,6 +112,7 @@ import { AdminFeatureController } from './controllers/admin-feature.controller';
 import { LandingPageController } from './controllers/landing-page.controller';
 import { PropertyController } from './controllers/property.controller';
 import { GuestController } from './controllers/guest.controller';
+import { BookingController } from './controllers/booking.controller';
 
 
 
@@ -180,6 +182,7 @@ import { FeatureAccessService } from "./services/feature-access.service";
 import { SidebarFeatureService } from "./services/sidebar-feature.service";
 import { PropertyService } from "./services/property.service";
 import { GuestService } from "./services/guest.service";
+import { BookingService } from "./services/booking.service";
 
 
 // Others
@@ -257,6 +260,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Employee.name, schema: EmployeeSchema },
       { name: Property.name, schema: PropertySchema },
       { name: Guest.name, schema: GuestSchema },
+      { name: Booking.name, schema: BookingSchema },
     ]),
   ],
   controllers: [
@@ -314,7 +318,8 @@ import {JwtModule} from "@nestjs/jwt";
     AdminFeatureController,
     LandingPageController,
     PropertyController,
-    GuestController
+    GuestController,
+    BookingController
   ],
   providers: [
     SnapfoodService,
@@ -379,7 +384,8 @@ import {JwtModule} from "@nestjs/jwt";
     StaffluentAnalyticsService,
     SidebarFeatureService,
     PropertyService,
-    GuestService
+    GuestService,
+    BookingService
   ],
 })
 export class AppModule implements NestModule {
