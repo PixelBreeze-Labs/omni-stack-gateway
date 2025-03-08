@@ -300,6 +300,8 @@ export class BookingService {
                         created++;
                     }
                 } catch (error) {
+                    throw new Error(`Failed to process booking ${vbBooking.id}: ${error.message}`);
+
                     this.logger.error(`Error processing booking ${vbBooking.id}: ${error.message}`);
                     errors++;
                 }
