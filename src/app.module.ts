@@ -116,6 +116,8 @@ import { PropertyController } from './controllers/property.controller';
 import { GuestController } from './controllers/guest.controller';
 import { BookingController } from './controllers/booking.controller';
 import { CommunicationsController } from './controllers/communications.controller';
+import { OperatingEntityController } from './controllers/operating-entity.controller';
+import { SocialProfileController } from './controllers/social-profile.controller';
 
 
 
@@ -187,6 +189,8 @@ import { PropertyService } from "./services/property.service";
 import { GuestService } from "./services/guest.service";
 import { BookingService } from "./services/booking.service";
 import { CommunicationsService } from "./services/communications.service";
+import { OperatingEntityService } from './services/operating-entity.service';
+import { SocialProfileService } from './services/social-profile.service';
 
 
 // Others
@@ -326,7 +330,9 @@ import {JwtModule} from "@nestjs/jwt";
     PropertyController,
     GuestController,
     BookingController,
-    CommunicationsController
+    CommunicationsController,
+    OperatingEntityController,
+    SocialProfileController
   ],
   providers: [
     SnapfoodService,
@@ -393,7 +399,9 @@ import {JwtModule} from "@nestjs/jwt";
     PropertyService,
     GuestService,
     BookingService,
-    CommunicationsService
+    CommunicationsService,
+    OperatingEntityService,
+    SocialProfileService
   ],
 })
 export class AppModule implements NestModule {
