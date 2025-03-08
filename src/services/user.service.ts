@@ -868,6 +868,56 @@ export class UserService {
             throw new UnauthorizedException('Invalid venue or webhook key');
         }
 
+        // Load primary client for loyalty
+        const primaryClient = requestClient;
+
+        // 1. Determine which loyalty program to use - same logic as in registerUser
+        let loyaltyClient = primaryClient; // default to primary client
+        if (
+            !primaryClient.loyaltyProgram ||
+            !Array.isArray(primaryClient.loyaltyProgram.membershipTiers) ||
+            primaryClient.loyaltyProgram.membershipTiers.length === 0
+        ) {
+            if (primaryClient.venueBoostConnection && primaryClient.venueBoostConnection.venueShortCode) {
+                const connectedClient = await this.clientModel.findOne({
+                    _id: { $ne: primaryClient._id },
+                    'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
+                    'venueBoostConnection.status': 'connected'
+                }).select('loyaltyProgram defaultCurrency');
+
+                if (
+                    connectedClient &&
+                    connectedClient.loyaltyProgram &&
+                    Array.isArray(connectedClient.loyaltyProgram.membershipTiers) &&
+                    connectedClient.loyaltyProgram.membershipTiers.length > 0
+                ) {
+                    loyaltyClient = connectedClient;
+                }
+            }
+        }
+
+        // 2. Determine the membership tier - same logic as in registerUser
+        let initialClientTiers: Record<string, string> = {};
+        if (
+            loyaltyClient.loyaltyProgram &&
+            Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
+            loyaltyClient.loyaltyProgram.membershipTiers.length > 0
+        ) {
+            // Find the tier with the lowest "min" spend
+            const lowestTier = loyaltyClient.loyaltyProgram.membershipTiers.reduce((lowest, current) => {
+                return (!lowest || current.spendRange.min < lowest.spendRange.min) ? current : lowest;
+            }, null);
+
+            if (lowestTier) {
+                initialClientTiers[primaryClient._id.toString()] = lowestTier.name;
+            }
+        }
+
+        // If no tier was found, fall back to "Default Tier".
+        if (Object.keys(initialClientTiers).length === 0) {
+            initialClientTiers[primaryClient._id.toString()] = 'Default Tier';
+        }
+
         // Look for existing user either by external ID or email
         let existingUser = null;
         if (guestData.external_ids?.venueBoostUserId) {
@@ -935,7 +985,7 @@ export class UserService {
                 userId: existingUser._id.toString(),
                 guestId: guest._id.toString(),
                 walletBalance: wallet.balance || 0,
-                currentTierName: existingUser.clientTiers?.[requestClient._id.toString()] || 'Default Tier',
+                currentTierName: existingUser.clientTiers?.[requestClient._id.toString()] || initialClientTiers[requestClient._id.toString()],
                 referralCode: existingUser.referralCode
             };
         } else {
@@ -947,11 +997,7 @@ export class UserService {
             // 2. Hash password
             const hashedPassword = await bcrypt.hash(guestData.password, 10);
 
-            // 3. Determine basic tier for user
-            let initialClientTiers: Record<string, string> = {};
-            initialClientTiers[requestClient._id.toString()] = 'Default Tier';
-
-            // 4. Create new user with minimal required fields
+            // 3. Create new user with membership tier
             const newUser = new this.userModel({
                 name: guestData.name,
                 surname: guestData.surname === '-' ? '' : (guestData.surname || ''),
@@ -969,8 +1015,17 @@ export class UserService {
                 totalSpend: 0
             });
 
-            // 5. Save the user
+            // 4. Save the user
             const savedUser = await newUser.save();
+
+            // 5. Award signup bonus points if defined
+            if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+                const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+                await this.userModel.updateOne(
+                    { _id: savedUser._id },
+                    { $inc: { points: signUpBonus } }
+                );
+            }
 
             // 6. Create wallet
             wallet = await this.walletService.findOrCreateWallet(
@@ -985,7 +1040,24 @@ export class UserService {
                 { walletId: wallet._id }
             );
 
-            // 8. Create guest for the new user
+            // 8. Add wallet credit for the signup bonus if applicable
+            if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+                const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+                await this.walletService.addCredit(
+                    wallet._id.toString(),
+                    signUpBonus,
+                    {
+                        description: 'Sign up bonus points awarded',
+                        source: 'reward',
+                        metadata: {
+                            reason: 'signup_bonus',
+                            points: signUpBonus
+                        }
+                    }
+                );
+            }
+
+            // 9. Create guest for the new user
             guest = await this.guestModel.create({
                 userId: savedUser._id.toString(),
                 name: `${guestData.name} ${guestData.surname || ''}`.trim(),
@@ -998,13 +1070,15 @@ export class UserService {
                 }
             });
 
-            // 9. Return user and guest information
+            // 10. Return user and guest information
+            const tierName = initialClientTiers[requestClient._id.toString()];
+
             return {
                 user: savedUser,
                 userId: savedUser._id.toString(),
                 guestId: guest._id.toString(),
                 walletBalance: wallet.balance || 0,
-                currentTierName: 'Default Tier',
+                currentTierName: tierName,
                 referralCode: referralCode
             };
         }
