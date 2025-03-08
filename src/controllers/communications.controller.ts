@@ -44,7 +44,7 @@ export class CommunicationsController {
             throw new BadRequestException('Type, recipient, and message are required');
         }
 
-        // Validate type
+        // Validate type of
         if (!['EMAIL', 'SMS'].includes(type)) {
             throw new BadRequestException('Type must be EMAIL or SMS');
         }
