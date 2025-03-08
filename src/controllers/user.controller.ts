@@ -198,11 +198,13 @@ export class UserController {
 
     @Post(':venueShortCode/get-or-create-guest')
     async getOrCreateGuest(
-        @Param('venueShortCode') venueShortCode: string,
+        @Param('venueShortCode') encodedVenueShortCode: string,
         @Headers('webhook-api-key') webhookApiKey: string,
         @Headers('x-api-key') apiKey: string,
         @Body() guestData: GetOrCreateGuestDto
     ) {
+        // Decode the URL-encoded short code
+        const venueShortCode = decodeURIComponent(encodedVenueShortCode);
         return this.userService.getOrCreateGuest(venueShortCode, webhookApiKey, guestData);
     }
 
