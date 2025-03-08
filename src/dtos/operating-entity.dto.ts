@@ -14,10 +14,6 @@ export class CreateOperatingEntityDto {
   @IsOptional()
   @IsUrl()
   url?: string;
-
-  @IsNotEmpty()
-  @IsMongoId()
-  clientId: string;
 }
 
 export class UpdateOperatingEntityDto {
