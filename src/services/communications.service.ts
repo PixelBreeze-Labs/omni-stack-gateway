@@ -1,7 +1,5 @@
 // src/services/communications.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { EmailService } from './email.service';
 import * as twilio from 'twilio';
 // Interfaces
@@ -74,6 +72,7 @@ export class CommunicationsService {
                 templatePath = 'templates/email/metrosuites-staff.html';
             }
 
+            // TODO: fix this new email sender or omnistack
             // Send the email
             const result = await this.emailService.sendTemplateEmail(
                 'MetroSuites',
