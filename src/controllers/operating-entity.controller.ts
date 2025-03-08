@@ -76,9 +76,9 @@ export class OperatingEntityController {
         @Body() updateOperatingEntityDto: UpdateOperatingEntityDto,
         @Req() req: Request & { client: Client }
     ) {
-        // The clientId should not be updatable
-        const { clientId, ...updateData } = updateOperatingEntityDto;
-        return this.operatingEntityService.update(id, updateData, req.client.id);
+        // Since UpdateOperatingEntityDto might not have clientId property defined
+        // we just pass it as is and handle the filtering at the service level
+        return this.operatingEntityService.update(id, updateOperatingEntityDto, req.client.id);
     }
 
     @ApiBearerAuth()
