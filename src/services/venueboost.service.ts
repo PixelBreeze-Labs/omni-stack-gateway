@@ -702,4 +702,51 @@ export class VenueBoostService {
         }
     }
 
+    /**
+     * Update a booking in VenueBoost with our OmniStack ID
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param vbBookingId The VenueBoost booking ID
+     * @param omnistackId The OmniStack (MongoDB) booking ID
+     * @returns Result of the update operation
+     */
+    async updateBookingExternalId(clientId: string, vbBookingId: string, omnistackId: string): Promise<boolean> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to update the booking's external ID
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/bookings-os/${vbBookingId}/external-id`,
+                {
+                    omnistack_id: omnistackId
+                },
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to update booking ${vbBookingId} with external ID: ${response.data.error || 'Unknown error'}`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error updating booking external ID: ${error.message}`, error.stack);
+            return false;
+        }
+    }
+
 }

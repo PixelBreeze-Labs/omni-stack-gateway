@@ -169,7 +169,7 @@ export class BookingService {
 
                     // Find the corresponding guest in our system using external ID
                     const guest = await this.guestModel.findOne({
-                        'externalIds.venueBoostId': vbBooking.guest_id
+                        'externalIds.venueBoostId': vbBooking.guest_id.toString()
                     });
 
                     if (!guest) {
@@ -244,12 +244,24 @@ export class BookingService {
                         } else {
                             unchanged++;
                         }
+
+                        // Check if we need to update the external ID in VenueBoost
+                        // We do this by checking if the omnistackId is not in vbBooking.external_ids
+                        const vbExternalIds = vbBooking.external_ids || {};
+                        if (!vbExternalIds.omniStackId || vbExternalIds.omniStackId !== existingBooking._id.toString()) {
+                            // Send our ID to VenueBoost
+                            await this.venueBoostService.updateBookingExternalId(
+                                clientId,
+                                vbBooking.id.toString(),
+                                existingBooking._id.toString()
+                            );
+                        }
                     } else {
                         // Booking doesn't exist - create it
                         const checkInDate = new Date(vbBooking.check_in_date);
                         const checkOutDate = new Date(vbBooking.check_out_date);
 
-                        await this.bookingModel.create({
+                        const newBooking = await this.bookingModel.create({
                             clientId: clientId,
                             propertyId: property._id,
                             guestId: guest._id,
@@ -274,6 +286,13 @@ export class BookingService {
                                 ['createdAt', vbBooking.created_at]
                             ])
                         });
+
+                        // Send our ID to VenueBoost
+                        await this.venueBoostService.updateBookingExternalId(
+                            clientId,
+                            vbBooking.id.toString(),
+                            newBooking._id.toString()
+                        );
 
                         created++;
                     }
