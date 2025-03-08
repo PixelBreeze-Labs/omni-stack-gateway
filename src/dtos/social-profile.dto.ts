@@ -22,10 +22,6 @@ export class CreateSocialProfileDto {
   @IsNotEmpty()
   @IsMongoId()
   operatingEntityId: string;
-
-  @IsNotEmpty()
-  @IsMongoId()
-  clientId: string;
 }
 
 export class UpdateSocialProfileDto {
