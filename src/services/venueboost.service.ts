@@ -673,7 +673,7 @@ export class VenueBoostService {
             }
 
             // Call the VenueBoost API with the client's API key
-            const response$ = this.httpService.get(`${this.baseUrl}/accomodation-os/bookings`, {
+            const response$ = this.httpService.get(`${this.baseUrl}/accommodation-os/bookings`, {
                 params: {
                     omnigateway_api_key: client.apiKey
                 },
