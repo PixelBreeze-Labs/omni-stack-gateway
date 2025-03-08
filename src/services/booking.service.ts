@@ -162,6 +162,7 @@ export class BookingService {
                     });
 
                     if (!property) {
+                        throw new Error(`Property not found for rental_unit_id: ${vbBooking.rental_unit_id}`);
                         this.logger.warn(`Property not found for rental_unit_id: ${vbBooking.rental_unit_id}`);
                         errors++;
                         continue;
@@ -169,10 +170,12 @@ export class BookingService {
 
                     // Find the corresponding guest in our system using external ID
                     const guest = await this.guestModel.findOne({
-                        'externalIds.venueBoostId': vbBooking.guest_id.toString()
+                        'externalIds.venueBoostId': vbBooking.guest_id
                     });
 
                     if (!guest) {
+                        throw new Error(`Guest not found for guest_id: ${vbBooking.guest_id}`);
+
                         this.logger.warn(`Guest not found for guest_id: ${vbBooking.guest_id}`);
                         errors++;
                         continue;
