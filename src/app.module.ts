@@ -61,6 +61,8 @@ import { Employee, EmployeeSchema } from './schemas/employee.schema';
 import { Property, PropertySchema } from './schemas/property.schema';
 import { Guest, GuestSchema } from './schemas/guest.schema';
 import { Booking, BookingSchema } from './schemas/booking.schema';
+import { OperatingEntity, OperatingEntitySchema } from './schemas/operating-entity.schema';
+import { SocialProfile, SocialProfileSchema } from './schemas/social-profile.schema';
 
 
 
@@ -263,6 +265,8 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Property.name, schema: PropertySchema },
       { name: Guest.name, schema: GuestSchema },
       { name: Booking.name, schema: BookingSchema },
+      { name: OperatingEntity.name, schema: OperatingEntitySchema },
+      { name: SocialProfile.name, schema: SocialProfileSchema },
     ]),
   ],
   controllers: [
