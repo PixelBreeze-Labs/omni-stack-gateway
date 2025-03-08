@@ -104,9 +104,7 @@ export class GetOrCreateGuestDto {
     registrationSource?: RegistrationSource = RegistrationSource.METROSUITES;
 
     @ApiPropertyOptional({
-        description: 'External IDs',
-        type: 'object',
-        example: { venueBoostUserId: "123", venueBoostGuestId: "456" }
+        description: 'External IDs'
     })
     @IsOptional()
     external_ids?: {
