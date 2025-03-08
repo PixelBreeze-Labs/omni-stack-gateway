@@ -138,6 +138,7 @@ export class BookingService {
         updated: number;
         unchanged: number;
         errors: number;
+        errorDetails?: Array<{bookingId: string, error: string}>;
     }> {
         try {
             // Get the client
@@ -152,7 +153,7 @@ export class BookingService {
 
             // Tracking stats
             let created = 0, updated = 0, unchanged = 0, errors = 0;
-
+            const errorDetails = [];
             // Process each booking
             for (const vbBooking of bookings) {
                 try {
@@ -161,9 +162,11 @@ export class BookingService {
                         'externalIds.venueboostId': vbBooking.rental_unit_id.toString()
                     });
 
+
                     if (!property) {
-                        throw new Error(`Property not found for rental_unit_id: ${vbBooking.rental_unit_id}`);
+                        const errorMsg = `Property not found for rental_unit_id: ${vbBooking.rental_unit_id}`;
                         this.logger.warn(`Property not found for rental_unit_id: ${vbBooking.rental_unit_id}`);
+                        errorDetails.push({ bookingId: vbBooking.id.toString(), error: errorMsg });
                         errors++;
                         continue;
                     }
@@ -174,9 +177,9 @@ export class BookingService {
                     });
 
                     if (!guest) {
-                        throw new Error(`Guest not found for guest_id: ${vbBooking.guest_id}`);
-
+                        const errorMsg = `Guest not found for guest_id: ${vbBooking.guest_id}`;
                         this.logger.warn(`Guest not found for guest_id: ${vbBooking.guest_id}`);
+                        errorDetails.push({ bookingId: vbBooking.id.toString(), error: errorMsg });
                         errors++;
                         continue;
                     }
@@ -300,9 +303,9 @@ export class BookingService {
                         created++;
                     }
                 } catch (error) {
-                    throw new Error(`Failed to process booking ${vbBooking.id}: ${error.message}`);
-
+                    const errorMsg = `Error processing booking: ${error.message}`;
                     this.logger.error(`Error processing booking ${vbBooking.id}: ${error.message}`);
+                    errorDetails.push({ bookingId: vbBooking.id.toString(), error: errorMsg });
                     errors++;
                 }
             }
@@ -313,7 +316,8 @@ export class BookingService {
                 created,
                 updated,
                 unchanged,
-                errors
+                errors,
+                errorDetails
             };
         } catch (error) {
             this.logger.error(`Error syncing bookings from VenueBoost: ${error.message}`, error.stack);
