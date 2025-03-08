@@ -21,7 +21,7 @@ export class SocialProfileService {
         @InjectModel(OperatingEntity.name) private operatingEntityModel: Model<OperatingEntity>
     ) {}
 
-    async findAll(query: ListSocialProfileDto): Promise<PaginatedResponse<SocialProfile>> {
+    async findAll(query: ListSocialProfileDto & { clientId: string }): Promise<PaginatedResponse<SocialProfile>> {
         const {
             page = 1,
             limit = 10,
@@ -29,13 +29,14 @@ export class SocialProfileService {
             sortOrder = 'desc',
             search,
             type,
-            operatingEntityId
+            operatingEntityId,
+            clientId
         } = query;
 
         const skip = (page - 1) * limit;
 
-        // Build filter
-        const filter: any = {};
+        // Build filter with clientId for security
+        const filter: any = { clientId };
 
         if (search) {
             filter.$or = [
@@ -79,7 +80,7 @@ export class SocialProfileService {
         };
     }
 
-    async create(createSocialProfileDto: CreateSocialProfileDto): Promise<SocialProfile> {
+    async create(createSocialProfileDto: CreateSocialProfileDto  & { clientId: string }): Promise<SocialProfile> {
         // Verify operating entity exists and belongs to the same client
         const operatingEntity = await this.operatingEntityModel.findOne({
             _id: createSocialProfileDto.operatingEntityId,
@@ -99,9 +100,9 @@ export class SocialProfileService {
         return (await profile.save()).toObject();
     }
 
-    async findOne(id: string): Promise<SocialProfile> {
+    async findOne(id: string, clientId: string): Promise<SocialProfile> {
         const profile = await this.socialProfileModel
-            .findById(id)
+            .findOne({ _id: id, clientId })
             .populate('operatingEntityId', 'name type url')
             .lean()
             .exec();
@@ -112,20 +113,21 @@ export class SocialProfileService {
         return profile;
     }
 
-    async update(id: string, updateSocialProfileDto: UpdateSocialProfileDto): Promise<SocialProfile> {
-        // If updating operating entity, verify it exists
+    async update(id: string, updateSocialProfileDto: UpdateSocialProfileDto, clientId: string): Promise<SocialProfile> {
+        // If updating operating entity, verify it exists and belongs to the same client
         if (updateSocialProfileDto.operatingEntityId) {
-            const operatingEntity = await this.operatingEntityModel.findById(
-                updateSocialProfileDto.operatingEntityId
-            );
+            const operatingEntity = await this.operatingEntityModel.findOne({
+                _id: updateSocialProfileDto.operatingEntityId,
+                clientId
+            });
 
             if (!operatingEntity) {
-                throw new NotFoundException('Operating entity not found');
+                throw new NotFoundException('Operating entity not found or does not belong to this client');
             }
         }
 
-        const profile = await this.socialProfileModel.findByIdAndUpdate(
-            id,
+        const profile = await this.socialProfileModel.findOneAndUpdate(
+            { _id: id, clientId }, // Filter by both ID and clientId
             {
                 ...updateSocialProfileDto,
                 updatedAt: new Date()
@@ -143,8 +145,12 @@ export class SocialProfileService {
         return profile;
     }
 
-    async remove(id: string): Promise<void> {
-        const result = await this.socialProfileModel.deleteOne({ _id: id }).exec();
+    async remove(id: string, clientId: string): Promise<void> {
+        const result = await this.socialProfileModel.deleteOne({
+            _id: id,
+            clientId
+        }).exec();
+
         if (result.deletedCount === 0) {
             throw new NotFoundException('Social profile not found');
         }
