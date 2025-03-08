@@ -10,8 +10,8 @@ import {
     Request,
 } from '@nestjs/common';
 import { CommunicationsService } from '../services/communications.service';
-import { ApiKeyGuard } from '../guards/api-key.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import {ClientAuthGuard} from "../guards/client-auth.guard";
 
 // DTOs
 class SendCommunicationDto {
@@ -29,7 +29,7 @@ export class CommunicationsController {
     constructor(private readonly communicationsService: CommunicationsService) {}
 
     @Post('send')
-    @UseGuards(ApiKeyGuard)
+    @UseGuards(ClientAuthGuard)
     @ApiOperation({ summary: 'Send a communication (email or SMS)' })
     @ApiResponse({ status: 200, description: 'Communication sent successfully' })
     @ApiResponse({ status: 400, description: 'Invalid input parameters' })
