@@ -720,7 +720,7 @@ export class VenueBoostService {
 
             // Call the VenueBoost API to update the booking's external ID
             const response$ = this.httpService.post(
-                `${this.baseUrl}/bookings-os/${vbBookingId}/external-id`,
+                `${this.baseUrl}/accommodation-os/bookings/${vbBookingId}/external-id`,
                 {
                     omnistack_id: omnistackId
                 },
