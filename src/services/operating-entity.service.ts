@@ -71,9 +71,13 @@ export class OperatingEntityService {
         };
     }
 
-    async create(createOperatingEntityDto: CreateOperatingEntityDto): Promise<OperatingEntity> {
+    async create(createOperatingEntityDto: CreateOperatingEntityDto & { clientId: string }): Promise<OperatingEntity> {
+        // Create the entity with the provided data including clientId
         const entity = new this.operatingEntityModel({
-            ...createOperatingEntityDto,
+            name: createOperatingEntityDto.name,
+            type: createOperatingEntityDto.type,
+            url: createOperatingEntityDto.url,
+            clientId: createOperatingEntityDto.clientId,
             createdAt: new Date(),
             updatedAt: new Date()
         });
