@@ -111,18 +111,13 @@ export class PropertyService {
         return { data: property };
     }
 
-    /**
-     * Sync properties from VenueBoost for a client
-     *
-     * @param clientId The MongoDB ID of the client
-     * @returns Result of the sync operation
-     */
     async syncPropertiesFromVenueBoost(clientId: string): Promise<{
         success: boolean;
         message: string;
         created: number;
         updated: number;
         unchanged: number;
+        errors: number;
     }> {
         try {
             // Get the client
@@ -136,86 +131,111 @@ export class PropertyService {
             const rentalUnits = response.data || [];
 
             // Tracking stats
-            let created = 0, updated = 0, unchanged = 0;
+            let created = 0, updated = 0, unchanged = 0, errors = 0;
 
             // Process each rental unit
             for (const rentalUnit of rentalUnits) {
-                // Check if property exists by external ID
-                const existingProperty = await this.propertyModel.findOne({
-                    'externalIds.venueboostId': rentalUnit.id.toString()
-                });
-
-                if (existingProperty) {
-                    // Property exists - check if it needs to be updated
-                    let needsUpdate = false;
-
-                    if (existingProperty.name !== rentalUnit.name) {
-                        existingProperty.name = rentalUnit.name;
-                        needsUpdate = true;
-                    }
-
-                    // Handle metadata fields like address
-                    if (!existingProperty.metadata) {
-                        existingProperty.metadata = new Map<string, any>();
-                    }
-
-                    if (existingProperty.metadata.get('address') !== rentalUnit.address) {
-                        existingProperty.metadata.set('address', rentalUnit.address);
-                        needsUpdate = true;
-                    }
-
-                    if (existingProperty.metadata.get('unitCode') !== rentalUnit.unit_code) {
-                        existingProperty.metadata.set('unitCode', rentalUnit.unit_code);
-                        needsUpdate = true;
-                    }
-
-                    if (existingProperty.metadata.get('url') !== rentalUnit.url) {
-                        existingProperty.metadata.set('url', rentalUnit.url);
-                        needsUpdate = true;
-                    }
-
-                    // Map the accommodation_type from VenueBoost to PropertyType
-                    const propertyType = this.mapVenueBoostTypeToPropertyType(rentalUnit.accommodation_type);
-                    if (existingProperty.type !== propertyType) {
-                        existingProperty.type = propertyType;
-                        needsUpdate = true;
-                    }
-
-                    if (needsUpdate) {
-                        await existingProperty.save();
-                        updated++;
-                    } else {
-                        unchanged++;
-                    }
-                } else {
-                    // Property doesn't exist - create it
-                    await this.propertyModel.create({
-                        name: rentalUnit.name,
-                        clientId: clientId,
-                        status: PropertyStatus.ACTIVE,
-                        type: this.mapVenueBoostTypeToPropertyType(rentalUnit.accommodation_type),
-                        externalIds: {
-                            venueboostId: rentalUnit.id.toString()
-                        },
-                        metadata: new Map([
-                            ['address', rentalUnit.address],
-                            ['unitCode', rentalUnit.unit_code],
-                            ['url', rentalUnit.url],
-                            ['createdAt', rentalUnit.created_at]
-                        ]),
-                        currency: 'EUR' // Default currency
+                try {
+                    // Check if property exists by external ID
+                    const existingProperty = await this.propertyModel.findOne({
+                        'externalIds.venueboostId': rentalUnit.id.toString()
                     });
 
-                    created++;
+                    if (existingProperty) {
+                        // Property exists - check if it needs to be updated
+                        let needsUpdate = false;
+
+                        if (existingProperty.name !== rentalUnit.name) {
+                            existingProperty.name = rentalUnit.name;
+                            needsUpdate = true;
+                        }
+
+                        // Handle metadata fields like address
+                        if (!existingProperty.metadata) {
+                            existingProperty.metadata = new Map<string, any>();
+                        }
+
+                        if (existingProperty.metadata.get('address') !== rentalUnit.address) {
+                            existingProperty.metadata.set('address', rentalUnit.address);
+                            needsUpdate = true;
+                        }
+
+                        if (existingProperty.metadata.get('unitCode') !== rentalUnit.unit_code) {
+                            existingProperty.metadata.set('unitCode', rentalUnit.unit_code);
+                            needsUpdate = true;
+                        }
+
+                        if (existingProperty.metadata.get('url') !== rentalUnit.url) {
+                            existingProperty.metadata.set('url', rentalUnit.url);
+                            needsUpdate = true;
+                        }
+
+                        // Map the accommodation_type from VenueBoost to PropertyType
+                        const propertyType = this.mapVenueBoostTypeToPropertyType(rentalUnit.accommodation_type);
+                        if (existingProperty.type !== propertyType) {
+                            existingProperty.type = propertyType;
+                            needsUpdate = true;
+                        }
+
+                        if (needsUpdate) {
+                            await existingProperty.save();
+                            updated++;
+                        } else {
+                            unchanged++;
+                        }
+
+                        // Check if we need to update the external ID in VenueBoost
+                        // We do this by checking if the omnistackId is not in rentalUnit.external_ids
+                        const vbExternalIds = rentalUnit.external_ids || {};
+                        if (!vbExternalIds.omniStackId || vbExternalIds.omniStackId !== existingProperty._id.toString()) {
+                            // Send our ID to VenueBoost
+                            await this.venueBoostService.updateRentalUnitExternalId(
+                                clientId,
+                                rentalUnit.id.toString(),
+                                existingProperty._id.toString()
+                            );
+                        }
+                    } else {
+                        // Property doesn't exist - create it
+                        const newProperty = await this.propertyModel.create({
+                            name: rentalUnit.name,
+                            clientId: clientId,
+                            status: PropertyStatus.ACTIVE,
+                            type: this.mapVenueBoostTypeToPropertyType(rentalUnit.accommodation_type),
+                            externalIds: {
+                                venueboostId: rentalUnit.id.toString()
+                            },
+                            metadata: new Map([
+                                ['address', rentalUnit.address],
+                                ['unitCode', rentalUnit.unit_code],
+                                ['url', rentalUnit.url],
+                                ['createdAt', rentalUnit.created_at]
+                            ]),
+                            currency: 'EUR' // Default currency
+                        });
+
+                        // Send our ID to VenueBoost
+                        await this.venueBoostService.updateRentalUnitExternalId(
+                            clientId,
+                            rentalUnit.id.toString(),
+                            newProperty._id.toString()
+                        );
+
+                        created++;
+                    }
+                } catch (error) {
+                    this.logger.error(`Error processing rental unit ${rentalUnit.id}: ${error.message}`);
+                    errors++;
                 }
             }
 
             return {
                 success: true,
-                message: `Sync completed: ${created} created, ${updated} updated, ${unchanged} unchanged`,
+                message: `Sync completed: ${created} created, ${updated} updated, ${unchanged} unchanged, ${errors} errors`,
                 created,
                 updated,
-                unchanged
+                unchanged,
+                errors
             };
         } catch (error) {
             this.logger.error(`Error syncing properties from VenueBoost: ${error.message}`, error.stack);
