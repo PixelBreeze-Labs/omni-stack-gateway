@@ -110,6 +110,7 @@ import { StaffluentAnalyticsController } from './controllers/staffluent-analytic
 import { AdminFeatureController } from './controllers/admin-feature.controller';
 import { LandingPageController } from './controllers/landing-page.controller';
 import { PropertyController } from './controllers/property.controller';
+import { GuestController } from './controllers/guest.controller';
 
 
 
@@ -178,6 +179,7 @@ import { StaffluentDashboardService } from "./services/staffluent-dashboard.serv
 import { FeatureAccessService } from "./services/feature-access.service";
 import { SidebarFeatureService } from "./services/sidebar-feature.service";
 import { PropertyService } from "./services/property.service";
+import { GuestService } from "./services/guest.service";
 
 
 // Others
@@ -311,7 +313,8 @@ import {JwtModule} from "@nestjs/jwt";
     StaffluentDashboardController,
     AdminFeatureController,
     LandingPageController,
-    PropertyController
+    PropertyController,
+    GuestController
   ],
   providers: [
     SnapfoodService,
@@ -375,7 +378,8 @@ import {JwtModule} from "@nestjs/jwt";
     FeatureAccessService,
     StaffluentAnalyticsService,
     SidebarFeatureService,
-    PropertyService
+    PropertyService,
+    GuestService
   ],
 })
 export class AppModule implements NestModule {
