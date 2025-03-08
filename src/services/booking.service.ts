@@ -173,7 +173,7 @@ export class BookingService {
 
                     // Find the corresponding guest in our system using external ID
                     const guest = await this.guestModel.findOne({
-                        'externalIds.venueBoostId': vbBooking.guest_id
+                        'external_ids.venueBoostId': vbBooking.guest_id
                     });
 
                     if (!guest) {
