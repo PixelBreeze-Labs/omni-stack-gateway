@@ -113,6 +113,7 @@ import { LandingPageController } from './controllers/landing-page.controller';
 import { PropertyController } from './controllers/property.controller';
 import { GuestController } from './controllers/guest.controller';
 import { BookingController } from './controllers/booking.controller';
+import { CommunicationsController } from './controllers/communications.controller';
 
 
 
@@ -183,6 +184,7 @@ import { SidebarFeatureService } from "./services/sidebar-feature.service";
 import { PropertyService } from "./services/property.service";
 import { GuestService } from "./services/guest.service";
 import { BookingService } from "./services/booking.service";
+import { CommunicationsService } from "./services/communications.service";
 
 
 // Others
@@ -319,7 +321,8 @@ import {JwtModule} from "@nestjs/jwt";
     LandingPageController,
     PropertyController,
     GuestController,
-    BookingController
+    BookingController,
+    CommunicationsController
   ],
   providers: [
     SnapfoodService,
@@ -385,7 +388,8 @@ import {JwtModule} from "@nestjs/jwt";
     SidebarFeatureService,
     PropertyService,
     GuestService,
-    BookingService
+    BookingService,
+    CommunicationsService
   ],
 })
 export class AppModule implements NestModule {
