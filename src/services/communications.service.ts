@@ -2,8 +2,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailService } from './email.service';
 import * as twilio from 'twilio';
+
 // Interfaces
-interface SendCommunicationParams {
+export interface SendCommunicationParams {
     type: 'EMAIL' | 'SMS';
     recipient: string;
     subject?: string;
@@ -12,7 +13,7 @@ interface SendCommunicationParams {
     template?: string;
 }
 
-interface CommunicationResponse {
+export interface CommunicationResponse {
     success: boolean;
     deliveryId: string;
     provider: string;
@@ -69,14 +70,13 @@ export class CommunicationsService {
             let templatePath = 'templates/email/default.html';
 
             if (template === 'metrosuites-staff') {
-                templatePath = 'templates/email/metrosuites-staff.html';
+                templatePath = 'templates/metrosuites/staff-communication.html';
             }
 
-            // TODO: fix this new email sender or omnistack
             // Send the email
-            const result = await this.emailService.sendTemplateEmail(
-                'MetroSuites',
-                'noreply@metrosuites.com',
+            await this.emailService.sendTemplateEmail(
+                'Metrosuites',
+                'metrosuites@omnistackhub.xyz',
                 recipient,
                 subject,
                 templatePath,
@@ -87,10 +87,13 @@ export class CommunicationsService {
                 }
             );
 
+            // Generate a unique ID for the delivery since we don't have messageId
+            const uniqueId = `email_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+
             // Return the response
             return {
                 success: true,
-                deliveryId: result.messageId,
+                deliveryId: uniqueId,
                 provider: 'email',
                 status: 'delivered'
             };

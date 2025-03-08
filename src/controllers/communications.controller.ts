@@ -9,12 +9,12 @@ import {
     BadRequestException,
     Request,
 } from '@nestjs/common';
-import { CommunicationsService } from '../services/communications.service';
+import { CommunicationsService, CommunicationResponse, SendCommunicationParams } from '../services/communications.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
-import {ClientAuthGuard} from "../guards/client-auth.guard";
+import { ClientAuthGuard } from "../guards/client-auth.guard";
 
 // DTOs
-class SendCommunicationDto {
+class SendCommunicationDto implements SendCommunicationParams {
     type: 'EMAIL' | 'SMS';
     recipient: string;
     subject?: string;
@@ -36,7 +36,7 @@ export class CommunicationsController {
     @ApiResponse({ status: 500, description: 'Server error' })
     async sendCommunication(
         @Body() sendCommunicationDto: SendCommunicationDto
-    ) {
+    ): Promise<CommunicationResponse> {
         const { type, recipient, subject, message, metadata, template } = sendCommunicationDto;
 
         // Validate required fields
