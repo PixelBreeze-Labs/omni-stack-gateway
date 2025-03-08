@@ -19,3 +19,41 @@ export class CreateOperatingEntityDto {
   @IsMongoId()
   clientId: string;
 }
+
+export class UpdateOperatingEntityDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsEnum(OperatingEntityType)
+  type?: OperatingEntityType;
+
+  @IsOptional()
+  @IsUrl()
+  url?: string;
+}
+
+export class ListOperatingEntityDto {
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @IsOptional()
+  page?: number;
+
+  @IsOptional()
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc';
+}

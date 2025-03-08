@@ -27,3 +27,53 @@ export class CreateSocialProfileDto {
   @IsMongoId()
   clientId: string;
 }
+
+export class UpdateSocialProfileDto {
+  @IsOptional()
+  @IsEnum(SocialProfileType)
+  type?: SocialProfileType;
+
+  @IsOptional()
+  @IsString()
+  accountName?: string;
+
+  @IsOptional()
+  @IsString()
+  username?: string;
+
+  @IsOptional()
+  @IsUrl()
+  url?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  operatingEntityId?: string;
+}
+
+export class ListSocialProfileDto {
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  operatingEntityId?: string;
+
+  @IsOptional()
+  page?: number;
+
+  @IsOptional()
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc';
+}
