@@ -4,10 +4,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { EmailService } from './email.service';
 import * as twilio from 'twilio';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as handlebars from 'handlebars';
-
 // Interfaces
 interface SendCommunicationParams {
     type: 'EMAIL' | 'SMS';
