@@ -1,11 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Booking, BookingStatus } from '../schemas/booking.schema';
+import { Booking, BookingStatus, PaymentMethod } from '../schemas/booking.schema';
 import { Property } from '../schemas/property.schema';
+import { Guest } from '../schemas/guest.schema';
 import { VenueBoostService } from './venueboost.service';
 import { Client } from '../schemas/client.schema';
-import { randomBytes } from 'crypto';
 
 interface FindAllOptions {
     page: number;
@@ -24,8 +24,9 @@ export class BookingService {
     constructor(
         @InjectModel(Booking.name) private bookingModel: Model<Booking>,
         @InjectModel(Property.name) private propertyModel: Model<Property>,
+        @InjectModel(Guest.name) private guestModel: Model<Guest>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
-        private readonly venueBoostService: VenueBoostService,
+        private readonly venueBoostService: VenueBoostService
     ) {}
 
     /**
@@ -136,6 +137,7 @@ export class BookingService {
         created: number;
         updated: number;
         unchanged: number;
+        errors: number;
     }> {
         try {
             // Get the client
@@ -149,91 +151,145 @@ export class BookingService {
             const bookings = response.data || [];
 
             // Tracking stats
-            let created = 0, updated = 0, unchanged = 0;
+            let created = 0, updated = 0, unchanged = 0, errors = 0;
 
             // Process each booking
             for (const vbBooking of bookings) {
-                // Check if property exists in our system
-                const property = await this.propertyModel.findOne({
-                    'externalIds.venueboostId': vbBooking.rental_unit_id.toString()
-                });
-
-                if (!property) {
-                    this.logger.warn(`Property not found for VenueBoost rental unit ID: ${vbBooking.rental_unit_id}`);
-                    continue;
-                }
-
-                // Check if booking exists by external ID
-                const existingBooking = await this.bookingModel.findOne({
-                    'externalIds.venueboostId': vbBooking.id.toString()
-                });
-
-                // Map VenueBoost status to our status
-                const bookingStatus = this.mapVenueBoostStatusToBookingStatus(vbBooking.status);
-
-                if (existingBooking) {
-                    // Booking exists - check if it needs to be updated
-                    let needsUpdate = false;
-
-                    if (existingBooking.status !== bookingStatus) {
-                        existingBooking.status = bookingStatus;
-                        needsUpdate = true;
-                    }
-
-                    if (existingBooking.totalAmount !== vbBooking.total_amount) {
-                        existingBooking.totalAmount = vbBooking.total_amount;
-                        needsUpdate = true;
-                    }
-
-                    if (existingBooking.discountAmount !== vbBooking.discount_price) {
-                        existingBooking.discountAmount = vbBooking.discount_price;
-                        needsUpdate = true;
-                    }
-
-                    if (needsUpdate) {
-                        await existingBooking.save();
-                        updated++;
-                    } else {
-                        unchanged++;
-                    }
-                } else {
-                    // Booking doesn't exist - create it
-                    await this.bookingModel.create({
-                        clientId,
-                        propertyId: property._id,
-                        guestId: vbBooking.guest_id,
-                        guestCount: vbBooking.guest_nr,
-                        checkInDate: new Date(vbBooking.check_in_date),
-                        checkOutDate: new Date(vbBooking.check_out_date),
-                        totalAmount: vbBooking.total_amount,
-                        discountAmount: vbBooking.discount_price,
-                        subtotal: vbBooking.subtotal,
-                        status: bookingStatus,
-                        paymentMethod: vbBooking.paid_with,
-                        prepaymentAmount: vbBooking.prepayment_amount,
-                        stripePaymentId: vbBooking.stripe_payment_id,
-                        confirmationCode: vbBooking.confirmation_code || this.generateConfirmationCode(),
-                        externalIds: {
-                            venueboostId: vbBooking.id.toString()
-                        },
-                        metadata: new Map([
-                            ['guestName', vbBooking.guest?.name || ''],
-                            ['guestEmail', vbBooking.guest?.email || ''],
-                            ['propertyName', vbBooking.rental_unit?.name || ''],
-                            ['createdAt', vbBooking.created_at]
-                        ])
+                try {
+                    // Find the corresponding property in our system using external ID
+                    const property = await this.propertyModel.findOne({
+                        'externalIds.venueboostId': vbBooking.rental_unit_id.toString()
                     });
 
-                    created++;
+                    if (!property) {
+                        this.logger.warn(`Property not found for rental_unit_id: ${vbBooking.rental_unit_id}`);
+                        errors++;
+                        continue;
+                    }
+
+                    // Find the corresponding guest in our system using external ID
+                    const guest = await this.guestModel.findOne({
+                        'externalIds.venueBoostId': vbBooking.guest_id
+                    });
+
+                    if (!guest) {
+                        this.logger.warn(`Guest not found for guest_id: ${vbBooking.guest_id}`);
+                        errors++;
+                        continue;
+                    }
+
+                    // Check if the booking already exists in our system
+                    const existingBooking = await this.bookingModel.findOne({
+                        'externalIds.venueboostId': vbBooking.id.toString()
+                    });
+
+                    // Map status from VenueBoost to our enum
+                    const bookingStatus = this.mapVenueBoostStatusToBookingStatus(vbBooking.status);
+
+                    // Map payment method
+                    const paymentMethod = vbBooking.paid_with === 'card' ? PaymentMethod.CARD : PaymentMethod.CASH;
+
+                    if (existingBooking) {
+                        // Booking exists - check if it needs to be updated
+                        let needsUpdate = false;
+
+                        if (existingBooking.status !== bookingStatus) {
+                            existingBooking.status = bookingStatus;
+                            needsUpdate = true;
+                        }
+
+                        if (existingBooking.totalAmount !== vbBooking.total_amount) {
+                            existingBooking.totalAmount = vbBooking.total_amount;
+                            needsUpdate = true;
+                        }
+
+                        if (existingBooking.discountAmount !== vbBooking.discount_price) {
+                            existingBooking.discountAmount = vbBooking.discount_price;
+                            needsUpdate = true;
+                        }
+
+                        if (existingBooking.paymentMethod !== paymentMethod) {
+                            existingBooking.paymentMethod = paymentMethod;
+                            needsUpdate = true;
+                        }
+
+                        if (existingBooking.prepaymentAmount !== vbBooking.prepayment_amount) {
+                            existingBooking.prepaymentAmount = vbBooking.prepayment_amount;
+                            needsUpdate = true;
+                        }
+
+                        // Update metadata if needed
+                        if (!existingBooking.metadata) {
+                            existingBooking.metadata = new Map<string, any>();
+                        }
+
+                        if (existingBooking.metadata.get('guestName') !== vbBooking.guest?.name) {
+                            existingBooking.metadata.set('guestName', vbBooking.guest?.name || '');
+                            needsUpdate = true;
+                        }
+
+                        if (existingBooking.metadata.get('guestEmail') !== vbBooking.guest?.email) {
+                            existingBooking.metadata.set('guestEmail', vbBooking.guest?.email || '');
+                            needsUpdate = true;
+                        }
+
+                        if (existingBooking.metadata.get('propertyName') !== vbBooking.rental_unit?.name) {
+                            existingBooking.metadata.set('propertyName', vbBooking.rental_unit?.name || '');
+                            needsUpdate = true;
+                        }
+
+                        if (needsUpdate) {
+                            await existingBooking.save();
+                            updated++;
+                        } else {
+                            unchanged++;
+                        }
+                    } else {
+                        // Booking doesn't exist - create it
+                        const checkInDate = new Date(vbBooking.check_in_date);
+                        const checkOutDate = new Date(vbBooking.check_out_date);
+
+                        await this.bookingModel.create({
+                            clientId: clientId,
+                            propertyId: property._id,
+                            guestId: guest._id,
+                            guestCount: vbBooking.guest_nr,
+                            checkInDate: checkInDate,
+                            checkOutDate: checkOutDate,
+                            totalAmount: vbBooking.total_amount,
+                            discountAmount: vbBooking.discount_price,
+                            subtotal: vbBooking.subtotal,
+                            status: bookingStatus,
+                            paymentMethod: paymentMethod,
+                            prepaymentAmount: vbBooking.prepayment_amount,
+                            stripePaymentId: vbBooking.stripe_payment_id,
+                            confirmationCode: vbBooking.confirmation_code || this.generateConfirmationCode(),
+                            externalIds: {
+                                venueboostId: vbBooking.id.toString()
+                            },
+                            metadata: new Map([
+                                ['guestName', vbBooking.guest?.name || ''],
+                                ['guestEmail', vbBooking.guest?.email || ''],
+                                ['propertyName', vbBooking.rental_unit?.name || ''],
+                                ['createdAt', vbBooking.created_at]
+                            ])
+                        });
+
+                        created++;
+                    }
+                } catch (error) {
+                    this.logger.error(`Error processing booking ${vbBooking.id}: ${error.message}`);
+                    errors++;
                 }
             }
 
             return {
                 success: true,
-                message: `Sync completed: ${created} created, ${updated} updated, ${unchanged} unchanged`,
+                message: `Sync completed: ${created} created, ${updated} updated, ${unchanged} unchanged, ${errors} errors`,
                 created,
                 updated,
-                unchanged
+                unchanged,
+                errors
             };
         } catch (error) {
             this.logger.error(`Error syncing bookings from VenueBoost: ${error.message}`, error.stack);
@@ -267,9 +323,8 @@ export class BookingService {
     private generateConfirmationCode(length = 12): string {
         const characters = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         let code = '';
-        const bytes = randomBytes(length);
         for (let i = 0; i < length; i++) {
-            code += characters[bytes[i] % characters.length];
+            code += characters[Math.floor(Math.random() * characters.length)];
         }
         return code;
     }

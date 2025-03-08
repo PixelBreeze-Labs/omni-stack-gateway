@@ -657,4 +657,49 @@ export class VenueBoostService {
             throw error;
         }
     }
+
+    /**
+     * List bookings from VenueBoost for a client
+     *
+     * @param clientId The MongoDB ID of the client
+     * @returns List of bookings
+     */
+    async listBookings(clientId: string) {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API with the client's API key
+            const response$ = this.httpService.get(`${this.baseUrl}/accomodation-os/bookings`, {
+                params: {
+                    omnigateway_api_key: client.apiKey
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                },
+                validateStatus: (status) => status < 500
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new UnauthorizedException(response.data.error || 'Invalid API key');
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch bookings:', error);
+            throw error;
+        }
+    }
+
 }
