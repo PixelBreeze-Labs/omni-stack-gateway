@@ -860,6 +860,24 @@ export class UserService {
                 throw new BadRequestException('Email is required');
             }
 
+            // Parse name and surname properly
+            let firstName = guestData.name || 'Guest';
+            let lastName = guestData.surname || '';
+
+            // If surname is just a dash or empty, handle it appropriately
+            if (lastName === '-' || lastName === '') {
+                // Check if name contains multiple words
+                const nameParts = firstName.split(' ');
+                if (nameParts.length > 1) {
+                    // Use first word as firstName and rest as lastName
+                    firstName = nameParts[0];
+                    lastName = nameParts.slice(1).join(' ');
+                } else {
+                    // If no space in name and no surname, use a default value
+                    lastName = 'Guest';
+                }
+            }
+
             // Ensure external IDs are strings if present
             const safeExternalIds = {
                 venueBoostUserId: guestData.external_ids?.venueBoostUserId ? String(guestData.external_ids.venueBoostUserId) : null,
@@ -974,7 +992,7 @@ export class UserService {
                     try {
                         guest = await this.guestModel.create({
                             userId: existingUser._id.toString(),
-                            name: `${guestData.name} ${guestData.surname || ''}`.trim(),
+                            name: `${firstName} ${lastName}`.trim(),
                             email: guestData.email,
                             phone: guestData.phone || '',
                             isActive: true,
@@ -1033,10 +1051,10 @@ export class UserService {
                         hashedPassword = await bcrypt.hash('DefaultPassword123', 10);
                     }
 
-                    // Create new user with membership tier
+                    // Create new user with membership tier and proper name/surname
                     const newUser = new this.userModel({
-                        name: guestData.name || 'Guest',
-                        surname: guestData.surname === '-' ? '' : (guestData.surname || ''),
+                        name: firstName,
+                        surname: lastName, // This will never be empty or just a dash
                         email: guestData.email,
                         phone: guestData.phone || '',
                         password: hashedPassword,
@@ -1102,7 +1120,7 @@ export class UserService {
                     try {
                         guest = await this.guestModel.create({
                             userId: savedUser._id.toString(),
-                            name: `${guestData.name} ${guestData.surname || ''}`.trim(),
+                            name: `${firstName} ${lastName}`.trim(),
                             email: guestData.email,
                             phone: guestData.phone || '',
                             isActive: true,
