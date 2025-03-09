@@ -854,233 +854,306 @@ export class UserService {
         webhookApiKey: string,
         guestData: GetOrCreateGuestDto
     ): Promise<any> {
-        // Verify client credentials
-        const requestClient = await this.clientModel.findOne({
-            $or: [
-                { 'venueBoostConnection.venueShortCode': venueShortCode },
-                { 'venueBoostConnection.venueShortCode': encodeURIComponent(venueShortCode) }
-            ],
-            'venueBoostConnection.webhookApiKey': webhookApiKey,
-            'venueBoostConnection.status': 'connected'
-        });
+        try {
+            // 1. Sanitize and validate input data
+            if (!guestData.email) {
+                throw new BadRequestException('Email is required');
+            }
 
-        if (!requestClient) {
-            throw new UnauthorizedException('Invalid venue or webhook key');
-        }
+            // Ensure external IDs are strings if present
+            const safeExternalIds = {
+                venueBoostUserId: guestData.external_ids?.venueBoostUserId ? String(guestData.external_ids.venueBoostUserId) : null,
+                venueBoostGuestId: guestData.external_ids?.venueBoostGuestId ? String(guestData.external_ids.venueBoostGuestId) : null
+            };
 
-        // Load primary client for loyalty
-        const primaryClient = requestClient;
+            // 2. Verify client credentials with flexible matching
+            const requestClient = await this.clientModel.findOne({
+                $or: [
+                    { 'venueBoostConnection.venueShortCode': venueShortCode },
+                    { 'venueBoostConnection.venueShortCode': encodeURIComponent(venueShortCode) },
+                    { 'venueBoostConnection.venueShortCode': decodeURIComponent(venueShortCode) }
+                ],
+                'venueBoostConnection.webhookApiKey': webhookApiKey,
+                'venueBoostConnection.status': 'connected'
+            });
 
-        // 1. Determine which loyalty program to use - same logic as in registerUser
-        let loyaltyClient = primaryClient; // default to primary client
-        if (
-            !primaryClient.loyaltyProgram ||
-            !Array.isArray(primaryClient.loyaltyProgram.membershipTiers) ||
-            primaryClient.loyaltyProgram.membershipTiers.length === 0
-        ) {
-            if (primaryClient.venueBoostConnection && primaryClient.venueBoostConnection.venueShortCode) {
-                const connectedClient = await this.clientModel.findOne({
-                    _id: { $ne: primaryClient._id },
-                    'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
-                    'venueBoostConnection.status': 'connected'
-                }).select('loyaltyProgram defaultCurrency');
+            if (!requestClient) {
+                throw new UnauthorizedException(`Invalid venue (${venueShortCode}) or webhook key`);
+            }
 
+            // 3. Load primary client for loyalty
+            const primaryClient = requestClient;
+
+            // 4. Determine which loyalty program to use
+            let loyaltyClient = primaryClient;
+            if (
+                !primaryClient.loyaltyProgram ||
+                !Array.isArray(primaryClient.loyaltyProgram.membershipTiers) ||
+                primaryClient.loyaltyProgram.membershipTiers.length === 0
+            ) {
+                try {
+                    const connectedClient = await this.clientModel.findOne({
+                        _id: { $ne: primaryClient._id },
+                        'venueBoostConnection.venueShortCode': primaryClient.venueBoostConnection.venueShortCode,
+                        'venueBoostConnection.status': 'connected'
+                    }).select('loyaltyProgram defaultCurrency');
+
+                    if (
+                        connectedClient &&
+                        connectedClient.loyaltyProgram &&
+                        Array.isArray(connectedClient.loyaltyProgram.membershipTiers) &&
+                        connectedClient.loyaltyProgram.membershipTiers.length > 0
+                    ) {
+                        loyaltyClient = connectedClient;
+                    }
+                } catch (e) {
+                    // If finding connected client fails, continue with primary client
+                }
+            }
+
+            // 5. Determine the membership tier
+            let initialClientTiers: Record<string, string> = {};
+            try {
                 if (
-                    connectedClient &&
-                    connectedClient.loyaltyProgram &&
-                    Array.isArray(connectedClient.loyaltyProgram.membershipTiers) &&
-                    connectedClient.loyaltyProgram.membershipTiers.length > 0
+                    loyaltyClient.loyaltyProgram &&
+                    Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
+                    loyaltyClient.loyaltyProgram.membershipTiers.length > 0
                 ) {
-                    loyaltyClient = connectedClient;
-                }
-            }
-        }
+                    // Find the tier with the lowest "min" spend
+                    const lowestTier = loyaltyClient.loyaltyProgram.membershipTiers.reduce((lowest, current) => {
+                        return (!lowest || current.spendRange.min < lowest.spendRange.min) ? current : lowest;
+                    }, null);
 
-        // 2. Determine the membership tier - same logic as in registerUser
-        let initialClientTiers: Record<string, string> = {};
-        if (
-            loyaltyClient.loyaltyProgram &&
-            Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
-            loyaltyClient.loyaltyProgram.membershipTiers.length > 0
-        ) {
-            // Find the tier with the lowest "min" spend
-            const lowestTier = loyaltyClient.loyaltyProgram.membershipTiers.reduce((lowest, current) => {
-                return (!lowest || current.spendRange.min < lowest.spendRange.min) ? current : lowest;
-            }, null);
-
-            if (lowestTier) {
-                initialClientTiers[primaryClient._id.toString()] = lowestTier.name;
-            }
-        }
-
-        // If no tier was found, fall back to "Default Tier".
-        if (Object.keys(initialClientTiers).length === 0) {
-            initialClientTiers[primaryClient._id.toString()] = 'Default Tier';
-        }
-
-        // Look for existing user either by external ID or email
-        let existingUser = null;
-        if (guestData.external_ids?.venueBoostUserId) {
-            existingUser = await this.userModel.findOne({
-                'external_ids.venueBoostId': guestData.external_ids.venueBoostUserId
-            }).populate('walletId');
-        }
-
-        if (!existingUser && guestData.email) {
-            existingUser = await this.userModel.findOne({
-                email: guestData.email
-            }).populate('walletId');
-        }
-
-        // Find or create the guest
-        let guest = null;
-        let wallet = null;
-
-        if (existingUser) {
-            // User exists, check if guest exists for this user
-            if (guestData.external_ids?.venueBoostGuestId) {
-                guest = await this.guestModel.findOne({
-                    'external_ids.venueBoostId': guestData.external_ids.venueBoostGuestId
-                });
-            }
-
-            if (!guest) {
-                guest = await this.guestModel.findOne({
-                    userId: existingUser._id.toString()
-                });
-            }
-
-            // If guest doesn't exist, create it
-            if (!guest) {
-                guest = await this.guestModel.create({
-                    userId: existingUser._id.toString(),
-                    name: `${guestData.name} ${guestData.surname || ''}`.trim(),
-                    email: guestData.email,
-                    phone: guestData.phone,
-                    isActive: true,
-                    clientIds: [requestClient._id.toString()],
-                    external_ids: {
-                        venueBoostId: guestData.external_ids?.venueBoostGuestId || null
+                    if (lowestTier) {
+                        initialClientTiers[primaryClient._id.toString()] = lowestTier.name;
                     }
-                });
-            } else if (guestData.external_ids?.venueBoostGuestId && (!guest.external_ids || !guest.external_ids.venueBoostId)) {
-                // Update guest with external ID if needed
-                guest.external_ids = {
-                    ...(guest.external_ids || {}),
-                    venueBoostId: guestData.external_ids.venueBoostGuestId
-                };
-                await guest.save();
+                }
+            } catch (e) {
+                // If determining tier fails, use default
             }
 
-            // Get or create wallet
-            wallet = await this.walletService.findOrCreateWallet(
-                existingUser._id.toString(),
-                requestClient._id.toString(),
-                requestClient.defaultCurrency || 'EUR'
-            );
-
-            // Return existing user and guest information
-            return {
-                user: existingUser,
-                userId: existingUser._id.toString(),
-                guestId: guest._id.toString(),
-                walletBalance: wallet.balance || 0,
-                currentTierName: existingUser.clientTiers?.[requestClient._id.toString()] || initialClientTiers[requestClient._id.toString()],
-                referralCode: existingUser.referralCode
-            };
-        } else {
-            // User doesn't exist, create new user
-
-            // 1. Generate referral code
-            const referralCode = this.generateReferralCode();
-
-            // 2. Hash password
-            const hashedPassword = await bcrypt.hash(guestData.password, 10);
-
-            // 3. Create new user with membership tier
-            const newUser = new this.userModel({
-                name: guestData.name,
-                surname: guestData.surname === '-' ? '' : (guestData.surname || ''),
-                email: guestData.email,
-                phone: guestData.phone,
-                password: hashedPassword,
-                registrationSource: (guestData.registrationSource || 'metrosuites').toLowerCase() as RegistrationSource,
-                external_ids: {
-                    venueBoostId: guestData.external_ids?.venueBoostUserId || null
-                },
-                client_ids: [requestClient._id.toString()],
-                referralCode,
-                clientTiers: initialClientTiers,
-                points: 0,
-                totalSpend: 0
-            });
-
-            // 4. Save the user
-            const savedUser = await newUser.save();
-
-            // 5. Award signup bonus points if defined
-            if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
-                const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
-                await this.userModel.updateOne(
-                    { _id: savedUser._id },
-                    { $inc: { points: signUpBonus } }
-                );
+            // If no tier was found, fall back to "Default Tier"
+            if (Object.keys(initialClientTiers).length === 0) {
+                initialClientTiers[primaryClient._id.toString()] = 'Default Tier';
             }
 
-            // 6. Create wallet
-            wallet = await this.walletService.findOrCreateWallet(
-                savedUser._id.toString(),
-                requestClient._id.toString(),
-                requestClient.defaultCurrency || 'EUR'
-            );
+            // 6. Look for existing user by external ID or email
+            let existingUser = null;
+            if (safeExternalIds.venueBoostUserId) {
+                existingUser = await this.userModel.findOne({
+                    'external_ids.venueBoostId': safeExternalIds.venueBoostUserId
+                }).populate('walletId');
+            }
 
-            // 7. Update user with wallet ID
-            await this.userModel.updateOne(
-                { _id: savedUser._id },
-                { walletId: wallet._id }
-            );
+            if (!existingUser && guestData.email) {
+                existingUser = await this.userModel.findOne({
+                    email: guestData.email
+                }).populate('walletId');
+            }
 
-            // 8. Add wallet credit for the signup bonus if applicable
-            if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
-                const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
-                await this.walletService.addCredit(
-                    wallet._id.toString(),
-                    signUpBonus,
-                    {
-                        description: 'Sign up bonus points awarded',
-                        source: 'reward',
-                        metadata: {
-                            reason: 'signup_bonus',
-                            points: signUpBonus
+            // 7. Find or create the guest
+            let guest = null;
+            let wallet = null;
+
+            if (existingUser) {
+                // User exists, check if guest exists for this user
+                if (safeExternalIds.venueBoostGuestId) {
+                    guest = await this.guestModel.findOne({
+                        'external_ids.venueBoostId': safeExternalIds.venueBoostGuestId
+                    });
+                }
+
+                if (!guest) {
+                    guest = await this.guestModel.findOne({
+                        userId: existingUser._id.toString()
+                    });
+                }
+
+                // If guest doesn't exist, create it
+                if (!guest) {
+                    try {
+                        guest = await this.guestModel.create({
+                            userId: existingUser._id.toString(),
+                            name: `${guestData.name} ${guestData.surname || ''}`.trim(),
+                            email: guestData.email,
+                            phone: guestData.phone || '',
+                            isActive: true,
+                            clientIds: [requestClient._id.toString()],
+                            external_ids: {
+                                venueBoostId: safeExternalIds.venueBoostGuestId
+                            }
+                        });
+                    } catch (error) {
+                        if (error.code === 11000) {
+                            throw new BadRequestException('Duplicate guest record detected');
                         }
+                        throw error;
                     }
-                );
+                } else if (safeExternalIds.venueBoostGuestId && (!guest.external_ids || !guest.external_ids.venueBoostId)) {
+                    // Update guest with external ID if needed
+                    guest.external_ids = {
+                        ...(guest.external_ids || {}),
+                        venueBoostId: safeExternalIds.venueBoostGuestId
+                    };
+                    await guest.save();
+                }
+
+                // Get or create wallet
+                try {
+                    wallet = await this.walletService.findOrCreateWallet(
+                        existingUser._id.toString(),
+                        requestClient._id.toString(),
+                        requestClient.defaultCurrency || 'EUR'
+                    );
+                } catch (error) {
+                    // If wallet creation fails, continue with null wallet
+                    wallet = { balance: 0 };
+                }
+
+                // Return existing user and guest information
+                return {
+                    user: existingUser,
+                    userId: existingUser._id.toString(),
+                    guestId: guest._id.toString(),
+                    walletBalance: wallet.balance || 0,
+                    currentTierName: existingUser.clientTiers?.[requestClient._id.toString()] || initialClientTiers[requestClient._id.toString()],
+                    referralCode: existingUser.referralCode
+                };
+            } else {
+                // 8. User doesn't exist, create new user
+                try {
+                    // Generate referral code
+                    const referralCode = this.generateReferralCode();
+
+                    // Hash password with fallback
+                    let hashedPassword;
+                    try {
+                        hashedPassword = await bcrypt.hash(guestData.password || 'DefaultPassword123', 10);
+                    } catch (e) {
+                        hashedPassword = await bcrypt.hash('DefaultPassword123', 10);
+                    }
+
+                    // Create new user with membership tier
+                    const newUser = new this.userModel({
+                        name: guestData.name || 'Guest',
+                        surname: guestData.surname === '-' ? '' : (guestData.surname || ''),
+                        email: guestData.email,
+                        phone: guestData.phone || '',
+                        password: hashedPassword,
+                        registrationSource: (guestData.registrationSource || 'metrosuites').toLowerCase() as RegistrationSource,
+                        external_ids: {
+                            venueBoostId: safeExternalIds.venueBoostUserId
+                        },
+                        client_ids: [requestClient._id.toString()],
+                        referralCode,
+                        clientTiers: initialClientTiers,
+                        points: 0,
+                        totalSpend: 0
+                    });
+
+                    // Save the user
+                    const savedUser = await newUser.save();
+
+                    // Award signup bonus points if defined
+                    if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+                        const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+                        await this.userModel.updateOne(
+                            { _id: savedUser._id },
+                            { $inc: { points: signUpBonus } }
+                        );
+                    }
+
+                    // Create wallet
+                    try {
+                        wallet = await this.walletService.findOrCreateWallet(
+                            savedUser._id.toString(),
+                            requestClient._id.toString(),
+                            requestClient.defaultCurrency || 'EUR'
+                        );
+
+                        // Update user with wallet ID
+                        await this.userModel.updateOne(
+                            { _id: savedUser._id },
+                            { walletId: wallet._id }
+                        );
+
+                        // Add wallet credit for the signup bonus if applicable
+                        if (primaryClient.loyaltyProgram?.pointsSystem?.earningPoints?.signUpBonus) {
+                            const signUpBonus = primaryClient.loyaltyProgram.pointsSystem.earningPoints.signUpBonus;
+                            await this.walletService.addCredit(
+                                wallet._id.toString(),
+                                signUpBonus,
+                                {
+                                    description: 'Sign up bonus points awarded',
+                                    source: 'reward',
+                                    metadata: {
+                                        reason: 'signup_bonus',
+                                        points: signUpBonus
+                                    }
+                                }
+                            );
+                        }
+                    } catch (error) {
+                        // If wallet creation fails, continue with null wallet
+                        wallet = { balance: 0 };
+                    }
+
+                    // Create guest for the new user
+                    try {
+                        guest = await this.guestModel.create({
+                            userId: savedUser._id.toString(),
+                            name: `${guestData.name} ${guestData.surname || ''}`.trim(),
+                            email: guestData.email,
+                            phone: guestData.phone || '',
+                            isActive: true,
+                            clientIds: [requestClient._id.toString()],
+                            external_ids: {
+                                venueBoostId: safeExternalIds.venueBoostGuestId
+                            }
+                        });
+                    } catch (error) {
+                        if (error.code === 11000) {
+                            throw new BadRequestException('Duplicate guest record detected');
+                        }
+                        throw error;
+                    }
+
+                    // Return user and guest information
+                    const tierName = initialClientTiers[requestClient._id.toString()];
+
+                    return {
+                        user: savedUser,
+                        userId: savedUser._id.toString(),
+                        guestId: guest._id.toString(),
+                        walletBalance: wallet.balance || 0,
+                        currentTierName: tierName,
+                        referralCode: referralCode
+                    };
+                } catch (error) {
+                    if (error.code === 11000) {
+                        throw new BadRequestException('Duplicate user record detected - email may already be in use');
+                    }
+                    throw error;
+                }
+            }
+        } catch (error) {
+            // Improved error handling to provide more specific information
+            if (error instanceof BadRequestException || error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
             }
 
-            // 9. Create guest for the new user
-            guest = await this.guestModel.create({
-                userId: savedUser._id.toString(),
-                name: `${guestData.name} ${guestData.surname || ''}`.trim(),
-                email: guestData.email,
-                phone: guestData.phone,
-                isActive: true,
-                clientIds: [requestClient._id.toString()],
-                external_ids: {
-                    venueBoostId: guestData.external_ids?.venueBoostGuestId || null
-                }
-            });
+            // Convert MongoDB errors to meaningful API errors
+            if (error.code === 11000) {
+                throw new BadRequestException('Duplicate key error - a record with this data already exists');
+            }
 
-            // 10. Return user and guest information
-            const tierName = initialClientTiers[requestClient._id.toString()];
+            // Handle validation errors
+            if (error.name === 'ValidationError') {
+                throw new BadRequestException(`Validation error: ${error.message}`);
+            }
 
-            return {
-                user: savedUser,
-                userId: savedUser._id.toString(),
-                guestId: guest._id.toString(),
-                walletBalance: wallet.balance || 0,
-                currentTierName: tierName,
-                referralCode: referralCode
-            };
+            // General error handler
+            throw new BadRequestException(`Error creating guest: ${error.message}`);
         }
     }
 }
