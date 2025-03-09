@@ -449,9 +449,13 @@ export class UserService {
         webhookApiKey: string,
         userId: string
     ): Promise<{ wallet_info: WalletInfo }> {
-        // 1. Verify requesting client
+        // 1. Verify requesting client with flexible matching for venueShortCode
         const requestClient = await this.clientModel.findOne({
-            'venueBoostConnection.venueShortCode': venueShortCode,
+            $or: [
+                { 'venueBoostConnection.venueShortCode': venueShortCode },
+                { 'venueBoostConnection.venueShortCode': encodeURIComponent(venueShortCode) },
+                { 'venueBoostConnection.venueShortCode': decodeURIComponent(venueShortCode) }
+            ],
             'venueBoostConnection.webhookApiKey': webhookApiKey,
             'venueBoostConnection.status': 'connected'
         });
