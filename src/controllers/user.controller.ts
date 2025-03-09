@@ -112,11 +112,13 @@ export class UserController {
     @ApiOperation({ summary: 'Get user wallet info' })
     @ApiResponse({ status: 200, description: 'Wallet info retrieved successfully' })
     async getWalletInfo(
-        @Param('venueShortCode') venueShortCode: string,
+        @Param('venueShortCode') encodedVenueShortCode: string,
         @Param('userId') userId: string,
         @Headers('webhook-api-key') webhookApiKey: string,
         @Headers('x-api-key') apiKey: string,
     ) {
+        // Decode the URL-encoded short code
+        const venueShortCode = decodeURIComponent(encodedVenueShortCode);
         return this.userService.getWalletInfo(venueShortCode, webhookApiKey, userId);
     }
 
