@@ -63,6 +63,7 @@ import { Guest, GuestSchema } from './schemas/guest.schema';
 import { Booking, BookingSchema } from './schemas/booking.schema';
 import { OperatingEntity, OperatingEntitySchema } from './schemas/operating-entity.schema';
 import { SocialProfile, SocialProfileSchema } from './schemas/social-profile.schema';
+import { GeneralCampaign, GeneralCampaignSchema } from './schemas/general-campaign.schema';
 
 
 
@@ -118,6 +119,7 @@ import { BookingController } from './controllers/booking.controller';
 import { CommunicationsController } from './controllers/communications.controller';
 import { OperatingEntityController } from './controllers/operating-entity.controller';
 import { SocialProfileController } from './controllers/social-profile.controller';
+import { GeneralCampaignController } from './controllers/general-campaign.controller';
 
 
 
@@ -191,6 +193,7 @@ import { BookingService } from "./services/booking.service";
 import { CommunicationsService } from "./services/communications.service";
 import { OperatingEntityService } from './services/operating-entity.service';
 import { SocialProfileService } from './services/social-profile.service';
+import { GeneralCampaignService } from './services/general-campaign.service';
 
 
 // Others
@@ -271,6 +274,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Booking.name, schema: BookingSchema },
       { name: OperatingEntity.name, schema: OperatingEntitySchema },
       { name: SocialProfile.name, schema: SocialProfileSchema },
+      { name: GeneralCampaign.name, schema: GeneralCampaignSchema },
     ]),
   ],
   controllers: [
@@ -332,7 +336,8 @@ import {JwtModule} from "@nestjs/jwt";
     BookingController,
     CommunicationsController,
     OperatingEntityController,
-    SocialProfileController
+    SocialProfileController,
+    GeneralCampaignController
   ],
   providers: [
     SnapfoodService,
@@ -401,7 +406,8 @@ import {JwtModule} from "@nestjs/jwt";
     BookingService,
     CommunicationsService,
     OperatingEntityService,
-    SocialProfileService
+    SocialProfileService,
+    GeneralCampaignService
   ],
 })
 export class AppModule implements NestModule {
