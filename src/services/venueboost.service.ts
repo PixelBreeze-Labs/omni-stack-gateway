@@ -796,4 +796,114 @@ export class VenueBoostService {
         }
     }
 
+
+    /**
+     * Delete a guest in VenueBoost
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param guestId The guest ID to delete
+     * @param options Delete options (force_delete, delete_user)
+     * @returns Result of the delete operation
+     */
+    async deleteGuest(
+        clientId: string,
+        guestId: string,
+        options: { forceDelete?: boolean; deleteUser?: boolean } = {}
+    ): Promise<any> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to delete the guest
+            const response$ = this.httpService.delete(
+                `${this.baseUrl}/accommodation-os/guests/${guestId}`,
+                {
+                    params: {
+                        venue_short_code: client.venueBoostConnection.venueShortCode,
+                        omnigateway_api_key: client.apiKey,
+                        force_delete: options.forceDelete ? 'true' : 'false',
+                        delete_user: options.deleteUser ? 'true' : 'false'
+                    },
+                    headers: {
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to delete guest ${guestId}: ${response.data.error || 'Unknown error'}`);
+                return {
+                    success: false,
+                    message: response.data.error || 'Failed to delete guest',
+                    statusCode: response.status
+                };
+            }
+
+            return {
+                success: true,
+                message: response.data.message || 'Guest deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error deleting guest: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a booking in VenueBoost
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param bookingId The booking ID to delete
+     * @returns Result of the delete operation
+     */
+    async deleteBooking(clientId: string, bookingId: string): Promise<any> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to delete the booking
+            const response$ = this.httpService.delete(
+                `${this.baseUrl}/accommodation-os/bookings/${bookingId}`,
+                {
+                    params: {
+                        venue_short_code: client.venueBoostConnection.venueShortCode,
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to delete booking ${bookingId}: ${response.data.error || 'Unknown error'}`);
+                return {
+                    success: false,
+                    message: response.data.error || 'Failed to delete booking',
+                    statusCode: response.status
+                };
+            }
+
+            return {
+                success: true,
+                message: response.data.message || 'Booking deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error deleting booking: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
 }

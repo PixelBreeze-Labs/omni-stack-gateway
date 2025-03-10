@@ -6,6 +6,7 @@ import { Client } from '../schemas/client.schema';
 import { ListGuestDto } from '../dtos/guest.dto';
 import { GuestListResponse, GuestMetrics, GuestResponse } from '../types/guest.types';
 import { User } from '../schemas/user.schema';
+import { VenueBoostService} from "./venueboost.service";
 
 @Injectable()
 export class GuestService {
@@ -15,6 +16,7 @@ export class GuestService {
         @InjectModel(Guest.name) private guestModel: Model<Guest>,
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(User.name) private userModel: Model<User>,
+        private readonly venueBoostService: VenueBoostService,
     ) {}
 
     private async getConnectedClientIds(clientIds: string[]): Promise<string[]> {
@@ -187,5 +189,85 @@ export class GuestService {
     private static calculateGrowthPercentage(current: number, previous: number): number {
         if (previous === 0) return current > 0 ? 100 : 0;
         return ((current - previous) / previous) * 100;
+    }
+
+
+
+    /**
+     * Delete a guest
+     *
+     * @param guestId The MongoDB ID of the guest to delete
+     * @param clientId The MongoDB ID of the client
+     * @param options Options for deletion (force delete, delete user)
+     * @returns Success status and message
+     */
+    async deleteGuest(
+        guestId: string,
+        clientId: string,
+        options: { forceDelete?: boolean; deleteUser?: boolean } = {}
+    ): Promise<{ success: boolean; message: string }> {
+        try {
+            // Find the guest to get VenueBoost ID
+            const guest = await this.guestModel.findOne({
+                _id: guestId,
+                clientIds: clientId
+            });
+
+            if (!guest) {
+                return {
+                    success: false,
+                    message: 'Guest not found or does not belong to this client'
+                };
+            }
+
+            // Check if this guest has VenueBoost integration
+            if (guest.external_ids?.venueBoostId) {
+                // Delete in VenueBoost first
+                const vbResult = await this.venueBoostService.deleteGuest(
+                    clientId,
+                    guest.external_ids.venueBoostId,
+                    {
+                        forceDelete: options.forceDelete,
+                        deleteUser: options.deleteUser
+                    }
+                );
+
+                // If VenueBoost deletion fails with something other than "not found", stop the process
+                if (!vbResult.success && vbResult.statusCode !== 404) {
+                    return {
+                        success: false,
+                        message: `Failed to delete guest in VenueBoost: ${vbResult.message}`
+                    };
+                }
+            }
+
+            // If we need to delete the user as well
+            if (options.deleteUser && guest.userId) {
+                // Check if this user has other guests
+                const otherGuestsCount = await this.guestModel.countDocuments({
+                    userId: guest.userId,
+                    _id: { $ne: guest._id }
+                });
+
+                // Only delete the user if there are no other guests
+                if (otherGuestsCount === 0) {
+                    await this.userModel.findByIdAndDelete(guest.userId);
+                }
+            }
+
+            // Delete the guest from our database
+            await this.guestModel.findByIdAndDelete(guestId);
+
+            return {
+                success: true,
+                message: 'Guest deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error deleting guest: ${error.message}`, error.stack);
+            return {
+                success: false,
+                message: `Error deleting guest: ${error.message}`
+            };
+        }
     }
 }
