@@ -906,4 +906,145 @@ export class VenueBoostService {
         }
     }
 
+
+    /**
+     * List campaigns from VenueBoost for a client
+     *
+     * @param clientId The MongoDB ID of the client
+     * @returns List of campaigns
+     */
+    async listCampaigns(clientId: string) {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API
+            const response$ = this.httpService.get(`${this.baseUrl}/campaigns-os`, {
+                params: {
+                    omnigateway_api_key: client.apiKey
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                },
+                validateStatus: (status) => status < 500
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new UnauthorizedException(response.data.error || 'Invalid API key');
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch campaigns:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update a campaign in VenueBoost with our OmniStack ID
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param vbCampaignId The VenueBoost campaign ID
+     * @param omnistackId The OmniStack (MongoDB) campaign ID
+     * @returns Result of the update operation
+     */
+    async updateCampaignExternalId(clientId: string, vbCampaignId: string, omnistackId: string): Promise<boolean> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to update the campaign's external ID
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/campaigns-os/${vbCampaignId}/external-id`,
+                {
+                    omnistack_id: omnistackId
+                },
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to update campaign ${vbCampaignId} with external ID: ${response.data.error || 'Unknown error'}`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error updating campaign external ID: ${error.message}`, error.stack);
+            return false;
+        }
+    }
+
+    /**
+     * Delete a campaign in VenueBoost
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param campaignId The campaign ID in VenueBoost
+     * @returns Result of the delete operation
+     */
+    async deleteCampaign(clientId: string, campaignId: string): Promise<any> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to delete the campaign
+            const response$ = this.httpService.delete(
+                `${this.baseUrl}/campaigns-os/${campaignId}`,
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to delete campaign ${campaignId}: ${response.data.error || 'Unknown error'}`);
+                return {
+                    success: false,
+                    message: response.data.error || 'Failed to delete campaign',
+                    statusCode: response.status
+                };
+            }
+
+            return {
+                success: true,
+                message: response.data.message || 'Campaign deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error deleting campaign: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
 }
