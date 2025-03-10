@@ -356,4 +356,62 @@ export class BookingService {
         }
         return code;
     }
+
+    /**
+     * Delete a booking
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param bookingId The MongoDB ID of the booking to delete
+     * @returns Success status and message
+     */
+    async deleteBooking(
+        clientId: string,
+        bookingId: string
+    ): Promise<{ success: boolean; message: string }> {
+        try {
+            // Find the booking to get VenueBoost ID
+            const booking = await this.bookingModel.findOne({
+                _id: bookingId,
+                clientId: clientId
+            });
+
+            if (!booking) {
+                return {
+                    success: false,
+                    message: 'Booking not found or does not belong to this client'
+                };
+            }
+
+            // Check if this booking has VenueBoost integration
+            if (booking.externalIds?.venueboostId) {
+                // Delete in VenueBoost first
+                const vbResult = await this.venueBoostService.deleteBooking(
+                    clientId,
+                    booking.externalIds.venueboostId
+                );
+
+                // If VenueBoost deletion fails with something other than "not found", stop the process
+                if (!vbResult.success && vbResult.statusCode !== 404) {
+                    return {
+                        success: false,
+                        message: `Failed to delete booking in VenueBoost: ${vbResult.message}`
+                    };
+                }
+            }
+
+            // Delete the booking from our database
+            await this.bookingModel.findByIdAndDelete(bookingId);
+
+            return {
+                success: true,
+                message: 'Booking deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error deleting booking: ${error.message}`, error.stack);
+            return {
+                success: false,
+                message: `Error deleting booking: ${error.message}`
+            };
+        }
+    }
 }

@@ -8,9 +8,10 @@ import {
     Query,
     DefaultValuePipe,
     ParseIntPipe,
-    BadRequestException
+    BadRequestException,
+    Delete
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { BookingService } from '../services/booking.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
@@ -120,5 +121,23 @@ export class BookingController {
         } catch (error) {
             throw new BadRequestException(`Invalid date format: ${dateStr}. Expected format: YYYY-MM-DD`);
         }
+    }
+
+
+    /**
+     * Delete a booking
+     */
+    @Delete(':id')
+    @ApiOperation({ summary: 'Delete a booking' })
+    @ApiParam({ name: 'id', description: 'Booking ID' })
+    @ApiResponse({ status: 200, description: 'Booking deleted successfully' })
+    @ApiResponse({ status: 400, description: 'Invalid request' })
+    @ApiResponse({ status: 403, description: 'Forbidden' })
+    @ApiResponse({ status: 404, description: 'Booking not found' })
+    async deleteBooking(
+        @Req() req: Request & { client: Client },
+        @Param('id') id: string
+    ) {
+        return this.bookingService.deleteBooking(req.client.id, id);
     }
 }
