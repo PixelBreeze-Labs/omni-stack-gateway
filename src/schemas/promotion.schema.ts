@@ -31,11 +31,11 @@ export class Promotion extends Document {
         [key: string]: string;
     };
 
-    @Prop({ type: Number, required: false })
-    venueId?: number;
-
     @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Discount' }] })
     discountIds?: string[];
+
+    @Prop({ type: Map, of: MongooseSchema.Types.Mixed, default: {} })
+    metadata: Map<string, any>;
 }
 
 export const PromotionSchema = SchemaFactory.createForClass(Promotion);
