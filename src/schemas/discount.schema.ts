@@ -34,21 +34,6 @@ export class Discount extends Document {
     @Prop({ type: Date, required: true })
     endTime: Date;
 
-    @Prop({ type: Number, default: 0 })
-    reservationCount: number;
-
-    @Prop({ type: String, required: false })
-    productId?: string;
-
-    @Prop({ type: String, required: false })
-    rentalUnitId?: string;
-
-    @Prop({ type: String, required: false })
-    categoryId?: string;
-
-    @Prop({ type: String, required: false })
-    productIds?: string;
-
     @Prop({ type: Object, default: {} })
     externalIds: {
         venueBoostId?: string;
