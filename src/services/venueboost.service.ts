@@ -1189,4 +1189,286 @@ export class VenueBoostService {
             throw error;
         }
     }
+
+    /**
+     * List promotions from VenueBoost for a client
+     *
+     * @param clientId The MongoDB ID of the client
+     * @returns List of promotions
+     */
+    async listPromotions(clientId: string) {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API
+            const response$ = this.httpService.get(`${this.baseUrl}/promotions-os`, {
+                params: {
+                    omnigateway_api_key: client.apiKey
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                },
+                validateStatus: (status) => status < 500
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new UnauthorizedException(response.data.error || 'Invalid API key');
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch promotions:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update a promotion in VenueBoost with our OmniStack ID
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param vbPromotionId The VenueBoost promotion ID
+     * @param omnistackId The OmniStack (MongoDB) promotion ID
+     * @returns Result of the update operation
+     */
+    async updatePromotionExternalId(clientId: string, vbPromotionId: string, omnistackId: string): Promise<boolean> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to update the promotion's external ID
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/promotions-os/${vbPromotionId}/external-id`,
+                {
+                    omnistack_id: omnistackId
+                },
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to update promotion ${vbPromotionId} with external ID: ${response.data.error || 'Unknown error'}`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error updating promotion external ID: ${error.message}`, error.stack);
+            return false;
+        }
+    }
+
+    /**
+     * Delete a promotion in VenueBoost
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param promotionId The promotion ID in VenueBoost
+     * @returns Result of the delete operation
+     */
+    async deletePromotion(clientId: string, promotionId: string): Promise<any> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to delete the promotion
+            const response$ = this.httpService.delete(
+                `${this.baseUrl}/promotions-os/${promotionId}`,
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to delete promotion ${promotionId}: ${response.data.error || 'Unknown error'}`);
+                return {
+                    success: false,
+                    message: response.data.error || 'Failed to delete promotion',
+                    statusCode: response.status
+                };
+            }
+
+            return {
+                success: true,
+                message: response.data.message || 'Promotion deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error deleting promotion: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * List discounts from VenueBoost for a client
+     *
+     * @param clientId The MongoDB ID of the client
+     * @returns List of discounts
+     */
+    async listDiscounts(clientId: string) {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API
+            const response$ = this.httpService.get(`${this.baseUrl}/discounts-os`, {
+                params: {
+                    omnigateway_api_key: client.apiKey
+                },
+                headers: {
+                    'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                },
+                validateStatus: (status) => status < 500
+            });
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new Error(response.data.message || 'Bad request');
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new UnauthorizedException(response.data.error || 'Invalid API key');
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch discounts:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update a discount in VenueBoost with our OmniStack ID
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param vbDiscountId The VenueBoost discount ID
+     * @param omnistackId The OmniStack (MongoDB) discount ID
+     * @returns Result of the update operation
+     */
+    async updateDiscountExternalId(clientId: string, vbDiscountId: string, omnistackId: string): Promise<boolean> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to update the discount's external ID
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/discounts-os/${vbDiscountId}/external-id`,
+                {
+                    omnistack_id: omnistackId
+                },
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    }
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to update discount ${vbDiscountId} with external ID: ${response.data.error || 'Unknown error'}`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error updating discount external ID: ${error.message}`, error.stack);
+            return false;
+        }
+    }
+
+    /**
+     * Delete a discount in VenueBoost
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param discountId The discount ID in VenueBoost
+     * @returns Result of the delete operation
+     */
+    async deleteDiscount(clientId: string, discountId: string): Promise<any> {
+        try {
+            const client = await this.clientModel.findById(clientId).select('+apiKey');
+
+            if (!client || !client.apiKey) {
+                throw new BadRequestException('Client API key not found');
+            }
+
+            // Call the VenueBoost API to delete the discount
+            const response$ = this.httpService.delete(
+                `${this.baseUrl}/discounts-os/${discountId}`,
+                {
+                    params: {
+                        omnigateway_api_key: client.apiKey
+                    },
+                    headers: {
+                        'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status >= 400) {
+                this.logger.error(`Failed to delete discount ${discountId}: ${response.data.error || 'Unknown error'}`);
+                return {
+                    success: false,
+                    message: response.data.error || 'Failed to delete discount',
+                    statusCode: response.status
+                };
+            }
+
+            return {
+                success: true,
+                message: response.data.message || 'Discount deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error deleting discount: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
 }
