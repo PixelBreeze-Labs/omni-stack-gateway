@@ -21,9 +21,6 @@ export class GeneralCampaign extends Document {
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Promotion', required: false })
     promotionId?: string;
 
-    @Prop({ type: Number, required: false })
-    vbPromotionId?: number;
-
     @Prop({ required: true })
     title: string;
 
@@ -62,16 +59,8 @@ export class GeneralCampaign extends Document {
         [key: string]: string;
     };
 
-    @Prop({ type: Number, required: false })
-    venueId?: number;
-
-    @Prop({ type: Object, required: false })
-    promotion?: {
-        id: number;
-        name: string;
-        description: string;
-        type: string;
-    };
+    @Prop({ type: Map, of: MongooseSchema.Types.Mixed, default: {} })
+    metadata: Map<string, any>;
 }
 
 export const GeneralCampaignSchema = SchemaFactory.createForClass(GeneralCampaign);
