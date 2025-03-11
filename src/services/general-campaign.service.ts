@@ -196,14 +196,32 @@ export class GeneralCampaignService {
                             needsUpdate = true;
                         }
 
-                        // Update promotion if needed
-                        if (vbCampaign.promotion) {
-                            existingCampaign.vbPromotionId = vbCampaign.promotion.id;
-                            existingCampaign.promotion = vbCampaign.promotion;
+                        // Initialize metadata if it doesn't exist
+                        if (!existingCampaign.metadata) {
+                            existingCampaign.metadata = new Map<string, any>();
+                        }
+
+                        // Update venueId in metadata
+                        if (existingCampaign.metadata.get('venueId') !== vbCampaign.venue_id) {
+                            existingCampaign.metadata.set('venueId', vbCampaign.venue_id);
                             needsUpdate = true;
-                        } else if (existingCampaign.vbPromotionId) {
-                            existingCampaign.vbPromotionId = undefined;
-                            existingCampaign.promotion = undefined;
+                        }
+
+                        // Update promotion and vbPromotionId in metadata
+                        if (vbCampaign.promotion) {
+                            if (existingCampaign.metadata.get('vbPromotionId') !== vbCampaign.promotion.id) {
+                                existingCampaign.metadata.set('vbPromotionId', vbCampaign.promotion.id);
+                                needsUpdate = true;
+                            }
+
+                            if (JSON.stringify(existingCampaign.metadata.get('promotion')) !== JSON.stringify(vbCampaign.promotion)) {
+                                existingCampaign.metadata.set('promotion', vbCampaign.promotion);
+                                needsUpdate = true;
+                            }
+                        } else if (existingCampaign.metadata.has('vbPromotionId') || existingCampaign.metadata.has('promotion')) {
+                            // Remove promotion data if it's no longer present
+                            existingCampaign.metadata.delete('vbPromotionId');
+                            existingCampaign.metadata.delete('promotion');
                             needsUpdate = true;
                         }
 
@@ -226,6 +244,15 @@ export class GeneralCampaignService {
                         }
                     } else {
                         // Campaign doesn't exist - create it
+                        // Create metadata map with venueId, promotion, and vbPromotionId
+                        const metadata = new Map<string, any>();
+                        metadata.set('venueId', vbCampaign.venue_id);
+
+                        if (vbCampaign.promotion) {
+                            metadata.set('vbPromotionId', vbCampaign.promotion.id);
+                            metadata.set('promotion', vbCampaign.promotion);
+                        }
+
                         const newCampaign = await this.campaignModel.create({
                             clientId,
                             title: vbCampaign.title,
@@ -239,15 +266,8 @@ export class GeneralCampaignService {
                             externalIds: {
                                 venueBoostId: vbCampaign.id.toString()
                             },
-                            venueId: vbCampaign.venue_id
+                            metadata: metadata
                         });
-
-                        // If there's a promotion, add it
-                        if (vbCampaign.promotion) {
-                            newCampaign.vbPromotionId = vbCampaign.promotion.id;
-                            newCampaign.promotion = vbCampaign.promotion;
-                            await newCampaign.save();
-                        }
 
                         // Send our ID to VenueBoost
                         await this.venueBoostService.updateCampaignExternalId(
