@@ -160,11 +160,6 @@ export class DiscountService {
                             needsUpdate = true;
                         }
 
-                        if (existingDiscount.reservationCount !== vbDiscount.reservation_count) {
-                            existingDiscount.reservationCount = vbDiscount.reservation_count;
-                            needsUpdate = true;
-                        }
-
                         // Check if the start time or end time is different
                         const startTime = new Date(vbDiscount.start_time);
                         if (existingDiscount.startTime.getTime() !== startTime.getTime()) {
@@ -206,6 +201,78 @@ export class DiscountService {
                             needsUpdate = true;
                         }
 
+                        // Update reservationCount in metadata
+                        if (existingDiscount.metadata.get('reservationCount') !== vbDiscount.reservation_count) {
+                            existingDiscount.metadata.set('reservationCount', vbDiscount.reservation_count || 0);
+                            needsUpdate = true;
+                        }
+
+                        // Update productId in metadata
+                        if (existingDiscount.metadata.get('productId') !== vbDiscount.product_id) {
+                            existingDiscount.metadata.set('productId', vbDiscount.product_id);
+                            needsUpdate = true;
+                        }
+
+                        // Update categoryId in metadata
+                        if (existingDiscount.metadata.get('categoryId') !== vbDiscount.category_id) {
+                            existingDiscount.metadata.set('categoryId', vbDiscount.category_id);
+                            needsUpdate = true;
+                        }
+
+                        // Update rentalUnitId in metadata
+                        if (existingDiscount.metadata.get('rentalUnitId') !== vbDiscount.rental_unit_id) {
+                            existingDiscount.metadata.set('rentalUnitId', vbDiscount.rental_unit_id);
+                            needsUpdate = true;
+                        }
+
+                        // Update productIds in metadata
+                        if (existingDiscount.metadata.get('productIds') !== vbDiscount.product_ids) {
+                            existingDiscount.metadata.set('productIds', vbDiscount.product_ids);
+                            needsUpdate = true;
+                        }
+
+                        // Update applyFor in metadata
+                        if (existingDiscount.metadata.get('applyFor') !== vbDiscount.apply_for) {
+                            existingDiscount.metadata.set('applyFor', vbDiscount.apply_for);
+                            needsUpdate = true;
+                        }
+
+                        // Update minimumSpent in metadata
+                        if (existingDiscount.metadata.get('minimumSpent') !== vbDiscount.minimum_spent) {
+                            existingDiscount.metadata.set('minimumSpent', vbDiscount.minimum_spent);
+                            needsUpdate = true;
+                        }
+
+                        // Update usageLimitPerCoupon in metadata
+                        if (existingDiscount.metadata.get('usageLimitPerCoupon') !== vbDiscount.usage_limit_per_coupon) {
+                            existingDiscount.metadata.set('usageLimitPerCoupon', vbDiscount.usage_limit_per_coupon);
+                            needsUpdate = true;
+                        }
+
+                        // Update usageLimitPerCustomer in metadata
+                        if (existingDiscount.metadata.get('usageLimitPerCustomer') !== vbDiscount.usage_limit_per_customer) {
+                            existingDiscount.metadata.set('usageLimitPerCustomer', vbDiscount.usage_limit_per_customer);
+                            needsUpdate = true;
+                        }
+
+                        // Update couponUse in metadata
+                        if (existingDiscount.metadata.get('couponUse') !== vbDiscount.coupon_use) {
+                            existingDiscount.metadata.set('couponUse', vbDiscount.coupon_use || 0);
+                            needsUpdate = true;
+                        }
+
+                        // Update userId in metadata
+                        if (existingDiscount.metadata.get('userId') !== vbDiscount.user_id) {
+                            existingDiscount.metadata.set('userId', vbDiscount.user_id);
+                            needsUpdate = true;
+                        }
+
+                        // Update selectedProduct in metadata
+                        if (existingDiscount.metadata.get('selectedProduct') !== vbDiscount.selected_product) {
+                            existingDiscount.metadata.set('selectedProduct', vbDiscount.selected_product);
+                            needsUpdate = true;
+                        }
+
                         // Update product data in metadata
                         if (vbDiscount.product) {
                             if (JSON.stringify(existingDiscount.metadata.get('product')) !== JSON.stringify(vbDiscount.product)) {
@@ -239,74 +306,6 @@ export class DiscountService {
                             needsUpdate = true;
                         }
 
-                        // Update userId in metadata
-                        if (existingDiscount.metadata.get('userId') !== vbDiscount.user_id) {
-                            existingDiscount.metadata.set('userId', vbDiscount.user_id);
-                            needsUpdate = true;
-                        }
-
-                        // Update selectedProduct in metadata
-                        if (existingDiscount.metadata.get('selectedProduct') !== vbDiscount.selected_product) {
-                            existingDiscount.metadata.set('selectedProduct', vbDiscount.selected_product);
-                            needsUpdate = true;
-                        }
-
-                        // Update additional fields
-                        if (existingDiscount.productId !== vbDiscount.product_id) {
-                            existingDiscount.productId = vbDiscount.product_id;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.categoryId !== vbDiscount.category_id) {
-                            existingDiscount.categoryId = vbDiscount.category_id;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.rentalUnitId !== vbDiscount.rental_unit_id) {
-                            existingDiscount.rentalUnitId = vbDiscount.rental_unit_id;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.productIds !== vbDiscount.product_ids) {
-                            existingDiscount.productIds = vbDiscount.product_ids;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.applyFor !== vbDiscount.apply_for) {
-                            existingDiscount.applyFor = vbDiscount.apply_for;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.minimumSpent !== vbDiscount.minimum_spent) {
-                            existingDiscount.minimumSpent = vbDiscount.minimum_spent;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.usageLimitPerCoupon !== vbDiscount.usage_limit_per_coupon) {
-                            existingDiscount.usageLimitPerCoupon = vbDiscount.usage_limit_per_coupon;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.usageLimitPerCustomer !== vbDiscount.usage_limit_per_customer) {
-                            existingDiscount.usageLimitPerCustomer = vbDiscount.usage_limit_per_customer;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.couponUse !== vbDiscount.coupon_use) {
-                            existingDiscount.couponUse = vbDiscount.coupon_use;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.userId !== vbDiscount.user_id) {
-                            existingDiscount.userId = vbDiscount.user_id;
-                            needsUpdate = true;
-                        }
-
-                        if (existingDiscount.selectedProduct !== vbDiscount.selected_product) {
-                            existingDiscount.selectedProduct = vbDiscount.selected_product;
-                            needsUpdate = true;
-                        }
-
                         if (needsUpdate) {
                             await existingDiscount.save();
                             updated++;
@@ -331,6 +330,18 @@ export class DiscountService {
 
                         // Store all relevant metadata
                         metadata.set('venueId', vbDiscount.venue_id);
+                        metadata.set('reservationCount', vbDiscount.reservation_count || 0);
+                        metadata.set('productId', vbDiscount.product_id);
+                        metadata.set('categoryId', vbDiscount.category_id);
+                        metadata.set('rentalUnitId', vbDiscount.rental_unit_id);
+                        metadata.set('productIds', vbDiscount.product_ids);
+                        metadata.set('applyFor', vbDiscount.apply_for);
+                        metadata.set('minimumSpent', vbDiscount.minimum_spent);
+                        metadata.set('usageLimitPerCoupon', vbDiscount.usage_limit_per_coupon);
+                        metadata.set('usageLimitPerCustomer', vbDiscount.usage_limit_per_customer);
+                        metadata.set('couponUse', vbDiscount.coupon_use || 0);
+                        metadata.set('userId', vbDiscount.user_id);
+                        metadata.set('selectedProduct', vbDiscount.selected_product);
 
                         if (vbDiscount.promotion) {
                             metadata.set('promotion', vbDiscount.promotion);
@@ -349,14 +360,6 @@ export class DiscountService {
                             metadata.set('rentalUnit', vbDiscount.rental_unit);
                         }
 
-                        if (vbDiscount.user_id) {
-                            metadata.set('userId', vbDiscount.user_id);
-                        }
-
-                        if (vbDiscount.selected_product) {
-                            metadata.set('selectedProduct', vbDiscount.selected_product);
-                        }
-
                         const newDiscount = await this.discountModel.create({
                             clientId,
                             type: discountType,
@@ -364,18 +367,6 @@ export class DiscountService {
                             status: vbDiscount.status,
                             startTime: new Date(vbDiscount.start_time),
                             endTime: new Date(vbDiscount.end_time),
-                            reservationCount: vbDiscount.reservation_count || 0,
-                            productId: vbDiscount.product_id,
-                            categoryId: vbDiscount.category_id,
-                            rentalUnitId: vbDiscount.rental_unit_id,
-                            productIds: vbDiscount.product_ids,
-                            applyFor: vbDiscount.apply_for,
-                            minimumSpent: vbDiscount.minimum_spent,
-                            usageLimitPerCoupon: vbDiscount.usage_limit_per_coupon,
-                            usageLimitPerCustomer: vbDiscount.usage_limit_per_customer,
-                            couponUse: vbDiscount.coupon_use || 0,
-                            userId: vbDiscount.user_id,
-                            selectedProduct: vbDiscount.selected_product,
                             externalIds: {
                                 venueBoostId: vbDiscount.id.toString()
                             },
