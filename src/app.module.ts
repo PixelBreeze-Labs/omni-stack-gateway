@@ -65,6 +65,8 @@ import { OperatingEntity, OperatingEntitySchema } from './schemas/operating-enti
 import { SocialProfile, SocialProfileSchema } from './schemas/social-profile.schema';
 import { GeneralCampaign, GeneralCampaignSchema } from './schemas/general-campaign.schema';
 import { Chat, ChatSchema } from './schemas/chat.schema';
+import { Promotion, PromotionSchema } from './schemas/promotion.schema';
+import { Discount, DiscountSchema } from './schemas/discount.schema';
 
 
 
@@ -122,6 +124,8 @@ import { OperatingEntityController } from './controllers/operating-entity.contro
 import { SocialProfileController } from './controllers/social-profile.controller';
 import { GeneralCampaignController } from './controllers/general-campaign.controller';
 import { ChatController } from './controllers/chat.controller';
+import { PromotionController } from './controllers/promotion.controller';
+import { DiscountController } from './controllers/discount.controller';
 
 
 
@@ -197,6 +201,8 @@ import { OperatingEntityService } from './services/operating-entity.service';
 import { SocialProfileService } from './services/social-profile.service';
 import { GeneralCampaignService } from './services/general-campaign.service';
 import { ChatService } from './services/chat.service';
+import { PromotionService } from './services/promotion.service';
+import { DiscountService } from './services/discount.service';
 
 
 // Others
@@ -279,6 +285,8 @@ import {JwtModule} from "@nestjs/jwt";
       { name: SocialProfile.name, schema: SocialProfileSchema },
       { name: GeneralCampaign.name, schema: GeneralCampaignSchema },
       { name: Chat.name, schema: ChatSchema },
+      { name: Discount.name, schema: DiscountSchema },
+      { name: Promotion.name, schema: PromotionSchema },
     ]),
   ],
   controllers: [
@@ -342,7 +350,9 @@ import {JwtModule} from "@nestjs/jwt";
     OperatingEntityController,
     SocialProfileController,
     GeneralCampaignController,
-    ChatController
+    ChatController,
+    DiscountController,
+    PromotionController
   ],
   providers: [
     SnapfoodService,
@@ -413,7 +423,9 @@ import {JwtModule} from "@nestjs/jwt";
     OperatingEntityService,
     SocialProfileService,
     GeneralCampaignService,
-    ChatService
+    ChatService,
+    PromotionService,
+    DiscountService
   ],
 })
 export class AppModule implements NestModule {
