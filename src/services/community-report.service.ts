@@ -293,4 +293,101 @@ export class CommunityReportService {
             data: transformedReports
         };
     }
+
+    async getFeaturedReports(clientId: string): Promise<{ data: any[] }> {
+        // Get featured reports based on criteria like:
+        // - Recent reports (last 7 days)
+        // - Reports with high engagement
+        // - Reports marked as important by admins
+        // - Reports with media content
+
+        const twoWeeksAgo = new Date();
+        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+        // Fetch reports from the last two weeks, prioritize ones with media
+        const reports = await this.reportModel.find({
+            clientId: clientId,
+            isCommunityReport: true,
+            createdAt: { $gte: twoWeeksAgo },
+            // You can add other criteria like:
+            // status: { $ne: 'closed' }  // Not closed reports
+        })
+            .sort({
+                // Sort by having media first, then by date
+                media: -1,
+                createdAt: -1
+            })
+            .limit(20); // Limit to 20 featured reports
+
+        const transformedReports = reports.map(report => {
+            const reportObj = report.toObject();
+
+            // Fix media URLs if needed
+            if (reportObj.media) {
+                reportObj.media = reportObj.media.map(url => {
+                    if (typeof url === 'string' && url.startsWith('https://https://')) {
+                        return url.replace('https://https://', 'https://');
+                    }
+                    return url;
+                });
+            }
+
+            return {
+                ...reportObj,
+                id: reportObj._id.toString(),
+                message: reportObj.content?.message,
+                _id: undefined
+            };
+        });
+
+        return { data: transformedReports };
+    }
+
+    async getMapReports(clientId: string): Promise<any[]> {
+        // Get all reports suitable for map display
+        // For map, we only need reports with valid location data
+        const reports = await this.reportModel.find({
+            clientId: clientId,
+            isCommunityReport: true,
+            'location.lat': { $exists: true },
+            'location.lng': { $exists: true }
+        })
+            .sort({ createdAt: -1 })
+            .limit(500); // Reasonable limit for map markers
+
+        const transformedReports = reports.map(report => {
+            const reportObj = report.toObject();
+
+            // Fix media URLs if needed
+            if (reportObj.media) {
+                reportObj.media = reportObj.media.map(url => {
+                    if (typeof url === 'string' && url.startsWith('https://https://')) {
+                        return url.replace('https://https://', 'https://');
+                    }
+                    return url;
+                });
+            }
+
+            // For map reports, ensure location data is valid
+            if (!reportObj.location || typeof reportObj.location.lat !== 'number' || typeof reportObj.location.lng !== 'number') {
+                console.warn(`Report ${reportObj._id} has invalid location data`);
+            }
+
+            return {
+                ...reportObj,
+                id: reportObj._id.toString(),
+                message: reportObj.content?.message,
+                content: {
+                    ...reportObj.content,
+                    // Truncate message for map view to keep data size smaller
+                    message: reportObj.content?.message?.substring(0, 200) +
+                        (reportObj.content?.message?.length > 200 ? '...' : '')
+                },
+                _id: undefined
+            };
+        })
+            .filter(report => report.location && typeof report.location.lat === 'number' && typeof report.location.lng === 'number');
+
+        return transformedReports;
+    }
 }
