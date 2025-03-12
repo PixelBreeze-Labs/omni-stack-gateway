@@ -1,6 +1,6 @@
 // src/schemas/report.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 @Schema()
 export class FileAttachment {
@@ -86,6 +86,9 @@ export class Report extends Document {
 
     @Prop({ type: Boolean, default: false })
     isCommunityReport?: boolean;
+
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
+    clientId?: string;
 }
 
 export const ReportSchema = SchemaFactory.createForClass(Report);
