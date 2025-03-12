@@ -15,6 +15,8 @@ export class SupabaseService {
         );
     }
 
+    // Existing methods unchanged
+
     async uploadFile(buffer: Buffer, path: string): Promise<string> {
         const { data, error } = await this.supabase
             .storage
@@ -94,5 +96,67 @@ export class SupabaseService {
         }
 
         return processedFiles;
+    }
+
+    // New methods for community reports with different names
+
+    /**
+     * Uploads an image for community reports
+     */
+    async uploadCommunityImage(file: Buffer, filename: string): Promise<string> {
+        const path = `community/images/${Date.now()}_${filename}`;
+
+        const { data, error } = await this.supabase
+            .storage
+            .from('products')
+            .upload(path, file, {
+                contentType: 'image/jpeg',
+                upsert: true
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = this.supabase
+            .storage
+            .from('products')
+            .getPublicUrl(data.path);
+
+        return publicUrl;
+    }
+
+    /**
+     * Uploads an audio file for community reports
+     */
+    async uploadCommunityAudio(file: Buffer, filename: string): Promise<string> {
+        const path = `community/audio/${Date.now()}_${filename}`;
+
+        const { data, error } = await this.supabase
+            .storage
+            .from('products')
+            .upload(path, file, {
+                contentType: 'audio/webm',
+                upsert: true
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = this.supabase
+            .storage
+            .from('products')
+            .getPublicUrl(data.path);
+
+        return publicUrl;
+    }
+
+    /**
+     * Delete a community report file
+     */
+    async deleteCommunityFile(path: string): Promise<void> {
+        const { error } = await this.supabase
+            .storage
+            .from('products')
+            .remove([path]);
+
+        if (error) throw error;
     }
 }
