@@ -126,6 +126,7 @@ import { GeneralCampaignController } from './controllers/general-campaign.contro
 import { ChatController } from './controllers/chat.controller';
 import { PromotionController } from './controllers/promotion.controller';
 import { DiscountController } from './controllers/discount.controller';
+import { CommunityReportController } from './controllers/community-report.controller';
 
 
 
@@ -203,6 +204,7 @@ import { GeneralCampaignService } from './services/general-campaign.service';
 import { ChatService } from './services/chat.service';
 import { PromotionService } from './services/promotion.service';
 import { DiscountService } from './services/discount.service';
+import { CommunityReportService } from './services/community-report.service';
 
 
 // Others
@@ -352,7 +354,8 @@ import {JwtModule} from "@nestjs/jwt";
     GeneralCampaignController,
     ChatController,
     DiscountController,
-    PromotionController
+    PromotionController,
+    CommunityReportController
   ],
   providers: [
     SnapfoodService,
@@ -425,7 +428,8 @@ import {JwtModule} from "@nestjs/jwt";
     GeneralCampaignService,
     ChatService,
     PromotionService,
-    DiscountService
+    DiscountService,
+    CommunityReportService
   ],
 })
 export class AppModule implements NestModule {
