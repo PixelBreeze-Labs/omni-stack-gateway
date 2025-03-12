@@ -8,7 +8,8 @@ import {
     IsNumber,
     IsBoolean,
     IsArray,
-    ValidateNested
+    ValidateNested,
+    Min as IsMin
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -135,14 +136,14 @@ export class ListCommunityReportDto {
     @IsNumber()
     @IsOptional()
     @Type(() => Number)
-    @Min(1)
+    @IsMin(1)
     page?: number = 1;
 
     @ApiProperty({ required: false, default: 10, minimum: 1 })
     @IsNumber()
     @IsOptional()
     @Type(() => Number)
-    @Min(1)
+    @IsMin(1)
     limit?: number = 10;
 
     @ApiProperty({
