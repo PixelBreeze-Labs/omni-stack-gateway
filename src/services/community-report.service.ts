@@ -1,8 +1,9 @@
 // src/services/community-report.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Report } from '../schemas/report.schema';
+import { User } from '../schemas/user.schema';
 import {
     CreateCommunityReportDto,
     UpdateCommunityReportDto,
@@ -14,6 +15,7 @@ import { SupabaseService } from './supabase.service';
 export class CommunityReportService {
     constructor(
         @InjectModel(Report.name) private reportModel: Model<Report>,
+        @InjectModel(User.name) private userModel: Model<User>,
         private readonly supabaseService: SupabaseService
     ) {}
 
@@ -22,6 +24,19 @@ export class CommunityReportService {
         files: Express.Multer.File[] = [],
         audioFile?: Express.Multer.File
     ): Promise<Report> {
+        // Validate authorId if provided and not anonymous
+        if (reportData.authorId && !reportData.isAnonymous) {
+            const user = await this.userModel.findById(reportData.authorId);
+            if (!user) {
+                throw new NotFoundException(`User with ID ${reportData.authorId} not found`);
+            }
+
+            // Check if user belongs to this client
+            if (!user.client_ids.includes(reportData.clientId)) {
+                throw new UnauthorizedException(`User does not belong to this client`);
+            }
+        }
+
         const mediaUrls: string[] = [];
 
         // Upload images to Supabase
@@ -162,54 +177,95 @@ export class CommunityReportService {
         return report;
     }
 
-    async getFeaturedReports(clientId: string) {
-        // Get reports for the specific client
-        const allReports = await this.reportModel.find({
-            clientId: clientId,
-            isCommunityReport: true,
-            status: { $in: ['pending', 'in_progress', 'resolved'] }
-        });
+    async update(id: string, clientId: string, updateReportDto: UpdateCommunityReportDto): Promise<Report> {
+        const report = await this.findOne(id, clientId);
 
-        // Shuffle randomly
-        const shuffled = allReports.sort(() => 0.5 - Math.random());
+        // Check if the user is authorized to update this report
+        if (report.authorId && !report.isAnonymous) {
 
-        // Take first 6 reports or fewer if not enough
-        const featured = shuffled.slice(0, Math.min(6, shuffled.length));
+        const user = await this.userModel.findById(report.authorId);
+        // Allow only if user is part of the same client
+        if (!user || !user.client_ids.includes(clientId)) {
+            throw new UnauthorizedException('You are not authorized to update this report');
+        }
 
-        // Transform reports
-        const transformedReports = featured.map(report => {
-            const reportObj = report.toObject();
+        }
 
-            // Fix media URLs if needed
-            if (reportObj.media) {
-                reportObj.media = reportObj.media.map(url => {
-                    if (typeof url === 'string' && url.startsWith('https://https://')) {
-                        return url.replace('https://https://', 'https://');
-                    }
-                    return url;
-                });
-            }
-
-            return {
-                ...reportObj,
-                id: reportObj._id.toString(),
-                message: reportObj.content?.message,
-                _id: undefined
-            };
-        });
-
-        return {
-            data: transformedReports
+        const updateData: any = {
+            ...updateReportDto,
+            updatedAt: new Date()
         };
+
+        // If content is provided, update the message in the nested structure
+        if (updateReportDto.content) {
+            updateData['content.message'] = updateReportDto.content;
+            delete updateData.content;
+        }
+
+        const updatedReport = await this.reportModel.findByIdAndUpdate(
+            id,
+            { $set: updateData },
+            { new: true }
+        );
+
+        if (!updatedReport) {
+            throw new NotFoundException(`Report with ID ${id} not found`);
+        }
+
+        return updatedReport;
     }
 
-    async getMapReports(clientId: string) {
-        // Get reports for the specific client with location data
-        const reports = await this.reportModel.find({
+    async remove(id: string, clientId: string,): Promise<void> {
+        const report = await this.findOne(id, clientId);
+
+        // Check if the user is authorized to delete this report
+        if (report.authorId && !report.isAnonymous) {
+
+                const user = await this.userModel.findById(report.authorId);
+                // Allow only if user is part of the same client
+                if (!user || !user.client_ids.includes(clientId)) {
+                    throw new UnauthorizedException('You are not authorized to delete this report');
+                }
+
+        }
+
+        await this.reportModel.findByIdAndDelete(id);
+    }
+
+    async findNearby(lat: number, lng: number, clientId: string, maxDistance: number = 5000): Promise<Report[]> {
+        return this.reportModel.find({
             clientId: clientId,
             isCommunityReport: true,
-            location: { $exists: true }
+            location: {
+                $near: {
+                    $geometry: {
+                        type: "Point",
+                        coordinates: [lng, lat]
+                    },
+                    $maxDistance: maxDistance
+                }
+            }
         });
+    }
+
+    // Get user reports
+    async getUserReports(userId: string, clientId: string) {
+        // Validate the user exists and belongs to the client
+        const user = await this.userModel.findById(userId);
+        if (!user) {
+            throw new NotFoundException(`User with ID ${userId} not found`);
+        }
+
+        if (!user.client_ids.includes(clientId)) {
+            throw new UnauthorizedException(`User does not belong to this client`);
+        }
+
+        // Find reports created by this user
+        const reports = await this.reportModel.find({
+            clientId: clientId,
+            authorId: userId,
+            isCommunityReport: true
+        }).sort({ createdAt: -1 });
 
         // Transform reports
         const transformedReports = reports.map(report => {
@@ -236,54 +292,5 @@ export class CommunityReportService {
         return {
             data: transformedReports
         };
-    }
-
-    async update(id: string, clientId: string, updateReportDto: UpdateCommunityReportDto): Promise<Report> {
-        const report = await this.findOne(id, clientId);
-
-        const updateData: any = {
-            ...updateReportDto,
-            updatedAt: new Date()
-        };
-
-        // If content is provided, update the message in the nested structure
-        if (updateReportDto.content) {
-            updateData['content.message'] = updateReportDto.content;
-            delete updateData.content;
-        }
-
-        const updatedReport = await this.reportModel.findByIdAndUpdate(
-            id,
-            { $set: updateData },
-            { new: true }
-        );
-
-        if (!updatedReport) {
-            throw new NotFoundException(`Report with ID ${id} not found`);
-        }
-
-        return updatedReport;
-    }
-
-    async remove(id: string, clientId: string): Promise<void> {
-        const report = await this.findOne(id, clientId);
-
-        await this.reportModel.findByIdAndDelete(id);
-    }
-
-    async findNearby(lat: number, lng: number, clientId: string, maxDistance: number = 5000): Promise<Report[]> {
-        return this.reportModel.find({
-            clientId: clientId,
-            isCommunityReport: true,
-            location: {
-                $near: {
-                    $geometry: {
-                        type: "Point",
-                        coordinates: [lng, lat]
-                    },
-                    $maxDistance: maxDistance
-                }
-            }
-        });
     }
 }

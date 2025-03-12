@@ -90,33 +90,33 @@ export class CommunityReportController {
         });
     }
 
-    @ApiOperation({ summary: 'Get featured community reports' })
-    @ApiResponse({
-        status: 200,
-        description: 'Returns array of featured reports',
-        type: [Report]
-    })
-    @UseGuards(ClientAuthGuard)
-    @Get('featured')
-    getFeaturedReports(
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.communityReportService.getFeaturedReports(req.client.id);
-    }
+    // @ApiOperation({ summary: 'Get featured community reports' })
+    // @ApiResponse({
+    //     status: 200,
+    //     description: 'Returns array of featured reports',
+    //     type: [Report]
+    // })
+    // @UseGuards(ClientAuthGuard)
+    // @Get('featured')
+    // getFeaturedReports(
+    //     @Req() req: Request & { client: Client }
+    // ) {
+    //     return this.communityReportService.getFeaturedReports(req.client.id);
+    // }
 
-    @ApiOperation({ summary: 'Get community reports for map view' })
-    @ApiResponse({
-        status: 200,
-        description: 'Returns array of reports for map display',
-        type: Report
-    })
-    @UseGuards(ClientAuthGuard)
-    @Get('map')
-    getMapReports(
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.communityReportService.getMapReports(req.client.id);
-    }
+    // @ApiOperation({ summary: 'Get community reports for map view' })
+    // @ApiResponse({
+    //     status: 200,
+    //     description: 'Returns array of reports for map display',
+    //     type: Report
+    // })
+    // @UseGuards(ClientAuthGuard)
+    // @Get('map')
+    // getMapReports(
+    //     @Req() req: Request & { client: Client }
+    // ) {
+    //     return this.communityReportService.getMapReports(req.client.id);
+    // }
 
     @ApiOperation({ summary: 'Get community reports near a specific location' })
     @ApiQuery({

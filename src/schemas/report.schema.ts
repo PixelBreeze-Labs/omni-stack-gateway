@@ -89,6 +89,9 @@
 
         @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
         clientId?: string;
+
+        @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false })
+        userId?: string;
     }
 
     export const ReportSchema = SchemaFactory.createForClass(Report);
