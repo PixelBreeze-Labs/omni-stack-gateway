@@ -1,9 +1,9 @@
 // src/schemas/report.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 @Schema()
-class FileAttachment {
+export class FileAttachment {
     @Prop({ required: true })
     name: string;
 
@@ -15,6 +15,18 @@ class FileAttachment {
 
     @Prop()
     size: number;
+}
+
+@Schema()
+export class Location {
+    @Prop({ type: Number })
+    lat: number;
+
+    @Prop({ type: Number })
+    lng: number;
+
+    @Prop({ type: Number })
+    accuracy?: number;
 }
 
 @Schema()
@@ -41,8 +53,45 @@ export class Report extends Document {
         userAgent: string;
     };
 
-    @Prop({ required: true, enum: ['pending', 'reviewed', 'archived'], default: 'pending' })
+    @Prop({ required: true, enum: ['pending', 'reviewed', 'archived', 'in_progress', 'resolved', 'closed'], default: 'pending' })
     status: string;
+
+    // Additional fields for community reports
+    @Prop()
+    title?: string;
+
+    @Prop({ type: String })
+    category?: string;
+
+    @Prop({ type: Boolean, default: false })
+    isAnonymous?: boolean;
+
+    @Prop({ type: Location })
+    location?: Location;
+
+    @Prop({ type: String })
+    authorId?: string;
+
+    @Prop({ type: [String] })
+    media?: string[];
+
+    @Prop({ type: String })
+    audio?: string;
+
+    @Prop({ type: Date })
+    createdAt?: Date;
+
+    @Prop({ type: Date })
+    updatedAt?: Date;
+
+    @Prop({ type: Boolean, default: false })
+    isCommunityReport?: boolean;
+
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
+    clientId?: string;
 }
 
 export const ReportSchema = SchemaFactory.createForClass(Report);
+
+// Add index for geolocation queries
+ReportSchema.index({ location: '2dsphere' });
