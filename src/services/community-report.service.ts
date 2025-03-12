@@ -28,7 +28,7 @@ export class CommunityReportService {
         if (files && files.length > 0) {
             for (const file of files) {
                 const filename = `${Date.now()}-${file.originalname}`;
-                const url = await this.supabaseService.uploadImage(file.buffer, filename);
+                const url = await this.supabaseService.uploadCommunityImage(file.buffer, filename);
                 mediaUrls.push(url);
             }
         }
@@ -38,7 +38,7 @@ export class CommunityReportService {
         if (audioFile && audioFile.buffer) {
             try {
                 const audioFilename = `audio-${Date.now()}.webm`;
-                audioUrl = await this.supabaseService.uploadAudio(audioFile.buffer, audioFilename);
+                audioUrl = await this.supabaseService.uploadCommunityAudio(audioFile.buffer, audioFilename);
             } catch (error) {
                 console.error('Audio upload failed', error);
             }
@@ -271,7 +271,7 @@ export class CommunityReportService {
         await this.reportModel.findByIdAndDelete(id);
     }
 
-    async findNearby(lat: number, lng: number, maxDistance: number = 5000, clientId: string): Promise<Report[]> {
+    async findNearby(lat: number, lng: number, clientId: string, maxDistance: number = 5000): Promise<Report[]> {
         return this.reportModel.find({
             clientId: clientId,
             isCommunityReport: true,

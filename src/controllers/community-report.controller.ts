@@ -147,10 +147,10 @@ export class CommunityReportController {
     findNearby(
         @Query('lat') lat: number,
         @Query('lng') lng: number,
-        @Query('distance') distance?: number,
-        @Req() req: Request & { client: Client }
+        @Req() req: Request & { client: Client },
+        @Query('distance') distance?: number
     ) {
-        return this.communityReportService.findNearby(lat, lng, distance, req.client.id);
+        return this.communityReportService.findNearby(lat, lng, req.client.id, distance);
     }
 
     @ApiBearerAuth()
