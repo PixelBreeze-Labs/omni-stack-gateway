@@ -90,6 +90,23 @@ export class SalesAssociateLoginDto {
     password: string;
 }
 
+export class CreateQytetaretUserDto {
+    @IsString()
+    @IsNotEmpty()
+    name: string;
+
+    @IsEmail()
+    email: string;
+
+    @IsString()
+    @MinLength(6)
+    password: string;
+
+    @IsString()
+    @IsOptional()
+    nextJsUserId?: string;
+}
+
 export class GetOrCreateUserDto {
     external_id: string | number;  // Accept both since it could come as either
     registrationSource: RegistrationSource;
