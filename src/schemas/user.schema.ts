@@ -11,6 +11,8 @@ export enum RegistrationSource {
     OTHER = 'other',
     MANUAL = 'manual',
     STAFFLUENT = 'staffluent',
+    QYTETARET = 'qytetaret',
+
 }
 
 
