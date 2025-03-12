@@ -41,12 +41,11 @@ export class CommunityReportController {
 
     @Post()
     @ApiConsumes('multipart/form-data')
-    @UseInterceptors(
-        FileFieldsInterceptor([
-            { name: 'media', maxCount: 10 },
-            { name: 'audio', maxCount: 1 }
-        ])
-    )
+    @UseInterceptors((FileFieldsInterceptor as any)([
+        { name: 'media', maxCount: 10 },
+        { name: 'audio', maxCount: 1 }
+    ]))
+
     @UseGuards(ClientAuthGuard)
     @Optional() // Make auth optional for anonymous reports
     @ApiOperation({ summary: 'Create a new community report' })
