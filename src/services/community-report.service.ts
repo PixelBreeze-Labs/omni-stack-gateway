@@ -163,7 +163,7 @@ export class CommunityReportService {
         };
     }
 
-    async findOne(id: string, clientId: string): Promise<Report> {
+    async findOne(id: string, clientId: string): Promise<any> {
         const report = await this.reportModel.findOne({
             _id: id,
             clientId: clientId,
@@ -174,7 +174,65 @@ export class CommunityReportService {
             throw new NotFoundException(`Report with ID ${id} not found`);
         }
 
-        return report;
+        // Transform the report to a more frontend-friendly format
+        const reportObj = report.toObject();
+
+        // Fix media URLs if needed
+        if (reportObj.media) {
+            reportObj.media = reportObj.media.map(url => {
+                if (typeof url === 'string' && url.startsWith('https://https://')) {
+                    return url.replace('https://https://', 'https://');
+                }
+                return url;
+            });
+        }
+
+        // Add related data (could be implemented further)
+        const relatedReports = await this.findRelatedReports(id, clientId);
+
+        return {
+            ...reportObj,
+            id: reportObj._id.toString(),
+            content: reportObj.content?.message || '',
+            _id: undefined,
+            relatedReports: relatedReports.slice(0, 5) // Limit to 5 related reports
+        };
+    }
+
+    // Helper method to find related reports
+    async findRelatedReports(id: string, clientId: string, maxDistance = 1000): Promise<any[]> {
+        const report = await this.reportModel.findById(id);
+        if (!report || !report.location) return [];
+
+        // Find reports nearby with the same category
+        const nearbyReports = await this.reportModel.find({
+            _id: { $ne: id }, // Exclude current report
+            clientId: clientId,
+            isCommunityReport: true,
+            category: report.category,
+            location: {
+                $near: {
+                    $geometry: {
+                        type: "Point",
+                        coordinates: [report.location.lng, report.location.lat]
+                    },
+                    $maxDistance: maxDistance
+                }
+            }
+        }).limit(10);
+
+        // Transform reports as needed
+        return nearbyReports.map(report => {
+            const obj = report.toObject();
+            return {
+                id: obj._id.toString(),
+                title: obj.title,
+                status: obj.status,
+                category: obj.category,
+                location: obj.location,
+                createdAt: obj.createdAt
+            };
+        });
     }
 
     async update(id: string, clientId: string, updateReportDto: UpdateCommunityReportDto): Promise<Report> {
