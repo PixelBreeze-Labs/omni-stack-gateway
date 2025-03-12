@@ -9,7 +9,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {RegistrationSource, User} from '../schemas/user.schema';
-import { CreateUserDto, GetOrCreateUserDto } from '../dtos/user.dto';
+import { CreateUserDto, GetOrCreateUserDto, CreateQytetaretUserDto } from '../dtos/user.dto';
 import { GetOrCreateGuestDto } from '../dtos/guest.dto';
 import * as bcrypt from 'bcrypt';
 import { Store } from "../schemas/store.schema";
@@ -1177,5 +1177,36 @@ export class UserService {
             // General error handler
             throw new BadRequestException(`Error creating guest: ${error.message}`);
         }
+    }
+
+
+
+    async createQytetaretUser(data: CreateQytetaretUserDto & { client_ids: string[] }): Promise<{ userId: string }> {
+        // Process name to get name and surname
+        let firstName = data.name;
+        let lastName = '-';
+
+        // If name has spaces, split it
+        const nameParts = data.name.split(' ');
+        if (nameParts.length > 1) {
+            firstName = nameParts[0];
+            lastName = nameParts.slice(1).join(' ');
+        }
+
+        const hashedPassword = await bcrypt.hash(data.password, 10);
+
+        // Create the user with the appropriate registration source
+        const user = await this.create({
+            name: firstName,
+            surname: lastName,
+            email: data.email,
+            password: hashedPassword,
+            external_ids: { nextJsUserId: data.nextJsUserId },
+            registrationSource: RegistrationSource.QYTETARET,
+            client_ids: data.client_ids
+        });
+
+        // Return just the ID for simplicity
+        return { userId: user._id.toString() };
     }
 }
