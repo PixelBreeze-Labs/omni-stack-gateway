@@ -16,7 +16,7 @@ import {
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { UserService } from '../services/user.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CreateUserDto, GetOrCreateUserDto } from '../dtos/user.dto';
+import { CreateUserDto, GetOrCreateUserDto, CreateQytetaretUserDto } from '../dtos/user.dto';
 import { Client } from '../schemas/client.schema';
 import {InjectModel} from "@nestjs/mongoose";
 import {Model} from "mongoose";
