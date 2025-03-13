@@ -31,8 +31,8 @@
 
     @Schema()
     export class Report extends Document {
-        @Prop({ type: Object, required: true })
-        clientApp: {
+        @Prop({ type: Object, required: false })
+        clientApp?: {
             id: string;
             type: string;
             domain: string;
