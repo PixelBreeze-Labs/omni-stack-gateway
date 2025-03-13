@@ -87,6 +87,9 @@
         @Prop({ type: Boolean, default: false })
         isCommunityReport?: boolean;
 
+        @Prop({ type: Boolean, default: false })
+        isFromChatbot?: boolean;  // New field to track if report was created via chatbot
+
         @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
         clientId?: string;
 
