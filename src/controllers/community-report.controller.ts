@@ -12,7 +12,7 @@ import {
     UseGuards,
     UseInterceptors,
     UploadedFiles,
-    Optional,
+    Optional, UnauthorizedException,
 } from '@nestjs/common';
 import {
     ApiTags,
@@ -153,18 +153,7 @@ export class CommunityReportController {
         return this.communityReportService.findNearby(lat, lng, req.client.id, distance);
     }
 
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get community report by ID' })
-    @ApiParam({ name: 'id', description: 'Report ID' })
-    @ApiResponse({ status: 200, description: 'Report details' })
-    @UseGuards(ClientAuthGuard)
-    @Get(':id')
-    async findOne(
-        @Param('id') id: string,
-        @Req() req: Request & { client: Client }
-    ): Promise<Report> {
-        return this.communityReportService.findOne(id, req.client.id);
-    }
+
 
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Update community report' })
@@ -199,28 +188,45 @@ export class CommunityReportController {
     @ApiQuery({ name: 'status', required: false })
     @ApiQuery({ name: 'sort', required: false })
     @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+    @ApiQuery({ name: 'userId', required: true, type: String, description: 'The user ID to fetch reports for' })
     @ApiResponse({
         status: 200,
-        description: 'Returns reports submitted by the current user',
+        description: 'Returns reports submitted by the specified user',
         type: Report
     })
-    @UseGuards(ClientAuthGuard)
+    @UseGuards(ClientAuthGuard) // Only need ClientAuthGuard, no JwtAuthGuard
     @Get('user')
     getUserReports(
-        @Req() req: Request & { client: Client; user: any },
+        @Req() req: Request & { client: Client },
+        @Query('userId') userId: string,
         @Query('page') page?: number,
         @Query('limit') limit?: number,
         @Query('status') status?: string,
         @Query('sort') sort?: string,
         @Query('order') order?: 'asc' | 'desc'
     ) {
-        // Get userId from authenticated user
-        const userId = req.user.id;
+        // Use userId from query params
+        if (!userId) {
+            throw new UnauthorizedException('User ID is required');
+        }
 
         return this.communityReportService.getUserReports(
             userId,
             req.client.id,
             { page, limit, status, sort, order }
         );
+    }
+
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get community report by ID' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'Report details' })
+    @UseGuards(ClientAuthGuard)
+    @Get(':id')
+    async findOne(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ): Promise<Report> {
+        return this.communityReportService.findOne(id, req.client.id);
     }
 }
