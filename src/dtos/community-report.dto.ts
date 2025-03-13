@@ -72,6 +72,10 @@ export class CreateCommunityReportDto {
     @IsOptional()
     status?: string = 'pending';
 
+     @IsOptional()
+    @IsBoolean()
+    isFromChatbot?: boolean;
+
     @ApiProperty({ required: false })
     @IsObject()
     @IsOptional()

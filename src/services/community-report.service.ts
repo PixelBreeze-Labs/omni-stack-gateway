@@ -80,6 +80,7 @@ export class CommunityReportService {
                 userAgent: '',
             },
             isCommunityReport: true,
+            isFromChatbot: reportData.isFromChatbot || false,
             createdAt: now,
             updatedAt: now
         });
