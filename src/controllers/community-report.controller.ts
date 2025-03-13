@@ -229,4 +229,24 @@ export class CommunityReportController {
     ): Promise<Report> {
         return this.communityReportService.findOne(id, req.client.id);
     }
+
+
+    @ApiOperation({ summary: 'Get report statistics for a user' })
+    @ApiQuery({ name: 'userId', required: true, type: String, description: 'The user ID to get stats for' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns report statistics for the specified user'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('stats')
+    getReportStats(
+        @Req() req: Request & { client: Client },
+        @Query('userId') userId: string
+    ) {
+        if (!userId) {
+            throw new UnauthorizedException('User ID is required');
+        }
+
+        return this.communityReportService.getReportStats(userId, req.client.id);
+    }
 }
