@@ -192,4 +192,35 @@ export class CommunityReportController {
     ): Promise<void> {
         await this.communityReportService.remove(id, req.client.id);
     }
+
+    @ApiOperation({ summary: 'Get reports submitted by the current user' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
+    @ApiQuery({ name: 'status', required: false })
+    @ApiQuery({ name: 'sort', required: false })
+    @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns reports submitted by the current user',
+        type: Report
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('user')
+    getUserReports(
+        @Req() req: Request & { client: Client; user: any },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('status') status?: string,
+        @Query('sort') sort?: string,
+        @Query('order') order?: 'asc' | 'desc'
+    ) {
+        // Get userId from authenticated user
+        const userId = req.user.id;
+
+        return this.communityReportService.getUserReports(
+            userId,
+            req.client.id,
+            { page, limit, status, sort, order }
+        );
+    }
 }
