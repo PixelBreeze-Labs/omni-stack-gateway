@@ -306,52 +306,6 @@ export class CommunityReportService {
         });
     }
 
-    // Get user reports
-    async getUserReports(userId: string, clientId: string) {
-        // Validate the user exists and belongs to the client
-        const user = await this.userModel.findById(userId);
-        if (!user) {
-            throw new NotFoundException(`User with ID ${userId} not found`);
-        }
-
-        if (!user.client_ids.includes(clientId)) {
-            throw new UnauthorizedException(`User does not belong to this client`);
-        }
-
-        // Find reports created by this user
-        const reports = await this.reportModel.find({
-            clientId: clientId,
-            authorId: userId,
-            isCommunityReport: true
-        }).sort({ createdAt: -1 });
-
-        // Transform reports
-        const transformedReports = reports.map(report => {
-            const reportObj = report.toObject();
-
-            // Fix media URLs if needed
-            if (reportObj.media) {
-                reportObj.media = reportObj.media.map(url => {
-                    if (typeof url === 'string' && url.startsWith('https://https://')) {
-                        return url.replace('https://https://', 'https://');
-                    }
-                    return url;
-                });
-            }
-
-            return {
-                ...reportObj,
-                id: reportObj._id.toString(),
-                message: reportObj.content?.message,
-                _id: undefined
-            };
-        });
-
-        return {
-            data: transformedReports
-        };
-    }
-
     async getFeaturedReports(clientId: string): Promise<{ data: any[] }> {
         // Get featured reports based on criteria like:
         // - Recent reports (last 7 days)
@@ -447,5 +401,96 @@ export class CommunityReportService {
             .filter(report => report.location && typeof report.location.lat === 'number' && typeof report.location.lng === 'number');
 
         return transformedReports;
+    }
+
+    /**
+     * Get reports submitted by the current user
+     * @param userId The omnistackUserId (authorId) of the current user
+     * @param clientId The client ID
+     * @param query Optional query parameters for filtering/pagination
+     */
+    async getUserReports(
+        userId: string,
+        clientId: string,
+        query: {
+            page?: number;
+            limit?: number;
+            status?: string;
+            sort?: string;
+            order?: 'asc' | 'desc';
+        } = {}
+    ) {
+        if (!userId) {
+            throw new UnauthorizedException('User ID is required');
+        }
+
+        // Set defaults
+        const {
+            page = 1,
+            limit = 10,
+            status = 'all',
+            sort = 'createdAt',
+            order = 'desc'
+        } = query;
+
+        const skip = (page - 1) * limit;
+
+        // Build the filter
+        const filter: any = {
+            authorId: userId,
+            clientId: clientId,
+            isCommunityReport: true
+        };
+
+        // Add status filter if not 'all'
+        if (status !== 'all') {
+            filter.status = status;
+        }
+
+        // Create the sort object
+        const sortOption: any = {};
+        sortOption[sort] = order === 'asc' ? 1 : -1;
+
+        // Get total count
+        const total = await this.reportModel.countDocuments(filter);
+
+        // Get reports
+        const reports = await this.reportModel.find(filter)
+            .sort(sortOption)
+            .skip(skip)
+            .limit(limit);
+
+        // Transform reports
+        const transformedReports = reports.map(report => {
+            const reportObj = report.toObject();
+
+            // Fix media URLs if needed
+            if (reportObj.media) {
+                reportObj.media = reportObj.media.map(url => {
+                    if (typeof url === 'string' && url.startsWith('https://https://')) {
+                        return url.replace('https://https://', 'https://');
+                    }
+                    return url;
+                });
+            }
+
+            return {
+                ...reportObj,
+                id: reportObj._id.toString(),
+                message: reportObj.content?.message || '',
+                content: reportObj.content?.message || '',
+                _id: undefined
+            };
+        });
+
+        return {
+            data: transformedReports,
+            meta: {
+                total,
+                page,
+                limit,
+                hasMore: total > skip + reports.length
+            }
+        };
     }
 }
