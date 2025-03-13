@@ -493,4 +493,54 @@ export class CommunityReportService {
             }
         };
     }
+
+    /**
+     * Get report statistics for a specific user
+     * @param userId The user ID to get stats for
+     * @param clientId The client ID
+     */
+    async getReportStats(userId: string, clientId: string) {
+        if (!userId) {
+            throw new UnauthorizedException('User ID is required');
+        }
+
+        // Build the filter for user's reports
+        const baseFilter = {
+            authorId: userId,
+            clientId: clientId,
+            isCommunityReport: true
+        };
+
+        // Get total count
+        const total = await this.reportModel.countDocuments(baseFilter);
+
+        // Get counts by status
+        const pending = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'pending'
+        });
+
+        const inProgress = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'in_progress'
+        });
+
+        const resolved = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'resolved'
+        });
+
+        const closed = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'closed'
+        });
+
+        return {
+            total,
+            pending,
+            inProgress,
+            resolved,
+            closed
+        };
+    }
 }
