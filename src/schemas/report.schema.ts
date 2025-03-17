@@ -80,6 +80,9 @@ export class Report extends Document {
     @Prop({ type: Boolean, default: false })
     isAnonymous?: boolean;
 
+    @Prop({ type: Boolean, default: false })
+    isFeatured?: boolean;
+
     @Prop({ type: String, required: false })
     customAuthorName?: string;
 
