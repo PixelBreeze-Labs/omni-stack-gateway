@@ -249,4 +249,18 @@ export class CommunityReportController {
 
         return this.communityReportService.getReportStats(userId, req.client.id);
     }
+
+
+    @ApiOperation({ summary: 'Get statistics and data for the report form page' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns recent reports and impact statistics'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('form-data')
+    getReportFormData(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getReportFormData(req.client.id);
+    }
 }

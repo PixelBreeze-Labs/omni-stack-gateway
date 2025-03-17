@@ -580,4 +580,83 @@ export class CommunityReportService {
             noResolution
         };
     }
+
+    /**
+     * Get statistics and data for the report form page
+     * @param clientId The client ID
+     */
+    async getReportFormData(clientId: string) {
+        // Get recent reports (limit to 3)
+        const recentReports = await this.reportModel.find({
+            clientId: clientId,
+            isCommunityReport: true,
+            visibleOnWeb: true,
+            // Exclude PENDING_REVIEW and REJECTED
+            status: { $nin: [ReportStatus.PENDING_REVIEW, ReportStatus.REJECTED] }
+        })
+            .sort({ createdAt: -1 })
+            .limit(3);
+
+        const transformedRecentReports = recentReports.map(report => {
+            const reportObj = report.toObject();
+            return {
+                id: reportObj._id.toString(),
+                title: reportObj.title,
+                category: reportObj.category,
+                status: reportObj.status,
+                createdAt: reportObj.createdAt
+            };
+        });
+
+        // Calculate impact statistics
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Monthly report count
+        const monthlyReportCount = await this.reportModel.countDocuments({
+            clientId: clientId,
+            isCommunityReport: true,
+            createdAt: { $gte: startOfMonth }
+        });
+
+        // Resolved report count
+        const resolvedReportCount = await this.reportModel.countDocuments({
+            clientId: clientId,
+            isCommunityReport: true,
+            status: ReportStatus.RESOLVED
+        });
+
+        // Calculate average response time (in hours)
+        const reports = await this.reportModel.find({
+            clientId: clientId,
+            isCommunityReport: true,
+            status: { $in: [ReportStatus.RESOLVED, ReportStatus.CLOSED] }
+        })
+            .sort({ createdAt: -1 })
+            .limit(100); // Limit to recent reports for better accuracy
+
+        let totalResponseTime = 0;
+        let reportsWithUpdates = 0;
+
+        reports.forEach(report => {
+            if (report.updatedAt && report.createdAt) {
+                const responseTime = (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60); // Hours
+                totalResponseTime += responseTime;
+                reportsWithUpdates++;
+            }
+        });
+
+        const averageResponseTime = reportsWithUpdates > 0
+            ? Math.round(totalResponseTime / reportsWithUpdates)
+            : 48; // Default to 48h if no data
+
+        return {
+            recentReports: transformedRecentReports,
+            impactStats: {
+                monthlyReportCount,
+                resolvedReportCount,
+                averageResponseTime
+            }
+        };
+    }
 }
