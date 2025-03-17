@@ -98,6 +98,9 @@ export class Report extends Document {
     @Prop({ type: String })
     audio?: string;
 
+    @Prop({ type: [String], required: false, default: [] })
+    tags?: string[];
+
     @Prop({ type: Date })
     createdAt?: Date;
 
