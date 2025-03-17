@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ReportStatus } from '../schemas/report.schema';
 
 export class LocationDto {
     @ApiProperty({ description: 'Latitude coordinate' })
@@ -51,28 +52,46 @@ export class CreateCommunityReportDto {
     isAnonymous?: boolean = false;
 
     @ApiProperty({ type: LocationDto })
+    @IsOptional()
     @ValidateNested()
     @Type(() => LocationDto)
-    location: LocationDto;
+    location?: LocationDto;
 
     @ApiProperty({ required: false })
     @IsOptional()
     @IsString()
     authorId?: string;
 
+    @ApiProperty({ required: false })
+    @IsOptional()
+    @IsString()
+    customAuthorName?: string;
+
+    @ApiProperty({ required: false, default: true })
+    @IsOptional()
+    @IsBoolean()
+    visibleOnWeb?: boolean = true;
+
+    @ApiProperty({ required: false, type: [String], description: 'Optional tags for categorizing reports' })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    tags?: string[] = [];
+
     @ApiProperty({ required: false, readOnly: true })
     @IsOptional()
     clientId?: string;
 
     @ApiProperty({
-        enum: ['pending', 'in_progress', 'resolved', 'closed'],
-        default: 'pending'
+        enum: ReportStatus,
+        default: ReportStatus.PENDING_REVIEW,
+        description: 'Current status of the report'
     })
-    @IsEnum(['pending', 'in_progress', 'resolved', 'closed'])
+    @IsEnum(ReportStatus)
     @IsOptional()
-    status?: string = 'pending';
+    status?: ReportStatus = ReportStatus.PENDING_REVIEW;
 
-     @IsOptional()
+    @IsOptional()
     @IsBoolean()
     isFromChatbot?: boolean;
 
@@ -106,17 +125,33 @@ export class UpdateCommunityReportDto extends PartialType(CreateCommunityReportD
 
     @ApiProperty({ required: false })
     @IsOptional()
+    @IsString()
+    override customAuthorName?: string;
+
+    @ApiProperty({ required: false })
+    @IsOptional()
+    @IsBoolean()
+    override visibleOnWeb?: boolean;
+
+    @ApiProperty({ required: false })
+    @IsOptional()
     @ValidateNested()
     @Type(() => LocationDto)
     override location?: LocationDto;
 
+    @ApiProperty({ required: false, type: [String] })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    override tags?: string[];
+
     @ApiProperty({
         required: false,
-        enum: ['pending', 'in_progress', 'resolved', 'closed']
+        enum: ReportStatus
     })
     @IsOptional()
-    @IsEnum(['pending', 'in_progress', 'resolved', 'closed'])
-    override status?: string;
+    @IsEnum(ReportStatus)
+    override status?: ReportStatus;
 
     @ApiProperty({ required: false, type: [String] })
     @IsOptional()
@@ -152,11 +187,11 @@ export class ListCommunityReportDto {
 
     @ApiProperty({
         required: false,
-        enum: ['pending', 'in_progress', 'resolved', 'closed', 'all'],
+        enum: [...Object.values(ReportStatus), 'all'],
         default: 'all'
     })
     @IsOptional()
-    @IsEnum(['pending', 'in_progress', 'resolved', 'closed', 'all'])
+    @IsEnum([...Object.values(ReportStatus), 'all'])
     status?: string = 'all';
 
     @ApiProperty({
@@ -167,6 +202,18 @@ export class ListCommunityReportDto {
     @IsOptional()
     @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'all'])
     category?: string = 'all';
+
+    @ApiProperty({ required: false, type: [String], description: 'Filter reports by tags' })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    tags?: string[];
+
+    @ApiProperty({ required: false, default: true })
+    @IsOptional()
+    @IsBoolean()
+    @Type(() => Boolean)
+    visibleOnly?: boolean = true;
 
     @ApiProperty({ required: false })
     @IsOptional()

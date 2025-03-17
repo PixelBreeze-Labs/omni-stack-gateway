@@ -2,7 +2,7 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Report } from '../schemas/report.schema';
+import { Report, ReportStatus } from '../schemas/report.schema';
 import { User } from '../schemas/user.schema';
 import {
     CreateCommunityReportDto,
@@ -69,11 +69,14 @@ export class CommunityReportService {
             },
             category: reportData.category,
             isAnonymous: reportData.isAnonymous || false,
+            customAuthorName: reportData.customAuthorName,
+            visibleOnWeb: reportData.visibleOnWeb !== undefined ? reportData.visibleOnWeb : true,
             location: reportData.location,
             authorId: reportData.authorId,
             media: mediaUrls,
             audio: audioUrl,
-            status: 'pending',
+            tags: reportData.tags || [],
+            status: reportData.status || ReportStatus.PENDING_REVIEW,
             metadata: {
                 timestamp: now,
                 ipHash: '', // You may want to compute this from the request
@@ -96,6 +99,8 @@ export class CommunityReportService {
             page = 1,
             status = 'all',
             category = 'all',
+            tags = [],
+            visibleOnly = true,
             sortBy = 'createdAt',
             sortOrder = 'desc'
         } = query;
@@ -107,10 +112,16 @@ export class CommunityReportService {
             isCommunityReport: true
         };
 
+        // Only show reports marked as visible on web if requested
+        if (visibleOnly) {
+            filters.visibleOnWeb = true;
+        }
+
         if (search) {
             filters.$or = [
                 { title: new RegExp(search, 'i') },
-                { 'content.message': new RegExp(search, 'i') }
+                { 'content.message': new RegExp(search, 'i') },
+                { customAuthorName: new RegExp(search, 'i') }
             ];
         }
 
@@ -120,6 +131,11 @@ export class CommunityReportService {
 
         if (category && category !== 'all') {
             filters.category = category;
+        }
+
+        // Add tags filter if provided
+        if (tags && tags.length > 0) {
+            filters.tags = { $in: tags };
         }
 
         const sort: any = {};
@@ -211,6 +227,7 @@ export class CommunityReportService {
             clientId: clientId,
             isCommunityReport: true,
             category: report.category,
+            visibleOnWeb: true, // Only show publicly visible reports
             location: {
                 $near: {
                     $geometry: {
@@ -230,6 +247,7 @@ export class CommunityReportService {
                 title: obj.title,
                 status: obj.status,
                 category: obj.category,
+                customAuthorName: obj.customAuthorName,
                 location: obj.location,
                 createdAt: obj.createdAt
             };
@@ -241,13 +259,11 @@ export class CommunityReportService {
 
         // Check if the user is authorized to update this report
         if (report.authorId && !report.isAnonymous) {
-
-        const user = await this.userModel.findById(report.authorId);
-        // Allow only if user is part of the same client
-        if (!user || !user.client_ids.includes(clientId)) {
-            throw new UnauthorizedException('You are not authorized to update this report');
-        }
-
+            const user = await this.userModel.findById(report.authorId);
+            // Allow only if user is part of the same client
+            if (!user || !user.client_ids.includes(clientId)) {
+                throw new UnauthorizedException('You are not authorized to update this report');
+            }
         }
 
         const updateData: any = {
@@ -279,13 +295,11 @@ export class CommunityReportService {
 
         // Check if the user is authorized to delete this report
         if (report.authorId && !report.isAnonymous) {
-
-                const user = await this.userModel.findById(report.authorId);
-                // Allow only if user is part of the same client
-                if (!user || !user.client_ids.includes(clientId)) {
-                    throw new UnauthorizedException('You are not authorized to delete this report');
-                }
-
+            const user = await this.userModel.findById(report.authorId);
+            // Allow only if user is part of the same client
+            if (!user || !user.client_ids.includes(clientId)) {
+                throw new UnauthorizedException('You are not authorized to delete this report');
+            }
         }
 
         await this.reportModel.findByIdAndDelete(id);
@@ -295,6 +309,7 @@ export class CommunityReportService {
         return this.reportModel.find({
             clientId: clientId,
             isCommunityReport: true,
+            visibleOnWeb: true,
             location: {
                 $near: {
                     $geometry: {
@@ -321,9 +336,10 @@ export class CommunityReportService {
         const reports = await this.reportModel.find({
             clientId: clientId,
             isCommunityReport: true,
+            visibleOnWeb: true,
             createdAt: { $gte: twoWeeksAgo },
-            // You can add other criteria like:
-            // status: { $ne: 'closed' }  // Not closed reports
+            // Show active or in-progress reports
+            status: { $in: [ReportStatus.ACTIVE, ReportStatus.IN_PROGRESS] }
         })
             .sort({
                 // Sort by having media first, then by date
@@ -362,6 +378,7 @@ export class CommunityReportService {
         const reports = await this.reportModel.find({
             clientId: clientId,
             isCommunityReport: true,
+            visibleOnWeb: true,
             'location.lat': { $exists: true },
             'location.lng': { $exists: true }
         })
@@ -516,32 +533,50 @@ export class CommunityReportService {
         const total = await this.reportModel.countDocuments(baseFilter);
 
         // Get counts by status
-        const pending = await this.reportModel.countDocuments({
+        const pendingReview = await this.reportModel.countDocuments({
             ...baseFilter,
-            status: 'pending'
+            status: ReportStatus.PENDING_REVIEW
+        });
+
+        const rejected = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: ReportStatus.REJECTED
+        });
+
+        const active = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: ReportStatus.ACTIVE
         });
 
         const inProgress = await this.reportModel.countDocuments({
             ...baseFilter,
-            status: 'in_progress'
+            status: ReportStatus.IN_PROGRESS
         });
 
         const resolved = await this.reportModel.countDocuments({
             ...baseFilter,
-            status: 'resolved'
+            status: ReportStatus.RESOLVED
         });
 
         const closed = await this.reportModel.countDocuments({
             ...baseFilter,
-            status: 'closed'
+            status: ReportStatus.CLOSED
+        });
+
+        const noResolution = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: ReportStatus.NO_RESOLUTION
         });
 
         return {
             total,
-            pending,
+            pendingReview,
+            rejected,
+            active,
             inProgress,
             resolved,
-            closed
+            closed,
+            noResolution
         };
     }
 }

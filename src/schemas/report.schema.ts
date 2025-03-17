@@ -1,103 +1,126 @@
-    // src/schemas/report.schema.ts
-    import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-    import { Document, Schema as MongooseSchema } from 'mongoose';
+// src/schemas/report.schema.ts
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
-    @Schema()
-    export class FileAttachment {
-        @Prop({ required: true })
-        name: string;
+export enum ReportStatus {
+    PENDING_REVIEW = 'pending_review',
+    REJECTED = 'rejected',
+    ACTIVE = 'active',
+    IN_PROGRESS = 'in_progress',
+    RESOLVED = 'resolved',
+    CLOSED = 'closed',
+    NO_RESOLUTION = 'no_resolution'
+}
 
-        @Prop({ required: true })
+@Schema()
+export class FileAttachment {
+    @Prop({ required: true })
+    name: string;
+
+    @Prop({ required: true })
+    type: string;
+
+    @Prop({ required: true })
+    url: string;
+
+    @Prop()
+    size: number;
+}
+
+@Schema()
+export class Location {
+    @Prop({ type: Number })
+    lat: number;
+
+    @Prop({ type: Number })
+    lng: number;
+
+    @Prop({ type: Number })
+    accuracy?: number;
+}
+
+@Schema()
+export class Report extends Document {
+    @Prop({ type: Object, required: false })
+    clientApp?: {
+        id: string;
         type: string;
+        domain: string;
+        version: string;
+    };
 
-        @Prop({ required: true })
-        url: string;
+    @Prop({ type: Object, required: true })
+    content: {
+        message: string;
+        name?: string;
+        files?: FileAttachment[];
+    };
 
-        @Prop()
-        size: number;
-    }
+    @Prop({ type: Object, required: true })
+    metadata: {
+        timestamp: Date;
+        ipHash: string;
+        userAgent: string;
+    };
 
-    @Schema()
-    export class Location {
-        @Prop({ type: Number })
-        lat: number;
+    @Prop({
+        required: true,
+        enum: Object.values(ReportStatus),
+        default: ReportStatus.PENDING_REVIEW
+    })
+    status: string;
 
-        @Prop({ type: Number })
-        lng: number;
+    // Additional fields for community reports
+    @Prop()
+    title?: string;
 
-        @Prop({ type: Number })
-        accuracy?: number;
-    }
+    @Prop({ type: String })
+    category?: string;
 
-    @Schema()
-    export class Report extends Document {
-        @Prop({ type: Object, required: false })
-        clientApp?: {
-            id: string;
-            type: string;
-            domain: string;
-            version: string;
-        };
+    @Prop({ type: Boolean, default: false })
+    isAnonymous?: boolean;
 
-        @Prop({ type: Object, required: true })
-        content: {
-            message: string;
-            name?: string;
-            files?: FileAttachment[];
-        };
+    @Prop({ type: String, required: false })
+    customAuthorName?: string;
 
-        @Prop({ type: Object, required: true })
-        metadata: {
-            timestamp: Date;
-            ipHash: string;
-            userAgent: string;
-        };
+    @Prop({ type: Boolean, default: true })
+    visibleOnWeb?: boolean;
 
-        @Prop({ required: true, enum: ['pending', 'reviewed', 'archived', 'in_progress', 'resolved', 'closed'], default: 'pending' })
-        status: string;
+    @Prop({ type: Location })
+    location?: Location;
 
-        // Additional fields for community reports
-        @Prop()
-        title?: string;
+    @Prop({ type: String })
+    authorId?: string;
 
-        @Prop({ type: String })
-        category?: string;
+    @Prop({ type: [String] })
+    media?: string[];
 
-        @Prop({ type: Boolean, default: false })
-        isAnonymous?: boolean;
+    @Prop({ type: String })
+    audio?: string;
 
-        @Prop({ type: Location })
-        location?: Location;
+    @Prop({ type: [String], required: false, default: [] })
+    tags?: string[];
 
-        @Prop({ type: String })
-        authorId?: string;
+    @Prop({ type: Date })
+    createdAt?: Date;
 
-        @Prop({ type: [String] })
-        media?: string[];
+    @Prop({ type: Date })
+    updatedAt?: Date;
 
-        @Prop({ type: String })
-        audio?: string;
+    @Prop({ type: Boolean, default: false })
+    isCommunityReport?: boolean;
 
-        @Prop({ type: Date })
-        createdAt?: Date;
+    @Prop({ type: Boolean, default: false })
+    isFromChatbot?: boolean;  // New field to track if report was created via chatbot
 
-        @Prop({ type: Date })
-        updatedAt?: Date;
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
+    clientId?: string;
 
-        @Prop({ type: Boolean, default: false })
-        isCommunityReport?: boolean;
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false })
+    userId?: string;
+}
 
-        @Prop({ type: Boolean, default: false })
-        isFromChatbot?: boolean;  // New field to track if report was created via chatbot
+export const ReportSchema = SchemaFactory.createForClass(Report);
 
-        @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
-        clientId?: string;
-
-        @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false })
-        userId?: string;
-    }
-
-    export const ReportSchema = SchemaFactory.createForClass(Report);
-
-    // Add index for geolocation queries
-    ReportSchema.index({ location: '2dsphere' });
+// Add index for geolocation queries
+ReportSchema.index({ location: '2dsphere' });
