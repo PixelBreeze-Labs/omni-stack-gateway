@@ -75,6 +75,7 @@ export class CommunityReportService {
             authorId: reportData.authorId,
             media: mediaUrls,
             audio: audioUrl,
+            tags: reportData.tags || [],
             status: reportData.status || ReportStatus.PENDING_REVIEW,
             metadata: {
                 timestamp: now,
@@ -98,6 +99,7 @@ export class CommunityReportService {
             page = 1,
             status = 'all',
             category = 'all',
+            tags = [],
             visibleOnly = true,
             sortBy = 'createdAt',
             sortOrder = 'desc'
@@ -129,6 +131,11 @@ export class CommunityReportService {
 
         if (category && category !== 'all') {
             filters.category = category;
+        }
+
+        // Add tags filter if provided
+        if (tags && tags.length > 0) {
+            filters.tags = { $in: tags };
         }
 
         const sort: any = {};
