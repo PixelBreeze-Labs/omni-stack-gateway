@@ -213,11 +213,11 @@ export class ListCommunityReportDto {
 
     @ApiProperty({
         required: false,
-        enum: ['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'all'],
+        enum: ['infrastructure', 'safety', 'environment', 'public_services', 'health_services', 'transportation', 'all'],
         default: 'all'
     })
     @IsOptional()
-    @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'all'])
+    @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'health_services', 'transportation', 'all'])
     category?: string = 'all';
 
     @ApiProperty({ required: false, type: [String], description: 'Filter reports by tags' })
