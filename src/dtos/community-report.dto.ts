@@ -52,9 +52,10 @@ export class CreateCommunityReportDto {
     isAnonymous?: boolean = false;
 
     @ApiProperty({ type: LocationDto })
+    @IsOptional()
     @ValidateNested()
     @Type(() => LocationDto)
-    location: LocationDto;
+    location?: LocationDto;
 
     @ApiProperty({ required: false })
     @IsOptional()
@@ -71,13 +72,20 @@ export class CreateCommunityReportDto {
     @IsBoolean()
     visibleOnWeb?: boolean = true;
 
+    @ApiProperty({ required: false, type: [String], description: 'Optional tags for categorizing reports' })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    tags?: string[] = [];
+
     @ApiProperty({ required: false, readOnly: true })
     @IsOptional()
     clientId?: string;
 
     @ApiProperty({
-        enum: Object.values(ReportStatus),
-        default: ReportStatus.PENDING_REVIEW
+        enum: ReportStatus,
+        default: ReportStatus.PENDING_REVIEW,
+        description: 'Current status of the report'
     })
     @IsEnum(ReportStatus)
     @IsOptional()
@@ -131,9 +139,15 @@ export class UpdateCommunityReportDto extends PartialType(CreateCommunityReportD
     @Type(() => LocationDto)
     override location?: LocationDto;
 
+    @ApiProperty({ required: false, type: [String] })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    override tags?: string[];
+
     @ApiProperty({
         required: false,
-        enum: Object.values(ReportStatus)
+        enum: ReportStatus
     })
     @IsOptional()
     @IsEnum(ReportStatus)
@@ -182,12 +196,18 @@ export class ListCommunityReportDto {
 
     @ApiProperty({
         required: false,
-        enum: ['infrastructure', 'safety', 'environment', 'public_services', 'health_services', 'transportation', 'all'],
+        enum: ['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'all'],
         default: 'all'
     })
     @IsOptional()
-    @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'health_services', 'all'])
+    @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'all'])
     category?: string = 'all';
+
+    @ApiProperty({ required: false, type: [String], description: 'Filter reports by tags' })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    tags?: string[];
 
     @ApiProperty({ required: false, default: true })
     @IsOptional()
