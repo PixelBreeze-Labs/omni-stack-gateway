@@ -52,10 +52,9 @@ export class CreateCommunityReportDto {
     isAnonymous?: boolean = false;
 
     @ApiProperty({ type: LocationDto })
-    @IsOptional()
     @ValidateNested()
     @Type(() => LocationDto)
-    location?: LocationDto;
+    location: LocationDto;
 
     @ApiProperty({ required: false })
     @IsOptional()
@@ -77,9 +76,8 @@ export class CreateCommunityReportDto {
     clientId?: string;
 
     @ApiProperty({
-        enum: ReportStatus,
-        default: ReportStatus.PENDING_REVIEW,
-        description: 'Current status of the report'
+        enum: Object.values(ReportStatus),
+        default: ReportStatus.PENDING_REVIEW
     })
     @IsEnum(ReportStatus)
     @IsOptional()
@@ -135,7 +133,7 @@ export class UpdateCommunityReportDto extends PartialType(CreateCommunityReportD
 
     @ApiProperty({
         required: false,
-        enum: ReportStatus
+        enum: Object.values(ReportStatus)
     })
     @IsOptional()
     @IsEnum(ReportStatus)
@@ -184,11 +182,11 @@ export class ListCommunityReportDto {
 
     @ApiProperty({
         required: false,
-        enum: ['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'all'],
+        enum: ['infrastructure', 'safety', 'environment', 'public_services', 'health_services', 'transportation', 'all'],
         default: 'all'
     })
     @IsOptional()
-    @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'all'])
+    @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'transportation', 'health_services', 'all'])
     category?: string = 'all';
 
     @ApiProperty({ required: false, default: true })
