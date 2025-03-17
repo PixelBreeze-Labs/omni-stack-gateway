@@ -80,17 +80,17 @@ export class Report extends Document {
     @Prop({ type: Boolean, default: false })
     isAnonymous?: boolean;
 
-    @Prop({ type: Location })
-    location?: Location;
-
-    @Prop({ type: String })
-    authorId?: string;
-
     @Prop({ type: String, required: false })
     customAuthorName?: string;
 
     @Prop({ type: Boolean, default: true })
     visibleOnWeb?: boolean;
+
+    @Prop({ type: Location })
+    location?: Location;
+
+    @Prop({ type: String })
+    authorId?: string;
 
     @Prop({ type: [String] })
     media?: string[];
@@ -108,7 +108,7 @@ export class Report extends Document {
     isCommunityReport?: boolean;
 
     @Prop({ type: Boolean, default: false })
-    isFromChatbot?: boolean;
+    isFromChatbot?: boolean;  // New field to track if report was created via chatbot
 
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
     clientId?: string;
