@@ -51,6 +51,11 @@ export class CreateCommunityReportDto {
     @IsBoolean()
     isAnonymous?: boolean = false;
 
+    @ApiProperty({ required: false, default: false })
+    @IsOptional()
+    @IsBoolean()
+    isFeatured?: boolean = false;
+
     @ApiProperty({ type: LocationDto })
     @IsOptional()
     @ValidateNested()
@@ -123,6 +128,12 @@ export class UpdateCommunityReportDto extends PartialType(CreateCommunityReportD
     @IsBoolean()
     override isAnonymous?: boolean;
 
+
+    @ApiProperty({ required: false })
+    @IsOptional()
+    @IsBoolean()
+    override isFeatured?: boolean;
+
     @ApiProperty({ required: false })
     @IsOptional()
     @IsString()
@@ -177,6 +188,12 @@ export class ListCommunityReportDto {
     @Type(() => Number)
     @IsMin(1)
     page?: number = 1;
+
+    @ApiProperty({ required: false })
+    @IsOptional()
+    @IsBoolean()
+    @Type(() => Boolean)
+    featuredOnly?: boolean = false;
 
     @ApiProperty({ required: false, default: 10, minimum: 1 })
     @IsNumber()

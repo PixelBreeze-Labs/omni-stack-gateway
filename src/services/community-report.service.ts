@@ -109,7 +109,9 @@ export class CommunityReportService {
 
         const filters: any = {
             clientId: clientId,
-            isCommunityReport: true
+            isCommunityReport: true,
+            // Exclude PENDING_REVIEW and REJECTED
+            status: { $nin: [ReportStatus.PENDING_REVIEW, ReportStatus.REJECTED] }
         };
 
         // Only show reports marked as visible on web if requested
@@ -125,6 +127,7 @@ export class CommunityReportService {
             ];
         }
 
+        // Override the $nin filter if a specific status is requested
         if (status && status !== 'all') {
             filters.status = status;
         }
@@ -323,27 +326,17 @@ export class CommunityReportService {
     }
 
     async getFeaturedReports(clientId: string): Promise<{ data: any[] }> {
-        // Get featured reports based on criteria like:
-        // - Recent reports (last 7 days)
-        // - Reports with high engagement
-        // - Reports marked as important by admins
-        // - Reports with media content
-
-        const twoWeeksAgo = new Date();
-        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-
-        // Fetch reports from the last two weeks, prioritize ones with media
+        // Get featured reports based on the isFeatured flag
         const reports = await this.reportModel.find({
             clientId: clientId,
             isCommunityReport: true,
             visibleOnWeb: true,
-            createdAt: { $gte: twoWeeksAgo },
-            // Show active or in-progress reports
-            status: { $in: [ReportStatus.ACTIVE, ReportStatus.IN_PROGRESS] }
+            isFeatured: true,
+            // Exclude PENDING_REVIEW and REJECTED
+            status: { $nin: [ReportStatus.PENDING_REVIEW, ReportStatus.REJECTED] }
         })
             .sort({
-                // Sort by having media first, then by date
-                media: -1,
+                // Sort by recency
                 createdAt: -1
             })
             .limit(20); // Limit to 20 featured reports
@@ -374,13 +367,21 @@ export class CommunityReportService {
 
     async getMapReports(clientId: string): Promise<any[]> {
         // Get all reports suitable for map display
-        // For map, we only need reports with valid location data
         const reports = await this.reportModel.find({
             clientId: clientId,
             isCommunityReport: true,
             visibleOnWeb: true,
             'location.lat': { $exists: true },
-            'location.lng': { $exists: true }
+            'location.lng': { $exists: true },
+            // Only show active, in progress, resolved, or no_resolution reports on the map
+            status: {
+                $in: [
+                    ReportStatus.ACTIVE,
+                    ReportStatus.IN_PROGRESS,
+                    ReportStatus.RESOLVED,
+                    ReportStatus.NO_RESOLUTION
+                ]
+            }
         })
             .sort({ createdAt: -1 })
             .limit(500); // Reasonable limit for map markers
