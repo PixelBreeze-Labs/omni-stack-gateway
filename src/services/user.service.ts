@@ -24,6 +24,7 @@ import {StaffUserParams, StaffUserResponse} from "../interfaces/staff-user.inter
 import {VenueBoostService} from "./venueboost.service";
 import {AppClient} from "../schemas/app-client.schema";
 import {Guest} from "../schemas/guest.schema";
+import {Report} from "../schemas/report.schema";
 
 
 export interface PopulatedReferral {
@@ -85,6 +86,7 @@ export class UserService {
         @InjectModel(Business.name) private businessModel: Model<Business>,
         @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
         @InjectModel(Guest.name) private guestModel: Model<Guest>,
+        @InjectModel(Report.name) private reportModel: Model<Report>,
     private walletService: WalletService,
         @Inject(forwardRef(() => CustomerService))
         private customerService: CustomerService,
@@ -1208,5 +1210,157 @@ export class UserService {
 
         // Return just the ID for simplicity
         return { userId: user._id.toString() };
+    }
+
+    // Add these methods to your src/services/user.service.ts
+
+    /**
+     * Find all users with nextJsUserId
+     * Returns a list of users that have a non-null nextJsUserId in their external_ids
+     */
+    async findUsersWithNextJsId(clientId: string, query: { page?: number, limit?: number, search?: string } = {}) {
+        const { page = 1, limit = 20, search } = query;
+        const skip = (page - 1) * limit;
+
+        // Build the query to find users with nextJsUserId
+        const filter: any = {
+            client_ids: clientId,
+            'external_ids.nextJsUserId': { $exists: true, $ne: null }
+        };
+
+        // Add search condition if provided
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { surname: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // Count total matching users
+        const total = await this.userModel.countDocuments(filter);
+
+        // Get paginated users
+        const users = await this.userModel
+            .find(filter)
+            .select('-password')
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 })
+            .exec();
+
+        return {
+            data: users,
+            meta: {
+                total,
+                page,
+                limit,
+                pages: Math.ceil(total / limit)
+            }
+        };
+    }
+
+    /**
+     * Find users with multiple active reports
+     * Returns a list of users who have more than one report with status not pending or rejected
+     */
+    async findUsersWithMultipleActiveReports(
+        clientId: string,
+        query: { page?: number, limit?: number, search?: string, minReports?: number } = {}
+    ) {
+        const { page = 1, limit = 20, search, minReports = 2 } = query;
+        const skip = (page - 1) * limit;
+
+        // First, query the reports collection to find users with multiple active reports
+        const reportAggregation = await this.reportModel.aggregate([
+            // Match only reports for this client and with active statuses
+            {
+                $match: {
+                    clientId: clientId,
+                    status: {
+                        $nin: [
+                            'pending_review',
+                            'rejected'
+                        ]
+                    },
+                    authorId: { $exists: true, $ne: null }  // Ensure report has an author
+                }
+            },
+            // Group by authorId and count reports
+            {
+                $group: {
+                    _id: "$authorId",
+                    reportCount: { $sum: 1 }
+                }
+            },
+            // Filter for users with at least minReports reports
+            {
+                $match: {
+                    reportCount: { $gte: minReports }
+                }
+            }
+        ]);
+
+        // Extract user IDs from aggregation results
+        const userIds = reportAggregation.map(item => item._id);
+
+        if (userIds.length === 0) {
+            return {
+                data: [],
+                meta: {
+                    total: 0,
+                    page,
+                    limit,
+                    pages: 0
+                }
+            };
+        }
+
+        // Build the query to find these users
+        const filter: any = {
+            client_ids: clientId,
+            _id: { $in: userIds }
+        };
+
+        // Add search condition if provided
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { surname: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // Count total matching users
+        const total = await this.userModel.countDocuments(filter);
+
+        // Get paginated users with report counts
+        const users = await this.userModel
+            .find(filter)
+            .select('-password')
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 })
+            .lean()
+            .exec();
+
+        // Add report count to each user
+        const usersWithCounts = users.map(user => {
+            const reportInfo = reportAggregation.find(item => item._id === user._id.toString());
+            return {
+                ...user,
+                reportCount: reportInfo ? reportInfo.reportCount : 0
+            };
+        });
+
+        return {
+            data: usersWithCounts,
+            meta: {
+                total,
+                page,
+                limit,
+                pages: Math.ceil(total / limit)
+            }
+        };
     }
 }
