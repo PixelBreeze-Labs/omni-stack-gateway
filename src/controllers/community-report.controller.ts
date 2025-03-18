@@ -90,7 +90,7 @@ export class CommunityReportController {
     })
     @ApiResponse({ status: 400, description: 'Bad Request - Invalid input data' })
     async createFromAdmin(
-        @Body() createReportDto: CreateCommunityReportDto,
+        @Body() createReportDto: any,
         @UploadedFiles() files: {
             media?: Express.Multer.File[],
             audio?: Express.Multer.File[]
@@ -98,72 +98,14 @@ export class CommunityReportController {
         @Req() req: Request & { client: Client }
     ): Promise<Report> {
         try {
-            // Create a properly typed DTO object
-            const reportData: CreateCommunityReportDto & { clientId: string } = {
+            // Add client ID to the report data
+            const reportData = {
                 ...createReportDto,
                 clientId: req.client.id
             };
 
-            // Set isFromChatbot separately to avoid type issues
-            reportData.isFromChatbot = false;
-
-            // Parse location from string to object if it's a string
-            if (typeof reportData.location === 'string') {
-                reportData.location = JSON.parse(reportData.location as any);
-            }
-
-            // Parse reportTags from string array
-            if (typeof reportData.reportTags === 'string') {
-                try {
-                    // Handle array format as string
-                    reportData.reportTags = JSON.parse(reportData.reportTags as any);
-                } catch (e) {
-                    // Handle single tag
-                    reportData.reportTags = [reportData.reportTags];
-                }
-            }
-
-            // In case we get reportTags as reportTags[] format
-            const reportTagsArray: string[] = [];
-            if (Array.isArray(reportData.reportTags)) {
-                reportTagsArray.push(...reportData.reportTags);
-            } else {
-                // Check if we have reportTags[] in body
-                const tagKeys = Object.keys(createReportDto)
-                    .filter(key => key.startsWith('reportTags['))
-                    .sort();
-
-                if (tagKeys.length > 0) {
-                    for (const key of tagKeys) {
-                        const tagValue = createReportDto[key];
-                        if (tagValue) {
-                            reportTagsArray.push(tagValue);
-                        }
-                    }
-                    reportData.reportTags = reportTagsArray;
-                }
-            }
-
-            // Parse tags similarly
-            if (typeof reportData.tags === 'string') {
-                try {
-                    reportData.tags = JSON.parse(reportData.tags as any);
-                } catch (e) {
-                    reportData.tags = [reportData.tags];
-                }
-            }
-
-            // Handle empty string values
-            if (reportData.authorId === '') {
-                reportData.authorId = undefined;
-            }
-
-            if (reportData.customAuthorName === '') {
-                reportData.customAuthorName = undefined;
-            }
-
-            // Call the service method that handles file uploads
-            return this.communityReportService.create(
+            // Call the dedicated service method that handles special cases
+            return this.communityReportService.createFromAdmin(
                 reportData,
                 files?.media || [],
                 files?.audio?.[0]
