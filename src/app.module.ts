@@ -210,6 +210,11 @@ import { CommunityReportService } from './services/community-report.service';
 // Others
 import {JwtModule} from "@nestjs/jwt";
 
+// Groupped
+import { ReportTag, ReportTagSchema } from './schemas/report-tag.schema';
+import { ReportTagService } from './services/report-tag.service';
+import { ReportTagController } from './controllers/report-tag.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -289,6 +294,7 @@ import {JwtModule} from "@nestjs/jwt";
       { name: Chat.name, schema: ChatSchema },
       { name: Discount.name, schema: DiscountSchema },
       { name: Promotion.name, schema: PromotionSchema },
+      { name: ReportTag.name, schema: ReportTagSchema },
     ]),
   ],
   controllers: [
@@ -355,7 +361,8 @@ import {JwtModule} from "@nestjs/jwt";
     ChatController,
     DiscountController,
     PromotionController,
-    CommunityReportController
+    CommunityReportController,
+    ReportTagController
   ],
   providers: [
     SnapfoodService,
@@ -429,7 +436,8 @@ import {JwtModule} from "@nestjs/jwt";
     ChatService,
     PromotionService,
     DiscountService,
-    CommunityReportService
+    CommunityReportService,
+    ReportTagService
   ],
 })
 export class AppModule implements NestModule {
