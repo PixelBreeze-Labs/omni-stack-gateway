@@ -1103,7 +1103,7 @@ export class CommunityReportService {
             );
 
             if (!updatedReport) {
-                throw new NotFoundException(`Report with ID ${id} not found`);
+                throw new NotFoundException(`Report with ID ${id} not found1`);
             }
 
             return updatedReport;
