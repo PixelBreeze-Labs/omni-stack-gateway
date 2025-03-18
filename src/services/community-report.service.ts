@@ -753,10 +753,8 @@ export class CommunityReportService {
 
             return {
                 ...reportObj,
-                id: reportObj._id.toString(),
                 message: reportObj.content?.message,
                 authorName: authorName || reportObj.customAuthorName || null,
-                _id: undefined
             };
         }));
 
