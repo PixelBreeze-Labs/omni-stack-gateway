@@ -101,6 +101,7 @@ export class CommunityReportService {
         files: Express.Multer.File[] = [],
         audioFile?: Express.Multer.File
     ): Promise<Report> {
+
         // Create a clean report data object
         const cleanedData: CreateCommunityReportDto & { clientId: string } = {
             title: reportData.title,
@@ -135,10 +136,10 @@ export class CommunityReportService {
         cleanedData.tags = [];
         cleanedData.reportTags = [];
 
-        // Handle reportTags - FIX: Add better handling for reportTags
+        // Handle reportTags - Enhanced approach
         if (reportData.reportTags) {
             try {
-                // Handle string formats (JSON or comma-separated)
+                // Direct JSON string from frontend
                 if (typeof reportData.reportTags === 'string') {
                     // Check if it's a JSON array
                     if (reportData.reportTags.startsWith('[')) {
@@ -155,25 +156,32 @@ export class CommunityReportService {
                     cleanedData.reportTags = reportData.reportTags;
                 }
             } catch (e) {
-                console.error('Error processing reportTags', e);
-                // Fallback to single tag if JSON parsing failed
-                cleanedData.reportTags = [String(reportData.reportTags)];
+                console.error('Error processing reportTags JSON', e);
             }
         }
 
         // Check for reportTags[] format (common in form submissions)
         const reportTagKeys = Object.keys(reportData)
             .filter(key => key.startsWith('reportTags['))
-            .sort();
+            .sort((a, b) => {
+                // Sort by index number
+                const indexA = parseInt(a.match(/\[(\d+)\]/)?.[1] || '0');
+                const indexB = parseInt(b.match(/\[(\d+)\]/)?.[1] || '0');
+                return indexA - indexB;
+            });
+
+        console.log('Found reportTag keys:', reportTagKeys);
 
         if (reportTagKeys.length > 0) {
             const tagsArray: string[] = [];
             for (const key of reportTagKeys) {
                 if (reportData[key]) {
+                    console.log(`Found reportTag value for ${key}:`, reportData[key]);
                     tagsArray.push(reportData[key]);
                 }
             }
             if (tagsArray.length > 0) {
+                console.log('Setting reportTags from array values:', tagsArray);
                 cleanedData.reportTags = tagsArray;
             }
         }
@@ -201,22 +209,11 @@ export class CommunityReportService {
             }
         }
 
-        // Check for tags[] format
-        const tagKeys = Object.keys(reportData)
-            .filter(key => key.startsWith('tags['))
-            .sort();
-
-        if (tagKeys.length > 0) {
-            const tagsArray: string[] = [];
-            for (const key of tagKeys) {
-                if (reportData[key]) {
-                    tagsArray.push(reportData[key]);
-                }
-            }
-            if (tagsArray.length > 0) {
-                cleanedData.tags = tagsArray;
-            }
-        }
+        // Check media files
+        console.log('Processing media files:', files.length);
+        files.forEach((file, index) => {
+            console.log(`Media file ${index}:`, file.fieldname, file.originalname, file.mimetype, file.size);
+        });
 
         // Log the cleaned data for debugging
         console.log('Cleaned report data:', JSON.stringify({
