@@ -236,6 +236,17 @@ export class CommunityReportController {
         return this.communityReportService.findOneAdmin(id, req.client.id);
     }
 
+    @Put(':id/tags')
+    @ApiOperation({ summary: 'Update report tags' })
+    async updateReportTags(
+        @Param('id') id: string,
+        @Body() data: { reportTags: string[] },
+        @Req() req: Request & { client: Client }
+    ): Promise<Report> {
+        return this.communityReportService.updateReportTags(id, req.client.id, data.reportTags);
+    }
+
+
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Update community report' })
     @ApiParam({ name: 'id', description: 'Report ID' })
