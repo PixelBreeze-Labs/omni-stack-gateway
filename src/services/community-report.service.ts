@@ -743,9 +743,6 @@ export class CommunityReportService {
                     authorName = author.name && author.surname
                         ? `${author.name} ${author.surname}`
                         : author.name || author.email || null;
-                } else {
-                    // If authorId is still a string despite populate, we'll use a fallback
-                    authorName = null;
                 }
             }
 
@@ -759,11 +756,21 @@ export class CommunityReportService {
                 });
             }
 
+            // Ensure reportTags is always an array
+            if (!reportObj.reportTags) {
+                reportObj.reportTags = [];
+            }
+
+            // Ensure location exists
+            if (!reportObj.location) {
+                reportObj.location = { lat: null, lng: null };
+            }
+
             return {
                 ...reportObj,
                 _id: reportObj._id.toString(), // Keep _id and convert to string
                 id: reportObj._id.toString(),  // Also provide id for compatibility
-                message: reportObj.content?.message,
+                message: reportObj.content?.message || '',
                 authorName: reportObj.customAuthorName || authorName || null,
             };
         });
@@ -776,6 +783,76 @@ export class CommunityReportService {
                 limit,
                 hasMore: total > skip + reports.length
             }
+        };
+    }
+
+    /**
+     * Get a report by ID for admin purposes with special handling
+     * This includes better error handling for missing fields
+     */
+    async findOneAdmin(id: string, clientId: string): Promise<any> {
+        const report = await this.reportModel.findOne({
+            _id: id,
+            clientId: clientId,
+            isCommunityReport: true
+        })
+            .populate('reportTags')  // Populate tag references
+            .populate({
+                path: 'authorId',
+                model: 'User',
+                select: 'name surname email'
+            });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${id} not found`);
+        }
+
+        // Transform the report to a more frontend-friendly format
+        const reportObj = report.toObject();
+
+        // Fix media URLs if needed
+        if (reportObj.media) {
+            reportObj.media = reportObj.media.map(url => {
+                if (typeof url === 'string' && url.startsWith('https://https://')) {
+                    return url.replace('https://https://', 'https://');
+                }
+                return url;
+            });
+        }
+
+        // Get author information if available
+        let authorName = null;
+        if (reportObj.authorId) {
+            // Explicit type check and handling for both string and object types
+            if (typeof reportObj.authorId === 'object') {
+                const author = reportObj.authorId as any;
+                authorName = author.name && author.surname
+                    ? `${author.name} ${author.surname}`
+                    : author.name || author.email || null;
+            }
+        }
+
+        // Ensure location exists to prevent errors in frontend
+        if (!reportObj.location) {
+            reportObj.location = { lat: null, lng: null };
+        }
+
+        // Ensure reportTags is always an array
+        if (!reportObj.reportTags) {
+            reportObj.reportTags = [];
+        }
+
+        // Add related data
+        const relatedReports = await this.findRelatedReports(id, clientId);
+
+        return {
+            ...reportObj,
+            _id: reportObj._id.toString(),
+            id: reportObj._id.toString(),
+            message: reportObj.content?.message || '',
+            content: reportObj.content?.message || '',
+            authorName: reportObj.customAuthorName || authorName || null,
+            relatedReports: relatedReports.slice(0, 5) // Limit to 5 related reports
         };
     }
 }
