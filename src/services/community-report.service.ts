@@ -1265,28 +1265,27 @@ export class CommunityReportService {
      * Get top report locations
      */
     async getTopReportLocations(clientId: string, limit: number = 5) {
-        // Get report count by region/district based on geographic clustering
+        // Get report count by geographic clusters based on coordinate proximity
         const locationAnalysis = await this.reportModel.aggregate([
             {
                 $match: {
                     clientId,
                     isCommunityReport: true,
-                    'location.lat': { $exists: true },
-                    'location.lng': { $exists: true }
+                    'location.lat': { $exists: true, $ne: null },
+                    'location.lng': { $exists: true, $ne: null }
                 }
             },
             {
                 $group: {
                     _id: {
                         // Round coordinates to create natural geographic clusters
-                        lat: { $round: ['$location.lat', 3] },
-                        lng: { $round: ['$location.lng', 3] }
+                        // 2 decimal places ≈ 1.1km precision, which is good for district-level grouping
+                        lat: { $round: ['$location.lat', 2] },
+                        lng: { $round: ['$location.lng', 2] }
                     },
                     reports: { $sum: 1 },
                     reportIds: { $push: '$_id' },
-                    // Collect all address data in the cluster to determine most common location name
-                    addresses: { $push: { $ifNull: ['$location.address', ''] } },
-                    // Also calculate the average precise coordinates for the cluster
+                    // Store the center coordinates of this cluster
                     avgLat: { $avg: '$location.lat' },
                     avgLng: { $avg: '$location.lng' }
                 }
@@ -1309,48 +1308,25 @@ export class CommunityReportService {
 
             const resolvedRate = Math.round((resolvedCount / location.reports) * 100);
 
-            // Determine the most common address in the cluster
-            const addressCounts = {};
-            location.addresses.forEach(address => {
-                if (address && address.trim()) {
-                    addressCounts[address] = (addressCounts[address] || 0) + 1;
-                }
-            });
+            // Generate a properly formatted location name based on coordinates
+            // Using more precise coordinate representation
+            const lat = location.avgLat || location._id.lat;
+            const lng = location.avgLng || location._id.lng;
 
-            // Get the most frequently occurring non-empty address
-            let locationName = '';
-            let maxCount = 0;
+            // Convert coordinates to a more readable format
+            const latDeg = Math.abs(lat);
+            const latDir = lat >= 0 ? 'N' : 'S';
+            const lngDeg = Math.abs(lng);
+            const lngDir = lng >= 0 ? 'E' : 'W';
 
-            Object.entries(addressCounts).forEach(([address, count]) => {
-                if (count > maxCount) {
-                    maxCount = count;
-                    locationName = address;
-                }
-            });
-
-            // If no valid address found, create a generic name based on coordinates
-            if (!locationName) {
-                // Try to get the address of the first report with a valid location
-                const reportWithLocation = await this.reportModel.findOne({
-                    _id: { $in: location.reportIds },
-                    'location.address': { $exists: true, $ne: '' }
-                });
-
-                if (reportWithLocation?.location?.address) {
-                    locationName = reportWithLocation.location.address;
-                } else {
-                    // As a last resort, use coordinates but in a more refined format
-                    const lat = location.avgLat || location._id.lat;
-                    const lng = location.avgLng || location._id.lng;
-                    locationName = `Location at (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-                }
-            }
+            // Format the location name with cardinal directions
+            const locationName = `${latDeg.toFixed(4)}° ${latDir}, ${lngDeg.toFixed(4)}° ${lngDir}`;
 
             topLocations.push({
                 name: locationName,
                 coordinates: {
-                    lat: location.avgLat || location._id.lat,
-                    lng: location.avgLng || location._id.lng
+                    lat: lat,
+                    lng: lng
                 },
                 reports: location.reports,
                 resolvedRate
