@@ -1,9 +1,10 @@
 // src/services/community-report.service.ts
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {BadRequestException, Injectable, NotFoundException, UnauthorizedException} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Report, ReportStatus } from '../schemas/report.schema';
 import { User } from '../schemas/user.schema';
+import { ReportTag } from '../schemas/report-tag.schema';
 import {
     CreateCommunityReportDto,
     UpdateCommunityReportDto,
@@ -15,8 +16,9 @@ import { SupabaseService } from './supabase.service';
 export class CommunityReportService {
     constructor(
         @InjectModel(Report.name) private reportModel: Model<Report>,
+        @InjectModel(ReportTag.name) private reportTagModel: Model<ReportTag>,
         @InjectModel(User.name) private userModel: Model<User>,
-        private readonly supabaseService: SupabaseService
+        private readonly supabaseService: SupabaseService,
     ) {}
 
     async create(
@@ -92,7 +94,7 @@ export class CommunityReportService {
     }
 
     /**
-     * Create a report from admin with special handling for files and tags
+     * Create a report from admin with proper handling for reportTags
      */
     async createFromAdmin(
         reportData: any,
@@ -129,29 +131,37 @@ export class CommunityReportService {
             }
         }
 
-        // Process tags arrays
+        // Initialize tag arrays
         cleanedData.tags = [];
         cleanedData.reportTags = [];
 
-        // Handle reportTags from different formats
+        // Handle reportTags - FIX: Add better handling for reportTags
         if (reportData.reportTags) {
-            if (typeof reportData.reportTags === 'string') {
-                try {
-                    const parsedTags = JSON.parse(reportData.reportTags);
-                    if (Array.isArray(parsedTags)) {
-                        cleanedData.reportTags = parsedTags;
+            try {
+                // Handle string formats (JSON or comma-separated)
+                if (typeof reportData.reportTags === 'string') {
+                    // Check if it's a JSON array
+                    if (reportData.reportTags.startsWith('[')) {
+                        cleanedData.reportTags = JSON.parse(reportData.reportTags);
+                    } else if (reportData.reportTags.includes(',')) {
+                        // Handle comma-separated list
+                        cleanedData.reportTags = reportData.reportTags.split(',').map(tag => tag.trim());
                     } else {
+                        // Single tag ID
                         cleanedData.reportTags = [reportData.reportTags];
                     }
-                } catch (e) {
-                    cleanedData.reportTags = [reportData.reportTags];
+                } else if (Array.isArray(reportData.reportTags)) {
+                    // Direct array assignment
+                    cleanedData.reportTags = reportData.reportTags;
                 }
-            } else if (Array.isArray(reportData.reportTags)) {
-                cleanedData.reportTags = reportData.reportTags;
+            } catch (e) {
+                console.error('Error processing reportTags', e);
+                // Fallback to single tag if JSON parsing failed
+                cleanedData.reportTags = [String(reportData.reportTags)];
             }
         }
 
-        // Check for reportTags[] format
+        // Check for reportTags[] format (common in form submissions)
         const reportTagKeys = Object.keys(reportData)
             .filter(key => key.startsWith('reportTags['))
             .sort();
@@ -168,7 +178,7 @@ export class CommunityReportService {
             }
         }
 
-        // Process tags similarly
+        // Process regular tags similarly
         if (reportData.tags) {
             if (typeof reportData.tags === 'string') {
                 try {
@@ -179,7 +189,12 @@ export class CommunityReportService {
                         cleanedData.tags = [reportData.tags];
                     }
                 } catch (e) {
-                    cleanedData.tags = [reportData.tags];
+                    // If not valid JSON, treat as comma-separated or single tag
+                    if (reportData.tags.includes(',')) {
+                        cleanedData.tags = reportData.tags.split(',').map(tag => tag.trim());
+                    } else {
+                        cleanedData.tags = [reportData.tags];
+                    }
                 }
             } else if (Array.isArray(reportData.tags)) {
                 cleanedData.tags = reportData.tags;
@@ -202,6 +217,13 @@ export class CommunityReportService {
                 cleanedData.tags = tagsArray;
             }
         }
+
+        // Log the cleaned data for debugging
+        console.log('Cleaned report data:', JSON.stringify({
+            ...cleanedData,
+            reportTags: cleanedData.reportTags,
+            tags: cleanedData.tags
+        }));
 
         // Now use the standard create method with the cleaned data
         return this.create(cleanedData, files, audioFile);
@@ -1057,4 +1079,52 @@ export class CommunityReportService {
             relatedReports: relatedReports.slice(0, 5) // Limit to 5 related reports
         };
     }
+
+    /**
+     * Update report tags specifically
+     */
+        async updateReportTags(id: string, clientId: string, reportTags: string[]): Promise<Report> {
+        // First, find the report to make sure it exists
+        const report = await this.reportModel.findOne({
+            _id: id,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${id} not found`);
+        }
+
+        // Validate that all tag IDs exist
+        if (reportTags.length > 0) {
+            // Import and use the reportTagModel
+            const tagsExist = await this.reportTagModel.countDocuments({
+                _id: { $in: reportTags },
+                clientId: clientId
+            });
+
+            if (tagsExist !== reportTags.length) {
+                throw new BadRequestException('One or more tag IDs are invalid');
+            }
+        }
+
+        // Update only the reportTags field
+        const updatedReport = await this.reportModel.findByIdAndUpdate(
+            id,
+            {
+                $set: {
+                    reportTags: reportTags,
+                    updatedAt: new Date()
+                }
+            },
+            { new: true }
+        );
+
+        if (!updatedReport) {
+            throw new NotFoundException(`Report with ID ${id} not found`);
+        }
+
+        return updatedReport;
+    }
+
 }
