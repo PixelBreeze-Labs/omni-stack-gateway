@@ -682,9 +682,11 @@ export class CommunityReportService {
 
         // Base filter for community reports
         const filters: any = {
-            clientId: clientId,
-            isCommunityReport: true
+            clientId: clientId
         };
+
+        // Since we're getting errors with some reports, don't filter by isCommunityReport for now
+        filters.isCommunityReport = true;
 
         // Don't exclude any statuses by default for admin view
         // Add specific status filter if requested
@@ -754,25 +756,35 @@ export class CommunityReportService {
                     }
                     return url;
                 });
+            } else {
+                reportObj.media = [];
             }
 
-            // Ensure reportTags is always an array
-            if (!reportObj.reportTags) {
-                reportObj.reportTags = [];
-            }
-
-            // Ensure location exists
-            if (!reportObj.location) {
-                reportObj.location = { lat: null, lng: null };
-            }
-
-            return {
+            // Ensure all required fields have default values
+            const safeReport = {
                 ...reportObj,
-                _id: reportObj._id.toString(), // Keep _id and convert to string
-                id: reportObj._id.toString(),  // Also provide id for compatibility
+                _id: reportObj._id.toString(),
+                id: reportObj._id.toString(),
+                title: reportObj.title || 'Untitled Report',
+                content: reportObj.content || { message: '' },
                 message: reportObj.content?.message || '',
+                category: reportObj.category || 'other',
+                status: reportObj.status || 'pending_review',
+                isAnonymous: reportObj.isAnonymous || false,
+                visibleOnWeb: reportObj.visibleOnWeb !== undefined ? reportObj.visibleOnWeb : true,
+                isFeatured: reportObj.isFeatured || false,
+                customAuthorName: reportObj.customAuthorName || '',
                 authorName: reportObj.customAuthorName || authorName || null,
+                location: reportObj.location || { lat: null, lng: null },
+                tags: reportObj.tags || [],
+                reportTags: reportObj.reportTags || [],
+                createdAt: reportObj.createdAt || new Date(),
+                updatedAt: reportObj.updatedAt || new Date(),
+                isCommunityReport: reportObj.isCommunityReport !== undefined ? reportObj.isCommunityReport : true,
+                isFromChatbot: reportObj.isFromChatbot || false
             };
+
+            return safeReport;
         });
 
         return {
