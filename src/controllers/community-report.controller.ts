@@ -75,6 +75,40 @@ export class CommunityReportController {
         );
     }
 
+    @Post('admin')
+    @ApiConsumes('multipart/form-data')
+    @UseInterceptors((FileFieldsInterceptor as any)([
+        { name: 'media', maxCount: 10 },
+        { name: 'audio', maxCount: 1 }
+    ]))
+    @UseGuards(ClientAuthGuard)
+    @ApiOperation({ summary: 'Create a new community report from admin' })
+    @ApiResponse({
+        status: 201,
+        description: 'Community report has been successfully created from admin',
+        type: Report
+    })
+    @ApiResponse({ status: 400, description: 'Bad Request - Invalid input data' })
+    async createFromAdmin(
+        @Body() createReportDto: CreateCommunityReportDto,
+        @UploadedFiles() files: {
+            media?: Express.Multer.File[],
+            audio?: Express.Multer.File[]
+        },
+        @Req() req: Request & { client: Client }
+    ): Promise<Report> {
+        // Parse location from string to object if it's a string
+        if (typeof createReportDto.location === 'string') {
+            createReportDto.location = JSON.parse(createReportDto.location);
+        }
+
+        return this.communityReportService.create(
+            { ...createReportDto, clientId: req.client.id },
+            files?.media || [],
+            files?.audio?.[0]
+        );
+    }
+
     @ApiOperation({ summary: 'Get all community reports' })
     @ApiQuery({ type: ListCommunityReportDto })
     @ApiResponse({ status: 200, description: 'List of community reports' })
