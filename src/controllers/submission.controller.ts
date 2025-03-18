@@ -41,4 +41,18 @@ export class SubmissionController {
             clientId: req.client.id
         });
     }
+
+
+    @Post('contact')
+    async createContact(
+        @Req() req: Request & { client: Client },
+        @Body() contactData: { firstName: string; lastName: string; email: string; phone?: string; content: string }
+    ) {
+        return this.submissionService.createContactSubmission({
+            ...contactData,
+            clientId: req.client.id,
+            userAgent: req.headers['user-agent'],
+            ipAddress: req.ip
+        });
+    }
 }

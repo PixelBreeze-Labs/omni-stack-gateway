@@ -63,4 +63,44 @@ export class SubmissionService {
             limit
         };
     }
+
+    // Add this to your submission.service.ts
+    async createContactSubmission(data: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        phone?: string;
+        content: string;
+        clientId: string;
+        userAgent?: string;
+        ipAddress?: string;
+    }) {
+        // Create metadata with timestamp and optional IP hash/user agent
+        const metadata = {
+            timestamp: new Date(),
+            ipHash: data.ipAddress ? this.hashIpAddress(data.ipAddress) : '',
+            userAgent: data.userAgent || ''
+        };
+
+        // Create the submission with type always set to 'contact'
+        const submission = await this.submissionModel.create({
+            firstName: data.firstName,
+            lastName: data.lastName,
+            email: data.email,
+            phone: data.phone,
+            content: data.content,
+            clientId: data.clientId,
+            type: 'contact', // Always set to contact type
+            status: 'pending',
+            metadata
+        });
+
+        return submission;
+    }
+
+// Helper method to hash IP address for privacy
+    private hashIpAddress(ip: string): string {
+        const crypto = require('crypto');
+        return crypto.createHash('sha256').update(ip).digest('hex');
+    }
 }
