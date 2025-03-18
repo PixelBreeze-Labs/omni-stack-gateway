@@ -1085,4 +1085,297 @@ export class CommunityReportService {
             throw error;
         }
     }
+
+    // Add these methods to the CommunityReportService class
+
+    /**
+     * Get overall dashboard statistics for a client
+     */
+    async getDashboardStats(clientId: string) {
+        // Get total reports count
+        const totalReports = await this.reportModel.countDocuments({
+            clientId,
+            isCommunityReport: true
+        });
+
+        // Get resolved reports count
+        const resolvedReports = await this.reportModel.countDocuments({
+            clientId,
+            isCommunityReport: true,
+            status: ReportStatus.RESOLVED
+        });
+
+        // Get count of users with reports in this client
+        const activeCitizens = await this.userModel.countDocuments({
+            client_ids: clientId,
+            'reports.0': { $exists: true }
+        });
+
+        // Calculate average response time in hours
+        const resolvedReportsData = await this.reportModel.find({
+            clientId,
+            isCommunityReport: true,
+            status: { $in: [ReportStatus.RESOLVED, ReportStatus.CLOSED] },
+            createdAt: { $exists: true },
+            updatedAt: { $exists: true }
+        }).select('createdAt updatedAt');
+
+        let totalResponseTime = 0;
+        let reportsWithData = 0;
+
+        resolvedReportsData.forEach(report => {
+            if (report.createdAt && report.updatedAt) {
+                const responseTime = (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60); // Hours
+                totalResponseTime += responseTime;
+                reportsWithData++;
+            }
+        });
+
+        const averageResponseTime = reportsWithData > 0
+            ? Math.round(totalResponseTime / reportsWithData)
+            : 48; // Default if no data
+
+        return {
+            totalReports,
+            resolvedReports,
+            activeCitizens,
+            averageResponseTime
+        };
+    }
+
+    /**
+     * Get reports distribution by category
+     */
+    async getReportsByCategory(clientId: string) {
+        const result = await this.reportModel.aggregate([
+            {
+                $match: {
+                    clientId,
+                    isCommunityReport: true
+                }
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    category: '$_id',
+                    name: { $ifNull: ['$_id', 'other'] },
+                    count: 1
+                }
+            },
+            {
+                $sort: { count: -1 }
+            }
+        ]);
+
+        // Convert category keys to proper display names
+        return result.map(item => ({
+            ...item,
+            name: item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        }));
+    }
+
+    /**
+     * Get monthly report trends
+     */
+    async getMonthlyReportTrends(clientId: string, year: number = new Date().getFullYear()) {
+        const months = [
+            'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+        ];
+
+        const startDate = new Date(year, 0, 1); // January 1st of the specified year
+        const endDate = new Date(year, 11, 31, 23, 59, 59); // December 31st of the specified year
+
+        const result = await this.reportModel.aggregate([
+            {
+                $match: {
+                    clientId,
+                    isCommunityReport: true,
+                    createdAt: { $gte: startDate, $lte: endDate }
+                }
+            },
+            {
+                $group: {
+                    _id: { $month: '$createdAt' },
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { _id: 1 }
+            }
+        ]);
+
+        // Convert to expected format and fill in missing months
+        const monthlyData = months.map((month, index) => {
+            const foundMonth = result.find(item => item._id === index + 1);
+            return {
+                month,
+                value: foundMonth ? foundMonth.count : 0
+            };
+        });
+
+        return monthlyData;
+    }
+
+    /**
+     * Get reports distribution by status
+     */
+    async getReportsByStatus(clientId: string) {
+        const result = await this.reportModel.aggregate([
+            {
+                $match: {
+                    clientId,
+                    isCommunityReport: true
+                }
+            },
+            {
+                $group: {
+                    _id: '$status',
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    status: '$_id',
+                    count: 1
+                }
+            },
+            {
+                $sort: { count: -1 }
+            }
+        ]);
+
+        return result;
+    }
+
+    /**
+     * Get top report locations
+     */
+    async getTopReportLocations(clientId: string, limit: number = 5) {
+        // Get report count by region/district
+        // This is a simplified approach - in a real app, you might have proper region mapping
+        const locationAnalysis = await this.reportModel.aggregate([
+            {
+                $match: {
+                    clientId,
+                    isCommunityReport: true,
+                    'location.lat': { $exists: true },
+                    'location.lng': { $exists: true }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        // This would normally use proper region/area lookup
+                        // Using a simplified lat/lng rounding for demo purposes
+                        lat: { $round: ['$location.lat', 1] },
+                        lng: { $round: ['$location.lng', 1] }
+                    },
+                    reports: { $sum: 1 },
+                    reportIds: { $push: '$_id' }
+                }
+            },
+            {
+                $sort: { reports: -1 }
+            },
+            {
+                $limit: limit
+            }
+        ]);
+
+        // For each location, calculate how many reports are resolved
+        const topLocations = [];
+        for (const location of locationAnalysis) {
+            const resolvedCount = await this.reportModel.countDocuments({
+                _id: { $in: location.reportIds },
+                status: ReportStatus.RESOLVED
+            });
+
+            const resolvedRate = Math.round((resolvedCount / location.reports) * 100);
+
+            // In a real app, you would lookup location name from coordinates
+            // For demo, we're creating dummy names
+            topLocations.push({
+                name: `District at (${location._id.lat}, ${location._id.lng})`,
+                reports: location.reports,
+                resolvedRate
+            });
+        }
+
+        return topLocations;
+    }
+
+    /**
+     * Get recent reports
+     */
+    async getRecentReports(clientId: string, limit: number = 5) {
+        const reports = await this.reportModel.find({
+            clientId,
+            isCommunityReport: true,
+            visibleOnWeb: true
+        })
+            .sort({ createdAt: -1 })
+            .limit(limit);
+
+        return reports.map(report => {
+            const reportObj = report.toObject();
+            return {
+                _id: reportObj._id.toString(),
+                title: reportObj.title,
+                category: reportObj.category,
+                status: reportObj.status,
+                createdAt: reportObj.createdAt,
+                location: reportObj.location ? `Near (${reportObj.location.lat.toFixed(2)}, ${reportObj.location.lng.toFixed(2)})` : 'Unknown location'
+            };
+        });
+    }
+
+    /**
+     * Get user engagement metrics
+     */
+    async getCitizenEngagementMetrics(clientId: string) {
+        const now = new Date();
+        const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Count new users this month
+        const newUsersThisMonth = await this.userModel.countDocuments({
+            client_ids: clientId,
+            createdAt: { $gte: startOfCurrentMonth }
+        });
+
+        // Count users who submitted reports
+        const reportingUsers = await this.reportModel.aggregate([
+            {
+                $match: {
+                    clientId,
+                    isCommunityReport: true,
+                    authorId: { $exists: true, $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: '$authorId',
+                    reportCount: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Calculate average reports per user
+        const avgReportsPerUser = reportingUsers.length > 0
+            ? reportingUsers.reduce((sum, user) => sum + user.reportCount, 0) / reportingUsers.length
+            : 0;
+
+        return {
+            newUsersThisMonth,
+            reportingUserCount: reportingUsers.length,
+            avgReportsPerUser: parseFloat(avgReportsPerUser.toFixed(1))
+        };
+    }
 }
