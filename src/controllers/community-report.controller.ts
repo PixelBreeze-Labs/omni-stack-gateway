@@ -217,6 +217,19 @@ export class CommunityReportController {
     }
 
     @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get community report by ID for admin' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'Admin report details' })
+    @UseGuards(ClientAuthGuard)
+    @Get('admin/:id')
+    async findOneAdmin(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ): Promise<Report> {
+        return this.communityReportService.findOneAdmin(id, req.client.id);
+    }
+
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Update community report' })
     @ApiParam({ name: 'id', description: 'Report ID' })
     @ApiResponse({ status: 200, description: 'Report updated' })
