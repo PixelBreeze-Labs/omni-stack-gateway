@@ -48,11 +48,16 @@ export class SubmissionController {
         @Req() req: Request & { client: Client },
         @Body() contactData: { firstName: string; lastName: string; email: string; phone?: string; content: string }
     ) {
+        // Fix IP address retrieval
+        const ipAddress = req.headers['x-forwarded-for'] ||
+            req.socket.remoteAddress ||
+            '';
+
         return this.submissionService.createContactSubmission({
             ...contactData,
             clientId: req.client.id,
             userAgent: req.headers['user-agent'],
-            ipAddress: req.ip
+            ipAddress: typeof ipAddress === 'string' ? ipAddress : ipAddress[0]
         });
     }
 }
