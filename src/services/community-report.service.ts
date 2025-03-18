@@ -722,12 +722,24 @@ export class CommunityReportService {
         // Get the reports
         const reports = await this.reportModel.find(filters)
             .populate('reportTags')  // Populate tag references
+            .populate('authorId', 'name surname email') // Populate author information
             .sort(sort)
             .skip(skip)
             .limit(limit);
 
-        const transformedReports = reports.map(report => {
+        const transformedReports = await Promise.all(reports.map(async report => {
             const reportObj = report.toObject();
+
+            // Get author information if available
+            let authorName = null;
+            if (reportObj.authorId && !reportObj.isAnonymous) {
+                const author = reportObj.authorId;
+                if (author && typeof author === 'object') {
+                    authorName = author.name && author.surname
+                        ? `${author.name} ${author.surname}`
+                        : author.name || author.email || null;
+                }
+            }
 
             // Fix media URLs if needed
             if (reportObj.media) {
@@ -743,9 +755,10 @@ export class CommunityReportService {
                 ...reportObj,
                 id: reportObj._id.toString(),
                 message: reportObj.content?.message,
+                authorName: authorName || reportObj.customAuthorName || null,
                 _id: undefined
             };
-        });
+        }));
 
         return {
             data: transformedReports,
