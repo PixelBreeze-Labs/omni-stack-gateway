@@ -92,6 +92,7 @@ export class CommunityReportService {
 
         return report;
     }
+
     /**
      * Create a report from admin with simplified tag handling
      */
@@ -100,105 +101,47 @@ export class CommunityReportService {
         files: Express.Multer.File[] = [],
         audioFile?: Express.Multer.File
     ): Promise<Report> {
-        // Log the raw input for debugging
-        console.log('Creating report from admin with data:', {
-            title: reportData.title,
-            content: reportData.content?.substring(0, 50) + '...',
-            reportTags: reportData.reportTags,
-            files: files.length
-        });
+        console.log('Raw reportData:', reportData);
 
-        // Create a clean report data object
-        const cleanedData: CreateCommunityReportDto & { clientId: string } = {
-            title: reportData.title,
-            content: reportData.content,
-            category: reportData.category,
-            clientId: reportData.clientId,
-            // Process boolean fields
-            isAnonymous: reportData.isAnonymous === 'true' || reportData.isAnonymous === true,
-            isFeatured: reportData.isFeatured === 'true' || reportData.isFeatured === true,
-            visibleOnWeb: reportData.visibleOnWeb !== 'false' && reportData.visibleOnWeb !== false, // default to true
-            isFromChatbot: false,
-            // Set additional fields
-            status: reportData.status || ReportStatus.ACTIVE,
-            customAuthorName: reportData.customAuthorName || undefined,
-            authorId: reportData.authorId || undefined,
-            reportTags: [], // Initialize empty, will populate below
-            tags: [] // Keep empty, use reportTags only
-        };
+        // Handle reportTags directly in FormData format (simple, direct approach)
+        let reportTagsArray: string[] = [];
 
-        // Process location
-        if (reportData.location) {
+        // Direct single approach to extract tags from any format
+        if (reportData.reportTags) {
             try {
-                if (typeof reportData.location === 'string') {
-                    cleanedData.location = JSON.parse(reportData.location);
-                } else {
-                    cleanedData.location = reportData.location;
+                // If it's a JSON string, parse it
+                if (typeof reportData.reportTags === 'string' && reportData.reportTags.startsWith('[')) {
+                    reportTagsArray = JSON.parse(reportData.reportTags);
                 }
-            } catch (e) {
-                console.warn('Error parsing location data:', e);
-            }
-        }
-
-        // SIMPLIFIED APPROACH TO REPORT TAGS
-        // 1. Try reportTags as JSON string
-        if (typeof reportData.reportTags === 'string') {
-            try {
-                if (reportData.reportTags.startsWith('[')) {
-                    // Parse JSON array
-                    cleanedData.reportTags = JSON.parse(reportData.reportTags);
-                    console.log('Set reportTags from JSON string:', cleanedData.reportTags);
-                } else if (reportData.reportTags.includes(',')) {
-                    // Handle comma-separated string
-                    cleanedData.reportTags = reportData.reportTags.split(',').map(tag => tag.trim());
-                    console.log('Set reportTags from comma-separated string:', cleanedData.reportTags);
-                } else if (reportData.reportTags.length > 0) {
-                    // Single tag ID
-                    cleanedData.reportTags = [reportData.reportTags];
-                    console.log('Set reportTags from single string value:', cleanedData.reportTags);
+                // If it's a comma-separated string
+                else if (typeof reportData.reportTags === 'string' && reportData.reportTags.includes(',')) {
+                    reportTagsArray = reportData.reportTags.split(',').map(tag => tag.trim());
+                }
+                // If it's a single string value
+                else if (typeof reportData.reportTags === 'string') {
+                    reportTagsArray = [reportData.reportTags];
+                }
+                // If it's already an array
+                else if (Array.isArray(reportData.reportTags)) {
+                    reportTagsArray = reportData.reportTags;
                 }
             } catch (error) {
-                console.error('Error processing reportTags as string:', error);
+                console.error('Failed to parse reportTags:', error);
             }
         }
-        // 2. Try reportTags as direct array
-        else if (Array.isArray(reportData.reportTags)) {
-            cleanedData.reportTags = reportData.reportTags;
-            console.log('Set reportTags from direct array:', cleanedData.reportTags);
-        }
 
-        // 3. Try reportTags from form fields
-        if ((!cleanedData.reportTags || cleanedData.reportTags.length === 0) && reportData['reportTags[0]']) {
-            const tagArray: string[] = [];
+        // Handle individual reportTags[index] fields if array is still empty
+        if (reportTagsArray.length === 0) {
             let index = 0;
-
-            // Collect all reportTags[n] fields
             while (reportData[`reportTags[${index}]`]) {
-                if (reportData[`reportTags[${index}]`]) {
-                    tagArray.push(reportData[`reportTags[${index}]`]);
-                }
+                reportTagsArray.push(reportData[`reportTags[${index}]`]);
                 index++;
             }
-
-            if (tagArray.length > 0) {
-                cleanedData.reportTags = tagArray;
-                console.log('Set reportTags from form fields:', cleanedData.reportTags);
-            }
         }
 
-        // 4. Final check for other formats (object with entries)
-        if ((!cleanedData.reportTags || cleanedData.reportTags.length === 0) && typeof reportData === 'object') {
-            const tagKeys = Object.keys(reportData).filter(k => k.startsWith('reportTags[') && k.endsWith(']'));
+        console.log('Final reportTagsArray:', reportTagsArray);
 
-            if (tagKeys.length > 0) {
-                const tagArray = tagKeys.map(key => reportData[key]).filter(Boolean);
-                if (tagArray.length > 0) {
-                    cleanedData.reportTags = tagArray;
-                    console.log('Set reportTags from object entries:', cleanedData.reportTags);
-                }
-            }
-        }
-
+        // Use the standard create method but override reportTags
         const mediaUrls: string[] = [];
 
         // Upload images to Supabase
@@ -221,25 +164,26 @@ export class CommunityReportService {
             }
         }
 
-        // Create the report object directly instead of calling this.create
+        // Create the report object directly to ensure reportTags is captured
         const now = new Date();
         const report = await this.reportModel.create({
-            clientId: cleanedData.clientId,
-            title: cleanedData.title,
+            clientId: reportData.clientId,
+            title: reportData.title,
             content: {
-                message: cleanedData.content
+                message: reportData.content
             },
-            category: cleanedData.category,
-            isAnonymous: cleanedData.isAnonymous || false,
-            customAuthorName: cleanedData.customAuthorName,
-            visibleOnWeb: cleanedData.visibleOnWeb !== undefined ? cleanedData.visibleOnWeb : true,
-            location: cleanedData.location,
-            authorId: cleanedData.authorId,
+            category: reportData.category,
+            isAnonymous: reportData.isAnonymous === 'true' || reportData.isAnonymous === true,
+            isFeatured: reportData.isFeatured === 'true' || reportData.isFeatured === true,
+            customAuthorName: reportData.customAuthorName,
+            visibleOnWeb: reportData.visibleOnWeb !== 'false' && reportData.visibleOnWeb !== false,
+            location: typeof reportData.location === 'string' ? JSON.parse(reportData.location) : reportData.location,
+            authorId: reportData.authorId,
             media: mediaUrls,
             audio: audioUrl,
-            tags: [], // Use empty array for legacy field
-            reportTags: cleanedData.reportTags || [], // Use the validated report tags
-            status: cleanedData.status || ReportStatus.ACTIVE,
+            tags: [],
+            reportTags: reportTagsArray, // Use our extracted tags array directly
+            status: reportData.status || ReportStatus.ACTIVE,
             metadata: {
                 timestamp: now,
                 ipHash: '',
@@ -251,7 +195,7 @@ export class CommunityReportService {
             updatedAt: now
         });
 
-        console.log('Successfully created report with ID:', report._id, 'and reportTags:', report.reportTags);
+        console.log('Created report with reportTags:', report.reportTags);
         return report;
     }
 
