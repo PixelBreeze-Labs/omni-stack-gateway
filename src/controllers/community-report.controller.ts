@@ -342,5 +342,126 @@ export class CommunityReportController {
         }
 
         return this.communityReportService.getReportStats(userId, req.client.id);
+    }s
+
+    @ApiOperation({ summary: 'Get overall dashboard statistics' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns dashboard statistics'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('dashboard-stats')
+    async getDashboardStats(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getDashboardStats(req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get reports by category' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns report distribution by category'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('stats/by-category')
+    async getReportsByCategory(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getReportsByCategory(req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get monthly report trends' })
+    @ApiQuery({
+        name: 'year',
+        required: false,
+        type: Number,
+        description: 'Year for monthly trends (defaults to current year)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns report counts by month'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('stats/monthly')
+    async getMonthlyReportTrends(
+        @Req() req: Request & { client: Client },
+        @Query('year') year?: number
+    ) {
+        return this.communityReportService.getMonthlyReportTrends(
+            req.client.id,
+            year || new Date().getFullYear()
+        );
+    }
+
+    @ApiOperation({ summary: 'Get reports by status' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns report counts by status'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('stats/by-status')
+    async getReportsByStatus(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getReportsByStatus(req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get top report locations' })
+    @ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        description: 'Number of locations to return (defaults to 5)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns top locations by report count'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('stats/top-locations')
+    async getTopReportLocations(
+        @Req() req: Request & { client: Client },
+        @Query('limit') limit?: number
+    ) {
+        return this.communityReportService.getTopReportLocations(
+            req.client.id,
+            limit
+        );
+    }
+
+    @ApiOperation({ summary: 'Get recent reports' })
+    @ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        description: 'Number of reports to return (defaults to 5)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns recent reports'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('stats/recent')
+    async getRecentReports(
+        @Req() req: Request & { client: Client },
+        @Query('limit') limit?: number
+    ) {
+        return this.communityReportService.getRecentReports(
+            req.client.id,
+            limit
+        );
+    }
+
+    @ApiOperation({ summary: 'Get citizen engagement metrics' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns user engagement metrics'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('engagement-metrics')
+    async getCitizenEngagementMetrics(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getCitizenEngagementMetrics(req.client.id);
     }
 }
