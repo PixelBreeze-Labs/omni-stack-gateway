@@ -722,26 +722,30 @@ export class CommunityReportService {
         // Get the reports
         const reports = await this.reportModel.find(filters)
             .populate('reportTags')  // Populate tag references
-            .populate('authorId', 'name surname email') // Populate author information
+            .populate({
+                path: 'authorId',
+                model: 'User',
+                select: 'name surname email'
+            }) // Explicit population with model
             .sort(sort)
             .skip(skip)
             .limit(limit);
 
-        const transformedReports = await Promise.all(reports.map(async report => {
+        const transformedReports = reports.map(report => {
             const reportObj = report.toObject();
 
             // Get author information if available
-            // Get author information if authorId exists, regardless of isAnonymous flag
             let authorName = null;
             if (reportObj.authorId) {
-                // Define author with a type check to avoid TypeScript errors
-                const author = reportObj.authorId as { name?: string; surname?: string; email?: string } | null;
-
-                // Add an additional null check before accessing properties
-                if (author && typeof author === 'object') {
+                // Explicit type check and handling for both string and object types
+                if (typeof reportObj.authorId === 'object') {
+                    const author = reportObj.authorId as any;
                     authorName = author.name && author.surname
                         ? `${author.name} ${author.surname}`
                         : author.name || author.email || null;
+                } else {
+                    // If authorId is still a string despite populate, we'll use a fallback
+                    authorName = null;
                 }
             }
 
@@ -757,10 +761,12 @@ export class CommunityReportService {
 
             return {
                 ...reportObj,
+                _id: reportObj._id.toString(), // Keep _id and convert to string
+                id: reportObj._id.toString(),  // Also provide id for compatibility
                 message: reportObj.content?.message,
-                authorName: authorName || reportObj.customAuthorName || null,
+                authorName: reportObj.customAuthorName || authorName || null,
             };
-        }));
+        });
 
         return {
             data: transformedReports,
