@@ -9,7 +9,8 @@ import {
     IsBoolean,
     IsArray,
     ValidateNested,
-    Min as IsMin
+    Min as IsMin,
+    IsMongoId
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -77,11 +78,17 @@ export class CreateCommunityReportDto {
     @IsBoolean()
     visibleOnWeb?: boolean = true;
 
-    @ApiProperty({ required: false, type: [String], description: 'Optional tags for categorizing reports' })
+    @ApiProperty({ required: false, type: [String], description: 'Legacy string tags for categorizing reports' })
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
     tags?: string[] = [];
+
+    @ApiProperty({ required: false, type: [String], description: 'Array of report tag IDs' })
+    @IsOptional()
+    @IsArray()
+    @IsMongoId({ each: true })
+    reportTags?: string[] = [];
 
     @ApiProperty({ required: false, readOnly: true })
     @IsOptional()
@@ -128,7 +135,6 @@ export class UpdateCommunityReportDto extends PartialType(CreateCommunityReportD
     @IsBoolean()
     override isAnonymous?: boolean;
 
-
     @ApiProperty({ required: false })
     @IsOptional()
     @IsBoolean()
@@ -155,6 +161,12 @@ export class UpdateCommunityReportDto extends PartialType(CreateCommunityReportD
     @IsArray()
     @IsString({ each: true })
     override tags?: string[];
+
+    @ApiProperty({ required: false, type: [String], description: 'Array of report tag IDs' })
+    @IsOptional()
+    @IsArray()
+    @IsMongoId({ each: true })
+    override reportTags?: string[];
 
     @ApiProperty({
         required: false,
@@ -220,11 +232,17 @@ export class ListCommunityReportDto {
     @IsEnum(['infrastructure', 'safety', 'environment', 'public_services', 'health_services', 'transportation', 'all'])
     category?: string = 'all';
 
-    @ApiProperty({ required: false, type: [String], description: 'Filter reports by tags' })
+    @ApiProperty({ required: false, type: [String], description: 'Filter reports by tag strings' })
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
     tags?: string[];
+
+    @ApiProperty({ required: false, type: [String], description: 'Filter reports by tag IDs' })
+    @IsOptional()
+    @IsArray()
+    @IsMongoId({ each: true })
+    reportTags?: string[];
 
     @ApiProperty({ required: false, default: true })
     @IsOptional()

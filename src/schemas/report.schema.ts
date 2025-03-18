@@ -1,6 +1,7 @@
 // src/schemas/report.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
+import { ReportTag } from './report-tag.schema';
 
 export enum ReportStatus {
     PENDING_REVIEW = 'pending_review',
@@ -101,8 +102,16 @@ export class Report extends Document {
     @Prop({ type: String })
     audio?: string;
 
+    // String-based tags (deprecated but kept for backward compatibility)
     @Prop({ type: [String], required: false, default: [] })
     tags?: string[];
+
+    // Reference to ReportTag documents
+    @Prop({
+        type: [{ type: MongooseSchema.Types.ObjectId, ref: 'ReportTag' }],
+        default: []
+    })
+    reportTags?: ReportTag[] | string[];
 
     @Prop({ type: Date })
     createdAt?: Date;
@@ -127,3 +136,6 @@ export const ReportSchema = SchemaFactory.createForClass(Report);
 
 // Add index for geolocation queries
 ReportSchema.index({ location: '2dsphere' });
+
+// Add index for reportTags for faster lookups
+ReportSchema.index({ reportTags: 1 });
