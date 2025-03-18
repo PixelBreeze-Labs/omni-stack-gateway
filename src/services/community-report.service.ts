@@ -731,9 +731,13 @@ export class CommunityReportService {
             const reportObj = report.toObject();
 
             // Get author information if available
+            // Get author information if authorId exists, regardless of isAnonymous flag
             let authorName = null;
-            if (reportObj.authorId && !reportObj.isAnonymous) {
-                const author = reportObj.authorId;
+            if (reportObj.authorId) {
+                // Define author with a type check to avoid TypeScript errors
+                const author = reportObj.authorId as { name?: string; surname?: string; email?: string } | null;
+
+                // Add an additional null check before accessing properties
                 if (author && typeof author === 'object') {
                     authorName = author.name && author.surname
                         ? `${author.name} ${author.surname}`
