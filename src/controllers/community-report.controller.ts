@@ -236,6 +236,8 @@ export class CommunityReportController {
         return this.communityReportService.findOneAdmin(id, req.client.id);
     }
 
+    @ApiBearerAuth()
+    @UseGuards(ClientAuthGuard)
     @Put(':id/tags')
     @ApiOperation({ summary: 'Update report tags' })
     async updateReportTags(
