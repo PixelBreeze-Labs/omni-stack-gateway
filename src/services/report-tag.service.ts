@@ -1,4 +1,3 @@
-// src/services/report-tag.service.ts
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, SortOrder } from 'mongoose';
@@ -83,7 +82,8 @@ export class ReportTagService {
             throw new NotFoundException('Report tag not found');
         }
 
-        return reportTag;
+        // Use type assertion to resolve the TypeScript error
+        return reportTag as unknown as ReportTag;
     }
 
     async update(id: string, clientId: string, updateReportTagDto: UpdateReportTagDto): Promise<ReportTag> {
@@ -103,7 +103,8 @@ export class ReportTagService {
                 throw new NotFoundException('Report tag not found');
             }
 
-            return reportTag;
+            // Use type assertion to resolve the TypeScript error
+            return reportTag as unknown as ReportTag;
         } catch (error) {
             if (error.code === 11000) {
                 throw new ConflictException('A tag with this name already exists for this client');
