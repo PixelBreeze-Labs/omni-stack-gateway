@@ -91,6 +91,122 @@ export class CommunityReportService {
         return report;
     }
 
+    /**
+     * Create a report from admin with special handling for files and tags
+     */
+    async createFromAdmin(
+        reportData: any,
+        files: Express.Multer.File[] = [],
+        audioFile?: Express.Multer.File
+    ): Promise<Report> {
+        // Create a clean report data object
+        const cleanedData: CreateCommunityReportDto & { clientId: string } = {
+            title: reportData.title,
+            content: reportData.content,
+            category: reportData.category,
+            clientId: reportData.clientId,
+            // Process boolean fields
+            isAnonymous: reportData.isAnonymous === 'true' || reportData.isAnonymous === true,
+            isFeatured: reportData.isFeatured === 'true' || reportData.isFeatured === true,
+            visibleOnWeb: reportData.visibleOnWeb === 'true' || reportData.visibleOnWeb === true || reportData.visibleOnWeb === undefined,
+            isFromChatbot: false,
+            // Set additional fields
+            status: reportData.status || ReportStatus.ACTIVE,
+            customAuthorName: reportData.customAuthorName || undefined,
+            authorId: reportData.authorId || undefined,
+        };
+
+        // Process location
+        if (reportData.location) {
+            try {
+                if (typeof reportData.location === 'string') {
+                    cleanedData.location = JSON.parse(reportData.location);
+                } else {
+                    cleanedData.location = reportData.location;
+                }
+            } catch (e) {
+                console.warn('Error parsing location data', e);
+            }
+        }
+
+        // Process tags arrays
+        cleanedData.tags = [];
+        cleanedData.reportTags = [];
+
+        // Handle reportTags from different formats
+        if (reportData.reportTags) {
+            if (typeof reportData.reportTags === 'string') {
+                try {
+                    const parsedTags = JSON.parse(reportData.reportTags);
+                    if (Array.isArray(parsedTags)) {
+                        cleanedData.reportTags = parsedTags;
+                    } else {
+                        cleanedData.reportTags = [reportData.reportTags];
+                    }
+                } catch (e) {
+                    cleanedData.reportTags = [reportData.reportTags];
+                }
+            } else if (Array.isArray(reportData.reportTags)) {
+                cleanedData.reportTags = reportData.reportTags;
+            }
+        }
+
+        // Check for reportTags[] format
+        const reportTagKeys = Object.keys(reportData)
+            .filter(key => key.startsWith('reportTags['))
+            .sort();
+
+        if (reportTagKeys.length > 0) {
+            const tagsArray: string[] = [];
+            for (const key of reportTagKeys) {
+                if (reportData[key]) {
+                    tagsArray.push(reportData[key]);
+                }
+            }
+            if (tagsArray.length > 0) {
+                cleanedData.reportTags = tagsArray;
+            }
+        }
+
+        // Process tags similarly
+        if (reportData.tags) {
+            if (typeof reportData.tags === 'string') {
+                try {
+                    const parsedTags = JSON.parse(reportData.tags);
+                    if (Array.isArray(parsedTags)) {
+                        cleanedData.tags = parsedTags;
+                    } else {
+                        cleanedData.tags = [reportData.tags];
+                    }
+                } catch (e) {
+                    cleanedData.tags = [reportData.tags];
+                }
+            } else if (Array.isArray(reportData.tags)) {
+                cleanedData.tags = reportData.tags;
+            }
+        }
+
+        // Check for tags[] format
+        const tagKeys = Object.keys(reportData)
+            .filter(key => key.startsWith('tags['))
+            .sort();
+
+        if (tagKeys.length > 0) {
+            const tagsArray: string[] = [];
+            for (const key of tagKeys) {
+                if (reportData[key]) {
+                    tagsArray.push(reportData[key]);
+                }
+            }
+            if (tagsArray.length > 0) {
+                cleanedData.tags = tagsArray;
+            }
+        }
+
+        // Now use the standard create method with the cleaned data
+        return this.create(cleanedData, files, audioFile);
+    }
+
     async findAll(query: ListCommunityReportDto & { clientId: string }) {
         const {
             clientId,
@@ -682,9 +798,11 @@ export class CommunityReportService {
 
         // Base filter for community reports
         const filters: any = {
-            clientId: clientId,
-            isCommunityReport: true
+            clientId: clientId
         };
+
+        // Since we're getting errors with some reports, don't filter by isCommunityReport for now
+        filters.isCommunityReport = true;
 
         // Don't exclude any statuses by default for admin view
         // Add specific status filter if requested
@@ -754,25 +872,35 @@ export class CommunityReportService {
                     }
                     return url;
                 });
+            } else {
+                reportObj.media = [];
             }
 
-            // Ensure reportTags is always an array
-            if (!reportObj.reportTags) {
-                reportObj.reportTags = [];
-            }
-
-            // Ensure location exists
-            if (!reportObj.location) {
-                reportObj.location = { lat: null, lng: null };
-            }
-
-            return {
+            // Ensure all required fields have default values
+            const safeReport = {
                 ...reportObj,
-                _id: reportObj._id.toString(), // Keep _id and convert to string
-                id: reportObj._id.toString(),  // Also provide id for compatibility
+                _id: reportObj._id.toString(),
+                id: reportObj._id.toString(),
+                title: reportObj.title || 'Untitled Report',
+                content: reportObj.content || { message: '' },
                 message: reportObj.content?.message || '',
+                category: reportObj.category || 'other',
+                status: reportObj.status || 'pending_review',
+                isAnonymous: reportObj.isAnonymous || false,
+                visibleOnWeb: reportObj.visibleOnWeb !== undefined ? reportObj.visibleOnWeb : true,
+                isFeatured: reportObj.isFeatured || false,
+                customAuthorName: reportObj.customAuthorName || '',
                 authorName: reportObj.customAuthorName || authorName || null,
+                location: reportObj.location || { lat: null, lng: null },
+                tags: reportObj.tags || [],
+                reportTags: reportObj.reportTags || [],
+                createdAt: reportObj.createdAt || new Date(),
+                updatedAt: reportObj.updatedAt || new Date(),
+                isCommunityReport: reportObj.isCommunityReport !== undefined ? reportObj.isCommunityReport : true,
+                isFromChatbot: reportObj.isFromChatbot || false
             };
+
+            return safeReport;
         });
 
         return {

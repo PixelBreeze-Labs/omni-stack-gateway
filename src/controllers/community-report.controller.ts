@@ -82,7 +82,7 @@ export class CommunityReportController {
         { name: 'audio', maxCount: 1 }
     ]))
     @UseGuards(ClientAuthGuard)
-    @ApiOperation({ summary: 'Create a new community report from admin' })
+    @ApiOperation({ summary: 'Create a new community report from admin panel' })
     @ApiResponse({
         status: 201,
         description: 'Community report has been successfully created from admin',
@@ -90,23 +90,30 @@ export class CommunityReportController {
     })
     @ApiResponse({ status: 400, description: 'Bad Request - Invalid input data' })
     async createFromAdmin(
-        @Body() createReportDto: CreateCommunityReportDto,
+        @Body() createReportDto: any,
         @UploadedFiles() files: {
             media?: Express.Multer.File[],
             audio?: Express.Multer.File[]
         },
         @Req() req: Request & { client: Client }
     ): Promise<Report> {
-        // Parse location from string to object if it's a string
-        if (typeof createReportDto.location === 'string') {
-            createReportDto.location = JSON.parse(createReportDto.location);
-        }
+        try {
+            // Add client ID to the report data
+            const reportData = {
+                ...createReportDto,
+                clientId: req.client.id
+            };
 
-        return this.communityReportService.create(
-            { ...createReportDto, clientId: req.client.id },
-            files?.media || [],
-            files?.audio?.[0]
-        );
+            // Call the dedicated service method that handles special cases
+            return this.communityReportService.createFromAdmin(
+                reportData,
+                files?.media || [],
+                files?.audio?.[0]
+            );
+        } catch (error) {
+            console.error('Error creating admin report:', error);
+            throw error;
+        }
     }
 
     @ApiOperation({ summary: 'Get all community reports' })
