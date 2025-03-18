@@ -311,18 +311,32 @@ export class CommunityReportController {
         );
     }
 
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get community report by ID' })
-    @ApiParam({ name: 'id', description: 'Report ID' })
-    @ApiResponse({ status: 200, description: 'Report details' })
+    @ApiOperation({ summary: 'Get overall dashboard statistics' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns dashboard statistics'
+    })
     @UseGuards(ClientAuthGuard)
-    @Get(':id')
-    async findOne(
-        @Param('id') id: string,
+    @Get('dashboard-stats')
+    async getDashboardStats(
         @Req() req: Request & { client: Client }
-    ): Promise<Report> {
-        return this.communityReportService.findOne(id, req.client.id);
+    ) {
+        return this.communityReportService.getDashboardStats(req.client.id);
     }
+
+    @ApiOperation({ summary: 'Get citizen engagement metrics' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns user engagement metrics'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('engagement-metrics')
+    async getCitizenEngagementMetrics(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getCitizenEngagementMetrics(req.client.id);
+    }
+
 
 
     @ApiOperation({ summary: 'Get report statistics for a user' })
@@ -342,20 +356,21 @@ export class CommunityReportController {
         }
 
         return this.communityReportService.getReportStats(userId, req.client.id);
-    }s
-
-    @ApiOperation({ summary: 'Get overall dashboard statistics' })
-    @ApiResponse({
-        status: 200,
-        description: 'Returns dashboard statistics'
-    })
-    @UseGuards(ClientAuthGuard)
-    @Get('dashboard-stats')
-    async getDashboardStats(
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.communityReportService.getDashboardStats(req.client.id);
     }
+
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get community report by ID' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'Report details' })
+    @UseGuards(ClientAuthGuard)
+    @Get(':id')
+    async findOne(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ): Promise<Report> {
+        return this.communityReportService.findOne(id, req.client.id);
+    }
+
 
     @ApiOperation({ summary: 'Get reports by category' })
     @ApiResponse({
@@ -450,19 +465,6 @@ export class CommunityReportController {
             req.client.id,
             limit
         );
-    }
-
-    @ApiOperation({ summary: 'Get citizen engagement metrics' })
-    @ApiResponse({
-        status: 200,
-        description: 'Returns user engagement metrics'
-    })
-    @UseGuards(ClientAuthGuard)
-    @Get('engagement-metrics')
-    async getCitizenEngagementMetrics(
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.communityReportService.getCitizenEngagementMetrics(req.client.id);
     }
 
 
