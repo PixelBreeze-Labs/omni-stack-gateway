@@ -464,4 +464,244 @@ export class CommunityReportController {
     ) {
         return this.communityReportService.getCitizenEngagementMetrics(req.client.id);
     }
+
+
+    @ApiTags('Report Analytics')
+    @ApiOperation({ summary: 'Get report resolution metrics' })
+    @ApiQuery({
+        name: 'startDate',
+        required: false,
+        type: String,
+        description: 'Start date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'endDate',
+        required: false,
+        type: String,
+        description: 'End date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'category',
+        required: false,
+        type: String,
+        description: 'Filter by category'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns resolution metrics'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('analytics/resolution')
+    async getResolutionMetrics(
+        @Req() req: Request & { client: Client },
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('category') category?: string
+    ) {
+        return this.communityReportService.getResolutionMetrics(
+            req.client.id,
+            { startDate, endDate, category }
+        );
+    }
+
+    @ApiOperation({ summary: 'Get category trends' })
+    @ApiQuery({
+        name: 'startDate',
+        required: false,
+        type: String,
+        description: 'Start date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'endDate',
+        required: false,
+        type: String,
+        description: 'End date (YYYY-MM-DD)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns category trends'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('analytics/category-trends')
+    async getCategoryTrends(
+        @Req() req: Request & { client: Client },
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string
+    ) {
+        return this.communityReportService.getCategoryTrends(
+            req.client.id,
+            { startDate, endDate }
+        );
+    }
+
+    @ApiOperation({ summary: 'Get geographic distribution' })
+    @ApiQuery({
+        name: 'startDate',
+        required: false,
+        type: String,
+        description: 'Start date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'endDate',
+        required: false,
+        type: String,
+        description: 'End date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        description: 'Number of hotspots to return (default: 5)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns geographic distribution data'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('analytics/geographic')
+    async getGeographicDistribution(
+        @Req() req: Request & { client: Client },
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('limit') limit?: number
+    ) {
+        return this.communityReportService.getGeographicDistribution(
+            req.client.id,
+            { startDate, endDate, limit }
+        );
+    }
+
+    @ApiOperation({ summary: 'Get response time metrics' })
+    @ApiQuery({
+        name: 'startDate',
+        required: false,
+        type: String,
+        description: 'Start date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'endDate',
+        required: false,
+        type: String,
+        description: 'End date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'category',
+        required: false,
+        type: String,
+        description: 'Filter by category'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns response time metrics'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('analytics/response-time')
+    async getResponseTimeMetrics(
+        @Req() req: Request & { client: Client },
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('category') category?: string
+    ) {
+        return this.communityReportService.getResponseTimeMetrics(
+            req.client.id,
+            { startDate, endDate, category }
+        );
+    }
+
+    @ApiOperation({ summary: 'Get user engagement metrics' })
+    @ApiQuery({
+        name: 'startDate',
+        required: false,
+        type: String,
+        description: 'Start date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'endDate',
+        required: false,
+        type: String,
+        description: 'End date (YYYY-MM-DD)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns user engagement metrics'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('analytics/user-engagement')
+    async getUserEngagementMetrics(
+        @Req() req: Request & { client: Client },
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string
+    ) {
+        return this.communityReportService.getUserEngagementMetrics(
+            req.client.id,
+            { startDate, endDate }
+        );
+    }
+
+    @ApiOperation({ summary: 'Get comparative analysis' })
+    @ApiQuery({
+        name: 'startDate',
+        required: false,
+        type: String,
+        description: 'Start date for current period (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'endDate',
+        required: false,
+        type: String,
+        description: 'End date for current period (YYYY-MM-DD)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns comparative analysis'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('analytics/comparative')
+    async getComparativeAnalysis(
+        @Req() req: Request & { client: Client },
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string
+    ) {
+        return this.communityReportService.getComparativeAnalysis(
+            req.client.id,
+            { startDate, endDate }
+        );
+    }
+
+    @ApiOperation({ summary: 'Get trending keywords' })
+    @ApiQuery({
+        name: 'startDate',
+        required: false,
+        type: String,
+        description: 'Start date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'endDate',
+        required: false,
+        type: String,
+        description: 'End date (YYYY-MM-DD)'
+    })
+    @ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        description: 'Number of keywords to return (default: 10)'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns trending keywords'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('analytics/keywords')
+    async getTrendingKeywords(
+        @Req() req: Request & { client: Client },
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('limit') limit?: number
+    ) {
+        return this.communityReportService.getTrendingKeywords(
+            req.client.id,
+            { startDate, endDate, limit }
+        );
+    }
 }

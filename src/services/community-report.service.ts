@@ -11,6 +11,12 @@ import {
     ListCommunityReportDto
 } from '../dtos/community-report.dto';
 import { SupabaseService } from './supabase.service';
+export interface AnalyticsParams {
+    startDate?: string;
+    endDate?: string;
+    category?: string;
+    limit?: number;
+}
 
 @Injectable()
 export class CommunityReportService {
@@ -1376,6 +1382,884 @@ export class CommunityReportService {
             newUsersThisMonth,
             reportingUserCount: reportingUsers.length,
             avgReportsPerUser: parseFloat(avgReportsPerUser.toFixed(1))
+        };
+    }
+
+
+    /**
+     * Apply common filters based on params
+     */
+    private getBaseFilters(clientId: string, params: AnalyticsParams) {
+        const filters: any = {
+            clientId,
+            isCommunityReport: true
+        };
+
+        // Date range filters
+        if (params.startDate) {
+            filters.createdAt = { $gte: new Date(params.startDate) };
+        }
+
+        if (params.endDate) {
+            filters.createdAt = filters.createdAt || {};
+            filters.createdAt.$lte = new Date(params.endDate);
+        }
+
+        // Category filter
+        if (params.category && params.category !== 'all') {
+            filters.category = params.category;
+        }
+
+        return filters;
+    }
+
+    /**
+     * Get resolution metrics
+     */
+    async getResolutionMetrics(clientId: string, params: AnalyticsParams) {
+        const baseFilters = this.getBaseFilters(clientId, params);
+
+        // Get overall metrics
+        const total = await this.reportModel.countDocuments(baseFilters);
+
+        const resolved = await this.reportModel.countDocuments({
+            ...baseFilters,
+            status: ReportStatus.RESOLVED
+        });
+
+        const resolutionRate = total > 0 ? parseFloat(((resolved / total) * 100).toFixed(1)) : 0;
+
+        // Get resolution time for resolved reports
+        const resolvedReports = await this.reportModel.find({
+            ...baseFilters,
+            status: ReportStatus.RESOLVED,
+            createdAt: { $exists: true },
+            updatedAt: { $exists: true }
+        }).select('createdAt updatedAt');
+
+        let totalResolutionTime = 0;
+
+        resolvedReports.forEach(report => {
+            if (report.createdAt && report.updatedAt) {
+                const resolutionTime = (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60); // hours
+                totalResolutionTime += resolutionTime;
+            }
+        });
+
+        const avgResolutionTime = resolvedReports.length > 0
+            ? parseFloat((totalResolutionTime / resolvedReports.length).toFixed(1))
+            : 0;
+
+        // Get resolution metrics by category
+        const categoryMetrics = await this.reportModel.aggregate([
+            {
+                $match: baseFilters
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    total: { $sum: 1 },
+                    resolved: {
+                        $sum: {
+                            $cond: [{ $eq: ['$status', ReportStatus.RESOLVED] }, 1, 0]
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    category: '$_id',
+                    total: 1,
+                    resolved: 1,
+                    resolutionRate: {
+                        $cond: [
+                            { $gt: ['$total', 0] },
+                            { $multiply: [{ $divide: ['$resolved', '$total'] }, 100] },
+                            0
+                        ]
+                    }
+                }
+            },
+            {
+                $sort: { total: -1 }
+            }
+        ]);
+
+        // Round resolution rates
+        categoryMetrics.forEach(metric => {
+            metric.resolutionRate = parseFloat(metric.resolutionRate.toFixed(1));
+        });
+
+        // Generate resolution trend data
+        const trendData = [];
+        const now = new Date();
+
+        // Create weekly data points for the past 5 weeks
+        for (let i = 4; i >= 0; i--) {
+            const endDate = new Date(now);
+            endDate.setDate(now.getDate() - (i * 7));
+            const startDate = new Date(endDate);
+            startDate.setDate(endDate.getDate() - 7);
+
+            const periodFilters = {
+                ...baseFilters,
+                createdAt: { $gte: startDate, $lt: endDate }
+            };
+
+            const periodTotal = await this.reportModel.countDocuments(periodFilters);
+
+            const periodResolved = await this.reportModel.countDocuments({
+                ...periodFilters,
+                status: ReportStatus.RESOLVED
+            });
+
+            const periodRate = periodTotal > 0
+                ? parseFloat(((periodResolved / periodTotal) * 100).toFixed(1))
+                : 0;
+
+            trendData.push({
+                date: endDate.toISOString().split('T')[0],
+                resolutionRate: periodRate
+            });
+        }
+
+        return {
+            overall: {
+                total,
+                resolved,
+                resolutionRate,
+                avgResolutionTime
+            },
+            byCategory: categoryMetrics,
+            trend: trendData
+        };
+    }
+
+    /**
+     * Complete the category trends method to add count for top categories
+     */
+    async getCategoryTrends(clientId: string, params: AnalyticsParams) {
+        const baseFilters = this.getBaseFilters(clientId, params);
+
+        // Get overall distribution by category
+        const distribution = await this.reportModel.aggregate([
+            {
+                $match: baseFilters
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { count: -1 }
+            }
+        ]);
+
+        // Calculate total for percentages
+        const total = distribution.reduce((sum, item) => sum + item.count, 0);
+
+        // Add percentage to each category
+        const distributionWithPercentage = distribution.map(item => ({
+            category: item._id,
+            count: item.count,
+            percentage: parseFloat(((item.count / total) * 100).toFixed(1))
+        }));
+
+        // Get category growth
+        const now = new Date();
+        const oneMonthAgo = new Date(now);
+        oneMonthAgo.setMonth(now.getMonth() - 1);
+        const twoMonthsAgo = new Date(oneMonthAgo);
+        twoMonthsAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+        const currentMonthCountByCategory = await this.reportModel.aggregate([
+            {
+                $match: {
+                    ...baseFilters,
+                    createdAt: { $gte: oneMonthAgo, $lte: now }
+                }
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const previousMonthCountByCategory = await this.reportModel.aggregate([
+            {
+                $match: {
+                    ...baseFilters,
+                    createdAt: { $gte: twoMonthsAgo, $lt: oneMonthAgo }
+                }
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Calculate growth rates
+        const growth = [];
+
+        for (const category of currentMonthCountByCategory) {
+            const currentCount = category.count;
+            const previousCategory = previousMonthCountByCategory.find(c => c._id === category._id);
+            const previousCount = previousCategory ? previousCategory.count : 0;
+
+            let growthRate = 0;
+            if (previousCount > 0) {
+                growthRate = parseFloat((((currentCount - previousCount) / previousCount) * 100).toFixed(1));
+            } else if (currentCount > 0) {
+                growthRate = 100; // If there were no reports before, but now there are, that's 100% growth
+            }
+
+            growth.push({
+                category: category._id,
+                monthlyGrowth: growthRate
+            });
+        }
+
+        // Generate trend data (reports per week per category)
+        const categoryTrends = [];
+        const topCategories = distribution.slice(0, 5).map(item => item._id); // Get top 5 categories
+
+        // Get 4 weeks of data
+        for (let i = 3; i >= 0; i--) {
+            const endDate = new Date(now);
+            endDate.setDate(now.getDate() - (i * 7));
+            const startDate = new Date(endDate);
+            startDate.setDate(endDate.getDate() - 7);
+
+            const weekData = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        ...baseFilters,
+                        createdAt: { $gte: startDate, $lt: endDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$category',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            const trendPoint = {
+                date: endDate.toISOString().split('T')[0]
+            };
+
+            // Add counts for top categories
+            for (const category of topCategories) {
+                const categoryData = weekData.find(item => item._id === category);
+                trendPoint[category] = categoryData ? categoryData.count : 0;
+            }
+
+            categoryTrends.push(trendPoint);
+        }
+
+        return {
+            distribution: distributionWithPercentage,
+            growth,
+            trends: categoryTrends
+        };
+    }
+
+    /**
+     * Get geographic distribution
+     */
+    async getGeographicDistribution(clientId: string, params: AnalyticsParams) {
+        const baseFilters = this.getBaseFilters(clientId, params);
+        const limit = params.limit || 5;
+
+        // Add location filters
+        const filters = {
+            ...baseFilters,
+            'location.lat': { $exists: true },
+            'location.lng': { $exists: true }
+        };
+
+        // Get report hotspots
+        const hotspots = await this.reportModel.aggregate([
+            {
+                $match: filters
+            },
+            {
+                $group: {
+                    _id: {
+                        lat: { $round: ['$location.lat', 2] },
+                        lng: { $round: ['$location.lng', 2] }
+                    },
+                    count: { $sum: 1 },
+                    reportIds: { $push: '$_id' }
+                }
+            },
+            {
+                $sort: { count: -1 }
+            },
+            {
+                $limit: limit
+            }
+        ]);
+
+        // Enhance hotspots with category breakdown
+        const enhancedHotspots = [];
+        for (const hotspot of hotspots) {
+            // Get category breakdown for this location
+            const categoryBreakdown = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        ...filters,
+                        _id: { $in: hotspot.reportIds }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$category',
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $sort: { count: -1 }
+                }
+            ]);
+
+            // Get status breakdown
+            const statusBreakdown = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        ...filters,
+                        _id: { $in: hotspot.reportIds }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$status',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            enhancedHotspots.push({
+                location: {
+                    lat: hotspot._id.lat,
+                    lng: hotspot._id.lng
+                },
+                count: hotspot.count,
+                categories: categoryBreakdown.map(cat => ({
+                    name: cat._id,
+                    count: cat.count
+                })),
+                statuses: statusBreakdown.map(status => ({
+                    name: status._id,
+                    count: status.count
+                }))
+            });
+        }
+
+        // Get overall location heatmap data (simplified for frontend rendering)
+        const heatmapData = await this.reportModel.aggregate([
+            {
+                $match: filters
+            },
+            {
+                $project: {
+                    lat: '$location.lat',
+                    lng: '$location.lng',
+                    weight: 1 // Base weight of 1 per report
+                }
+            }
+        ]);
+
+        return {
+            hotspots: enhancedHotspots,
+            heatmapData: heatmapData.map(point => ({
+                lat: point.lat,
+                lng: point.lng,
+                weight: point.weight
+            }))
+        };
+    }
+
+    /**
+     * Get response time metrics
+     */
+    async getResponseTimeMetrics(clientId: string, params: AnalyticsParams) {
+        const baseFilters = this.getBaseFilters(clientId, params);
+
+        // Only look at reports that have been resolved or closed for accurate response times
+        const filters = {
+            ...baseFilters,
+            status: { $in: [ReportStatus.RESOLVED, ReportStatus.CLOSED] },
+            createdAt: { $exists: true },
+            updatedAt: { $exists: true }
+        };
+
+        // Get all relevant reports for analysis
+        const reports = await this.reportModel.find(filters).select('createdAt updatedAt category');
+
+        if (reports.length === 0) {
+            return {
+                averageResponseTime: 0,
+                byCategory: [],
+                byWeekday: [],
+                responseTimeTrend: []
+            };
+        }
+
+        // Calculate overall average response time in hours
+        let totalResponseTime = 0;
+        const responseTimesByCategory = {};
+        const responseTimesByWeekday = [0, 0, 0, 0, 0, 0, 0]; // Sunday to Saturday
+        const weekdayCounts = [0, 0, 0, 0, 0, 0, 0];
+        const weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+        // Collect data for trend analysis
+        const reportsByMonth = {};
+
+        for (const report of reports) {
+            const responseTime = (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60); // Hours
+
+            // Add to total
+            totalResponseTime += responseTime;
+
+            // Add to category breakdown
+            const category = report.category || 'uncategorized';
+            if (!responseTimesByCategory[category]) {
+                responseTimesByCategory[category] = {
+                    total: 0,
+                    count: 0
+                };
+            }
+            responseTimesByCategory[category].total += responseTime;
+            responseTimesByCategory[category].count++;
+
+            // Add to weekday breakdown
+            const weekday = report.createdAt.getDay(); // 0 = Sunday, 6 = Saturday
+            responseTimesByWeekday[weekday] += responseTime;
+            weekdayCounts[weekday]++;
+
+            // Add to monthly trend
+            const monthKey = `${report.createdAt.getFullYear()}-${(report.createdAt.getMonth() + 1).toString().padStart(2, '0')}`;
+            if (!reportsByMonth[monthKey]) {
+                reportsByMonth[monthKey] = {
+                    total: 0,
+                    count: 0
+                };
+            }
+            reportsByMonth[monthKey].total += responseTime;
+            reportsByMonth[monthKey].count++;
+        }
+
+        // Calculate average response time
+        const averageResponseTime = parseFloat((totalResponseTime / reports.length).toFixed(1));
+
+        // Calculate average response time by category
+        const byCategory = Object.keys(responseTimesByCategory).map(category => ({
+            category,
+            averageResponseTime: parseFloat((responseTimesByCategory[category].total / responseTimesByCategory[category].count).toFixed(1))
+        })).sort((a, b) => a.averageResponseTime - b.averageResponseTime);
+
+        // Calculate average response time by weekday
+        const byWeekday = weekdayCounts.map((count, index) => ({
+            weekday: weekdayNames[index],
+            averageResponseTime: count > 0 ? parseFloat((responseTimesByWeekday[index] / count).toFixed(1)) : 0
+        }));
+
+        // Create trend data
+        const responseTimeTrend = Object.keys(reportsByMonth).sort().map(month => ({
+            month,
+            averageResponseTime: parseFloat((reportsByMonth[month].total / reportsByMonth[month].count).toFixed(1))
+        }));
+
+        return {
+            averageResponseTime,
+            byCategory,
+            byWeekday,
+            responseTimeTrend
+        };
+    }
+
+    /**
+     * Get user engagement metrics
+     */
+    async getUserEngagementMetrics(clientId: string, params: AnalyticsParams) {
+        const baseFilters = this.getBaseFilters(clientId, params);
+
+        // Get count of unique users who submitted reports
+        const userActivity = await this.reportModel.aggregate([
+            {
+                $match: {
+                    ...baseFilters,
+                    authorId: { $exists: true, $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: '$authorId',
+                    reportCount: { $sum: 1 },
+                    firstReport: { $min: '$createdAt' },
+                    lastReport: { $max: '$createdAt' }
+                }
+            }
+        ]);
+
+        // Calculate basic metrics
+        const totalUsers = userActivity.length;
+
+        if (totalUsers === 0) {
+            return {
+                totalUsers: 0,
+                activeUsers: 0,
+                averageReportsPerUser: 0,
+                retention: 0,
+                engagement: []
+            };
+        }
+
+        const totalReports = userActivity.reduce((sum, user) => sum + user.reportCount, 0);
+        const averageReportsPerUser = parseFloat((totalReports / totalUsers).toFixed(1));
+
+        // Classify users by activity level
+        const powerUsers = userActivity.filter(user => user.reportCount >= 5).length;
+        const regularUsers = userActivity.filter(user => user.reportCount >= 2 && user.reportCount < 5).length;
+        const oneTimeUsers = userActivity.filter(user => user.reportCount === 1).length;
+
+        // Calculate user retention (users who submitted reports in more than one month)
+        const retainedUsers = userActivity.filter(user => {
+            const firstMonth = `${user.firstReport.getFullYear()}-${user.firstReport.getMonth()}`;
+            const lastMonth = `${user.lastReport.getFullYear()}-${user.lastReport.getMonth()}`;
+            return firstMonth !== lastMonth;
+        }).length;
+
+        const retentionRate = parseFloat(((retainedUsers / totalUsers) * 100).toFixed(1));
+
+        // Generate engagement trend data (reports by month)
+        const now = new Date();
+        const months = [];
+
+        // Get 6 months of data
+        for (let i = 5; i >= 0; i--) {
+            const date = new Date(now);
+            date.setMonth(now.getMonth() - i);
+            const year = date.getFullYear();
+            const month = date.getMonth();
+
+            const startDate = new Date(year, month, 1);
+            const endDate = new Date(year, month + 1, 0, 23, 59, 59);
+
+            // Count reports and unique users for this month
+            const monthlyStats = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        ...baseFilters,
+                        createdAt: { $gte: startDate, $lte: endDate },
+                        authorId: { $exists: true, $ne: null }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        reports: { $sum: 1 },
+                        uniqueUsers: { $addToSet: '$authorId' }
+                    }
+                }
+            ]);
+
+            const monthData = {
+                date: `${year}-${(month + 1).toString().padStart(2, '0')}`,
+                reports: monthlyStats.length > 0 ? monthlyStats[0].reports : 0,
+                users: monthlyStats.length > 0 ? monthlyStats[0].uniqueUsers.length : 0
+            };
+
+            months.push(monthData);
+        }
+
+        return {
+            totalUsers,
+            averageReportsPerUser,
+            userBreakdown: {
+                powerUsers,
+                regularUsers,
+                oneTimeUsers
+            },
+            retention: {
+                retainedUsers,
+                retentionRate
+            },
+            engagement: months
+        };
+    }
+
+    /**
+     * Get comparative analysis (current period vs previous period)
+     */
+    async getComparativeAnalysis(clientId: string, params: AnalyticsParams) {
+        // Define time periods
+        const endDate = params.endDate ? new Date(params.endDate) : new Date();
+        const startDate = params.startDate ? new Date(params.startDate) : new Date(endDate);
+        startDate.setMonth(startDate.getMonth() - 1); // Default to 1 month period if not specified
+
+        // Calculate previous period (same duration, immediately before)
+        const periodDuration = endDate.getTime() - startDate.getTime();
+        const previousPeriodEnd = new Date(startDate);
+        previousPeriodEnd.setDate(previousPeriodEnd.getDate() - 1);
+        const previousPeriodStart = new Date(previousPeriodEnd.getTime() - periodDuration);
+
+        // Create filter for current period
+        const currentPeriodFilter = {
+            clientId,
+            isCommunityReport: true,
+            createdAt: { $gte: startDate, $lte: endDate }
+        };
+
+        // Create filter for previous period
+        const previousPeriodFilter = {
+            clientId,
+            isCommunityReport: true,
+            createdAt: { $gte: previousPeriodStart, $lte: previousPeriodEnd }
+        };
+
+        // Get metrics for current period
+        const currentPeriodReportCount = await this.reportModel.countDocuments(currentPeriodFilter);
+        const currentPeriodResolvedCount = await this.reportModel.countDocuments({
+            ...currentPeriodFilter,
+            status: ReportStatus.RESOLVED
+        });
+        const currentPeriodUserCount = (await this.reportModel.aggregate([
+            {
+                $match: {
+                    ...currentPeriodFilter,
+                    authorId: { $exists: true, $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: '$authorId'
+                }
+            }
+        ])).length;
+
+        // Get metrics for previous period
+        const previousPeriodReportCount = await this.reportModel.countDocuments(previousPeriodFilter);
+        const previousPeriodResolvedCount = await this.reportModel.countDocuments({
+            ...previousPeriodFilter,
+            status: ReportStatus.RESOLVED
+        });
+        const previousPeriodUserCount = (await this.reportModel.aggregate([
+            {
+                $match: {
+                    ...previousPeriodFilter,
+                    authorId: { $exists: true, $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: '$authorId'
+                }
+            }
+        ])).length;
+
+        // Calculate category comparison
+        const currentPeriodCategories = await this.reportModel.aggregate([
+            {
+                $match: currentPeriodFilter
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { count: -1 }
+            }
+        ]);
+
+        const previousPeriodCategories = await this.reportModel.aggregate([
+            {
+                $match: previousPeriodFilter
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Combine category data
+        const categoryComparison = currentPeriodCategories.map(category => {
+            const previousCategory = previousPeriodCategories.find(c => c._id === category._id);
+            const previousCount = previousCategory ? previousCategory.count : 0;
+
+            return {
+                category: category._id,
+                current: category.count,
+                previous: previousCount,
+                change: previousCount > 0
+                    ? parseFloat((((category.count - previousCount) / previousCount) * 100).toFixed(1))
+                    : null
+            };
+        });
+
+        // Calculate percentages and changes
+        const reportGrowth = previousPeriodReportCount > 0
+            ? parseFloat((((currentPeriodReportCount - previousPeriodReportCount) / previousPeriodReportCount) * 100).toFixed(1))
+            : null;
+
+        const resolvedGrowth = previousPeriodResolvedCount > 0
+            ? parseFloat((((currentPeriodResolvedCount - previousPeriodResolvedCount) / previousPeriodResolvedCount) * 100).toFixed(1))
+            : null;
+
+        const userGrowth = previousPeriodUserCount > 0
+            ? parseFloat((((currentPeriodUserCount - previousPeriodUserCount) / previousPeriodUserCount) * 100).toFixed(1))
+            : null;
+
+        return {
+            periods: {
+                current: {
+                    start: startDate,
+                    end: endDate
+                },
+                previous: {
+                    start: previousPeriodStart,
+                    end: previousPeriodEnd
+                }
+            },
+            metrics: {
+                reports: {
+                    current: currentPeriodReportCount,
+                    previous: previousPeriodReportCount,
+                    change: reportGrowth
+                },
+                resolved: {
+                    current: currentPeriodResolvedCount,
+                    previous: previousPeriodResolvedCount,
+                    change: resolvedGrowth
+                },
+                users: {
+                    current: currentPeriodUserCount,
+                    previous: previousPeriodUserCount,
+                    change: userGrowth
+                }
+            },
+            categories: categoryComparison
+        };
+    }
+
+    /**
+     * Get trending keywords from report titles and content
+     */
+    async getTrendingKeywords(clientId: string, params: AnalyticsParams) {
+        const baseFilters = this.getBaseFilters(clientId, params);
+        const limit = params.limit || 10;
+
+        // Get reports for the period
+        const reports = await this.reportModel.find(baseFilters)
+            .select('title content.message')
+            .limit(1000); // Limit to 1000 reports for performance
+
+        // Common words to exclude (stopwords)
+        const stopwords = [
+            'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+            'with', 'by', 'about', 'as', 'into', 'like', 'through', 'after', 'over',
+            'between', 'out', 'of', 'from', 'up', 'down', 'is', 'are', 'was', 'were',
+            'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+            'would', 'shall', 'should', 'can', 'could', 'may', 'might', 'must', 'i',
+            'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'
+        ];
+
+        // Process all report text to extract keywords
+        const wordFrequency = {};
+
+        reports.forEach(report => {
+            // Combine title and content
+            let text = `${report.title || ''} ${report.content?.message || ''}`;
+
+            // Convert to lowercase and remove special characters
+            text = text.toLowerCase().replace(/[^\w\s]/g, '');
+
+            // Split into words
+            const words = text.split(/\s+/);
+
+            // Count word frequency, excluding stopwords and short words
+            words.forEach(word => {
+                if (word && word.length > 3 && !stopwords.includes(word)) {
+                    wordFrequency[word] = (wordFrequency[word] || 0) + 1;
+                }
+            });
+        });
+
+        // Convert to array and sort by frequency
+        const keywords = Object.keys(wordFrequency)
+            .map(word => ({
+                keyword: word,
+                count: wordFrequency[word]
+            }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, limit);
+
+        // Get top keywords by period (weekly for the last month)
+        const now = new Date();
+        const periodKeywords = [];
+
+        // Get keyword trends for the last 4 weeks
+        for (let i = 3; i >= 0; i--) {
+            const endDate = new Date(now);
+            endDate.setDate(now.getDate() - (i * 7));
+            const startDate = new Date(endDate);
+            startDate.setDate(endDate.getDate() - 7);
+
+            // Get reports for this period
+            const periodReports = await this.reportModel.find({
+                ...baseFilters,
+                createdAt: { $gte: startDate, $lt: endDate }
+            }).select('title content.message');
+
+            // Process words for this period
+            const periodWordFreq = {};
+
+            periodReports.forEach(report => {
+                let text = `${report.title || ''} ${report.content?.message || ''}`;
+                text = text.toLowerCase().replace(/[^\w\s]/g, '');
+                const words = text.split(/\s+/);
+
+                words.forEach(word => {
+                    if (word && word.length > 3 && !stopwords.includes(word)) {
+                        periodWordFreq[word] = (periodWordFreq[word] || 0) + 1;
+                    }
+                });
+            });
+
+            // Get top 5 keywords for this period
+            const topKeywords = Object.keys(periodWordFreq)
+                .map(word => ({
+                    keyword: word,
+                    count: periodWordFreq[word]
+                }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 5);
+
+            periodKeywords.push({
+                period: {
+                    start: startDate,
+                    end: endDate
+                },
+                keywords: topKeywords
+            });
+        }
+
+        return {
+            topKeywords: keywords,
+            trendsByPeriod: periodKeywords
         };
     }
 }
