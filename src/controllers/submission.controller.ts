@@ -48,11 +48,17 @@ export class SubmissionController {
         @Req() req: Request & { client: Client },
         @Body() contactData: { firstName: string; lastName: string; email: string; phone?: string; content: string }
     ) {
+        // Get IP address from headers only
+        const forwardedFor = req.headers['x-forwarded-for'];
+        const ipAddress = forwardedFor ?
+            (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor) :
+            '';
+
         return this.submissionService.createContactSubmission({
             ...contactData,
             clientId: req.client.id,
-            userAgent: req.headers['user-agent'],
-            ipAddress: req.ip
+            userAgent: req.headers['user-agent'] as string,
+            ipAddress
         });
     }
 }
