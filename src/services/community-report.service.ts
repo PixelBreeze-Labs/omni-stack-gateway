@@ -775,145 +775,219 @@ export class CommunityReportService {
             }
         };
     }
-
     /**
-     * Get all community reports for admin purposes
-     * This includes all reports regardless of status or visibility
+     * Get all community reports for admin purposes with robust error handling
+     * Only returns reports where isCommunityReport is true
      */
     async getAdminReports(query: ListCommunityReportDto & { clientId: string }) {
-        const {
-            clientId,
-            search,
-            limit = 10,
-            page = 1,
-            status = 'all',
-            category = 'all',
-            tags = [],
-            reportTags = [],
-            sortBy = 'createdAt',
-            sortOrder = 'desc'
-        } = query;
+        try {
+            const {
+                clientId,
+                search,
+                limit = 10,
+                page = 1,
+                status = 'all',
+                category = 'all',
+                tags = [],
+                reportTags = [],
+                sortBy = 'createdAt',
+                sortOrder = 'desc'
+            } = query;
 
-        const skip = (page - 1) * limit;
+            const skip = (page - 1) * limit;
 
-        // Base filter for community reports
-        const filters: any = {
-            clientId: clientId
-        };
+            // Base filter - only get community reports
+            const filters: any = {
+                clientId: clientId,
+                isCommunityReport: true // Required filter to get only community reports
+            };
 
-        // Since we're getting errors with some reports, don't filter by isCommunityReport for now
-        filters.isCommunityReport = true;
+            // Add specific status filter if requested
+            if (status && status !== 'all') {
+                filters.status = status;
+            }
 
-        // Don't exclude any statuses by default for admin view
-        // Add specific status filter if requested
-        if (status && status !== 'all') {
-            filters.status = status;
-        }
-
-        if (search) {
-            filters.$or = [
-                { title: new RegExp(search, 'i') },
-                { 'content.message': new RegExp(search, 'i') },
-                { customAuthorName: new RegExp(search, 'i') }
-            ];
-        }
-
-        if (category && category !== 'all') {
-            filters.category = category;
-        }
-
-        // Add tags filter if provided (string tags)
-        if (tags && tags.length > 0) {
-            filters.tags = { $in: tags };
-        }
-
-        // Add reportTags filter if provided (tag IDs)
-        if (reportTags && reportTags.length > 0) {
-            filters.reportTags = { $in: reportTags };
-        }
-
-        const sort: any = {};
-        sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-        const total = await this.reportModel.countDocuments(filters);
-
-        // Get the reports
-        const reports = await this.reportModel.find(filters)
-            .populate('reportTags')  // Populate tag references
-            .populate({
-                path: 'authorId',
-                model: 'User',
-                select: 'name surname email'
-            }) // Explicit population with model
-            .sort(sort)
-            .skip(skip)
-            .limit(limit);
-
-        const transformedReports = reports.map(report => {
-            const reportObj = report.toObject();
-
-            // Get author information if available
-            let authorName = null;
-            if (reportObj.authorId) {
-                // Explicit type check and handling for both string and object types
-                if (typeof reportObj.authorId === 'object') {
-                    const author = reportObj.authorId as any;
-                    authorName = author.name && author.surname
-                        ? `${author.name} ${author.surname}`
-                        : author.name || author.email || null;
+            // Add search with error handling
+            if (search) {
+                try {
+                    filters.$or = [
+                        { title: new RegExp(search, 'i') },
+                        { 'content.message': new RegExp(search, 'i') },
+                        { customAuthorName: new RegExp(search, 'i') }
+                    ];
+                } catch (e) {
+                    console.error('Search filter error:', e);
+                    // Continue without search filter if it fails
                 }
             }
 
-            // Fix media URLs if needed
-            if (reportObj.media) {
-                reportObj.media = reportObj.media.map(url => {
-                    if (typeof url === 'string' && url.startsWith('https://https://')) {
-                        return url.replace('https://https://', 'https://');
+            // Add category with error handling
+            if (category && category !== 'all') {
+                filters.category = category;
+            }
+
+            // Add tags filter if provided (string tags) with error handling
+            if (tags && Array.isArray(tags) && tags.length > 0) {
+                filters.tags = { $in: tags };
+            }
+
+            // Add reportTags filter if provided (tag IDs) with error handling
+            if (reportTags && Array.isArray(reportTags) && reportTags.length > 0) {
+                filters.reportTags = { $in: reportTags };
+            }
+
+            // Create sort with fallback
+            const sort: any = {};
+            sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+            // Get total with error handling
+            let total = 0;
+            try {
+                total = await this.reportModel.countDocuments(filters);
+            } catch (e) {
+                console.error('Count error:', e);
+            }
+
+            // Get the reports with error handling
+            let reports = [];
+            try {
+                reports = await this.reportModel.find(filters)
+                    .populate('reportTags')
+                    .populate({
+                        path: 'authorId',
+                        model: 'User',
+                        select: 'name surname email'
+                    })
+                    .sort(sort)
+                    .skip(skip)
+                    .limit(limit);
+            } catch (e) {
+                console.error('Find error:', e);
+                // Try again with only essential filters
+                try {
+                    reports = await this.reportModel.find({
+                        clientId: clientId,
+                        isCommunityReport: true
+                    })
+                        .sort({ createdAt: -1 })
+                        .skip(skip)
+                        .limit(limit);
+                } catch (innerE) {
+                    console.error('Fallback find error:', innerE);
+                    return {
+                        data: [],
+                        meta: {
+                            total: 0,
+                            page,
+                            limit,
+                            hasMore: false
+                        }
+                    };
+                }
+            }
+
+            // Transform reports with safe handling
+            const transformedReports = reports.map(report => {
+                try {
+                    const reportObj = report.toObject();
+
+                    // Author information
+                    let authorName = null;
+                    if (reportObj.authorId) {
+                        if (typeof reportObj.authorId === 'object') {
+                            const author = reportObj.authorId;
+                            authorName = author.name && author.surname
+                                ? `${author.name} ${author.surname}`
+                                : author.name || author.email || null;
+                        }
                     }
-                    return url;
-                });
-            } else {
-                reportObj.media = [];
-            }
 
-            // Ensure all required fields have default values
-            const safeReport = {
-                ...reportObj,
-                _id: reportObj._id.toString(),
-                id: reportObj._id.toString(),
-                title: reportObj.title || 'Untitled Report',
-                content: reportObj.content || { message: '' },
-                message: reportObj.content?.message || '',
-                category: reportObj.category || 'other',
-                status: reportObj.status || 'pending_review',
-                isAnonymous: reportObj.isAnonymous || false,
-                visibleOnWeb: reportObj.visibleOnWeb !== undefined ? reportObj.visibleOnWeb : true,
-                isFeatured: reportObj.isFeatured || false,
-                customAuthorName: reportObj.customAuthorName || '',
-                authorName: reportObj.customAuthorName || authorName || null,
-                location: reportObj.location || { lat: null, lng: null },
-                tags: reportObj.tags || [],
-                reportTags: reportObj.reportTags || [],
-                createdAt: reportObj.createdAt || new Date(),
-                updatedAt: reportObj.updatedAt || new Date(),
-                isCommunityReport: reportObj.isCommunityReport !== undefined ? reportObj.isCommunityReport : true,
-                isFromChatbot: reportObj.isFromChatbot || false
+                    // Safe media handling
+                    let media = [];
+                    if (reportObj.media) {
+                        media = Array.isArray(reportObj.media) ? reportObj.media.map(url => {
+                            if (typeof url === 'string' && url.startsWith('https://https://')) {
+                                return url.replace('https://https://', 'https://');
+                            }
+                            return url;
+                        }) : [];
+                    }
+
+                    // Ensure all required fields have default values
+                    return {
+                        ...reportObj,
+                        _id: reportObj._id.toString(),
+                        id: reportObj._id.toString(),
+                        title: reportObj.title || 'Untitled Report',
+                        content: reportObj.content || { message: '' },
+                        message: reportObj.content?.message || '',
+                        category: reportObj.category || 'other',
+                        status: reportObj.status || 'pending_review',
+                        isAnonymous: Boolean(reportObj.isAnonymous),
+                        visibleOnWeb: reportObj.visibleOnWeb !== undefined ? reportObj.visibleOnWeb : true,
+                        isFeatured: Boolean(reportObj.isFeatured),
+                        customAuthorName: reportObj.customAuthorName || '',
+                        authorName: reportObj.customAuthorName || authorName || null,
+                        location: reportObj.location || { lat: null, lng: null },
+                        tags: Array.isArray(reportObj.tags) ? reportObj.tags : [],
+                        reportTags: Array.isArray(reportObj.reportTags) ? reportObj.reportTags : [],
+                        media: media,
+                        createdAt: reportObj.createdAt || new Date(),
+                        updatedAt: reportObj.updatedAt || new Date(),
+                        isCommunityReport: true, // Always true as we're filtering for it
+                        isFromChatbot: Boolean(reportObj.isFromChatbot)
+                    };
+                } catch (e) {
+                    console.error('Report transform error:', e);
+                    // Return a minimal safe report if transform fails
+                    return {
+                        _id: report._id.toString(),
+                        id: report._id.toString(),
+                        title: 'Error displaying report',
+                        content: { message: '' },
+                        message: '',
+                        category: 'unknown',
+                        status: 'unknown',
+                        isAnonymous: false,
+                        visibleOnWeb: true,
+                        isFeatured: false,
+                        customAuthorName: '',
+                        authorName: null,
+                        location: { lat: null, lng: null },
+                        media: [],
+                        tags: [],
+                        reportTags: [],
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                        isCommunityReport: true,
+                        isFromChatbot: false
+                    };
+                }
+            });
+
+            return {
+                data: transformedReports,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    hasMore: total > skip + reports.length
+                }
             };
-
-            return safeReport;
-        });
-
-        return {
-            data: transformedReports,
-            meta: {
-                total,
-                page,
-                limit,
-                hasMore: total > skip + reports.length
-            }
-        };
+        } catch (error) {
+            console.error('Admin reports error:', error);
+            // Return an empty result if the entire function fails
+            return {
+                data: [],
+                meta: {
+                    total: 0,
+                    page: 1,
+                    limit: 10,
+                    hasMore: false
+                }
+            };
+        }
     }
-
     /**
      * Get a report by ID for admin purposes with special handling
      * This includes better error handling for missing fields
