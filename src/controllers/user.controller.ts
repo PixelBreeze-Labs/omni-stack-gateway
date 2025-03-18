@@ -224,4 +224,50 @@ export class UserController {
             client_ids: [req.client.id],
         });
     }
+
+    // Add these endpoints to your src/controllers/user.controller.ts
+
+    @Get('with-nextjs-id')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get users with nextJsUserId' })
+    @ApiResponse({ status: 200, description: 'Returns users with nextJsUserId in external_ids' })
+    async getUsersWithNextJsId(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string
+    ) {
+        return this.userService.findUsersWithNextJsId(
+            req.client.id,
+            {
+                page,
+                limit,
+                search
+            }
+        );
+    }
+
+    @Get('with-multiple-reports')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get users with multiple active reports' })
+    @ApiResponse({ status: 200, description: 'Returns users with multiple active reports' })
+    async getUsersWithMultipleReports(
+        @Req() req: Request & { client: Client },
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('minReports') minReports?: number
+    ) {
+        return this.userService.findUsersWithMultipleActiveReports(
+            req.client.id,
+            {
+                page,
+                limit,
+                search,
+                minReports: minReports ? parseInt(minReports as unknown as string) : undefined
+            }
+        );
+    }
 }
