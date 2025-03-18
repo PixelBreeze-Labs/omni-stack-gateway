@@ -1080,51 +1080,39 @@ export class CommunityReportService {
         };
     }
 
-    /**
-     * Update report tags specifically
-     */
-        async updateReportTags(id: string, clientId: string, reportTags: string[]): Promise<Report> {
-        // First, find the report to make sure it exists
-        const report = await this.reportModel.findOne({
-            _id: id,
-            clientId: clientId,
-            isCommunityReport: true
-        });
+    async updateReportTags(id: string, clientId: string, reportTags: string[]): Promise<Report> {
+        try {
+            // First, log the parameters
+            console.log(`Updating tags for report: ID=${id}, clientId=${clientId}, tags=`, reportTags);
 
-        if (!report) {
-            throw new NotFoundException(`Report with ID ${id} not found`);
-        }
+            // Use findOneAndUpdate to do the entire operation in one step
+            // This is safer and prevents race conditions
+            const updatedReport = await this.reportModel.findOneAndUpdate(
+                {
+                    _id: id,
+                    clientId: clientId,
+                    isCommunityReport: true
+                },
+                {
+                    $set: {
+                        reportTags: reportTags,
+                        updatedAt: new Date()
+                    }
+                },
+                { new: true }
+            );
 
-        // Validate that all tag IDs exist
-        if (reportTags.length > 0) {
-            // Import and use the reportTagModel
-            const tagsExist = await this.reportTagModel.countDocuments({
-                _id: { $in: reportTags },
-                clientId: clientId
-            });
-
-            if (tagsExist !== reportTags.length) {
-                throw new BadRequestException('One or more tag IDs are invalid');
+            if (!updatedReport) {
+                throw new NotFoundException(`Report with ID ${id} not found`);
             }
+
+            return updatedReport;
+        } catch (error) {
+            console.error(`Error updating report tags: ${error.message}`);
+            if (error.name === 'CastError') {
+                throw new BadRequestException(`Invalid ID format: ${id}`);
+            }
+            throw error;
         }
-
-        // Update only the reportTags field
-        const updatedReport = await this.reportModel.findByIdAndUpdate(
-            id,
-            {
-                $set: {
-                    reportTags: reportTags,
-                    updatedAt: new Date()
-                }
-            },
-            { new: true }
-        );
-
-        if (!updatedReport) {
-            throw new NotFoundException(`Report with ID ${id} not found`);
-        }
-
-        return updatedReport;
     }
-
 }
