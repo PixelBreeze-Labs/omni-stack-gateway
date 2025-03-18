@@ -43,6 +43,18 @@ export class CreateSubmissionDto {
     };
 }
 
+export class UpdateSubmissionDto {
+    @ApiProperty({ required: false, enum: ['pending', 'reviewed', 'archived'] })
+    @IsEnum(['pending', 'reviewed', 'archived'])
+    @IsOptional()
+    status?: string;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    notes?: string;
+}
+
 export class ListSubmissionDto {
     @ApiProperty({ required: false })
     @IsOptional()

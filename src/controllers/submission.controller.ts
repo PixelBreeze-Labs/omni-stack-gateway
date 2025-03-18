@@ -1,10 +1,10 @@
 // src/controllers/submission.controller.ts
 import { ClientAuthGuard } from "../guards/client-auth.guard";
-import { Body, Controller, Get, Post, Req, UseGuards, Query } from "@nestjs/common";
-import { CreateSubmissionDto, ListSubmissionDto } from "../dtos/submission.dto";
+import { Body, Controller, Get, Post, Put, Param, Req, UseGuards, Query, NotFoundException } from "@nestjs/common";
+import { CreateSubmissionDto, ListSubmissionDto, UpdateSubmissionDto } from "../dtos/submission.dto";
 import { Client } from "../schemas/client.schema";
 import { SubmissionService } from "../services/submission.service";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery, ApiParam } from '@nestjs/swagger';
 
 @ApiTags('Submissions')
 @ApiBearerAuth()
@@ -42,7 +42,32 @@ export class SubmissionController {
         });
     }
 
+    @ApiOperation({ summary: 'Update a submission' })
+    @ApiParam({ name: 'id', description: 'Submission ID' })
+    @ApiBody({ type: UpdateSubmissionDto })
+    @ApiResponse({ status: 200, description: 'Submission updated successfully' })
+    @ApiResponse({ status: 404, description: 'Submission not found' })
+    @Put(':id')
+    async update(
+        @Param('id') id: string,
+        @Body() updateSubmissionDto: UpdateSubmissionDto,
+        @Req() req: Request & { client: Client }
+    ) {
+        const updated = await this.submissionService.updateSubmission(
+            id,
+            req.client.id,
+            updateSubmissionDto
+        );
 
+        if (!updated) {
+            throw new NotFoundException('Submission not found');
+        }
+
+        return updated;
+    }
+
+    @ApiOperation({ summary: 'Create a contact submission' })
+    @ApiResponse({ status: 201, description: 'Contact submission created successfully' })
     @Post('contact')
     async createContact(
         @Req() req: Request & { client: Client },
