@@ -262,4 +262,18 @@ export class CommunityReportController {
         return this.communityReportService.getReportStats(userId, req.client.id);
     }
 
+    @ApiOperation({ summary: 'Get all community reports for admin' })
+    @ApiQuery({ type: ListCommunityReportDto })
+    @ApiResponse({ status: 200, description: 'List of all community reports (admin view)' })
+    @UseGuards(ClientAuthGuard)
+    @Get('admin')
+    async getAdminReports(
+        @Query() query: ListCommunityReportDto,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getAdminReports({
+            ...query,
+            clientId: req.client.id
+        });
+    }
 }

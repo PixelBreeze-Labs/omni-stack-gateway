@@ -659,4 +659,102 @@ export class CommunityReportService {
             }
         };
     }
+
+    /**
+     * Get all community reports for admin purposes
+     * This includes all reports regardless of status or visibility
+     */
+    async getAdminReports(query: ListCommunityReportDto & { clientId: string }) {
+        const {
+            clientId,
+            search,
+            limit = 10,
+            page = 1,
+            status = 'all',
+            category = 'all',
+            tags = [],
+            reportTags = [],
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = query;
+
+        const skip = (page - 1) * limit;
+
+        // Base filter for community reports
+        const filters: any = {
+            clientId: clientId,
+            isCommunityReport: true
+        };
+
+        // Don't exclude any statuses by default for admin view
+        // Add specific status filter if requested
+        if (status && status !== 'all') {
+            filters.status = status;
+        }
+
+        if (search) {
+            filters.$or = [
+                { title: new RegExp(search, 'i') },
+                { 'content.message': new RegExp(search, 'i') },
+                { customAuthorName: new RegExp(search, 'i') }
+            ];
+        }
+
+        if (category && category !== 'all') {
+            filters.category = category;
+        }
+
+        // Add tags filter if provided (string tags)
+        if (tags && tags.length > 0) {
+            filters.tags = { $in: tags };
+        }
+
+        // Add reportTags filter if provided (tag IDs)
+        if (reportTags && reportTags.length > 0) {
+            filters.reportTags = { $in: reportTags };
+        }
+
+        const sort: any = {};
+        sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+        const total = await this.reportModel.countDocuments(filters);
+
+        // Get the reports
+        const reports = await this.reportModel.find(filters)
+            .populate('reportTags')  // Populate tag references
+            .sort(sort)
+            .skip(skip)
+            .limit(limit);
+
+        const transformedReports = reports.map(report => {
+            const reportObj = report.toObject();
+
+            // Fix media URLs if needed
+            if (reportObj.media) {
+                reportObj.media = reportObj.media.map(url => {
+                    if (typeof url === 'string' && url.startsWith('https://https://')) {
+                        return url.replace('https://https://', 'https://');
+                    }
+                    return url;
+                });
+            }
+
+            return {
+                ...reportObj,
+                id: reportObj._id.toString(),
+                message: reportObj.content?.message,
+                _id: undefined
+            };
+        });
+
+        return {
+            data: transformedReports,
+            meta: {
+                total,
+                page,
+                limit,
+                hasMore: total > skip + reports.length
+            }
+        };
+    }
 }
