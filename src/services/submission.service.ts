@@ -17,7 +17,7 @@ export class SubmissionService {
     }
 
     async findAll(query: ListSubmissionDto & { clientId: string }) {
-        const { clientId, search, limit = 10, page = 1, status, type } = query;
+        const { clientId, search, limit = 10, page = 1, status, type, formConfigId } = query;
         const skip = (page - 1) * limit;
 
         // Build base filters
@@ -43,6 +43,11 @@ export class SubmissionService {
             filters.type = type;
         }
 
+        // Add formConfigId filter if present
+        if (formConfigId) {
+            filters.formConfigId = formConfigId;
+        }
+
         // Get total count for pagination
         const total = await this.submissionModel.countDocuments(filters);
         const totalPages = Math.ceil(total / limit);
@@ -50,7 +55,7 @@ export class SubmissionService {
         // Get paginated submissions
         const submissions = await this.submissionModel
             .find(filters)
-            .populate('clientId', 'name email') // Add relevant client fields
+            .populate('clientId', 'name email')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
