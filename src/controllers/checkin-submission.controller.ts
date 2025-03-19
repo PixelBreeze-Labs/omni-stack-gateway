@@ -161,4 +161,44 @@ export class CheckinSubmissionController {
     ) {
         return this.checkinSubmissionService.getStats(req.client.id, { formConfigId });
     }
+
+
+    /**
+     * Get form details by short code (ADMIN)
+     */
+    @Get('form/:shortCode')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get check-in form details by short code' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns the check-in form configuration details'
+    })
+    @ApiParam({ name: 'shortCode', description: 'The short code of the form configuration' })
+    async getFormDetails(
+        @Param('shortCode') shortCode: string,
+        @Req() req: Request & { client: Client },
+    ) {
+        return this.checkinSubmissionService.getFormDetails(shortCode, req.client.id);
+    }
+
+
+    /**
+     * Get form details by short code with full property and booking data (public)
+     */
+    @Get('form/:shortCode/public')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get detailed public check-in form by short code' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns the check-in form configuration with property and booking details'
+    })
+    @ApiParam({ name: 'shortCode', description: 'The short code of the form configuration' })
+    async getFormDetailsPublic(
+        @Req() req: Request & { client: Client },
+        @Param('shortCode') shortCode: string
+    ) {
+        return this.checkinSubmissionService.getFormDetailsPublic(shortCode, req.client.id);
+    }
 }
