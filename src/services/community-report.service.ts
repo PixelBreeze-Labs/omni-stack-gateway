@@ -289,7 +289,7 @@ export class CommunityReportService {
                 ...reportObj,
                 id: reportObj._id.toString(),
                 message: reportObj.content?.message,
-                _id: reportObj._id.toString()
+                _id: undefined
             };
         });
 
@@ -493,7 +493,7 @@ export class CommunityReportService {
                 ...reportObj,
                 id: reportObj._id.toString(),
                 message: reportObj.content?.message,
-                _id: reportObj._id.toString()
+                _id: undefined
             };
         });
 
