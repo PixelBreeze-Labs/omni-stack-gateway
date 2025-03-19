@@ -159,6 +159,6 @@ export class CheckinSubmissionController {
         @Req() req: Request & { client: Client },
         @Param('formConfigId') formConfigId: string
     ) {
-        return this.checkinSubmissionService.getStatsForForm(req.client.id, formConfigId);
+        return this.checkinSubmissionService.getStats(req.client.id, { formConfigId });
     }
 }

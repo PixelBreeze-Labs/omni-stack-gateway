@@ -1,7 +1,7 @@
 // src/services/checkin-submission.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CheckinSubmission, SubmissionStatus } from '../schemas/checkin-submission.schema';
 import { CheckinFormConfig } from '../schemas/checkin-form-config.schema';
 import { Guest } from '../schemas/guest.schema';
@@ -49,16 +49,20 @@ export class CheckinSubmissionService {
                 }).exec();
 
                 if (existingGuest) {
-                    guestId = existingGuest._id;
+                    guestId = existingGuest._id.toString();
 
                     // Optionally update guest info if needed
-                    if (existingGuest.firstName !== submitDto.firstName ||
-                        existingGuest.lastName !== submitDto.lastName ||
-                        existingGuest.phoneNumber !== submitDto.phoneNumber) {
+                    const firstName = (existingGuest as any).firstName;
+                    const lastName = (existingGuest as any).lastName;
+                    const phoneNumber = (existingGuest as any).phoneNumber;
 
-                        existingGuest.firstName = submitDto.firstName;
-                        existingGuest.lastName = submitDto.lastName;
-                        if (submitDto.phoneNumber) existingGuest.phoneNumber = submitDto.phoneNumber;
+                    if (firstName !== submitDto.firstName ||
+                        lastName !== submitDto.lastName ||
+                        phoneNumber !== submitDto.phoneNumber) {
+
+                        (existingGuest as any).firstName = submitDto.firstName;
+                        (existingGuest as any).lastName = submitDto.lastName;
+                        if (submitDto.phoneNumber) (existingGuest as any).phoneNumber = submitDto.phoneNumber;
 
                         await existingGuest.save();
                     }
@@ -73,7 +77,7 @@ export class CheckinSubmissionService {
                     });
 
                     const savedGuest = await newGuest.save();
-                    guestId = savedGuest._id;
+                    guestId = savedGuest._id.toString();
                 }
             }
 
@@ -308,9 +312,9 @@ export class CheckinSubmissionService {
 
             // Build match stage
             const match: any = { clientId };
-            if (formConfigId) match.formConfigId = formConfigId;
-            if (propertyId) match.propertyId = propertyId;
-            if (bookingId) match.bookingId = bookingId;
+            if (formConfigId) match.formConfigId = new Types.ObjectId(formConfigId);
+            if (propertyId) match.propertyId = new Types.ObjectId(propertyId);
+            if (bookingId) match.bookingId = new Types.ObjectId(bookingId);
 
             const stats = await this.checkinSubmissionModel.aggregate([
                 { $match: match },
