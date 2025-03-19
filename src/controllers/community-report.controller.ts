@@ -30,7 +30,7 @@ import {
     UpdateCommunityReportDto,
     ListCommunityReportDto
 } from '../dtos/community-report.dto';
-import { Report } from '../schemas/report.schema';
+import {Report, ReportStatus} from '../schemas/report.schema';
 import { Client } from '../schemas/client.schema';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
@@ -261,6 +261,35 @@ export class CommunityReportController {
         @Req() req: Request & { client: Client }
     ): Promise<Report> {
         return this.communityReportService.update(id, req.client.id, updateReportDto);
+    }
+
+
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update report featured status' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'Report featured status updated' })
+    @UseGuards(ClientAuthGuard)
+    @Put(':id/featured')
+    async updateIsFeatured(
+        @Param('id') id: string,
+        @Body() data: { isFeatured: boolean },
+        @Req() req: Request & { client: Client }
+    ): Promise<Report> {
+        return this.communityReportService.updateIsFeatured(id, req.client.id, data.isFeatured);
+    }
+
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update report status' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'Report status updated' })
+    @UseGuards(ClientAuthGuard)
+    @Put(':id/status')
+    async updateStatus(
+        @Param('id') id: string,
+        @Body() data: { status: ReportStatus },
+        @Req() req: Request & { client: Client }
+    ): Promise<Report> {
+        return this.communityReportService.updateStatus(id, req.client.id, data.status);
     }
 
     @ApiBearerAuth()

@@ -2372,4 +2372,96 @@ export class CommunityReportService {
             return [];
         }
     }
+
+
+    /**
+     * Update only the isFeatured field of a report
+     * @param id Report ID
+     * @param clientId Client ID
+     * @param isFeatured Boolean value to set
+     * @returns Updated report
+     */
+    async updateIsFeatured(id: string, clientId: string, isFeatured: boolean): Promise<Report> {
+        // First, check if the report exists
+        const existingReport = await this.reportModel.findOne({
+            _id: id,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!existingReport) {
+            throw new NotFoundException(`Report with ID ${id} not found`);
+        }
+
+        console.log(`Updating isFeatured field only for report ${id} to: ${isFeatured}`);
+
+        // Update only the isFeatured field and updatedAt timestamp
+        const result = await this.reportModel.updateOne(
+            { _id: id },
+            {
+                $set: {
+                    isFeatured: isFeatured,
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        if (result.modifiedCount === 0) {
+            console.error('Failed to update isFeatured field');
+        }
+
+        // Fetch the updated report
+        const updatedReport = await this.reportModel.findById(id);
+        if (!updatedReport) {
+            throw new NotFoundException(`Report with ID ${id} not found after update`);
+        }
+
+        return updatedReport;
+    }
+
+
+    /**
+     * Update only the status field of a report
+     * @param id Report ID
+     * @param clientId Client ID
+     * @param status New status value
+     * @returns Updated report
+     */
+    async updateStatus(id: string, clientId: string, status: ReportStatus): Promise<Report> {
+        // First, check if the report exists
+        const existingReport = await this.reportModel.findOne({
+            _id: id,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!existingReport) {
+            throw new NotFoundException(`Report with ID ${id} not found`);
+        }
+
+        console.log(`Updating status field only for report ${id} to: ${status}`);
+
+        // Update only the status field and updatedAt timestamp
+        const result = await this.reportModel.updateOne(
+            { _id: id },
+            {
+                $set: {
+                    status: status,
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        if (result.modifiedCount === 0) {
+            console.error('Failed to update status field');
+        }
+
+        // Fetch the updated report
+        const updatedReport = await this.reportModel.findById(id);
+        if (!updatedReport) {
+            throw new NotFoundException(`Report with ID ${id} not found after update`);
+        }
+
+        return updatedReport;
+    }
 }
