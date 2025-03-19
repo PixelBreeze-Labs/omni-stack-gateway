@@ -67,6 +67,34 @@ export class CommunityReportService {
             }
         }
 
+        // Handle reportTags similar to admin creation
+        let reportTagsArray: string[] = [];
+
+        if (reportData.reportTags) {
+            try {
+                // If it's already an array (from JSON-parsed data in controller)
+                if (Array.isArray(reportData.reportTags)) {
+                    reportTagsArray = reportData.reportTags;
+                }
+                // If it's a JSON string
+                else if (typeof reportData.reportTags === 'string' && reportData.reportTags.startsWith('[')) {
+                    reportTagsArray = JSON.parse(reportData.reportTags);
+                }
+                // If it's a comma-separated string
+                else if (typeof reportData.reportTags === 'string' && reportData.reportTags.includes(',')) {
+                    reportTagsArray = reportData.reportTags.split(',').map(tag => tag.trim());
+                }
+                // If it's a single string value
+                else if (typeof reportData.reportTags === 'string') {
+                    reportTagsArray = [reportData.reportTags];
+                }
+            } catch (error) {
+                console.error('Failed to parse reportTags in simple create:', error);
+            }
+        }
+
+        console.log('Report tags for simple create:', reportTagsArray);
+
         // Create the report object
         const now = new Date();
         const report = await this.reportModel.create({
@@ -84,6 +112,7 @@ export class CommunityReportService {
             media: mediaUrls,
             audio: audioUrl,
             tags: reportData.tags || [],
+            reportTags: reportTagsArray, // Include reportTags in simple create
             status: reportData.status || ReportStatus.PENDING_REVIEW,
             metadata: {
                 timestamp: now,
@@ -98,7 +127,6 @@ export class CommunityReportService {
 
         return report;
     }
-
     /**
      * Create a report from admin with simplified tag handling
      */
