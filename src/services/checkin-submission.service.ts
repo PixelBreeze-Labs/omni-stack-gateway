@@ -1,11 +1,12 @@
-// src/services/checkin-submission.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, isValidObjectId } from 'mongoose';
 import { CheckinSubmission, SubmissionStatus } from '../schemas/checkin-submission.schema';
 import { CheckinFormConfig } from '../schemas/checkin-form-config.schema';
 import { Guest } from '../schemas/guest.schema';
 import { SubmitCheckinFormDto, UpdateSubmissionStatusDto, ListCheckinSubmissionsDto } from '../dtos/checkin-form.dto';
+import { CommunicationsService } from './communications.service';
+import { format } from 'date-fns';
 
 @Injectable()
 export class CheckinSubmissionService {
@@ -14,7 +15,8 @@ export class CheckinSubmissionService {
     constructor(
         @InjectModel(CheckinSubmission.name) private checkinSubmissionModel: Model<CheckinSubmission>,
         @InjectModel(CheckinFormConfig.name) private checkinFormConfigModel: Model<CheckinFormConfig>,
-        @InjectModel(Guest.name) private guestModel: Model<Guest>
+        @InjectModel(Guest.name) private guestModel: Model<Guest>,
+        private readonly communicationsService: CommunicationsService
     ) {}
 
     /**
@@ -23,7 +25,10 @@ export class CheckinSubmissionService {
     async submit(shortCode: string, submitDto: SubmitCheckinFormDto): Promise<CheckinSubmission> {
         try {
             // Find the form config
-            const formConfig = await this.checkinFormConfigModel.findOne({ shortCode }).exec();
+            const formConfig = await this.checkinFormConfigModel.findOne({ shortCode })
+                .populate('propertyId')
+                .populate('bookingId')
+                .exec();
 
             if (!formConfig) {
                 throw new NotFoundException(`Check-in form config with short code ${shortCode} not found`);
@@ -38,8 +43,9 @@ export class CheckinSubmissionService {
                 throw new BadRequestException('This check-in form has expired');
             }
 
-            // Find or create guest based on the email
+            // Check if guest exists - but don't create if not found
             let guestId = submitDto.guestId;
+            let isExistingGuest = false;
 
             if (!guestId) {
                 // Look for existing guest with this email
@@ -50,6 +56,7 @@ export class CheckinSubmissionService {
 
                 if (existingGuest) {
                     guestId = existingGuest._id.toString();
+                    isExistingGuest = true;
 
                     // Optionally update guest info if needed
                     const firstName = (existingGuest as any).firstName;
@@ -66,27 +73,31 @@ export class CheckinSubmissionService {
 
                         await existingGuest.save();
                     }
-                } else {
-                    // Create a new guest
-                    const newGuest = new this.guestModel({
-                        firstName: submitDto.firstName,
-                        lastName: submitDto.lastName,
-                        email: submitDto.email,
-                        phoneNumber: submitDto.phoneNumber,
-                        clientId: formConfig.clientId
-                    });
-
-                    const savedGuest = await newGuest.save();
-                    guestId = savedGuest._id.toString();
                 }
+            } else {
+                isExistingGuest = false;
+            }
+
+            let propertyId = null;
+            if (formConfig.propertyId) {
+                propertyId = typeof formConfig.propertyId === 'object' && formConfig.propertyId !== null
+                    ? (formConfig.propertyId as any)._id
+                    : formConfig.propertyId;
+            }
+
+            let bookingId = null;
+            if (formConfig.bookingId) {
+                bookingId = typeof formConfig.bookingId === 'object' && formConfig.bookingId !== null
+                    ? (formConfig.bookingId as any)._id
+                    : formConfig.bookingId;
             }
 
             // Create submission using propertyId and bookingId from the form config
             const submission = new this.checkinSubmissionModel({
-                formConfigId: formConfig._id,
-                clientId: formConfig.clientId,
-                propertyId: formConfig.propertyId, // Use propertyId from the form config
-                bookingId: formConfig.bookingId, // Use bookingId from the form config
+                formConfigId: formConfig?._id,
+                clientId: formConfig?.clientId,
+                propertyId: propertyId,
+                bookingId: bookingId,
                 guestId: guestId,
                 formData: submitDto.formData,
                 firstName: submitDto.firstName,
@@ -101,10 +112,160 @@ export class CheckinSubmissionService {
                 metadata: submitDto.metadata || {}
             });
 
-            return submission.save();
+            // Save the submission
+            const savedSubmission = await submission.save();
+
+            // Send email notification
+            await this.sendSubmissionNotification(
+                savedSubmission,
+                formConfig,
+                isExistingGuest
+            );
+
+            return savedSubmission;
         } catch (error) {
             this.logger.error(`Error submitting check-in form: ${error.message}`, error.stack);
             throw error;
+        }
+    }
+    /**
+     * Get form details by short code (ADMIN)
+     */
+    async getFormDetails(shortCode: string, clientId: string): Promise<CheckinFormConfig> {
+        try {
+            const formConfig = await this.checkinFormConfigModel.findOne({
+                shortCode,
+                clientId
+            })
+                .populate('propertyId')
+                .populate('bookingId')
+                .lean();
+
+            if (!formConfig) {
+                throw new NotFoundException(`Check-in form config with short code ${shortCode} not found`);
+            }
+
+            // Check if form is active
+            if (!formConfig.isActive) {
+                throw new BadRequestException('This check-in form is no longer active');
+            }
+
+            // Check if form has expired
+            if (formConfig.expiresAt && formConfig.expiresAt < new Date()) {
+                throw new BadRequestException('This check-in form has expired');
+            }
+
+            return formConfig;
+        } catch (error) {
+            this.logger.error(`Error getting form details: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Get form details by short code with full property and booking data (public)
+     */
+    async getFormDetailsPublic(shortCode: string, clientId: string): Promise<CheckinFormConfig> {
+        try {
+            // Find the form config with client ID check for security
+            const formConfig = await this.checkinFormConfigModel.findOne({
+                shortCode,
+                clientId
+            })
+                .populate({
+                    path: 'propertyId',
+                    select: 'name type address amenities photos'
+                })
+                .populate({
+                    path: 'bookingId',
+                    select: 'confirmationCode checkInDate checkOutDate guestCount'
+                })
+                .lean();
+
+            if (!formConfig) {
+                throw new NotFoundException(`Check-in form config with short code ${shortCode} not found`);
+            }
+
+            // Check if form is active
+            if (!formConfig.isActive) {
+                throw new BadRequestException('This check-in form is no longer active');
+            }
+
+            // Check if form has expired
+            if (formConfig.expiresAt && formConfig.expiresAt < new Date()) {
+                throw new BadRequestException('This check-in form has expired');
+            }
+
+            return formConfig;
+        } catch (error) {
+            this.logger.error(`Error getting public form details: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Send notification email about a new check-in submission
+     */
+    private async sendSubmissionNotification(
+        submission: CheckinSubmission,
+        formConfig: any,
+        isExistingGuest: boolean
+    ): Promise<void> {
+        try {
+            // Prepare data for email template
+            const property = formConfig.propertyId ? {
+                name: formConfig.propertyId.name,
+                type: formConfig.propertyId.type
+            } : null;
+
+            const booking = formConfig.bookingId ? {
+                confirmationCode: formConfig.bookingId.confirmationCode,
+                checkInDate: formConfig.bookingId.checkInDate,
+                checkOutDate: formConfig.bookingId.checkOutDate,
+                guestCount: formConfig.bookingId.guestCount
+            } : null;
+
+            // Format dates for the email
+            const formatDate = (date) => {
+                if (!date) return '';
+                return format(new Date(date), 'MMM dd, yyyy');
+            };
+
+            // Generate dashboard URL
+            const dashboardUrl = `https://admin.venueboost.io`;
+
+            // Prepare email content
+            const emailData = {
+                firstName: submission.firstName,
+                lastName: submission.lastName,
+                email: submission.email,
+                phoneNumber: submission.phoneNumber,
+                isExistingGuest,
+                hasBooking: !!booking,
+                booking,
+                hasProperty: !!property,
+                property,
+                formData: submission.formData,
+                needsParkingSpot: submission.needsParkingSpot,
+                expectedArrivalTime: submission.expectedArrivalTime,
+                specialRequests: submission.specialRequests,
+                dashboardUrl,
+                formatDate
+            };
+
+            // Send the email
+            await this.communicationsService.sendCommunication({
+                type: 'EMAIL',
+                recipient: 'ggerveni@gmail.com', // Hard-coded email recipient
+                subject: `New Check-in Form: ${submission.firstName} ${submission.lastName}`,
+                message: '', // Will be replaced by template content
+                metadata: emailData,
+                template: 'checkin'
+            });
+
+        } catch (error) {
+            this.logger.error(`Error sending check-in notification email: ${error.message}`, error.stack);
+            // Don't throw - we don't want to fail the submission if email fails
         }
     }
 

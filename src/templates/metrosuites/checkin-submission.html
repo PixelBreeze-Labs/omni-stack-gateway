@@ -1,0 +1,217 @@
+<!-- templates/email/metrosuites/checkin-submission.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MetroSuites - New Check-in Form Submission</title>
+    <style>
+        body {
+            font-family: 'Manrope', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            padding: 20px 10px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 24px;
+            border-radius: 16px;
+            background-color: #fff;
+            text-align: left;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 16px;
+        }
+        .logo {
+            height: 50px;
+            margin-bottom: 16px;
+        }
+        .title {
+            color: #141414;
+            font-size: 28px;
+            line-height: 42px;
+            font-weight: bold;
+            margin: 24px 0 8px;
+        }
+        .subtitle {
+            color: #555;
+            font-size: 16px;
+            line-height: 24px;
+        }
+        .content {
+            font-size: 16px;
+            line-height: 24px;
+            color: #333;
+            margin: 24px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid #f0f0f0;
+            font-size: 12px;
+            color: #666;
+        }
+        .section {
+            margin-bottom: 24px;
+        }
+        .section-title {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #141414;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 8px;
+        }
+        .field {
+            margin-bottom: 8px;
+        }
+        .field-label {
+            font-weight: bold;
+            color: #555;
+        }
+        .field-value {
+            color: #333;
+        }
+        .button {
+            display: inline-block;
+            background-color: #141414;
+            color: #fff;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 24px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+        .badge-success {
+            background-color: #d1fae5;
+            color: #047857;
+        }
+        .badge-warning {
+            background-color: #fff7ed;
+            color: #c2410c;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/logos/metrosuites-logo.png" alt="MetroSuites" class="logo" />
+        <div class="title">New Check-in Form Submission</div>
+        <div class="subtitle">A guest has completed the check-in form</div>
+    </div>
+
+    <div class="content">
+        <p>Hello,</p>
+        <p>A new check-in form has been submitted. Here are the details:</p>
+
+        <div class="section">
+            <div class="section-title">Guest Information</div>
+            <div class="field">
+                <span class="field-label">Name:</span>
+                <span class="field-value">{{firstName}} {{lastName}}</span>
+                {{#if isExistingGuest}}
+                <span class="badge badge-success">Existing Guest</span>
+                {{else}}
+                <span class="badge badge-warning">New Guest</span>
+                {{/if}}
+            </div>
+            <div class="field">
+                <span class="field-label">Email:</span>
+                <span class="field-value">{{email}}</span>
+            </div>
+            <div class="field">
+                <span class="field-label">Phone:</span>
+                <span class="field-value">{{phoneNumber}}</span>
+            </div>
+        </div>
+
+        {{#if hasBooking}}
+        <div class="section">
+            <div class="section-title">Booking Information</div>
+            <div class="field">
+                <span class="field-label">Confirmation Code:</span>
+                <span class="field-value">{{booking.confirmationCode}}</span>
+            </div>
+            <div class="field">
+                <span class="field-label">Check-in Date:</span>
+                <span class="field-value">{{formatDate booking.checkInDate}}</span>
+            </div>
+            <div class="field">
+                <span class="field-label">Check-out Date:</span>
+                <span class="field-value">{{formatDate booking.checkOutDate}}</span>
+            </div>
+            <div class="field">
+                <span class="field-label">Number of Guests:</span>
+                <span class="field-value">{{booking.guestCount}}</span>
+            </div>
+        </div>
+        {{/if}}
+
+        {{#if hasProperty}}
+        <div class="section">
+            <div class="section-title">Property Information</div>
+            <div class="field">
+                <span class="field-label">Property:</span>
+                <span class="field-value">{{property.name}}</span>
+            </div>
+            <div class="field">
+                <span class="field-label">Type:</span>
+                <span class="field-value">{{property.type}}</span>
+            </div>
+        </div>
+        {{/if}}
+
+        <div class="section">
+            <div class="section-title">Check-in Details</div>
+            <div class="field">
+                <span class="field-label">Expected Arrival Time:</span>
+                <span class="field-value">{{expectedArrivalTime}}</span>
+            </div>
+            <div class="field">
+                <span class="field-label">ID Type:</span>
+                <span class="field-value">{{formData.idType}}</span>
+            </div>
+            <div class="field">
+                <span class="field-label">Needs Parking Spot:</span>
+                <span class="field-value">{{#if needsParkingSpot}}Yes{{else}}No{{/if}}</span>
+            </div>
+            {{#if needsParkingSpot}}
+            <div class="field">
+                <span class="field-label">Vehicle:</span>
+                <span class="field-value">{{formData.vehicleMakeModel}} ({{formData.color}}) - {{formData.licensePlate}}</span>
+            </div>
+            {{/if}}
+            {{#if formData.specialRequests}}
+            <div class="field">
+                <span class="field-label">Special Requests:</span>
+                <span class="field-value">{{formData.specialRequests}}</span>
+            </div>
+            {{/if}}
+        </div>
+
+        <a href="{{dashboardUrl}}" class="button">View in Dashboard</a>
+    </div>
+
+    <div class="footer">
+        &copy; 2025 MetroSuites. All rights reserved.<br>
+        This is an automated message from your property management system.
+    </div>
+</div>
+</body>
+</html>
