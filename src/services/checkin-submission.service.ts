@@ -179,8 +179,7 @@ export class CheckinSubmissionService {
                 .populate({
                     path: 'bookingId',
                     select: 'confirmationCode checkInDate checkOutDate guestCount'
-                })
-                .lean();
+                });
 
             if (!formConfig) {
                 throw new NotFoundException(`Check-in form config with short code ${shortCode} not found`);
@@ -196,7 +195,12 @@ export class CheckinSubmissionService {
                 throw new BadRequestException('This check-in form has expired');
             }
 
-            return formConfig;
+            // Increment view count
+            formConfig.views += 1;
+            formConfig.lastViewed = new Date();
+            await formConfig.save();
+
+            return formConfig.toObject();
         } catch (error) {
             this.logger.error(`Error getting public form details: ${error.message}`, error.stack);
             throw error;
@@ -253,10 +257,13 @@ export class CheckinSubmissionService {
                 formatDate
             };
 
+            // Get recipient email from form config or use default
+            const recipient = formConfig.receiptEmail || 'contact@metrosuites.al';
+
             // Send the email
             await this.communicationsService.sendCommunication({
                 type: 'EMAIL',
-                recipient: 'contact@metrosuites.al', // Hard-coded email recipient
+                recipient: recipient,
                 subject: `New Check-in Form: ${submission.firstName} ${submission.lastName}`,
                 message: '', // Will be replaced by template content
                 metadata: emailData,
