@@ -379,7 +379,7 @@ export class CommunityReportService {
     }
 
     async update(id: string, clientId: string, updateReportDto: UpdateCommunityReportDto): Promise<Report> {
-        // First, find the current report to get all existing fields
+        // First, find the current report to check if it exists
         const existingReport = await this.reportModel.findOne({
             _id: id,
             clientId: clientId,
@@ -399,69 +399,82 @@ export class CommunityReportService {
             }
         }
 
-        // Create a copy of the existing report data
-        const reportData = existingReport.toObject();
+        // Create an update object with only the specified fields
+        const updateFields = {};
 
-        // Only update fields that are present in the DTO
+        // Only include specified fields, one by one
         if (updateReportDto.status !== undefined) {
-            reportData.status = updateReportDto.status;
+            updateFields['status'] = updateReportDto.status;
         }
 
         if (updateReportDto.isFeatured !== undefined) {
-            reportData.isFeatured = updateReportDto.isFeatured;
+            updateFields['isFeatured'] = updateReportDto.isFeatured;
         }
 
         if (updateReportDto.visibleOnWeb !== undefined) {
-            reportData.visibleOnWeb = updateReportDto.visibleOnWeb;
+            updateFields['visibleOnWeb'] = updateReportDto.visibleOnWeb;
         }
 
         if (updateReportDto.title !== undefined) {
-            reportData.title = updateReportDto.title;
+            updateFields['title'] = updateReportDto.title;
         }
 
         if (updateReportDto.category !== undefined) {
-            reportData.category = updateReportDto.category;
+            updateFields['category'] = updateReportDto.category;
         }
 
         if (updateReportDto.reportTags !== undefined) {
-            reportData.reportTags = updateReportDto.reportTags;
+            updateFields['reportTags'] = updateReportDto.reportTags;
         }
 
         if (updateReportDto.tags !== undefined) {
-            reportData.tags = updateReportDto.tags;
+            updateFields['tags'] = updateReportDto.tags;
+        }
+
+        if (updateReportDto.isAnonymous !== undefined) {
+            updateFields['isAnonymous'] = updateReportDto.isAnonymous;
+        }
+
+        if (updateReportDto.customAuthorName !== undefined) {
+            updateFields['customAuthorName'] = updateReportDto.customAuthorName;
+        }
+
+        if (updateReportDto.location !== undefined) {
+            updateFields['location'] = updateReportDto.location;
         }
 
         // Special handling for content
         if (updateReportDto.content !== undefined) {
-            reportData.content = {
-                ...reportData.content,
-                message: updateReportDto.content
-            };
+            updateFields['content.message'] = updateReportDto.content;
         }
 
-        // Update timestamp
-        reportData.updatedAt = new Date();
+        // Always update the timestamp
+        updateFields['updatedAt'] = new Date();
 
-        // Remove _id to avoid Mongoose error
-        delete reportData._id;
+        console.log('Updating specific fields only:', updateFields);
 
-        console.log('Updating report with complete data:', {
-            status: reportData.status,
-            isFeatured: reportData.isFeatured,
-            visibleOnWeb: reportData.visibleOnWeb
-        });
+        try {
+            // Use Mongoose's updateOne method but only with specific fields
+            const result = await this.reportModel.updateOne(
+                { _id: id },
+                { $set: updateFields }
+            );
 
-        // Use findOneAndUpdate with the complete updated object
-        const updatedReport = await this.reportModel.findOneAndUpdate(
-            { _id: id, clientId: clientId },
-            { $set: reportData },
-            {
-                new: true,
-                runValidators: true
+            if (result.modifiedCount === 0) {
+                console.error('Update appeared to fail - no documents modified');
             }
-        );
 
-        return updatedReport;
+            // Fetch the updated document
+            const updatedReport = await this.reportModel.findById(id).populate('reportTags');
+            if (!updatedReport) {
+                throw new NotFoundException(`Report with ID ${id} not found after update`);
+            }
+
+            return updatedReport;
+        } catch (error) {
+            console.error(`Update error: ${error.message}`);
+            throw error;
+        }
     }
 
     async remove(id: string, clientId: string,): Promise<void> {
