@@ -214,6 +214,7 @@ export class CommunityReportService {
             status = 'all',
             category = 'all',
             tags = [],
+            reportTags = [], // Added reportTags parameter
             visibleOnly = true,
             sortBy = 'createdAt',
             sortOrder = 'desc'
@@ -255,12 +256,18 @@ export class CommunityReportService {
             filters.tags = { $in: tags };
         }
 
+        // Add reportTags filter if provided
+        if (reportTags && reportTags.length > 0) {
+            filters.reportTags = { $in: reportTags };
+        }
+
         const sort: any = {};
         sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
         const total = await this.reportModel.countDocuments(filters);
 
         const reports = await this.reportModel.find(filters)
+            .populate('reportTags') // Populate reportTags reference
             .sort(sort)
             .skip(skip)
             .limit(limit);
@@ -372,6 +379,7 @@ export class CommunityReportService {
     }
 
     async update(id: string, clientId: string, updateReportDto: UpdateCommunityReportDto): Promise<Report> {
+        // First, get the current report to check authorization and current values
         const report = await this.findOne(id, clientId);
 
         // Check if the user is authorized to update this report
@@ -383,21 +391,34 @@ export class CommunityReportService {
             }
         }
 
+        // Prepare update data with only the fields that are actually changing
         const updateData: any = {
-            ...updateReportDto,
             updatedAt: new Date()
         };
 
-        // If content is provided, update the message in the nested structure
-        if (updateReportDto.content) {
-            updateData['content.message'] = updateReportDto.content;
-            delete updateData.content;
+        // Only include fields that are present in the updateReportDto
+        // This ensures we're not updating fields with undefined values
+        for (const key in updateReportDto) {
+            if (updateReportDto.hasOwnProperty(key) && updateReportDto[key] !== undefined) {
+                // Special handling for content field
+                if (key === 'content') {
+                    updateData['content.message'] = updateReportDto.content;
+                } else {
+                    updateData[key] = updateReportDto[key];
+                }
+            }
         }
 
-        const updatedReport = await this.reportModel.findByIdAndUpdate(
-            id,
+        console.log('Updating report with data:', updateData);
+
+        // Use findOneAndUpdate to ensure we're only updating the specific fields
+        const updatedReport = await this.reportModel.findOneAndUpdate(
+            { _id: id, clientId: clientId },
             { $set: updateData },
-            { new: true }
+            {
+                new: true,     // Return the updated document
+                runValidators: true  // Run validators on update
+            }
         );
 
         if (!updatedReport) {
@@ -2279,5 +2300,27 @@ export class CommunityReportService {
             topKeywords: keywords,
             trendsByPeriod: periodKeywords
         };
+    }
+
+    /**
+     * Get all report tags for a client
+     * @param clientId The client ID
+     */
+    async getAllReportTags(clientId: string) {
+        try {
+            // Fetch all tags for this client
+            const tags = await this.reportTagModel.find({
+                clientId: clientId
+            }).sort({ name: 1 });
+
+            return tags.map(tag => ({
+                id: tag._id.toString(),
+                name: tag.name,
+                description: tag.description
+            }));
+        } catch (error) {
+            console.error('Error fetching report tags:', error);
+            return [];
+        }
     }
 }

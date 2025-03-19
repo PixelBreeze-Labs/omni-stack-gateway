@@ -706,4 +706,19 @@ export class CommunityReportController {
             { startDate, endDate, limit }
         );
     }
+
+
+    @ApiOperation({ summary: 'Get all report tags' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns all report tags for this client'
+    })
+    @UseGuards(ClientAuthGuard)
+    @Get('tags')
+    async getAllTags(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getAllReportTags(req.client.id);
+    }
+
 }
