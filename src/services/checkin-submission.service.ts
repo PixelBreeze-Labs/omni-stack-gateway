@@ -260,7 +260,7 @@ export class CheckinSubmissionService {
                 subject: `New Check-in Form: ${submission.firstName} ${submission.lastName}`,
                 message: '', // Will be replaced by template content
                 metadata: emailData,
-                template: 'checkin'
+                template: 'metrosuites-checkin-form'
             });
 
         } catch (error) {

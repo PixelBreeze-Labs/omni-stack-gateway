@@ -73,6 +73,10 @@ export class CommunicationsService {
                 templatePath = 'templates/metrosuites/staff-communication.html';
             }
 
+            if (template === 'metrosuites-checkin-form') {
+                templatePath = 'templates/metrosuites/checkin-submission.html';
+            }
+
             // Send the email
             await this.emailService.sendTemplateEmail(
                 'Metrosuites',
