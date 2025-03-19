@@ -379,51 +379,87 @@ export class CommunityReportService {
     }
 
     async update(id: string, clientId: string, updateReportDto: UpdateCommunityReportDto): Promise<Report> {
-        // First, get the current report to check authorization and current values
-        const report = await this.findOne(id, clientId);
+        // First, find the current report to get all existing fields
+        const existingReport = await this.reportModel.findOne({
+            _id: id,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!existingReport) {
+            throw new NotFoundException(`Report with ID ${id} not found`);
+        }
 
         // Check if the user is authorized to update this report
-        if (report.authorId && !report.isAnonymous) {
-            const user = await this.userModel.findById(report.authorId);
+        if (existingReport.authorId && !existingReport.isAnonymous) {
+            const user = await this.userModel.findById(existingReport.authorId);
             // Allow only if user is part of the same client
             if (!user || !user.client_ids.includes(clientId)) {
                 throw new UnauthorizedException('You are not authorized to update this report');
             }
         }
 
-        // Prepare update data with only the fields that are actually changing
-        const updateData: any = {
-            updatedAt: new Date()
-        };
+        // Create a copy of the existing report data
+        const reportData = existingReport.toObject();
 
-        // Only include fields that are present in the updateReportDto
-        // This ensures we're not updating fields with undefined values
-        for (const key in updateReportDto) {
-            if (updateReportDto.hasOwnProperty(key) && updateReportDto[key] !== undefined) {
-                // Special handling for content field
-                if (key === 'content') {
-                    updateData['content.message'] = updateReportDto.content;
-                } else {
-                    updateData[key] = updateReportDto[key];
-                }
-            }
+        // Only update fields that are present in the DTO
+        if (updateReportDto.status !== undefined) {
+            reportData.status = updateReportDto.status;
         }
 
-        console.log('Updating report with data:', updateData);
+        if (updateReportDto.isFeatured !== undefined) {
+            reportData.isFeatured = updateReportDto.isFeatured;
+        }
 
-        // Use findOneAndUpdate to ensure we're only updating the specific fields
+        if (updateReportDto.visibleOnWeb !== undefined) {
+            reportData.visibleOnWeb = updateReportDto.visibleOnWeb;
+        }
+
+        if (updateReportDto.title !== undefined) {
+            reportData.title = updateReportDto.title;
+        }
+
+        if (updateReportDto.category !== undefined) {
+            reportData.category = updateReportDto.category;
+        }
+
+        if (updateReportDto.reportTags !== undefined) {
+            reportData.reportTags = updateReportDto.reportTags;
+        }
+
+        if (updateReportDto.tags !== undefined) {
+            reportData.tags = updateReportDto.tags;
+        }
+
+        // Special handling for content
+        if (updateReportDto.content !== undefined) {
+            reportData.content = {
+                ...reportData.content,
+                message: updateReportDto.content
+            };
+        }
+
+        // Update timestamp
+        reportData.updatedAt = new Date();
+
+        // Remove _id to avoid Mongoose error
+        delete reportData._id;
+
+        console.log('Updating report with complete data:', {
+            status: reportData.status,
+            isFeatured: reportData.isFeatured,
+            visibleOnWeb: reportData.visibleOnWeb
+        });
+
+        // Use findOneAndUpdate with the complete updated object
         const updatedReport = await this.reportModel.findOneAndUpdate(
             { _id: id, clientId: clientId },
-            { $set: updateData },
+            { $set: reportData },
             {
-                new: true,     // Return the updated document
-                runValidators: true  // Run validators on update
+                new: true,
+                runValidators: true
             }
         );
-
-        if (!updatedReport) {
-            throw new NotFoundException(`Report with ID ${id} not found`);
-        }
 
         return updatedReport;
     }
