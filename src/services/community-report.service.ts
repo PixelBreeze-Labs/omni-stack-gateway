@@ -119,7 +119,7 @@ export class CommunityReportService {
                 userAgent: '',
             },
             isCommunityReport: true,
-            isFromChatbot: reportData.isFromChatbot || false,
+            isFromChatbot: reportData.isFromChatbot === 'false' ? false : Boolean(reportData.isFromChatbot || false),
             createdAt: now,
             updatedAt: now
         });

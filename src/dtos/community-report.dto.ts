@@ -104,8 +104,7 @@ export class CreateCommunityReportDto {
     status?: ReportStatus = ReportStatus.PENDING_REVIEW;
 
     @IsOptional()
-    @IsBoolean()
-    isFromChatbot?: boolean;
+    isFromChatbot?: boolean | string;
 
     @ApiProperty({ required: false })
     @IsObject()
