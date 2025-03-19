@@ -26,7 +26,6 @@ export class CommunityReportService {
         @InjectModel(User.name) private userModel: Model<User>,
         private readonly supabaseService: SupabaseService,
     ) {}
-
     async create(
         reportData: CreateCommunityReportDto & { clientId: string },
         files: Express.Multer.File[] = [],
@@ -76,17 +75,17 @@ export class CommunityReportService {
                 if (Array.isArray(reportData.reportTags)) {
                     reportTagsArray = reportData.reportTags;
                 }
-                // If it's a JSON string
-                else if (typeof reportData.reportTags === 'string' && reportData.reportTags.startsWith('[')) {
-                    reportTagsArray = JSON.parse(reportData.reportTags);
+                // If it's a JSON string - use type assertion to fix TypeScript error
+                else if (typeof reportData.reportTags === 'string' && (reportData.reportTags as string).startsWith('[')) {
+                    reportTagsArray = JSON.parse(reportData.reportTags as string);
                 }
-                // If it's a comma-separated string
-                else if (typeof reportData.reportTags === 'string' && reportData.reportTags.includes(',')) {
-                    reportTagsArray = reportData.reportTags.split(',').map(tag => tag.trim());
+                // If it's a comma-separated string - use type assertion to fix TypeScript error
+                else if (typeof reportData.reportTags === 'string' && (reportData.reportTags as string).includes(',')) {
+                    reportTagsArray = (reportData.reportTags as string).split(',').map(tag => tag.trim());
                 }
                 // If it's a single string value
                 else if (typeof reportData.reportTags === 'string') {
-                    reportTagsArray = [reportData.reportTags];
+                    reportTagsArray = [reportData.reportTags as string];
                 }
             } catch (error) {
                 console.error('Failed to parse reportTags in simple create:', error);
