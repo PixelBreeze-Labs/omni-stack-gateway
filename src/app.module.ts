@@ -67,6 +67,8 @@ import { GeneralCampaign, GeneralCampaignSchema } from './schemas/general-campai
 import { Chat, ChatSchema } from './schemas/chat.schema';
 import { Promotion, PromotionSchema } from './schemas/promotion.schema';
 import { Discount, DiscountSchema } from './schemas/discount.schema';
+import { CheckinSubmission, CheckinSubmissionSchema } from './schemas/checkin-submission.schema';
+import { CheckinFormConfig, CheckinFormConfigSchema } from './schemas/checkin-form-config.schema';
 
 
 
@@ -295,6 +297,8 @@ import { ReportTagController } from './controllers/report-tag.controller';
       { name: Discount.name, schema: DiscountSchema },
       { name: Promotion.name, schema: PromotionSchema },
       { name: ReportTag.name, schema: ReportTagSchema },
+      { name: CheckinSubmission.name, schema: CheckinSubmissionSchema },
+      { name: CheckinFormConfig.name, schema: CheckinFormConfigSchema },
     ]),
   ],
   controllers: [
