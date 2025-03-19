@@ -4,6 +4,7 @@ import { Document, Schema as MongooseSchema } from 'mongoose';
 import { ReportTag } from './report-tag.schema';
 
 export enum ReportStatus {
+    PENDING= 'pending',
     PENDING_REVIEW = 'pending_review',
     REJECTED = 'rejected',
     ACTIVE = 'active',
