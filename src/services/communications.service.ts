@@ -79,7 +79,7 @@ export class CommunicationsService {
 
             // Send the email
             await this.emailService.sendTemplateEmail(
-                'Metrosuites',
+                'Metro Suites',
                 'metrosuites@omnistackhub.xyz',
                 recipient,
                 subject,
