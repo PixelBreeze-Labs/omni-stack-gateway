@@ -78,4 +78,9 @@ export class ListSubmissionDto {
     @IsOptional()
     @IsEnum(SubmissionType)
     type?: SubmissionType;
+
+    @ApiProperty({ required: false, description: 'Form configuration ID' })
+    @IsOptional()
+    @IsString()
+    formConfigId?: string;
 }
