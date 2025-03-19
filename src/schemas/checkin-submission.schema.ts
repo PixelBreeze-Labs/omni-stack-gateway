@@ -23,6 +23,9 @@ export class CheckinSubmission extends Document {
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Guest' })
     guestId?: string;
 
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Booking' })
+    bookingId?: string;
+
     @Prop({ type: Object, required: true })
     formData: Record<string, any>; // Dynamic form data based on the form configuration
 
@@ -58,6 +61,15 @@ export class CheckinSubmission extends Document {
     @Prop({ type: [String], default: [] })
     attachmentUrls: string[];
 
+    @Prop({ type: Boolean, default: false })
+    needsParkingSpot: boolean;
+
+    @Prop()
+    expectedArrivalTime?: string;
+
+    @Prop({ type: [String], default: [] })
+    specialRequests: string[];
+
     @Prop({ type: Object, default: {} })
     metadata?: Record<string, any>;
 }
@@ -69,8 +81,9 @@ CheckinSubmissionSchema.index({ formConfigId: 1 });
 CheckinSubmissionSchema.index({ clientId: 1 });
 CheckinSubmissionSchema.index({ propertyId: 1 });
 CheckinSubmissionSchema.index({ guestId: 1 });
+CheckinSubmissionSchema.index({ bookingId: 1 });
 CheckinSubmissionSchema.index({ email: 1 });
 CheckinSubmissionSchema.index({ status: 1 });
 CheckinSubmissionSchema.index({ createdAt: 1 });
 CheckinSubmissionSchema.index({ 'formData.idType': 1 });
-CheckinSubmissionSchema.index({ 'formData.needsParkingSpot': 1 });
+CheckinSubmissionSchema.index({ needsParkingSpot: 1 });

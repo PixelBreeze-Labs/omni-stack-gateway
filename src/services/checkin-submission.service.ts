@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CheckinSubmission, SubmissionStatus } from '../schemas/checkin-submission.schema';
 import { CheckinFormConfig } from '../schemas/checkin-form-config.schema';
+import { Guest } from '../schemas/guest.schema';
 import { SubmitCheckinFormDto, UpdateSubmissionStatusDto, ListCheckinSubmissionsDto } from '../dtos/checkin-form.dto';
 
 @Injectable()
@@ -12,7 +13,8 @@ export class CheckinSubmissionService {
 
     constructor(
         @InjectModel(CheckinSubmission.name) private checkinSubmissionModel: Model<CheckinSubmission>,
-        @InjectModel(CheckinFormConfig.name) private checkinFormConfigModel: Model<CheckinFormConfig>
+        @InjectModel(CheckinFormConfig.name) private checkinFormConfigModel: Model<CheckinFormConfig>,
+        @InjectModel(Guest.name) private guestModel: Model<Guest>
     ) {}
 
     /**
@@ -21,7 +23,7 @@ export class CheckinSubmissionService {
     async submit(shortCode: string, submitDto: SubmitCheckinFormDto): Promise<CheckinSubmission> {
         try {
             // Find the form config
-            const formConfig = await this.checkinFormConfigModel.findOne({ shortCode });
+            const formConfig = await this.checkinFormConfigModel.findOne({ shortCode }).exec();
 
             if (!formConfig) {
                 throw new NotFoundException(`Check-in form config with short code ${shortCode} not found`);
@@ -36,18 +38,61 @@ export class CheckinSubmissionService {
                 throw new BadRequestException('This check-in form has expired');
             }
 
-            // Create submission
+            // Find or create guest based on the email
+            let guestId = submitDto.guestId;
+
+            if (!guestId) {
+                // Look for existing guest with this email
+                const existingGuest = await this.guestModel.findOne({
+                    email: submitDto.email,
+                    clientId: formConfig.clientId
+                }).exec();
+
+                if (existingGuest) {
+                    guestId = existingGuest._id;
+
+                    // Optionally update guest info if needed
+                    if (existingGuest.firstName !== submitDto.firstName ||
+                        existingGuest.lastName !== submitDto.lastName ||
+                        existingGuest.phoneNumber !== submitDto.phoneNumber) {
+
+                        existingGuest.firstName = submitDto.firstName;
+                        existingGuest.lastName = submitDto.lastName;
+                        if (submitDto.phoneNumber) existingGuest.phoneNumber = submitDto.phoneNumber;
+
+                        await existingGuest.save();
+                    }
+                } else {
+                    // Create a new guest
+                    const newGuest = new this.guestModel({
+                        firstName: submitDto.firstName,
+                        lastName: submitDto.lastName,
+                        email: submitDto.email,
+                        phoneNumber: submitDto.phoneNumber,
+                        clientId: formConfig.clientId
+                    });
+
+                    const savedGuest = await newGuest.save();
+                    guestId = savedGuest._id;
+                }
+            }
+
+            // Create submission using propertyId and bookingId from the form config
             const submission = new this.checkinSubmissionModel({
                 formConfigId: formConfig._id,
                 clientId: formConfig.clientId,
-                propertyId: formConfig.propertyId,
-                guestId: submitDto.guestId,
+                propertyId: formConfig.propertyId, // Use propertyId from the form config
+                bookingId: formConfig.bookingId, // Use bookingId from the form config
+                guestId: guestId,
                 formData: submitDto.formData,
                 firstName: submitDto.firstName,
                 lastName: submitDto.lastName,
                 email: submitDto.email,
                 phoneNumber: submitDto.phoneNumber,
                 status: SubmissionStatus.PENDING,
+                needsParkingSpot: submitDto.needsParkingSpot || false,
+                expectedArrivalTime: submitDto.expectedArrivalTime,
+                specialRequests: submitDto.specialRequests || [],
                 attachmentUrls: submitDto.attachmentUrls || [],
                 metadata: submitDto.metadata || {}
             });
@@ -110,7 +155,12 @@ export class CheckinSubmissionService {
             const submission = await this.checkinSubmissionModel.findOne({
                 _id: submissionId,
                 clientId
-            }).populate('formConfigId').lean();
+            })
+                .populate('formConfigId')
+                .populate('propertyId', 'name type')
+                .populate('bookingId', 'confirmationCode checkInDate checkOutDate')
+                .populate('guestId', 'firstName lastName email')
+                .lean();
 
             if (!submission) {
                 throw new NotFoundException(`Submission with ID ${submissionId} not found`);
@@ -128,7 +178,7 @@ export class CheckinSubmissionService {
      */
     async findAll(clientId: string, options: ListCheckinSubmissionsDto) {
         try {
-            const { formConfigId, propertyId, guestId, email, status, page = 1, limit = 10 } = options;
+            const { formConfigId, propertyId, guestId, bookingId, email, status, needsParkingSpot, page = 1, limit = 10 } = options;
             const skip = (page - 1) * limit;
 
             // Build the filter
@@ -149,6 +199,11 @@ export class CheckinSubmissionService {
                 filter.guestId = guestId;
             }
 
+            // Add booking filter if provided
+            if (bookingId) {
+                filter.bookingId = bookingId;
+            }
+
             // Add email filter if provided
             if (email) {
                 filter.email = email;
@@ -159,11 +214,19 @@ export class CheckinSubmissionService {
                 filter.status = status;
             }
 
+            // Add parking filter if provided
+            if (needsParkingSpot !== undefined) {
+                filter.needsParkingSpot = needsParkingSpot;
+            }
+
             // Execute the query with pagination
             const [submissions, total] = await Promise.all([
                 this.checkinSubmissionModel
                     .find(filter)
-                    .populate('formConfigId')
+                    .populate('formConfigId', 'name shortCode')
+                    .populate('propertyId', 'name type')
+                    .populate('bookingId', 'confirmationCode checkInDate checkOutDate')
+                    .populate('guestId', 'firstName lastName email')
                     .sort({ createdAt: -1 })
                     .skip(skip)
                     .limit(limit)
@@ -194,6 +257,28 @@ export class CheckinSubmissionService {
     }
 
     /**
+     * Find submissions for a booking
+     */
+    async findByBookingId(clientId: string, bookingId: string): Promise<CheckinSubmission[]> {
+        try {
+            const submissions = await this.checkinSubmissionModel
+                .find({
+                    clientId,
+                    bookingId
+                })
+                .populate('formConfigId', 'name shortCode')
+                .populate('guestId', 'firstName lastName email')
+                .sort({ createdAt: -1 })
+                .lean();
+
+            return submissions;
+        } catch (error) {
+            this.logger.error(`Error finding submissions by booking: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
      * Delete a submission
      */
     async delete(clientId: string, submissionId: string): Promise<{ success: boolean }> {
@@ -215,12 +300,20 @@ export class CheckinSubmissionService {
     }
 
     /**
-     * Get submission stats for a form config
+     * Get submission stats
      */
-    async getStatsForForm(clientId: string, formConfigId: string) {
+    async getStats(clientId: string, params: { formConfigId?: string, propertyId?: string, bookingId?: string }) {
         try {
+            const { formConfigId, propertyId, bookingId } = params;
+
+            // Build match stage
+            const match: any = { clientId };
+            if (formConfigId) match.formConfigId = formConfigId;
+            if (propertyId) match.propertyId = propertyId;
+            if (bookingId) match.bookingId = bookingId;
+
             const stats = await this.checkinSubmissionModel.aggregate([
-                { $match: { clientId, formConfigId } },
+                { $match: match },
                 { $group: {
                         _id: '$status',
                         count: { $sum: 1 }
@@ -234,13 +327,22 @@ export class CheckinSubmissionService {
                 pending: 0,
                 completed: 0,
                 verified: 0,
-                rejected: 0
+                rejected: 0,
+                needParking: 0
             };
 
             stats.forEach(item => {
                 result[item._id.toLowerCase()] = item.count;
                 result.total += item.count;
             });
+
+            // Count parking needs
+            const parkingCount = await this.checkinSubmissionModel.countDocuments({
+                ...match,
+                needsParkingSpot: true
+            });
+
+            result.needParking = parkingCount;
 
             return { stats: result };
         } catch (error) {
