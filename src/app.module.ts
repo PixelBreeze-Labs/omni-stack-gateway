@@ -129,6 +129,8 @@ import { ChatController } from './controllers/chat.controller';
 import { PromotionController } from './controllers/promotion.controller';
 import { DiscountController } from './controllers/discount.controller';
 import { CommunityReportController } from './controllers/community-report.controller';
+import { CheckinSubmissionController } from './controllers/checkin-submission.controller';
+import { CheckinFormConfigController } from './controllers/checkin-form-config.controller';
 
 
 
@@ -207,6 +209,8 @@ import { ChatService } from './services/chat.service';
 import { PromotionService } from './services/promotion.service';
 import { DiscountService } from './services/discount.service';
 import { CommunityReportService } from './services/community-report.service';
+import { CheckinFormConfigService } from './services/checkin-form-config.service';
+import { CheckinSubmissionService } from './services/checkin-submission.service';
 
 
 // Others
@@ -366,7 +370,9 @@ import { ReportTagController } from './controllers/report-tag.controller';
     DiscountController,
     PromotionController,
     CommunityReportController,
-    ReportTagController
+    ReportTagController,
+    CheckinSubmissionController,
+    CheckinFormConfigController
   ],
   providers: [
     SnapfoodService,
@@ -441,7 +447,9 @@ import { ReportTagController } from './controllers/report-tag.controller';
     PromotionService,
     DiscountService,
     CommunityReportService,
-    ReportTagService
+    ReportTagService,
+    CheckinFormConfigService,
+    CheckinSubmissionService
   ],
 })
 export class AppModule implements NestModule {
