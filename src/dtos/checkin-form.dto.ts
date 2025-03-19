@@ -12,7 +12,8 @@ import {
   IsMongoId,
   ValidateNested,
   IsDate,
-  IsTimeString,
+  IsDateString,
+  // Changed IsTimeString to a more appropriate validator
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { FormField } from '../schemas/checkin-form-config.schema';
@@ -123,6 +124,7 @@ export class CreateCheckinFormConfigDto {
   @ApiPropertyOptional({ description: 'Form expiration date' })
   @IsOptional()
   @IsDate()
+  @Type(() => Date)
   expiresAt?: Date;
 
   @ApiPropertyOptional({ description: 'Additional metadata' })
@@ -205,6 +207,7 @@ export class UpdateCheckinFormConfigDto {
   @ApiPropertyOptional({ description: 'Form expiration date' })
   @IsOptional()
   @IsDate()
+  @Type(() => Date)
   expiresAt?: Date;
 
   @ApiPropertyOptional({ description: 'Additional metadata' })
@@ -256,7 +259,7 @@ export class SubmitCheckinFormDto {
 
   @ApiPropertyOptional({ description: 'Expected arrival time' })
   @IsOptional()
-  @IsTimeString()
+  @IsString() // Changed from IsTimeString to IsString for more flexibility
   expectedArrivalTime?: string;
 
   @ApiPropertyOptional({ description: 'Special requests' })

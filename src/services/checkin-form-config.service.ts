@@ -4,7 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CheckinFormConfig } from '../schemas/checkin-form-config.schema';
 import { Booking, BookingStatus } from '../schemas/booking.schema';
-import { CreateCheckinFormConfigDto, UpdateCheckinFormConfigDto } from '../dtos/checkin-form.dto';
+import { CreateCheckinFormConfigDto, UpdateCheckinFormConfigDto, FormFieldDto, FormSectionDto } from '../dtos/checkin-form.dto';
 import { nanoid } from 'nanoid';
 
 interface FindAllOptions {
@@ -350,10 +350,10 @@ export class CheckinFormConfigService {
             };
 
             // Create the form
-            return this.create(booking.clientId, {
+            return this.create(booking.clientId.toString(), {
                 name: formName,
-                propertyId: booking.propertyId,
-                bookingId: booking._id,
+                propertyId: booking.propertyId.toString(),
+                bookingId: booking._id.toString(),
                 formConfig: defaultFormConfig,
                 isActive: true,
                 isPreArrival: true,
@@ -372,7 +372,7 @@ export class CheckinFormConfigService {
     /**
      * Get default form fields
      */
-    private getDefaultFormFields() {
+    private getDefaultFormFields(): FormFieldDto[] {
         return [
             {
                 name: 'firstName',
@@ -510,7 +510,7 @@ export class CheckinFormConfigService {
     /**
      * Get default form sections
      */
-    private getDefaultFormSections() {
+    private getDefaultFormSections(): FormSectionDto[] {
         return [
             {
                 name: 'personalInfo',
