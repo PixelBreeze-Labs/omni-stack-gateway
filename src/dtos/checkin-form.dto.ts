@@ -12,6 +12,7 @@ import {
   IsMongoId,
   ValidateNested,
   IsDate,
+  IsTimeString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { FormField } from '../schemas/checkin-form-config.schema';
@@ -87,6 +88,11 @@ export class CreateCheckinFormConfigDto {
   @IsMongoId()
   propertyId?: string;
 
+  @ApiPropertyOptional({ description: 'Booking ID associated with this form' })
+  @IsOptional()
+  @IsMongoId()
+  bookingId?: string;
+
   @ApiProperty({ description: 'Form configuration' })
   @IsObject()
   @ValidateNested()
@@ -103,6 +109,16 @@ export class CreateCheckinFormConfigDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean = true;
+
+  @ApiPropertyOptional({ description: 'Whether this is a pre-arrival form' })
+  @IsOptional()
+  @IsBoolean()
+  isPreArrival?: boolean = false;
+
+  @ApiPropertyOptional({ description: 'Whether this form requires authentication' })
+  @IsOptional()
+  @IsBoolean()
+  requiresAuthentication?: boolean = false;
 
   @ApiPropertyOptional({ description: 'Form expiration date' })
   @IsOptional()
@@ -153,6 +169,11 @@ export class UpdateCheckinFormConfigDto {
   @IsMongoId()
   propertyId?: string;
 
+  @ApiPropertyOptional({ description: 'Booking ID associated with this form' })
+  @IsOptional()
+  @IsMongoId()
+  bookingId?: string;
+
   @ApiPropertyOptional({ description: 'Form configuration' })
   @IsOptional()
   @IsObject()
@@ -170,6 +191,16 @@ export class UpdateCheckinFormConfigDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether this is a pre-arrival form' })
+  @IsOptional()
+  @IsBoolean()
+  isPreArrival?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether this form requires authentication' })
+  @IsOptional()
+  @IsBoolean()
+  requiresAuthentication?: boolean;
 
   @ApiPropertyOptional({ description: 'Form expiration date' })
   @IsOptional()
@@ -213,6 +244,27 @@ export class SubmitCheckinFormDto {
   @IsMongoId()
   guestId?: string;
 
+  @ApiPropertyOptional({ description: 'Booking ID if associated with a booking' })
+  @IsOptional()
+  @IsMongoId()
+  bookingId?: string;
+
+  @ApiPropertyOptional({ description: 'Whether the guest needs a parking spot' })
+  @IsOptional()
+  @IsBoolean()
+  needsParkingSpot?: boolean;
+
+  @ApiPropertyOptional({ description: 'Expected arrival time' })
+  @IsOptional()
+  @IsTimeString()
+  expectedArrivalTime?: string;
+
+  @ApiPropertyOptional({ description: 'Special requests' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  specialRequests?: string[];
+
   @ApiPropertyOptional({ description: 'Attachment URLs' })
   @IsOptional()
   @IsArray()
@@ -247,10 +299,20 @@ export class ListCheckinFormConfigDto {
   @IsMongoId()
   propertyId?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by booking ID' })
+  @IsOptional()
+  @IsMongoId()
+  bookingId?: string;
+
   @ApiPropertyOptional({ description: 'Filter by active status' })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter by pre-arrival status' })
+  @IsOptional()
+  @IsBoolean()
+  isPreArrival?: boolean;
 
   @ApiPropertyOptional({ description: 'Search by name' })
   @IsOptional()
@@ -282,10 +344,20 @@ export class ListCheckinSubmissionsDto {
   @IsMongoId()
   guestId?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by booking ID' })
+  @IsOptional()
+  @IsMongoId()
+  bookingId?: string;
+
   @ApiPropertyOptional({ description: 'Filter by email' })
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by parking need' })
+  @IsOptional()
+  @IsBoolean()
+  needsParkingSpot?: boolean;
 
   @ApiPropertyOptional({ description: 'Filter by status', enum: Object.values(SubmissionStatus) })
   @IsOptional()

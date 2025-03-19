@@ -27,6 +27,9 @@ export class CheckinFormConfig extends Document {
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Property' })
     propertyId?: string;
 
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Booking' })
+    bookingId?: string;
+
     @Prop({ required: true })
     name: string;
 
@@ -49,6 +52,12 @@ export class CheckinFormConfig extends Document {
     @Prop({ type: Date })
     expiresAt?: Date;
 
+    @Prop({ type: Boolean, default: false })
+    isPreArrival: boolean;
+
+    @Prop({ type: Boolean, default: false })
+    requiresAuthentication: boolean;
+
     @Prop({ type: Object, default: {} })
     metadata?: Record<string, any>;
 }
@@ -59,4 +68,6 @@ export const CheckinFormConfigSchema = SchemaFactory.createForClass(CheckinFormC
 CheckinFormConfigSchema.index({ shortCode: 1 }, { unique: true });
 CheckinFormConfigSchema.index({ clientId: 1 });
 CheckinFormConfigSchema.index({ propertyId: 1 });
+CheckinFormConfigSchema.index({ bookingId: 1 });
 CheckinFormConfigSchema.index({ isActive: 1 });
+CheckinFormConfigSchema.index({ isPreArrival: 1 });
