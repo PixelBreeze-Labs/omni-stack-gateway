@@ -111,6 +111,11 @@ export class CreateCheckinFormConfigDto {
   @IsBoolean()
   isActive?: boolean = true;
 
+  @ApiPropertyOptional({ description: 'Email to receive notifications about form submissions' })
+  @IsOptional()
+  @IsEmail()
+  receiptEmail?: string;
+
   @ApiPropertyOptional({ description: 'Whether this is a pre-arrival form' })
   @IsOptional()
   @IsBoolean()
@@ -175,6 +180,11 @@ export class UpdateCheckinFormConfigDto {
   @IsOptional()
   @IsMongoId()
   bookingId?: string;
+
+  @ApiPropertyOptional({ description: 'Email to receive notifications about form submissions' })
+  @IsOptional()
+  @IsEmail()
+  receiptEmail?: string;
 
   @ApiPropertyOptional({ description: 'Form configuration' })
   @IsOptional()

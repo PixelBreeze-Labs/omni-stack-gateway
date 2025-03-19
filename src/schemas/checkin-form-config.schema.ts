@@ -58,6 +58,15 @@ export class CheckinFormConfig extends Document {
     @Prop({ type: Boolean, default: false })
     requiresAuthentication: boolean;
 
+    @Prop({ type: String })
+    receiptEmail?: string; // Email address to send notifications to
+
+    @Prop({ type: Number, default: 0 })
+    views: number; // Count of form views
+
+    @Prop({ type: Date })
+    lastViewed?: Date; // Last time form was viewed
+
     @Prop({ type: Object, default: {} })
     metadata?: Record<string, any>;
 }
@@ -71,3 +80,5 @@ CheckinFormConfigSchema.index({ propertyId: 1 });
 CheckinFormConfigSchema.index({ bookingId: 1 });
 CheckinFormConfigSchema.index({ isActive: 1 });
 CheckinFormConfigSchema.index({ isPreArrival: 1 });
+CheckinFormConfigSchema.index({ views: 1 });
+CheckinFormConfigSchema.index({ lastViewed: 1 });
