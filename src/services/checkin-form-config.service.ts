@@ -266,6 +266,9 @@ export class CheckinFormConfigService {
             const hasNextPage = page < totalPages;
             const hasPrevPage = page > 1;
 
+            // Generate metrics data
+            const metrics = await this.getMetrics(clientId);
+
             return {
                 data: formConfigs,
                 pagination: {
@@ -275,11 +278,93 @@ export class CheckinFormConfigService {
                     totalPages,
                     hasNextPage,
                     hasPrevPage
-                }
+                },
+                metrics
             };
         } catch (error) {
             this.logger.error(`Error finding check-in form configs: ${error.message}`, error.stack);
             throw error;
+        }
+    }
+
+    /**
+     * Get metrics for check-in forms
+     */
+    private async getMetrics(clientId: string) {
+        try {
+            // Get basic counts
+            const [totalForms, activeForms, lastMonthTotal, lastMonthViews, totalViews, totalSubmissions] = await Promise.all([
+                this.checkinFormConfigModel.countDocuments({ clientId }),
+                this.checkinFormConfigModel.countDocuments({ clientId, isActive: true }),
+                this.checkinFormConfigModel.countDocuments({
+                    clientId,
+                    createdAt: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)) }
+                }),
+                this.checkinFormConfigModel.aggregate([
+                    { $match: { clientId } },
+                    { $group: { _id: null, totalViews: { $sum: "$views" } } }
+                ]),
+                this.checkinFormConfigModel.aggregate([
+                    { $match: { clientId, updatedAt: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)) } } },
+                    { $group: { _id: null, totalViews: { $sum: "$views" } } }
+                ]),
+                this.checkinFormConfigModel.aggregate([
+                    { $match: { clientId } },
+                    { $group: { _id: null, totalSubmissions: { $sum: { $cond: [{ $isArray: "$metadata.submissionCount" }, { $size: "$metadata.submissionCount" }, "$metadata.submissionCount" ] } } } }
+                ])
+            ]);
+
+            // Calculate metrics with previous period comparison
+            const previousMonthTotal = totalForms - lastMonthTotal;
+            const formsTrend = previousMonthTotal === 0
+                ? 100
+                : Math.round((lastMonthTotal / previousMonthTotal - 1) * 100);
+
+            const currentViews = totalViews.length > 0 ? totalViews[0].totalViews : 0;
+            const lastMonthViewsCount = lastMonthViews.length > 0 ? lastMonthViews[0].totalViews : 0;
+            const viewsTrend = lastMonthViewsCount === 0
+                ? 0
+                : Math.round((currentViews / lastMonthViewsCount - 1) * 100);
+
+            const submissions = totalSubmissions.length > 0 ? totalSubmissions[0].totalSubmissions : 0;
+            const submissionRate = currentViews === 0 ? 0 : Math.round((submissions / currentViews) * 100);
+
+            return {
+                totalForms,
+                activeForms,
+                views: currentViews || 0,
+                submissions: submissions || 0,
+                submissionRate: submissionRate || 0,
+                trends: {
+                    forms: {
+                        value: lastMonthTotal,
+                        percentage: formsTrend
+                    },
+                    views: {
+                        value: lastMonthViewsCount,
+                        percentage: viewsTrend
+                    },
+                    submissions: {
+                        value: 0, // You may need to calculate this from your submissions collection
+                        percentage: 0  // Placeholder
+                    }
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error generating form metrics: ${error.message}`, error.stack);
+            // Return default metrics if there's an error
+            return {
+                totalForms: 0,
+                activeForms: 0,
+                views: 0,
+                submissions: 0,
+                submissionRate: 0,
+                trends: {
+                    forms: { value: 0, percentage: 0 },
+                    views: { value: 0, percentage: 0 },
+                    submissions: { value: 0, percentage: 0 }
+                }
+            };
         }
     }
 
