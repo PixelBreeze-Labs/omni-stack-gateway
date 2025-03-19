@@ -256,11 +256,11 @@ export class CheckinSubmissionService {
             // Send the email
             await this.communicationsService.sendCommunication({
                 type: 'EMAIL',
-                recipient: 'ggerveni@gmail.com', // Hard-coded email recipient
+                recipient: 'contact@metrosuites.al', // Hard-coded email recipient
                 subject: `New Check-in Form: ${submission.firstName} ${submission.lastName}`,
                 message: '', // Will be replaced by template content
                 metadata: emailData,
-                template: 'checkin'
+                template: 'metrosuites-checkin-form'
             });
 
         } catch (error) {
