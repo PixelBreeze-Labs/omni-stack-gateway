@@ -12,7 +12,7 @@ import {
     UseGuards,
     UseInterceptors,
     UploadedFiles,
-    Optional, UnauthorizedException,
+    Optional, UnauthorizedException, BadRequestException,
 } from '@nestjs/common';
 import {
     ApiTags,
@@ -21,7 +21,7 @@ import {
     ApiBearerAuth,
     ApiParam,
     ApiQuery,
-    ApiConsumes
+    ApiConsumes, ApiBody
 } from '@nestjs/swagger';
 import { CommunityReportService } from '../services/community-report.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
@@ -247,6 +247,45 @@ export class CommunityReportController {
         @Req() req: Request & { client: Client }
     ): Promise<Report> {
         return this.communityReportService.findOneAdmin(id, req.client.id);
+    }
+    @ApiOperation({ summary: 'Get comments for a community report' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'List of comments for the report' })
+    @UseGuards(ClientAuthGuard)
+    @Get(':id/comments')
+    async getReportComments(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getReportComments(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Add a comment to a community report' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiBody({ type: Object, description: 'Comment data', required: true })
+    @ApiResponse({ status: 201, description: 'Comment has been successfully added' })
+    @ApiResponse({ status: 400, description: 'Bad Request - Invalid input data' })
+    @UseGuards(ClientAuthGuard)
+    @Post(':id/comments')
+    async addReportComment(
+        @Param('id') id: string,
+        @Body() commentData: { content: string, userId: string },
+        @Req() req: Request & { client: Client }
+    ) {
+        if (!commentData.content || !commentData.content.trim()) {
+            throw new BadRequestException('Comment content is required');
+        }
+
+        if (!commentData.userId) {
+            throw new BadRequestException('User ID is required');
+        }
+
+        return this.communityReportService.addReportComment(
+            id,
+            req.client.id,
+            commentData.userId,
+            commentData.content
+        );
     }
 
     @ApiBearerAuth()

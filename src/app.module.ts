@@ -69,6 +69,7 @@ import { Promotion, PromotionSchema } from './schemas/promotion.schema';
 import { Discount, DiscountSchema } from './schemas/discount.schema';
 import { CheckinSubmission, CheckinSubmissionSchema } from './schemas/checkin-submission.schema';
 import { CheckinFormConfig, CheckinFormConfigSchema } from './schemas/checkin-form-config.schema';
+import { ReportComment, ReportCommentSchema } from './schemas/report-comment.schema';
 
 
 
@@ -303,6 +304,7 @@ import { ReportTagController } from './controllers/report-tag.controller';
       { name: ReportTag.name, schema: ReportTagSchema },
       { name: CheckinSubmission.name, schema: CheckinSubmissionSchema },
       { name: CheckinFormConfig.name, schema: CheckinFormConfigSchema },
+      { name: ReportComment.name, schema: ReportCommentSchema },
     ]),
   ],
   controllers: [

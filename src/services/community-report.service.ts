@@ -11,6 +11,7 @@ import {
     ListCommunityReportDto
 } from '../dtos/community-report.dto';
 import { SupabaseService } from './supabase.service';
+import {ReportComment} from "../schemas/report-comment.schema";
 export interface AnalyticsParams {
     startDate?: string;
     endDate?: string;
@@ -24,6 +25,7 @@ export class CommunityReportService {
         @InjectModel(Report.name) private reportModel: Model<Report>,
         @InjectModel(ReportTag.name) private reportTagModel: Model<ReportTag>,
         @InjectModel(User.name) private userModel: Model<User>,
+        @InjectModel(ReportComment.name) private reportCommentModel: Model<ReportComment>,
         private readonly supabaseService: SupabaseService,
     ) {}
     async create(
@@ -2512,5 +2514,121 @@ export class CommunityReportService {
         }
 
         return updatedReport;
+    }
+
+
+    /**
+     * Get comments for a report
+     */
+    async getReportComments(reportId: string, clientId: string) {
+        // First check if the report exists and belongs to the client
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Get comments with populated user information
+        const comments = await this.reportCommentModel.find({
+            reportId: reportId,
+            clientId: clientId
+        })
+            .sort({ createdAt: -1 })
+            .populate({
+                path: 'authorId',
+                model: 'User',
+                select: 'name surname email image'
+            })
+            .lean();
+
+        // Transform comments into a more frontend-friendly format
+        const transformedComments = comments.map(comment => {
+            // Extract author information
+            let author = null;
+            if (comment.authorId) {
+                const user = comment.authorId as any;
+                author = {
+                    id: user._id.toString(),
+                    name: user.name && user.surname ? `${user.name} ${user.surname}` : user.name || user.email,
+                };
+            }
+
+            return {
+                id: comment._id.toString(),
+                content: comment.content,
+                author,
+                createdAt: comment.createdAt,
+                updatedAt: comment.updatedAt
+            };
+        });
+
+        return {
+            data: transformedComments,
+            total: transformedComments.length
+        };
+    }
+
+    /**
+     * Add a comment to a report
+     */
+    async addReportComment(reportId: string, clientId: string, userId: string, content: string) {
+        // First check if the report exists and belongs to the client
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Check if the user exists and belongs to the client
+        const user = await this.userModel.findById(userId);
+        if (!user) {
+            throw new NotFoundException(`User with ID ${userId} not found`);
+        }
+
+        if (!user.client_ids.includes(clientId)) {
+            throw new UnauthorizedException('User does not belong to this client');
+        }
+
+        // Create the comment
+        const comment = await this.reportCommentModel.create({
+            reportId,
+            clientId,
+            authorId: userId,
+            content: content.trim(),
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
+        // Return the newly created comment with author information
+        const populatedComment = await this.reportCommentModel.findById(comment._id)
+            .populate({
+                path: 'authorId',
+                model: 'User',
+                select: 'name surname email image'
+            })
+            .lean();
+
+        // Transform the comment
+        const user2 = populatedComment.authorId as any;
+        const author = {
+            id: user2._id.toString(),
+            name: user2.name && user2.surname ? `${user2.name} ${user2.surname}` : user2.name || user2.email,
+        };
+
+        return {
+            id: populatedComment._id.toString(),
+            content: populatedComment.content,
+            author,
+            createdAt: populatedComment.createdAt,
+            updatedAt: populatedComment.updatedAt
+        };
     }
 }
