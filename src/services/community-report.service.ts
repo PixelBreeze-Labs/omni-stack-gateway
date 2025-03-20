@@ -672,6 +672,9 @@ export class CommunityReportService {
             status?: string;
             sort?: string;
             order?: 'asc' | 'desc';
+            category?: string; // Added category filter
+            reportTags?: string[]; // Added tags filter
+            search?: string; // Added search capability
         } = {}
     ) {
         if (!userId) {
@@ -684,7 +687,10 @@ export class CommunityReportService {
             limit = 10,
             status = 'all',
             sort = 'createdAt',
-            order = 'desc'
+            order = 'desc',
+            category = 'all',
+            reportTags = [],
+            search = ''
         } = query;
 
         const skip = (page - 1) * limit;
@@ -701,6 +707,25 @@ export class CommunityReportService {
             filter.status = status;
         }
 
+        // Add category filter if not 'all'
+        if (category !== 'all') {
+            filter.category = category;
+        }
+
+        // Add tag filter if provided
+        if (reportTags && reportTags.length > 0) {
+            filter.reportTags = { $in: reportTags };
+        }
+
+        // Add search filter if provided
+        if (search) {
+            filter.$or = [
+                { title: new RegExp(search, 'i') },
+                { 'content.message': new RegExp(search, 'i') },
+                { customAuthorName: new RegExp(search, 'i') }
+            ];
+        }
+
         // Create the sort object
         const sortOption: any = {};
         sortOption[sort] = order === 'asc' ? 1 : -1;
@@ -708,13 +733,27 @@ export class CommunityReportService {
         // Get total count
         const total = await this.reportModel.countDocuments(filter);
 
-        // Get reports
+        // Get reports, including populated report tags
         const reports = await this.reportModel.find(filter)
+            .populate('reportTags') // Populate report tags reference
             .sort(sortOption)
             .skip(skip)
             .limit(limit);
 
-        // Transform reports
+        // Get comment counts for each report
+        const reportIds = reports.map(report => report._id);
+        const commentCounts = await this.reportCommentModel.aggregate([
+            { $match: { reportId: { $in: reportIds } } },
+            { $group: { _id: '$reportId', count: { $sum: 1 } } }
+        ]);
+
+        // Create a map of report ID to comment count
+        const commentCountMap = new Map();
+        commentCounts.forEach(item => {
+            commentCountMap.set(item._id.toString(), item.count);
+        });
+
+        // Transform reports with better handling for reportTags and adding comment counts
         const transformedReports = reports.map(report => {
             const reportObj = report.toObject();
 
@@ -728,11 +767,19 @@ export class CommunityReportService {
                 });
             }
 
+            // Add comment count
+            const commentCount = commentCountMap.get(reportObj._id.toString()) || 0;
+
+            // Add view count (or default to 0 if not present)
+            const viewCount = reportObj.viewCount || 0;
+
             return {
                 ...reportObj,
                 id: reportObj._id.toString(),
                 message: reportObj.content?.message || '',
                 content: reportObj.content?.message || '',
+                commentCount,
+                viewCount,
                 _id: undefined
             };
         });
@@ -747,6 +794,7 @@ export class CommunityReportService {
             }
         };
     }
+
 
     /**
      * Get report statistics for a specific user
@@ -1219,92 +1267,190 @@ export class CommunityReportService {
      * Get overall dashboard statistics for a client
      */
     async getDashboardStats(clientId: string) {
-        // Get total reports count
-        const totalReports = await this.reportModel.countDocuments({
-            clientId,
-            isCommunityReport: true
-        });
+        try {
+            // Get total reports count
+            const totalReports = await this.reportModel.countDocuments({
+                clientId,
+                isCommunityReport: true
+            });
 
-        // Get resolved reports count
-        const resolvedReports = await this.reportModel.countDocuments({
-            clientId,
-            isCommunityReport: true,
-            status: ReportStatus.RESOLVED
-        });
+            // Get counts by status
+            const pendingCount = await this.reportModel.countDocuments({
+                clientId,
+                isCommunityReport: true,
+                status: ReportStatus.PENDING_REVIEW
+            });
 
-        // Get count of users with reports in this client
-        const activeCitizens = await this.userModel.countDocuments({
-            client_ids: clientId,
-            'reports.0': { $exists: true }
-        });
+            const activeCount = await this.reportModel.countDocuments({
+                clientId,
+                isCommunityReport: true,
+                status: ReportStatus.ACTIVE
+            });
 
-        // Calculate average response time in hours
-        const resolvedReportsData = await this.reportModel.find({
-            clientId,
-            isCommunityReport: true,
-            status: { $in: [ReportStatus.RESOLVED, ReportStatus.CLOSED] },
-            createdAt: { $exists: true },
-            updatedAt: { $exists: true }
-        }).select('createdAt updatedAt');
+            const inProgressCount = await this.reportModel.countDocuments({
+                clientId,
+                isCommunityReport: true,
+                status: ReportStatus.IN_PROGRESS
+            });
 
-        let totalResponseTime = 0;
-        let reportsWithData = 0;
+            const resolvedCount = await this.reportModel.countDocuments({
+                clientId,
+                isCommunityReport: true,
+                status: ReportStatus.RESOLVED
+            });
 
-        resolvedReportsData.forEach(report => {
-            if (report.createdAt && report.updatedAt) {
-                const responseTime = (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60); // Hours
-                totalResponseTime += responseTime;
-                reportsWithData++;
-            }
-        });
+            const closedCount = await this.reportModel.countDocuments({
+                clientId,
+                isCommunityReport: true,
+                status: ReportStatus.CLOSED
+            });
 
-        const averageResponseTime = reportsWithData > 0
-            ? Math.round(totalResponseTime / reportsWithData)
-            : 48; // Default if no data
-
-        return {
-            totalReports,
-            resolvedReports,
-            activeCitizens,
-            averageResponseTime
-        };
-    }
-
-    /**
-     * Get reports distribution by category
-     */
-    async getReportsByCategory(clientId: string) {
-        const result = await this.reportModel.aggregate([
-            {
-                $match: {
-                    clientId,
-                    isCommunityReport: true
+            // Get category breakdown for better dashboard display
+            const categoryBreakdown = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        clientId,
+                        isCommunityReport: true
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$category',
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        category: { $ifNull: ['$_id', 'uncategorized'] },
+                        count: 1
+                    }
+                },
+                {
+                    $sort: { count: -1 }
                 }
-            },
-            {
-                $group: {
-                    _id: '$category',
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    category: '$_id',
-                    name: { $ifNull: ['$_id', 'other'] },
-                    count: 1
-                }
-            },
-            {
-                $sort: { count: -1 }
-            }
-        ]);
+            ]);
 
-        // Convert category keys to proper display names
-        return result.map(item => ({
-            ...item,
-            name: item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        }));
+            // Get count of users with reports
+            const activeUsers = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        clientId,
+                        isCommunityReport: true,
+                        authorId: { $exists: true, $ne: null }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$authorId',
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $count: 'total'
+                }
+            ]);
+
+            const activeCitizens = activeUsers.length > 0 ? activeUsers[0].total : 0;
+
+            // Calculate average response time in hours for resolved reports
+            const resolvedReportsData = await this.reportModel.find({
+                clientId,
+                isCommunityReport: true,
+                status: { $in: [ReportStatus.RESOLVED, ReportStatus.CLOSED] },
+                createdAt: { $exists: true },
+                updatedAt: { $exists: true }
+            }).select('createdAt updatedAt');
+
+            let totalResponseTime = 0;
+            let reportsWithData = 0;
+
+            resolvedReportsData.forEach(report => {
+                if (report.createdAt && report.updatedAt) {
+                    const responseTime = (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60); // Hours
+                    totalResponseTime += responseTime;
+                    reportsWithData++;
+                }
+            });
+
+            const averageResponseTime = reportsWithData > 0
+                ? Math.round(totalResponseTime / reportsWithData)
+                : 48; // Default if no data
+
+            // Get recent activity (last 5 reports)
+            const recentActivity = await this.reportModel.find({
+                clientId,
+                isCommunityReport: true
+            })
+                .sort({ createdAt: -1 })
+                .limit(5)
+                .select('title category status createdAt')
+                .lean();
+
+            // Calculate monthly trending data
+            const now = new Date();
+            const sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(now.getMonth() - 6);
+
+            const monthlyTrend = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        clientId,
+                        isCommunityReport: true,
+                        createdAt: { $gte: sixMonthsAgo }
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            year: { $year: '$createdAt' },
+                            month: { $month: '$createdAt' }
+                        },
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $sort: { '_id.year': 1, '_id.month': 1 }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        year: '$_id.year',
+                        month: '$_id.month',
+                        count: 1
+                    }
+                }
+            ]);
+
+            return {
+                totalReports,
+                pendingCount,
+                activeCount,
+                inProgressCount,
+                resolvedCount,
+                closedCount,
+                activeCitizens,
+                averageResponseTime,
+                categoryBreakdown,
+                recentActivity,
+                monthlyTrend
+            };
+        } catch (error) {
+            console.error('Error fetching dashboard stats:', error);
+            return {
+                totalReports: 0,
+                pendingCount: 0,
+                activeCount: 0,
+                inProgressCount: 0,
+                resolvedCount: 0,
+                closedCount: 0,
+                activeCitizens: 0,
+                averageResponseTime: 0,
+                categoryBreakdown: [],
+                recentActivity: [],
+                monthlyTrend: []
+            };
+        }
     }
 
     /**
@@ -2630,5 +2776,60 @@ export class CommunityReportService {
             createdAt: populatedComment.createdAt,
             updatedAt: populatedComment.updatedAt
         };
+    }
+
+    async getReportsByCategory(clientId: string) {
+        try {
+            const result = await this.reportModel.aggregate([
+                {
+                    $match: {
+                        clientId,
+                        isCommunityReport: true
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$category',
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        category: { $ifNull: ['$_id', 'other'] },
+                        name: { $ifNull: ['$_id', 'other'] },
+                        count: 1,
+                        // Add color for frontend display
+                        color: {
+                            $switch: {
+                                branches: [
+                                    { case: { $eq: ['$_id', 'infrastructure'] }, then: '#64748B' },
+                                    { case: { $eq: ['$_id', 'environment'] }, then: '#22C55E' },
+                                    { case: { $eq: ['$_id', 'community'] }, then: '#A855F7' },
+                                    { case: { $eq: ['$_id', 'safety'] }, then: '#EF4444' },
+                                    { case: { $eq: ['$_id', 'health_services'] }, then: '#EC4899' },
+                                    { case: { $eq: ['$_id', 'public_services'] }, then: '#3B82F6' },
+                                    { case: { $eq: ['$_id', 'transportation'] }, then: '#F97316' }
+                                ],
+                                default: '#6B7280'
+                            }
+                        }
+                    }
+                },
+                {
+                    $sort: { count: -1 }
+                }
+            ]);
+
+            // Format category names for display
+            return result.map(item => ({
+                ...item,
+                name: item.name ? item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Other',
+                displayName: item.name ? item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Other'
+            }));
+        } catch (error) {
+            console.error('Error getting reports by category:', error);
+            return [];
+        }
     }
 }
