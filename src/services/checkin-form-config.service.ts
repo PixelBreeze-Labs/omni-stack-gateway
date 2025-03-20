@@ -1,9 +1,10 @@
 // src/services/checkin-form-config.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CheckinFormConfig } from '../schemas/checkin-form-config.schema';
 import { Booking, BookingStatus } from '../schemas/booking.schema';
+import { CheckinSubmission } from '../schemas/checkin-submission.schema';
 import { CreateCheckinFormConfigDto, UpdateCheckinFormConfigDto, FormFieldDto, FormSectionDto } from '../dtos/checkin-form.dto';
 import { nanoid } from 'nanoid';
 
@@ -23,7 +24,8 @@ export class CheckinFormConfigService {
 
     constructor(
         @InjectModel(CheckinFormConfig.name) private checkinFormConfigModel: Model<CheckinFormConfig>,
-        @InjectModel(Booking.name) private bookingModel: Model<Booking>
+        @InjectModel(Booking.name) private bookingModel: Model<Booking>,
+        @InjectModel(CheckinSubmission.name) private checkinSubmissionModel: Model<CheckinSubmission>
     ) {}
 
     /**
@@ -80,7 +82,8 @@ export class CheckinFormConfigService {
                 shortCode,
                 isActive: createDto.isActive !== undefined ? createDto.isActive : true,
                 isPreArrival: createDto.isPreArrival || false,
-                requiresAuthentication: createDto.requiresAuthentication || false
+                requiresAuthentication: createDto.requiresAuthentication || false,
+                views: 0
             });
 
             return newFormConfig.save();
@@ -187,7 +190,20 @@ export class CheckinFormConfigService {
                 throw new NotFoundException(`Check-in form config with ID ${id} not found`);
             }
 
-            return formConfig;
+            // Get submission count
+            const submissionCount = await this.checkinSubmissionModel.countDocuments({
+                formConfigId: id,
+                clientId
+            });
+
+            // Add submission count to the response
+            return {
+                ...formConfig,
+                metadata: {
+                    ...formConfig.metadata,
+                    submissionCount
+                }
+            };
         } catch (error) {
             this.logger.error(`Error finding check-in form config: ${error.message}`, error.stack);
             throw error;
@@ -261,6 +277,42 @@ export class CheckinFormConfigService {
                 this.checkinFormConfigModel.countDocuments(filter)
             ]);
 
+            // Get submission counts for all forms
+            const formIds = formConfigs.map(form => form._id);
+            const submissionCounts = await this.checkinSubmissionModel.aggregate([
+                {
+                    $match: {
+                        formConfigId: {
+                            $in: formIds.map(id => new Types.ObjectId(id as string))
+                        },
+                        clientId
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$formConfigId',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            // Create a map of formId -> submission count
+            const submissionCountMap = {};
+            submissionCounts.forEach(stat => {
+                submissionCountMap[stat._id.toString()] = stat.count;
+            });
+
+            // Add submission counts to each form
+            const formsWithCounts = formConfigs.map(form => {
+                return {
+                    ...form,
+                    metadata: {
+                        ...form.metadata,
+                        submissionCount: submissionCountMap[form._id.toString()] || 0
+                    }
+                };
+            });
+
             // Calculate pagination metadata
             const totalPages = Math.ceil(total / limit);
             const hasNextPage = page < totalPages;
@@ -270,7 +322,7 @@ export class CheckinFormConfigService {
             const metrics = await this.getMetrics(clientId);
 
             return {
-                data: formConfigs,
+                data: formsWithCounts,
                 pagination: {
                     total,
                     page,
@@ -293,7 +345,7 @@ export class CheckinFormConfigService {
     private async getMetrics(clientId: string) {
         try {
             // Get basic counts
-            const [totalForms, activeForms, lastMonthTotal, lastMonthViews, totalViews, totalSubmissions] = await Promise.all([
+            const [totalForms, activeForms, lastMonthTotal, totalViews, lastMonthViews] = await Promise.all([
                 this.checkinFormConfigModel.countDocuments({ clientId }),
                 this.checkinFormConfigModel.countDocuments({ clientId, isActive: true }),
                 this.checkinFormConfigModel.countDocuments({
@@ -305,13 +357,23 @@ export class CheckinFormConfigService {
                     { $group: { _id: null, totalViews: { $sum: "$views" } } }
                 ]),
                 this.checkinFormConfigModel.aggregate([
-                    { $match: { clientId, updatedAt: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)) } } },
+                    {
+                        $match: {
+                            clientId,
+                            updatedAt: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)) }
+                        }
+                    },
                     { $group: { _id: null, totalViews: { $sum: "$views" } } }
-                ]),
-                this.checkinFormConfigModel.aggregate([
-                    { $match: { clientId } },
-                    { $group: { _id: null, totalSubmissions: { $sum: { $cond: [{ $isArray: "$metadata.submissionCount" }, { $size: "$metadata.submissionCount" }, "$metadata.submissionCount" ] } } } }
                 ])
+            ]);
+
+            // Get total submissions and submissions from last month
+            const [totalSubmissions, lastMonthSubmissions] = await Promise.all([
+                this.checkinSubmissionModel.countDocuments({ clientId }),
+                this.checkinSubmissionModel.countDocuments({
+                    clientId,
+                    createdAt: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)) }
+                })
             ]);
 
             // Calculate metrics with previous period comparison
@@ -326,14 +388,18 @@ export class CheckinFormConfigService {
                 ? 0
                 : Math.round((currentViews / lastMonthViewsCount - 1) * 100);
 
-            const submissions = totalSubmissions.length > 0 ? totalSubmissions[0].totalSubmissions : 0;
-            const submissionRate = currentViews === 0 ? 0 : Math.round((submissions / currentViews) * 100);
+            const previousMonthSubmissions = totalSubmissions - lastMonthSubmissions;
+            const submissionsTrend = previousMonthSubmissions === 0
+                ? 0
+                : Math.round((lastMonthSubmissions / previousMonthSubmissions - 1) * 100);
+
+            const submissionRate = currentViews === 0 ? 0 : Math.round((totalSubmissions / currentViews) * 100);
 
             return {
                 totalForms,
                 activeForms,
                 views: currentViews || 0,
-                submissions: submissions || 0,
+                submissions: totalSubmissions || 0,
                 submissionRate: submissionRate || 0,
                 trends: {
                     forms: {
@@ -345,8 +411,8 @@ export class CheckinFormConfigService {
                         percentage: viewsTrend
                     },
                     submissions: {
-                        value: 0, // You may need to calculate this from your submissions collection
-                        percentage: 0  // Placeholder
+                        value: lastMonthSubmissions,
+                        percentage: submissionsTrend
                     }
                 }
             };
