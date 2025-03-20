@@ -61,7 +61,6 @@ export class SupabaseService {
         return publicUrl;
     }
 
-
     /**
      * Process all files for a report
      */
@@ -158,5 +157,82 @@ export class SupabaseService {
             .remove([path]);
 
         if (error) throw error;
+    }
+
+    // Check-in submission file uploads
+
+    /**
+     * Uploads a file for check-in submissions
+     * @param file File buffer to upload
+     * @param filename Original filename
+     * @param subpath Optional subdirectory (e.g., 'id-documents' or 'attachments')
+     */
+    async uploadCheckinFile(file: Buffer, filename: string, subpath: string = 'attachments'): Promise<string> {
+        const contentType = this.getContentType(filename);
+        const path = `checkin/${subpath}/${Date.now()}_${filename}`;
+
+        const { data, error } = await this.supabase
+            .storage
+            .from('products')
+            .upload(path, file, {
+                contentType: contentType,
+                upsert: true
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = this.supabase
+            .storage
+            .from('products')
+            .getPublicUrl(data.path);
+
+        return publicUrl;
+    }
+
+    /**
+     * Delete a check-in submission file
+     */
+    async deleteCheckinFile(path: string): Promise<void> {
+        const { error } = await this.supabase
+            .storage
+            .from('products')
+            .remove([path]);
+
+        if (error) throw error;
+    }
+
+    /**
+     * Helper method to determine content type based on file extension
+     */
+    private getContentType(filename: string): string {
+        const ext = filename.split('.').pop()?.toLowerCase();
+
+        switch (ext) {
+            case 'jpg':
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'png':
+                return 'image/png';
+            case 'gif':
+                return 'image/gif';
+            case 'pdf':
+                return 'application/pdf';
+            case 'doc':
+                return 'application/msword';
+            case 'docx':
+                return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            case 'xls':
+                return 'application/vnd.ms-excel';
+            case 'xlsx':
+                return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            case 'mp3':
+                return 'audio/mpeg';
+            case 'mp4':
+                return 'video/mp4';
+            case 'webm':
+                return 'audio/webm';
+            default:
+                return 'application/octet-stream';
+        }
     }
 }

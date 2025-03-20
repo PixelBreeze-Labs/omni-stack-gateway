@@ -9,6 +9,24 @@ export enum SubmissionStatus {
     REJECTED = 'rejected',
 }
 
+@Schema()
+export class FileAttachment {
+    @Prop({ required: true })
+    name: string;
+
+    @Prop({ required: true })
+    type: string;
+
+    @Prop({ required: true })
+    url: string;
+
+    @Prop()
+    size?: number;
+
+    @Prop({ default: false })
+    isIdDocument?: boolean;
+}
+
 @Schema({ timestamps: true })
 export class CheckinSubmission extends Document {
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'CheckinFormConfig' })
@@ -58,8 +76,12 @@ export class CheckinSubmission extends Document {
     @Prop({ type: Object })
     verificationData?: Record<string, any>;
 
+    // File attachments
     @Prop({ type: [String], default: [] })
-    attachmentUrls: string[];
+    attachmentUrls?: string[];
+
+    @Prop({ type: [FileAttachment], default: [] })
+    attachments?: FileAttachment[];
 
     @Prop({ type: Boolean, default: false })
     needsParkingSpot: boolean;
