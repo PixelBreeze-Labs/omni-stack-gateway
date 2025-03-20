@@ -336,7 +336,7 @@ export class CommunityReportService {
             _id: id,
             clientId: clientId,
             isCommunityReport: true
-        });
+        }).populate('reportTags');
 
         if (!report) {
             throw new NotFoundException(`Report with ID ${id} not found`);
@@ -355,15 +355,37 @@ export class CommunityReportService {
             });
         }
 
-        // Add related data (could be implemented further)
+        // Get related reports (nearby with same category)
         const relatedReports = await this.findRelatedReports(id, clientId);
+
+        // Get recent reports
+        const recentReports = await this.reportModel.find({
+            _id: { $ne: id }, // Exclude current report
+            clientId: clientId,
+            isCommunityReport: true,
+            visibleOnWeb: true,
+            status: { $nin: [ReportStatus.PENDING_REVIEW, ReportStatus.REJECTED] }
+        })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .lean();
+
+        // Transform recent reports to a simpler format
+        const transformedRecentReports = recentReports.map(report => ({
+            id: report._id.toString(),
+            title: report.title,
+            status: report.status,
+            category: report.category,
+            createdAt: report.createdAt
+        }));
 
         return {
             ...reportObj,
             id: reportObj._id.toString(),
             content: reportObj.content?.message || '',
             _id: undefined,
-            relatedReports: relatedReports.slice(0, 5) // Limit to 5 related reports
+            relatedReports: relatedReports.slice(0, 5), // Limit to 5 related reports
+            recentReports: transformedRecentReports // Add recent reports
         };
     }
 
