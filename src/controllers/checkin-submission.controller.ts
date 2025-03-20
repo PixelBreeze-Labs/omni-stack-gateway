@@ -11,14 +11,15 @@ import {
     Req,
     Query,
     DefaultValuePipe,
-    ParseIntPipe
+    ParseIntPipe, BadRequestException, UploadedFiles, UseInterceptors
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
+import {ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiConsumes} from '@nestjs/swagger';
 import { CheckinSubmissionService } from '../services/checkin-submission.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
 import { SubmitCheckinFormDto, UpdateSubmissionStatusDto, ListCheckinSubmissionsDto } from '../dtos/checkin-form.dto';
 import { SubmissionStatus } from '../schemas/checkin-submission.schema';
+import {FileFieldsInterceptor} from "@nestjs/platform-express";
 
 @ApiTags('Check-in Form Submissions')
 @Controller('checkin-submissions')
@@ -31,6 +32,10 @@ export class CheckinSubmissionController {
      * Submit a check-in form
      */
     @Post(':shortCode')
+    @ApiConsumes('multipart/form-data')
+    @UseInterceptors((FileFieldsInterceptor as any)([
+        { name: 'files', maxCount: 10 }
+    ]))
     @ApiOperation({ summary: 'Submit a check-in form' })
     @ApiResponse({
         status: 201,
@@ -39,10 +44,44 @@ export class CheckinSubmissionController {
     @ApiParam({ name: 'shortCode', description: 'The short code of the form configuration' })
     async submit(
         @Param('shortCode') shortCode: string,
-        @Body() submitDto: SubmitCheckinFormDto
+        @Body() submitDto: SubmitCheckinFormDto,
+        @UploadedFiles() uploadedFiles: { files?: Express.Multer.File[] }
     ) {
-        return this.checkinSubmissionService.submit(shortCode, submitDto);
+        try {
+            // Parse formData if it's a string
+            if (typeof submitDto.formData === 'string') {
+                try {
+                    submitDto.formData = JSON.parse(submitDto.formData);
+                } catch (error) {
+                    // If not valid JSON, create a simple object
+                    submitDto.formData = { rawInput: submitDto.formData };
+                }
+            }
+
+            // Handle special requests if it's a string
+            if (typeof submitDto.specialRequests === 'string') {
+                try {
+                    const parsedRequests = JSON.parse(submitDto.specialRequests);
+                    // Make sure it's an array
+                    submitDto.specialRequests = Array.isArray(parsedRequests) ? parsedRequests : [parsedRequests];
+                } catch (error) {
+                    // If not valid JSON, treat as a single request
+                    submitDto.specialRequests = [submitDto.specialRequests as unknown as string];
+                }
+            }
+
+            // Get the files array (or empty array if none)
+            const files = uploadedFiles?.files || [];
+
+            return this.checkinSubmissionService.submit(shortCode, submitDto, files);
+        } catch (error) {
+            if (error instanceof BadRequestException) {
+                throw error;
+            }
+            throw new BadRequestException(`Failed to submit check-in form: ${error.message}`);
+        }
     }
+
 
     /**
      * Get all submissions with filtering and pagination (requires auth)

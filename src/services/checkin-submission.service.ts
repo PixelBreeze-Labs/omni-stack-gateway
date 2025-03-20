@@ -7,6 +7,7 @@ import { Guest } from '../schemas/guest.schema';
 import { SubmitCheckinFormDto, UpdateSubmissionStatusDto, ListCheckinSubmissionsDto } from '../dtos/checkin-form.dto';
 import { CommunicationsService } from './communications.service';
 import { format } from 'date-fns';
+import { SupabaseService } from './supabase.service';
 
 @Injectable()
 export class CheckinSubmissionService {
@@ -16,13 +17,18 @@ export class CheckinSubmissionService {
         @InjectModel(CheckinSubmission.name) private checkinSubmissionModel: Model<CheckinSubmission>,
         @InjectModel(CheckinFormConfig.name) private checkinFormConfigModel: Model<CheckinFormConfig>,
         @InjectModel(Guest.name) private guestModel: Model<Guest>,
-        private readonly communicationsService: CommunicationsService
+        private readonly communicationsService: CommunicationsService,
+        private readonly supabaseService: SupabaseService
     ) {}
 
     /**
      * Submit a check-in form
      */
-    async submit(shortCode: string, submitDto: SubmitCheckinFormDto): Promise<CheckinSubmission> {
+    async submit(
+        shortCode: string,
+        submitDto: SubmitCheckinFormDto,
+        files: Express.Multer.File[] = []
+    ): Promise<CheckinSubmission> {
         try {
             // Find the form config
             const formConfig = await this.checkinFormConfigModel.findOne({ shortCode })
@@ -92,6 +98,64 @@ export class CheckinSubmissionService {
                     : formConfig.bookingId;
             }
 
+            // Process file uploads
+            const attachmentUrls: string[] = [];
+            const fileInfo: { name: string, type: string, url: string, isIdDocument: boolean }[] = [];
+
+            // Process uploaded files
+            if (files && files.length > 0) {
+                for (const file of files) {
+                    const filename = `${Date.now()}-${file.originalname}`;
+
+                    // Determine if this is an ID document based on form data or filename patterns
+                    const isIdDocument =
+                        file.originalname.toLowerCase().includes('id') ||
+                        file.originalname.toLowerCase().includes('passport') ||
+                        (submitDto.formData && submitDto.formData.documentType === 'id');
+
+                    // Upload to the appropriate path
+                    const url = await this.supabaseService.uploadCheckinFile(
+                        file.buffer,
+                        filename,
+                        isIdDocument ? 'id-documents' : 'attachments'
+                    );
+
+                    attachmentUrls.push(url);
+
+                    fileInfo.push({
+                        name: file.originalname,
+                        type: file.mimetype,
+                        url: url,
+                        isIdDocument: isIdDocument
+                    });
+
+                    // If this is an ID document, also store it in formData for easier reference
+                    if (isIdDocument) {
+                        if (!submitDto.formData) submitDto.formData = {};
+                        submitDto.formData.idDocumentUrl = url;
+                    }
+                }
+            }
+
+            // Add any pre-existing attachment URLs from the DTO
+            if (submitDto.attachmentUrls && submitDto.attachmentUrls.length > 0) {
+                attachmentUrls.push(...submitDto.attachmentUrls);
+
+                // Add to fileInfo array
+                submitDto.attachmentUrls.forEach(url => {
+                    const filename = url.split('/').pop() || 'file';
+                    const isIdDocument = url.includes('id-documents');
+                    const mimeType = this.getMimeTypeFromUrl(url);
+
+                    fileInfo.push({
+                        name: filename,
+                        type: mimeType,
+                        url: url,
+                        isIdDocument: isIdDocument
+                    });
+                });
+            }
+
             // Create submission using propertyId and bookingId from the form config
             const submission = new this.checkinSubmissionModel({
                 formConfigId: formConfig?._id,
@@ -99,7 +163,7 @@ export class CheckinSubmissionService {
                 propertyId: propertyId,
                 bookingId: bookingId,
                 guestId: guestId,
-                formData: submitDto.formData,
+                formData: submitDto.formData || {},
                 firstName: submitDto.firstName,
                 lastName: submitDto.lastName,
                 email: submitDto.email,
@@ -108,8 +172,11 @@ export class CheckinSubmissionService {
                 needsParkingSpot: submitDto.needsParkingSpot || false,
                 expectedArrivalTime: submitDto.expectedArrivalTime,
                 specialRequests: submitDto.specialRequests || [],
-                attachmentUrls: submitDto.attachmentUrls || [],
-                metadata: submitDto.metadata || {}
+                attachmentUrls: attachmentUrls, // Include uploaded file URLs
+                metadata: {
+                    ...submitDto.metadata || {},
+                    fileInfo: fileInfo // Store detailed file info in metadata
+                }
             });
 
             // Save the submission
@@ -119,7 +186,8 @@ export class CheckinSubmissionService {
             await this.sendSubmissionNotification(
                 savedSubmission,
                 formConfig,
-                isExistingGuest
+                isExistingGuest,
+                fileInfo
             );
 
             return savedSubmission;
@@ -213,7 +281,8 @@ export class CheckinSubmissionService {
     private async sendSubmissionNotification(
         submission: CheckinSubmission,
         formConfig: any,
-        isExistingGuest: boolean
+        isExistingGuest: boolean,
+        fileInfo?: { name: string, type: string, url: string, isIdDocument: boolean }[]
     ): Promise<void> {
         try {
             // Prepare data for email template
@@ -235,6 +304,23 @@ export class CheckinSubmissionService {
                 return format(new Date(date), 'MMM dd, yyyy');
             };
 
+            // Check if there are any attachments
+            const hasAttachments = submission.attachmentUrls && submission.attachmentUrls.length > 0;
+
+            // Use the fileInfo if provided, otherwise generate from attachmentUrls
+            const attachments = fileInfo || (hasAttachments ? submission.attachmentUrls.map(url => {
+                const filename = url.split('/').pop() || 'file';
+                const isIdDocument = url.includes('id-documents') ||
+                    (submission.formData && url === submission.formData.idDocumentUrl);
+
+                return {
+                    url,
+                    name: filename,
+                    type: this.getMimeTypeFromUrl(url),
+                    isIdDocument
+                };
+            }) : []);
+
             // Generate dashboard URL
             const dashboardUrl = `https://admin.venueboost.io`;
 
@@ -253,6 +339,8 @@ export class CheckinSubmissionService {
                 needsParkingSpot: submission.needsParkingSpot,
                 expectedArrivalTime: submission.expectedArrivalTime,
                 specialRequests: submission.specialRequests,
+                hasAttachments,
+                attachments,
                 dashboardUrl,
                 formatDate
             };
@@ -273,6 +361,29 @@ export class CheckinSubmissionService {
         } catch (error) {
             this.logger.error(`Error sending check-in notification email: ${error.message}`, error.stack);
             // Don't throw - we don't want to fail the submission if email fails
+        }
+    }
+
+    /**
+     * Helper method to guess MIME type from URL or filename
+     */
+    private getMimeTypeFromUrl(url: string): string {
+        const extension = url.split('.').pop()?.toLowerCase();
+
+        switch (extension) {
+            case 'jpg':
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'png':
+                return 'image/png';
+            case 'pdf':
+                return 'application/pdf';
+            case 'doc':
+                return 'application/msword';
+            case 'docx':
+                return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            default:
+                return 'application/octet-stream';
         }
     }
 
