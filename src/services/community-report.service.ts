@@ -334,6 +334,13 @@ export class CommunityReportService {
     }
 
     async findOne(id: string, clientId: string): Promise<any> {
+        // First increment the view count atomically
+        await this.reportModel.updateOne(
+            { _id: id, clientId: clientId, isCommunityReport: true },
+            { $inc: { viewCount: 1 } }
+        );
+
+        // Then retrieve the updated report
         const report = await this.reportModel.findOne({
             _id: id,
             clientId: clientId,
@@ -2752,6 +2759,15 @@ export class CommunityReportService {
             createdAt: new Date(),
             updatedAt: new Date()
         });
+
+        // Increment the comment count on the report
+        await this.reportModel.updateOne(
+            { _id: reportId },
+            {
+                $inc: { commentCount: 1 },
+                $set: { updatedAt: new Date() }
+            }
+        );
 
         // Return the newly created comment with author information
         const populatedComment = await this.reportCommentModel.findById(comment._id)
