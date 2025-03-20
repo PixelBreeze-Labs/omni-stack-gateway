@@ -131,6 +131,12 @@ export class Report extends Document {
 
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false })
     userId?: string;
+
+    @Prop({ type: Number, default: 0 })
+    viewCount?: number;
+
+    @Prop({ type: Number, default: 0 })
+    commentCount?: number;
 }
 
 export const ReportSchema = SchemaFactory.createForClass(Report);
