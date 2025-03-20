@@ -403,6 +403,7 @@ export class CheckinFormConfigService {
                 ? 0
                 : Math.round((lastMonthSubmissions / previousMonthSubmissions - 1) * 100);
 
+            // Corrected submission rate calculation
             const submissionRate = currentViews === 0 ? 0 : Math.round((totalSubmissions / currentViews) * 100);
 
             return {
