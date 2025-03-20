@@ -355,7 +355,7 @@ export class CheckinFormConfigService {
     private async getMetrics(clientId: string) {
         try {
             // Get basic counts
-            const [totalForms, activeForms, lastMonthTotal, totalViews, lastMonthViews] = await Promise.all([
+            const [totalForms, activeForms, lastMonthTotal, totalViewsResult, lastMonthViewsResult] = await Promise.all([
                 this.checkinFormConfigModel.countDocuments({ clientId }),
                 this.checkinFormConfigModel.countDocuments({ clientId, isActive: true }),
                 this.checkinFormConfigModel.countDocuments({
@@ -363,13 +363,13 @@ export class CheckinFormConfigService {
                     createdAt: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)) }
                 }),
                 this.checkinFormConfigModel.aggregate([
-                    { $match: { clientId } },
+                    { $match: { clientId: new Types.ObjectId(clientId) } },
                     { $group: { _id: null, totalViews: { $sum: "$views" } } }
                 ]),
                 this.checkinFormConfigModel.aggregate([
                     {
                         $match: {
-                            clientId,
+                            clientId: new Types.ObjectId(clientId),
                             updatedAt: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)) }
                         }
                     },
@@ -386,14 +386,16 @@ export class CheckinFormConfigService {
                 })
             ]);
 
+            // Extract view counts from aggregation results - FIX IS HERE
+            const currentViews = totalViewsResult.length > 0 ? totalViewsResult[0].totalViews : 0;
+            const lastMonthViewsCount = lastMonthViewsResult.length > 0 ? lastMonthViewsResult[0].totalViews : 0;
+
             // Calculate metrics with previous period comparison
             const previousMonthTotal = totalForms - lastMonthTotal;
             const formsTrend = previousMonthTotal === 0
                 ? 100
                 : Math.round((lastMonthTotal / previousMonthTotal - 1) * 100);
 
-            const currentViews = totalViews.length > 0 ? totalViews[0].totalViews : 0;
-            const lastMonthViewsCount = lastMonthViews.length > 0 ? lastMonthViews[0].totalViews : 0;
             const viewsTrend = lastMonthViewsCount === 0
                 ? 0
                 : Math.round((currentViews / lastMonthViewsCount - 1) * 100);
@@ -409,9 +411,9 @@ export class CheckinFormConfigService {
             return {
                 totalForms,
                 activeForms,
-                views: currentViews || 0,
-                submissions: totalSubmissions || 0,
-                submissionRate: submissionRate || 0,
+                views: currentViews,
+                submissions: totalSubmissions,
+                submissionRate: submissionRate,
                 trends: {
                     forms: {
                         value: lastMonthTotal,
