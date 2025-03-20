@@ -11,7 +11,11 @@ import {
     Req,
     Query,
     DefaultValuePipe,
-    ParseIntPipe, BadRequestException, UploadedFiles, UseInterceptors
+    ParseIntPipe,
+    BadRequestException,
+    UploadedFiles,
+    UseInterceptors,
+    Logger
 } from '@nestjs/common';
 import {ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiConsumes} from '@nestjs/swagger';
 import { CheckinSubmissionService } from '../services/checkin-submission.service';
@@ -24,6 +28,8 @@ import {FileFieldsInterceptor} from "@nestjs/platform-express";
 @ApiTags('Check-in Form Submissions')
 @Controller('checkin-submissions')
 export class CheckinSubmissionController {
+    private readonly logger = new Logger(CheckinSubmissionController.name);
+
     constructor(
         private readonly checkinSubmissionService: CheckinSubmissionService
     ) {}
@@ -33,7 +39,7 @@ export class CheckinSubmissionController {
      */
     @Post(':shortCode')
     @ApiConsumes('multipart/form-data')
-    @UseInterceptors((FileFieldsInterceptor as any)([
+    @UseInterceptors(FileFieldsInterceptor([
         { name: 'files', maxCount: 10 }
     ]))
     @ApiOperation({ summary: 'Submit a check-in form' })
@@ -48,40 +54,58 @@ export class CheckinSubmissionController {
         @UploadedFiles() uploadedFiles: { files?: Express.Multer.File[] }
     ) {
         try {
-            // Parse formData if it's a string
+            // Log the raw data for debugging
+            this.logger.debug(`Raw submitDto: ${JSON.stringify(submitDto)}`);
+
+            // Parse formData from string to object if needed
             if (typeof submitDto.formData === 'string') {
                 try {
                     submitDto.formData = JSON.parse(submitDto.formData);
+                    this.logger.debug(`Parsed formData: ${JSON.stringify(submitDto.formData)}`);
                 } catch (error) {
-                    // If not valid JSON, create a simple object
+                    this.logger.error(`Error parsing formData: ${error.message}`);
                     submitDto.formData = { rawInput: submitDto.formData };
                 }
+            } else if (!submitDto.formData) {
+                // Ensure formData is always an object
+                submitDto.formData = {};
             }
 
-            // Handle special requests if it's a string
+            // Parse specialRequests from string to array if needed
             if (typeof submitDto.specialRequests === 'string') {
                 try {
                     const parsedRequests = JSON.parse(submitDto.specialRequests);
-                    // Make sure it's an array
                     submitDto.specialRequests = Array.isArray(parsedRequests) ? parsedRequests : [parsedRequests];
+                    this.logger.debug(`Parsed specialRequests: ${JSON.stringify(submitDto.specialRequests)}`);
                 } catch (error) {
-                    // If not valid JSON, treat as a single request
-                    submitDto.specialRequests = [submitDto.specialRequests as unknown as string];
+                    this.logger.error(`Error parsing specialRequests: ${error.message}`);
+                    submitDto.specialRequests = [submitDto.specialRequests];
                 }
+            } else if (!submitDto.specialRequests) {
+                // Ensure specialRequests is always an array
+                submitDto.specialRequests = [];
             }
+
+            // Handle boolean conversion for needsParkingSpot
+            if (typeof submitDto.needsParkingSpot === 'string') {
+                submitDto.needsParkingSpot = submitDto.needsParkingSpot.toLowerCase() === 'true';
+            }
+
+            // Log the processed data
+            this.logger.debug(`Processed submitDto: ${JSON.stringify(submitDto)}`);
 
             // Get the files array (or empty array if none)
             const files = uploadedFiles?.files || [];
 
             return this.checkinSubmissionService.submit(shortCode, submitDto, files);
         } catch (error) {
+            this.logger.error(`Submit error: ${error.message}`, error.stack);
             if (error instanceof BadRequestException) {
                 throw error;
             }
             throw new BadRequestException(`Failed to submit check-in form: ${error.message}`);
         }
     }
-
 
     /**
      * Get all submissions with filtering and pagination (requires auth)
