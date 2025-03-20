@@ -280,21 +280,22 @@ export class CheckinFormConfigService {
             // Get submission counts for all forms
             const formIds = formConfigs.map(form => form._id);
             const submissionCounts = await this.checkinSubmissionModel.aggregate([
-                {
-                    $match: {
-                        formConfigId: {
-                            $in: formIds.map(id => new Types.ObjectId(id as string))
-                        },
-                        clientId
+                { $match: { clientId } },
+                { $lookup: {
+                        from: 'checkinformconfigs',
+                        localField: 'formConfigId',
+                        foreignField: '_id',
+                        as: 'form'
                     }
                 },
-                {
-                    $group: {
+                { $unwind: '$form' },
+                { $group: {
                         _id: '$formConfigId',
                         count: { $sum: 1 }
                     }
                 }
             ]);
+
 
             // Create a map of formId -> submission count
             const submissionCountMap = {};
@@ -302,16 +303,25 @@ export class CheckinFormConfigService {
                 submissionCountMap[stat._id.toString()] = stat.count;
             });
 
-            // Add submission counts to each form
-            const formsWithCounts = formConfigs.map(form => {
-                return {
-                    ...form,
-                    metadata: {
-                        ...form.metadata,
-                        submissionCount: submissionCountMap[form._id.toString()] || 0
-                    }
-                };
-            });
+            for (const form of formConfigs) {
+                const count = await this.checkinSubmissionModel.countDocuments({
+                    formConfigId: form._id
+                });
+
+                form.metadata = form.metadata || {};
+                form.metadata.submissionCount = count;
+            }
+
+            // // Add submission counts to each form
+            // const formsWithCounts = formConfigs.map(form => {
+            //     return {
+            //         ...form,
+            //         metadata: {
+            //             ...form.metadata,
+            //             submissionCount: submissionCountMap[form._id.toString()] || 0
+            //         }
+            //     };
+            // });
 
             // Calculate pagination metadata
             const totalPages = Math.ceil(total / limit);
@@ -322,7 +332,7 @@ export class CheckinFormConfigService {
             const metrics = await this.getMetrics(clientId);
 
             return {
-                data: formsWithCounts,
+                data: formConfigs,
                 pagination: {
                     total,
                     page,
