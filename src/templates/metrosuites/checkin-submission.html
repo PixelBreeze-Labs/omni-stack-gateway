@@ -165,58 +165,111 @@
                 <span class="field-label">Email:</span>
                 <span class="field-value">{{email}}</span>
             </div>
+            {{#if phoneNumber}}
             <div class="field">
                 <span class="field-label">Phone:</span>
                 <span class="field-value">{{phoneNumber}}</span>
             </div>
+            {{/if}}
         </div>
+
+        <!-- Address Section -->
+        {{#if formData.addressLine1}}
+        <div class="section">
+            <div class="section-title">Address Information</div>
+            <div class="field">
+                <span class="field-label">Address:</span>
+                <span class="field-value">{{formData.addressLine1}}</span>
+            </div>
+            {{#if formData.addressLine2}}
+            <div class="field">
+                <span class="field-label">Address Line 2:</span>
+                <span class="field-value">{{formData.addressLine2}}</span>
+            </div>
+            {{/if}}
+            {{#if formData.city}}
+            <div class="field">
+                <span class="field-label">City:</span>
+                <span class="field-value">{{formData.city}}</span>
+            </div>
+            {{/if}}
+            {{#if formData.state}}
+            <div class="field">
+                <span class="field-label">State/Province:</span>
+                <span class="field-value">{{formData.state}}</span>
+            </div>
+            {{/if}}
+            {{#if formData.postalCode}}
+            <div class="field">
+                <span class="field-label">Postal Code:</span>
+                <span class="field-value">{{formData.postalCode}}</span>
+            </div>
+            {{/if}}
+        </div>
+        {{/if}}
 
         {{#if hasBooking}}
         <div class="section">
             <div class="section-title">Booking Information</div>
+            {{#if booking.confirmationCode}}
             <div class="field">
                 <span class="field-label">Confirmation Code:</span>
                 <span class="field-value">{{booking.confirmationCode}}</span>
             </div>
+            {{/if}}
+            {{#if booking.checkInDate}}
             <div class="field">
                 <span class="field-label">Check-in Date:</span>
                 <span class="field-value">{{formatDate booking.checkInDate}}</span>
             </div>
+            {{/if}}
+            {{#if booking.checkOutDate}}
             <div class="field">
                 <span class="field-label">Check-out Date:</span>
                 <span class="field-value">{{formatDate booking.checkOutDate}}</span>
             </div>
+            {{/if}}
+            {{#if booking.guestCount}}
             <div class="field">
                 <span class="field-label">Number of Guests:</span>
                 <span class="field-value">{{booking.guestCount}}</span>
             </div>
+            {{/if}}
         </div>
         {{/if}}
 
         {{#if hasProperty}}
         <div class="section">
             <div class="section-title">Property Information</div>
+            {{#if property.name}}
             <div class="field">
                 <span class="field-label">Property:</span>
                 <span class="field-value">{{property.name}}</span>
             </div>
+            {{/if}}
+            {{#if property.type}}
             <div class="field">
                 <span class="field-label">Type:</span>
                 <span class="field-value">{{property.type}}</span>
             </div>
+            {{/if}}
         </div>
         {{/if}}
 
         <div class="section">
             <div class="section-title">Check-in Details</div>
+            {{#if expectedArrivalTime}}
             <div class="field">
                 <span class="field-label">Expected Arrival Time:</span>
                 <span class="field-value">{{expectedArrivalTime}}</span>
             </div>
+            {{/if}}
+            {{#if formData.idType}}
             <div class="field">
                 <span class="field-label">ID Type:</span>
                 <span class="field-value">{{formData.idType}}</span>
             </div>
+            {{/if}}
             <div class="field">
                 <span class="field-label">Needs Parking Spot:</span>
                 <span class="field-value">{{#if needsParkingSpot}}Yes{{else}}No{{/if}}</span>
@@ -224,10 +277,15 @@
             {{#if needsParkingSpot}}
             <div class="field">
                 <span class="field-label">Vehicle:</span>
-                <span class="field-value">{{formData.vehicleMakeModel}} ({{formData.color}}) - {{formData.licensePlate}}</span>
+                <span class="field-value">
+                    {{#if formData.vehicleMakeModel}}{{formData.vehicleMakeModel}}{{/if}}
+                    {{#if formData.vehicleColor}}({{formData.vehicleColor}}){{/if}}
+                    {{#if formData.licensePlate}} - {{formData.licensePlate}}{{/if}}
+                </span>
             </div>
             {{/if}}
             {{#if specialRequests}}
+            {{#if (length specialRequests)}}
             <div class="field">
                 <span class="field-label">Special Requests:</span>
                 <span class="field-value">
@@ -237,9 +295,11 @@
                 </span>
             </div>
             {{/if}}
+            {{/if}}
         </div>
 
         {{#if hasAttachments}}
+        {{#if (length attachments)}}
         <div class="section">
             <div class="section-title">Uploaded Files</div>
             <div class="attachment-list">
@@ -258,8 +318,9 @@
             </p>
         </div>
         {{/if}}
+        {{/if}}
 
-<!--        <a href="{{dashboardUrl}}" class="button">View in Dashboard</a>-->
+        <a href="{{dashboardUrl}}" class="button">View in Dashboard</a>
     </div>
 
     <div class="footer">
