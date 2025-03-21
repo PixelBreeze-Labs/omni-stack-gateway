@@ -2820,12 +2820,15 @@ export class CommunityReportService {
             const sampleCategories = sampleReports.map(r => r.category);
 
             // Simplified aggregation to avoid potential MongoDB version issues
+            // Add filter to exclude PENDING_REVIEW and REJECTED statuses
             const result = await this.reportModel.aggregate([
                 {
                     $match: {
                         clientId: clientObjectId,
                         isCommunityReport: true,
-                        category: { $exists: true, $nin: [null, ""] }
+                        category: { $exists: true, $nin: [null, ""] },
+                        // Add this filter to exclude PENDING_REVIEW and REJECTED
+                        status: { $nin: [ReportStatus.PENDING_REVIEW, ReportStatus.REJECTED] }
                     }
                 },
                 {
