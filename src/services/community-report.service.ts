@@ -2796,16 +2796,25 @@ export class CommunityReportService {
 
     async getReportsByCategory(clientId: string) {
         try {
+            // Log total reports for debugging
+            const totalReports = await this.reportModel.countDocuments({
+                clientId,
+                isCommunityReport: true
+            });
+            console.log(`Total reports for client ${clientId}: ${totalReports}`);
+
+            // Run the aggregation with improved matching
             const result = await this.reportModel.aggregate([
                 {
                     $match: {
                         clientId,
-                        isCommunityReport: true
+                        isCommunityReport: true,
+                        category: { $exists: true, $ne: null, $ne: "" } // Ensure category exists and is not empty
                     }
                 },
                 {
                     $group: {
-                        _id: '$category',
+                        _id: { $toLower: '$category' }, // Case-insensitive grouping
                         count: { $sum: 1 }
                     }
                 },
@@ -2815,7 +2824,6 @@ export class CommunityReportService {
                         category: { $ifNull: ['$_id', 'other'] },
                         name: { $ifNull: ['$_id', 'other'] },
                         count: 1,
-                        // Add color for frontend display
                         color: {
                             $switch: {
                                 branches: [
@@ -2836,6 +2844,8 @@ export class CommunityReportService {
                     $sort: { count: -1 }
                 }
             ]);
+
+            console.log('Aggregation result:', result);
 
             // Format category names for display
             return result.map(item => ({
