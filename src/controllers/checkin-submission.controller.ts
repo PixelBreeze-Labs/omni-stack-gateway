@@ -39,7 +39,7 @@ export class CheckinSubmissionController {
      */
     @Post(':shortCode')
     @ApiConsumes('multipart/form-data')
-    @UseInterceptors(FileFieldsInterceptor([
+    @UseInterceptors((FileFieldsInterceptor as any)([
         { name: 'files', maxCount: 10 }
     ]))
     @ApiOperation({ summary: 'Submit a check-in form' })
