@@ -12,6 +12,8 @@ import {
 } from '../dtos/community-report.dto';
 import { SupabaseService } from './supabase.service';
 import {ReportComment} from "../schemas/report-comment.schema";
+import { NotificationService } from './notification.service';
+import { NotificationType } from '../schemas/notification.schema';
 export interface AnalyticsParams {
     startDate?: string;
     endDate?: string;
@@ -27,6 +29,7 @@ export class CommunityReportService {
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(ReportComment.name) private reportCommentModel: Model<ReportComment>,
         private readonly supabaseService: SupabaseService,
+        private readonly notificationService: NotificationService
     ) {}
     async create(
         reportData: CreateCommunityReportDto & { clientId: string },
@@ -2643,6 +2646,8 @@ export class CommunityReportService {
             throw new NotFoundException(`Report with ID ${id} not found`);
         }
 
+        const oldStatus = existingReport.status;
+
         console.log(`Updating status field only for report ${id} to: ${status}`);
 
         // Update only the status field and updatedAt timestamp
@@ -2658,6 +2663,22 @@ export class CommunityReportService {
 
         if (result.modifiedCount === 0) {
             console.error('Failed to update status field');
+        }
+
+        // Create notification for the report author if status has changed
+        if (existingReport.authorId && oldStatus !== status) {
+            try {
+                await this.notificationService.createStatusChangeNotification(
+                    existingReport.authorId.toString(),
+                    clientId,
+                    id,
+                    oldStatus,
+                    status,
+                    existingReport.title || 'Your Report'
+                );
+            } catch (error) {
+                console.error('Error creating notification:', error);
+            }
         }
 
         // Fetch the updated report
@@ -2768,6 +2789,26 @@ export class CommunityReportService {
                 $set: { updatedAt: new Date() }
             }
         );
+
+        // Send notification to report author if it's not the same person adding the comment
+        if (report.authorId && report.authorId.toString() !== userId) {
+            try {
+                const authorName = user.name && user.surname
+                    ? `${user.name} ${user.surname}`
+                    : user.name || 'Someone';
+
+                await this.notificationService.createCommentNotification(
+                    report.authorId.toString(),
+                    clientId,
+                    reportId,
+                    authorName,
+                    report.title || 'Your Report'
+                );
+            } catch (error) {
+                console.error('Error creating comment notification:', error);
+            }
+        }
+
 
         // Return the newly created comment with author information
         const populatedComment = await this.reportCommentModel.findById(comment._id)
