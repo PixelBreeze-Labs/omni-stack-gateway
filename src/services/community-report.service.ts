@@ -1,7 +1,7 @@
 // src/services/community-report.service.ts
 import {BadRequestException, Injectable, NotFoundException, UnauthorizedException} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model,Types } from 'mongoose';
 import { Report, ReportStatus } from '../schemas/report.schema';
 import { User } from '../schemas/user.schema';
 import { ReportTag } from '../schemas/report-tag.schema';
@@ -2805,7 +2805,7 @@ export class CommunityReportService {
             // Try with MongoDB ObjectId
             let clientObjectId;
             try {
-                clientObjectId = new mongoose.Types.ObjectId(clientId);
+                clientObjectId = new Types.ObjectId(clientId);
             } catch (err) {
                 // Keep error information
                 clientObjectId = clientId; // Fallback to string
