@@ -285,7 +285,6 @@
             </div>
             {{/if}}
             {{#if specialRequests}}
-            {{#if (length specialRequests)}}
             <div class="field">
                 <span class="field-label">Special Requests:</span>
                 <span class="field-value">
@@ -295,11 +294,10 @@
                 </span>
             </div>
             {{/if}}
-            {{/if}}
         </div>
 
         {{#if hasAttachments}}
-        {{#if (length attachments)}}
+        {{#if attachments}}
         <div class="section">
             <div class="section-title">Uploaded Files</div>
             <div class="attachment-list">
