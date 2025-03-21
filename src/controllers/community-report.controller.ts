@@ -33,6 +33,7 @@ import {
 import {Report, ReportStatus} from '../schemas/report.schema';
 import { Client } from '../schemas/client.schema';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import {CommentStatus} from "../schemas/report-comment.schema";
 
 @ApiTags('Community Reports')
 @Controller('community-reports')
@@ -285,6 +286,27 @@ export class CommunityReportController {
             req.client.id,
             commentData.userId,
             commentData.content
+        );
+    }
+
+    @ApiOperation({ summary: 'Update comment status' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiParam({ name: 'commentId', description: 'Comment ID' })
+    @ApiBody({ type: Object, description: 'Status data', required: true })
+    @ApiResponse({ status: 200, description: 'Comment status updated' })
+    @UseGuards(ClientAuthGuard)
+    @Put(':id/comments/:commentId/status')
+    async updateCommentStatus(
+        @Param('id') id: string,
+        @Param('commentId') commentId: string,
+        @Body() data: { status: CommentStatus },
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.updateCommentStatus(
+            id,
+            commentId,
+            req.client.id,
+            data.status
         );
     }
 
