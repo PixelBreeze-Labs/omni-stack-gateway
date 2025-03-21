@@ -70,6 +70,7 @@ import { Discount, DiscountSchema } from './schemas/discount.schema';
 import { CheckinSubmission, CheckinSubmissionSchema } from './schemas/checkin-submission.schema';
 import { CheckinFormConfig, CheckinFormConfigSchema } from './schemas/checkin-form-config.schema';
 import { ReportComment, ReportCommentSchema } from './schemas/report-comment.schema';
+import { Notification, NotificationSchema } from './schemas/notification.schema';
 
 
 
@@ -132,6 +133,7 @@ import { DiscountController } from './controllers/discount.controller';
 import { CommunityReportController } from './controllers/community-report.controller';
 import { CheckinSubmissionController } from './controllers/checkin-submission.controller';
 import { CheckinFormConfigController } from './controllers/checkin-form-config.controller';
+import { NotificationController } from './controllers/notification.controller';
 
 
 
@@ -212,6 +214,7 @@ import { DiscountService } from './services/discount.service';
 import { CommunityReportService } from './services/community-report.service';
 import { CheckinFormConfigService } from './services/checkin-form-config.service';
 import { CheckinSubmissionService } from './services/checkin-submission.service';
+import { NotificationService } from './services/notification.service';
 
 
 // Others
@@ -305,6 +308,7 @@ import { ReportTagController } from './controllers/report-tag.controller';
       { name: CheckinSubmission.name, schema: CheckinSubmissionSchema },
       { name: CheckinFormConfig.name, schema: CheckinFormConfigSchema },
       { name: ReportComment.name, schema: ReportCommentSchema },
+      { name: Notification.name, schema: NotificationSchema },
     ]),
   ],
   controllers: [
@@ -374,7 +378,8 @@ import { ReportTagController } from './controllers/report-tag.controller';
     CommunityReportController,
     ReportTagController,
     CheckinSubmissionController,
-    CheckinFormConfigController
+    CheckinFormConfigController,
+    NotificationController
   ],
   providers: [
     SnapfoodService,
@@ -451,7 +456,8 @@ import { ReportTagController } from './controllers/report-tag.controller';
     CommunityReportService,
     ReportTagService,
     CheckinFormConfigService,
-    CheckinSubmissionService
+    CheckinSubmissionService,
+    NotificationService
   ],
 })
 export class AppModule implements NestModule {
