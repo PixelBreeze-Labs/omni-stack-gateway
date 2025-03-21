@@ -2796,66 +2796,96 @@ export class CommunityReportService {
 
     async getReportsByCategory(clientId: string) {
         try {
-            // Log total reports for debugging
+            // Get raw count of reports first for debugging
             const totalReports = await this.reportModel.countDocuments({
                 clientId,
                 isCommunityReport: true
             });
-            console.log(`Total reports for client ${clientId}: ${totalReports}`);
 
-            // Run the aggregation with improved matching
+            // Try with MongoDB ObjectId
+            let clientObjectId;
+            try {
+                clientObjectId = new mongoose.Types.ObjectId(clientId);
+            } catch (err) {
+                // Keep error information
+                clientObjectId = clientId; // Fallback to string
+            }
+
+            // Run a simple check query first to see if we can get any data
+            const sampleReports = await this.reportModel.find({
+                clientId: clientObjectId,
+                isCommunityReport: true
+            }).select('category').limit(5);
+
+            const sampleCategories = sampleReports.map(r => r.category);
+
+            // Simplified aggregation to avoid potential MongoDB version issues
             const result = await this.reportModel.aggregate([
                 {
                     $match: {
-                        clientId,
+                        clientId: clientObjectId,
                         isCommunityReport: true,
-                        category: { $exists: true, $nin: [null, ""] } // Ensure category exists and is not empty
+                        category: { $exists: true, $nin: [null, ""] }
                     }
                 },
                 {
                     $group: {
-                        _id: { $toLower: '$category' }, // Case-insensitive grouping
+                        _id: "$category", // Group by exact category name
                         count: { $sum: 1 }
                     }
                 },
                 {
                     $project: {
                         _id: 0,
-                        category: { $ifNull: ['$_id', 'other'] },
-                        name: { $ifNull: ['$_id', 'other'] },
+                        category: "$_id",
+                        name: "$_id",
                         count: 1,
                         color: {
                             $switch: {
                                 branches: [
-                                    { case: { $eq: ['$_id', 'infrastructure'] }, then: '#64748B' },
-                                    { case: { $eq: ['$_id', 'environment'] }, then: '#22C55E' },
-                                    { case: { $eq: ['$_id', 'community'] }, then: '#A855F7' },
-                                    { case: { $eq: ['$_id', 'safety'] }, then: '#EF4444' },
-                                    { case: { $eq: ['$_id', 'health_services'] }, then: '#EC4899' },
-                                    { case: { $eq: ['$_id', 'public_services'] }, then: '#3B82F6' },
-                                    { case: { $eq: ['$_id', 'transportation'] }, then: '#F97316' }
+                                    { case: { $eq: ["$_id", "infrastructure"] }, then: "#64748B" },
+                                    { case: { $eq: ["$_id", "environment"] }, then: "#22C55E" },
+                                    { case: { $eq: ["$_id", "community"] }, then: "#A855F7" },
+                                    { case: { $eq: ["$_id", "safety"] }, then: "#EF4444" },
+                                    { case: { $eq: ["$_id", "health_services"] }, then: "#EC4899" },
+                                    { case: { $eq: ["$_id", "public_services"] }, then: "#3B82F6" },
+                                    { case: { $eq: ["$_id", "transportation"] }, then: "#F97316" }
                                 ],
-                                default: '#6B7280'
+                                default: "#6B7280"
                             }
                         }
                     }
-                },
-                {
-                    $sort: { count: -1 }
                 }
             ]);
 
-            console.log('Aggregation result:', result);
-
             // Format category names for display
-            return result.map(item => ({
+            const formattedResult = result.map(item => ({
                 ...item,
                 name: item.name ? item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Other',
                 displayName: item.name ? item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Other'
             }));
+
+            // Return both the results and diagnostic information
+            if (formattedResult.length === 0) {
+                return {
+                    categories: formattedResult,
+                    debug: {
+                        totalReports,
+                        sampleCategories,
+                        clientId,
+                        aggregationResult: result
+                    }
+                };
+            }
+
+            return formattedResult;
         } catch (error) {
-            console.error('Error getting reports by category:', error);
-            return [];
+            // Return error information
+            return {
+                categories: [],
+                error: error.message,
+                stack: error.stack
+            };
         }
     }
 }
