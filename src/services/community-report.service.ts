@@ -2809,7 +2809,7 @@ export class CommunityReportService {
                     $match: {
                         clientId,
                         isCommunityReport: true,
-                        category: { $exists: true, $ne: null, $ne: "" } // Ensure category exists and is not empty
+                        category: { $exists: true, $nin: [null, ""] } // Ensure category exists and is not empty
                     }
                 },
                 {
