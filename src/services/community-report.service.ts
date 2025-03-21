@@ -11,7 +11,7 @@ import {
     ListCommunityReportDto
 } from '../dtos/community-report.dto';
 import { SupabaseService } from './supabase.service';
-import {ReportComment} from "../schemas/report-comment.schema";
+import {CommentStatus, ReportComment} from "../schemas/report-comment.schema";
 import { NotificationService } from './notification.service';
 import { NotificationType } from '../schemas/notification.schema';
 export interface AnalyticsParams {
@@ -2694,7 +2694,8 @@ export class CommunityReportService {
     /**
      * Get comments for a report
      */
-    async getReportComments(reportId: string, clientId: string) {
+
+    async getReportComments(reportId: string, clientId: string, userRole?: string) {
         // First check if the report exists and belongs to the client
         const report = await this.reportModel.findOne({
             _id: reportId,
@@ -2706,11 +2707,19 @@ export class CommunityReportService {
             throw new NotFoundException(`Report with ID ${reportId} not found`);
         }
 
-        // Get comments with populated user information
-        const comments = await this.reportCommentModel.find({
+        // Build the query
+        const query: any = {
             reportId: reportId,
             clientId: clientId
-        })
+        };
+
+        // If not admin, only show approved comments
+        if (userRole !== 'ADMIN') {
+            query.status = CommentStatus.APPROVED;
+        }
+
+        // Get comments with populated user information
+        const comments = await this.reportCommentModel.find(query)
             .sort({ createdAt: -1 })
             .populate({
                 path: 'authorId',
@@ -2735,6 +2744,7 @@ export class CommunityReportService {
                 id: comment._id.toString(),
                 content: comment.content,
                 author,
+                status: comment.status,
                 createdAt: comment.createdAt,
                 updatedAt: comment.updatedAt
             };
@@ -2771,12 +2781,13 @@ export class CommunityReportService {
             throw new UnauthorizedException('User does not belong to this client');
         }
 
-        // Create the comment
+        // Create the comment with PENDING_REVIEW status
         const comment = await this.reportCommentModel.create({
             reportId,
             clientId,
             authorId: userId,
             content: content.trim(),
+            status: CommentStatus.PENDING_REVIEW,
             createdAt: new Date(),
             updatedAt: new Date()
         });
@@ -2809,7 +2820,6 @@ export class CommunityReportService {
             }
         }
 
-
         // Return the newly created comment with author information
         const populatedComment = await this.reportCommentModel.findById(comment._id)
             .populate({
@@ -2830,6 +2840,7 @@ export class CommunityReportService {
             id: populatedComment._id.toString(),
             content: populatedComment.content,
             author,
+            status: populatedComment.status,
             createdAt: populatedComment.createdAt,
             updatedAt: populatedComment.updatedAt
         };
@@ -2931,5 +2942,36 @@ export class CommunityReportService {
                 stack: error.stack
             };
         }
+    }
+
+    async updateCommentStatus(reportId: string, commentId: string, clientId: string, status: CommentStatus): Promise<ReportComment> {
+        // First, check if the report exists
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Check if the comment exists
+        const comment = await this.reportCommentModel.findOne({
+            _id: commentId,
+            reportId: reportId,
+            clientId: clientId
+        });
+
+        if (!comment) {
+            throw new NotFoundException(`Comment with ID ${commentId} not found`);
+        }
+
+        // Update the comment status
+        comment.status = status;
+        comment.updatedAt = new Date();
+        await comment.save();
+
+        return comment;
     }
 }
