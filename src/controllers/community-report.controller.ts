@@ -519,8 +519,6 @@ export class CommunityReportController {
 
         return this.communityReportService.getReportStats(userId, req.client.id);
     }
-
-    @ApiBearerAuth()
     @ApiOperation({ summary: 'Get community report by ID' })
     @ApiParam({ name: 'id', description: 'Report ID' })
     @ApiResponse({ status: 200, description: 'Report details' })
@@ -528,9 +526,10 @@ export class CommunityReportController {
     @Get(':id')
     async findOne(
         @Param('id') id: string,
-        @Req() req: Request & { client: Client }
+        @Req() req: Request & { client: Client },
+        @Query('userId') userId?: string
     ): Promise<Report> {
-        return this.communityReportService.findOne(id, req.client.id);
+        return this.communityReportService.findOne(id, req.client.id, userId);
     }
 
 
