@@ -3262,7 +3262,7 @@ export class CommunityReportService {
     async deleteComment(reportId: string, commentId: string, clientId: string): Promise<void> {
         // Skip report existence check and directly check if the comment exists and belongs to the client
         const comment = await this.reportCommentModel.findOne({
-            _id: commentId,
+            _id: new Types.ObjectId(commentId),
             reportId: reportId,
             clientId: clientId
         });
