@@ -287,6 +287,15 @@ export class CommunityReportController {
         return this.communityReportService.getReportAdminComments(id, req.client.id, 'ADMIN');
     }
 
+    @Delete(':id/comments/:commentId')
+    async deleteComment(
+        @Param('id') id: string,
+        @Param('commentId') commentId: string,
+        @Req() req: Request & { client: Client }
+    ): Promise<void> {
+        await this.communityReportService.deleteComment(id, commentId, req.client.id);
+    }
+
     @ApiOperation({ summary: 'Flag a report' })
     @ApiParam({ name: 'id', description: 'Report ID' })
     @ApiBody({ type: CreateReportFlagDto })
