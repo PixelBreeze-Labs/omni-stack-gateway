@@ -341,7 +341,7 @@ export class CommunityReportService {
         };
     }
 
-    async findOne(id: string, clientId: string): Promise<any> {
+    async findOne(id: string, clientId: string, userId?: string): Promise<any> {
         // First increment the view count atomically
         await this.reportModel.updateOne(
             { _id: id, clientId: clientId, isCommunityReport: true },
@@ -396,16 +396,27 @@ export class CommunityReportService {
             createdAt: report.createdAt
         }));
 
+        // Check if the user has already flagged this report
+        let userHasFlagged = false;
+        if (userId) {
+            const existingFlag = await this.reportFlagModel.findOne({
+                reportId: id,
+                userId,
+                clientId
+            });
+            userHasFlagged = !!existingFlag;
+        }
+
         return {
             ...reportObj,
             id: reportObj._id.toString(),
             content: reportObj.content?.message || '',
             _id: undefined,
             relatedReports: relatedReports.slice(0, 5), // Limit to 5 related reports
-            recentReports: transformedRecentReports // Add recent reports
+            recentReports: transformedRecentReports, // Add recent reports
+            userHasFlagged // Add flag information
         };
     }
-
     // Helper method to find related reports
     async findRelatedReports(id: string, clientId: string, maxDistance = 1000): Promise<any[]> {
         const report = await this.reportModel.findById(id);
