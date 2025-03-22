@@ -10,10 +10,14 @@ import {
     UpdateCommunityReportDto,
     ListCommunityReportDto
 } from '../dtos/community-report.dto';
+import {
+    CreateReportFlagDto,
+} from '../dtos/report-flag.dto';
 import { SupabaseService } from './supabase.service';
 import {CommentStatus, ReportComment} from "../schemas/report-comment.schema";
 import { NotificationService } from './notification.service';
 import { NotificationType } from '../schemas/notification.schema';
+import {FlagStatus, ReportFlag} from "../schemas/report-flag.schema";
 export interface AnalyticsParams {
     startDate?: string;
     endDate?: string;
@@ -28,6 +32,7 @@ export class CommunityReportService {
         @InjectModel(ReportTag.name) private reportTagModel: Model<ReportTag>,
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(ReportComment.name) private reportCommentModel: Model<ReportComment>,
+        @InjectModel(ReportFlag.name) private reportFlagModel: Model<ReportFlag>,
         private readonly supabaseService: SupabaseService,
         private readonly notificationService: NotificationService
     ) {}
@@ -2974,4 +2979,130 @@ export class CommunityReportService {
 
         return comment;
     }
+
+    async flagReport(
+        reportId: string,
+        clientId: string,
+        userId: string,
+        flagData: CreateReportFlagDto
+    ): Promise<ReportFlag> {
+        // Check if report exists
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Check if user exists
+        const user = await this.userModel.findById(userId);
+        if (!user) {
+            throw new NotFoundException(`User with ID ${userId} not found`);
+        }
+
+        // Check if user has already flagged this report
+        const existingFlag = await this.reportFlagModel.findOne({
+            reportId,
+            userId,
+            clientId
+        });
+
+        if (existingFlag) {
+            throw new BadRequestException('You have already flagged this report');
+        }
+
+        // Create new flag
+        const flag = await this.reportFlagModel.create({
+            reportId,
+            userId,
+            clientId,
+            reason: flagData.reason,
+            comment: flagData.comment || '',
+            status: FlagStatus.PENDING,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
+        return flag;
+    }
+
+    async getReportFlags(reportId: string, clientId: string): Promise<any> {
+        // Check if report exists
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Get flags
+        const flags = await this.reportFlagModel.find({
+            reportId,
+            clientId
+        })
+            .populate({
+                path: 'userId',
+                select: 'name email'
+            })
+            .sort({ createdAt: -1 });
+
+        return {
+            data: flags.map(flag => ({
+                id: flag._id,
+                reason: flag.reason,
+                comment: flag.comment,
+                status: flag.status,
+                user: flag.userId,
+                createdAt: flag.createdAt
+            })),
+            count: flags.length
+        };
+    }
+
+    async updateFlagStatus(
+        reportId: string,
+        flagId: string,
+        clientId: string,
+        status: FlagStatus
+    ): Promise<ReportFlag> {
+        // Check if report exists
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Find and update flag
+        const flag = await this.reportFlagModel.findOneAndUpdate(
+            {
+                _id: flagId,
+                reportId,
+                clientId
+            },
+            {
+                $set: {
+                    status,
+                    updatedAt: new Date()
+                }
+            },
+            { new: true }
+        );
+
+        if (!flag) {
+            throw new NotFoundException(`Flag with ID ${flagId} not found`);
+        }
+
+        return flag;
+    }
+
 }

@@ -34,6 +34,8 @@ import {Report, ReportStatus} from '../schemas/report.schema';
 import { Client } from '../schemas/client.schema';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import {CommentStatus} from "../schemas/report-comment.schema";
+import {FlagStatus} from "../schemas/report-flag.schema";
+import {CreateReportFlagDto} from "../dtos/report-flag.dto";
 
 @ApiTags('Community Reports')
 @Controller('community-reports')
@@ -259,6 +261,63 @@ export class CommunityReportController {
         @Req() req: Request & { client: Client }
     ) {
         return this.communityReportService.getReportComments(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Flag a report' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiBody({ type: CreateReportFlagDto })
+    @ApiResponse({ status: 201, description: 'Report flagged successfully' })
+    @UseGuards(ClientAuthGuard)
+    @Post(':id/flag')
+    async flagReport(
+        @Param('id') id: string,
+        @Body() flagData: CreateReportFlagDto,
+        @Req() req: Request & { client: Client },
+        @Query('userId') userId: string
+    ) {
+        if (!userId) {
+            throw new UnauthorizedException('User ID is required');
+        }
+
+        return this.communityReportService.flagReport(
+            id,
+            req.client.id,
+            userId,
+            flagData
+        );
+    }
+
+    @ApiOperation({ summary: 'Get flags for a report (admin only)' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'List of flags for the report' })
+    @UseGuards(ClientAuthGuard)
+    @Get(':id/flags')
+    async getReportFlags(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getReportFlags(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Update flag status (admin only)' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiParam({ name: 'flagId', description: 'Flag ID' })
+    @ApiBody({ description: 'Flag status update', required: true })
+    @ApiResponse({ status: 200, description: 'Flag status updated' })
+    @UseGuards(ClientAuthGuard)
+    @Put(':id/flags/:flagId')
+    async updateFlagStatus(
+        @Param('id') id: string,
+        @Param('flagId') flagId: string,
+        @Body() data: { status: FlagStatus },
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.updateFlagStatus(
+            id,
+            flagId,
+            req.client.id,
+            data.status
+        );
     }
 
     @ApiOperation({ summary: 'Add a comment to a community report' })
