@@ -3272,7 +3272,7 @@ export class CommunityReportService {
         }
 
         // Delete the comment
-        await this.reportCommentModel.deleteById(commentId);
+        await this.reportCommentModel.deleteOne({ _id: commentId }).exec();
 
         // Optionally update the report's comment count if it exists
         await this.reportModel.updateOne(
