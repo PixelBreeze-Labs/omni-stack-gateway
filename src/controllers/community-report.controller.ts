@@ -263,6 +263,30 @@ export class CommunityReportController {
         return this.communityReportService.getReportComments(id, req.client.id);
     }
 
+    @ApiOperation({ summary: 'Get flags for a report (admin view with extra details)' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'List of flags for the report (admin view)' })
+    @UseGuards(ClientAuthGuard)
+    @Get(':id/flags/admin')
+    async getReportFlagsAdmin(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getReportFlagsAdmin(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get comments for a community report (admin view)' })
+    @ApiParam({ name: 'id', description: 'Report ID' })
+    @ApiResponse({ status: 200, description: 'List of comments for the report (admin view)' })
+    @UseGuards(ClientAuthGuard)
+    @Get(':id/comments/admin')
+    async getReportAdminComments(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.communityReportService.getReportAdminComments(id, req.client.id, 'ADMIN');
+    }
+
     @ApiOperation({ summary: 'Flag a report' })
     @ApiParam({ name: 'id', description: 'Report ID' })
     @ApiBody({ type: CreateReportFlagDto })
