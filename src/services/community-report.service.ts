@@ -407,6 +407,30 @@ export class CommunityReportService {
             userHasFlagged = !!existingFlag;
         }
 
+        // Get actual comment count and flags count
+        const commentCount = await this.reportCommentModel.countDocuments({
+            reportId: id,
+            clientId: clientId
+        });
+
+        const flagsCount = await this.reportFlagModel.countDocuments({
+            reportId: id,
+            clientId: clientId
+        });
+
+        // Update the counts in the database if they differ from the actual counts
+        if (commentCount !== reportObj.commentCount || flagsCount !== reportObj.flagsCount) {
+            await this.reportModel.updateOne(
+                { _id: id },
+                {
+                    $set: {
+                        commentCount: commentCount,
+                        flagsCount: flagsCount
+                    }
+                }
+            );
+        }
+
         return {
             ...reportObj,
             id: reportObj._id.toString(),
@@ -414,9 +438,13 @@ export class CommunityReportService {
             _id: undefined,
             relatedReports: relatedReports.slice(0, 5), // Limit to 5 related reports
             recentReports: transformedRecentReports, // Add recent reports
-            userHasFlagged // Add flag information
+            userHasFlagged, // Add flag information
+            commentCount, // Ensure actual comment count is returned
+            flagsCount, // Add flag count
+            viewCount: reportObj.viewCount || 0 // Ensure view count is returned
         };
     }
+
     // Helper method to find related reports
     async findRelatedReports(id: string, clientId: string, maxDistance = 1000): Promise<any[]> {
         const report = await this.reportModel.findById(id);
@@ -2772,6 +2800,79 @@ export class CommunityReportService {
         };
     }
 
+    async getReportAdminComments(reportId: string, clientId: string, userRole?: string) {
+        // First check if the report exists and belongs to the client
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Build the query
+        const query: any = {
+            reportId: reportId,
+            clientId: clientId
+        };
+
+        // If not admin, only show approved comments
+        if (userRole !== 'ADMIN') {
+            query.status = CommentStatus.APPROVED;
+        }
+
+        // Get comments with populated user information
+        const comments = await this.reportCommentModel.find(query)
+            .sort({ createdAt: -1 })
+            .populate({
+                path: 'authorId',
+                model: 'User',
+                select: 'name surname email image'
+            })
+            .lean();
+
+        console.log(`Found ${comments.length} comments for report ${reportId}`, query);
+
+        // Transform comments into a more frontend-friendly format
+        const transformedComments = comments.map(comment => {
+            // Extract author information
+            let author = null;
+            if (comment.authorId) {
+                const user = comment.authorId as any;
+                author = {
+                    id: user._id ? user._id.toString() : null,
+                    name: user.name && user.surname ? `${user.name} ${user.surname}` : user.name || user.email,
+                    image: user.image || null
+                };
+            }
+
+            return {
+                id: comment._id.toString(),
+                content: comment.content,
+                author,
+                status: comment.status,
+                createdAt: comment.createdAt,
+                updatedAt: comment.updatedAt
+            };
+        });
+
+        // Update comment count in report if it doesn't match
+        if (report.commentCount !== comments.length) {
+            await this.reportModel.updateOne(
+                { _id: reportId },
+                { $set: { commentCount: comments.length } }
+            );
+        }
+
+        return {
+            data: transformedComments,
+            total: transformedComments.length
+        };
+    }
+
+
     /**
      * Add a comment to a report
      */
@@ -3037,10 +3138,52 @@ export class CommunityReportService {
             updatedAt: new Date()
         });
 
+        // Increment the flags count on the report
+        await this.reportModel.updateOne(
+            { _id: reportId },
+            { $inc: { flagsCount: 1 } }
+        );
+
         return flag;
     }
 
     async getReportFlags(reportId: string, clientId: string): Promise<any> {
+        // Check if report exists
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Get flags
+        const flags = await this.reportFlagModel.find({
+            reportId,
+            clientId
+        })
+            .populate({
+                path: 'userId',
+                select: 'name email'
+            })
+            .sort({ createdAt: -1 });
+
+        return {
+            data: flags.map(flag => ({
+                id: flag._id,
+                reason: flag.reason,
+                comment: flag.comment,
+                status: flag.status,
+                user: flag.userId,
+                createdAt: flag.createdAt
+            })),
+            count: flags.length
+        };
+    }
+
+    async getReportFlagsAdmin(reportId: string, clientId: string): Promise<any> {
         // Check if report exists
         const report = await this.reportModel.findOne({
             _id: reportId,

@@ -137,6 +137,9 @@ export class Report extends Document {
 
     @Prop({ type: Number, default: 0 })
     commentCount?: number;
+
+    @Prop({ type: Number, default: 0 })
+    flagsCount?: number;
 }
 
 export const ReportSchema = SchemaFactory.createForClass(Report);
