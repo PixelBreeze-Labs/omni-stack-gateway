@@ -3259,4 +3259,36 @@ export class CommunityReportService {
         return flag;
     }
 
+    async deleteComment(reportId: string, commentId: string, clientId: string): Promise<void> {
+        // First check if the report exists
+        const report = await this.reportModel.findOne({
+            _id: reportId,
+            clientId: clientId,
+            isCommunityReport: true
+        });
+
+        if (!report) {
+            throw new NotFoundException(`Report with ID ${reportId} not found`);
+        }
+
+        // Check if the comment exists
+        const comment = await this.reportCommentModel.findOne({
+            _id: commentId,
+            reportId: reportId,
+            clientId: clientId
+        });
+
+        if (!comment) {
+            throw new NotFoundException(`Comment with ID ${commentId} not found`);
+        }
+
+        // Delete the comment
+        await this.reportCommentModel.findByIdAndDelete(commentId);
+
+        // Update comment count in report
+        await this.reportModel.updateOne(
+            { _id: reportId },
+            { $inc: { commentCount: -1 } }
+        );
+    }
 }
