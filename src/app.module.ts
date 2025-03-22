@@ -71,6 +71,7 @@ import { CheckinSubmission, CheckinSubmissionSchema } from './schemas/checkin-su
 import { CheckinFormConfig, CheckinFormConfigSchema } from './schemas/checkin-form-config.schema';
 import { ReportComment, ReportCommentSchema } from './schemas/report-comment.schema';
 import { Notification, NotificationSchema } from './schemas/notification.schema';
+import { ReportFlag, ReportFlagSchema } from './schemas/report-flag.schema';
 
 
 
@@ -309,6 +310,7 @@ import { ReportTagController } from './controllers/report-tag.controller';
       { name: CheckinFormConfig.name, schema: CheckinFormConfigSchema },
       { name: ReportComment.name, schema: ReportCommentSchema },
       { name: Notification.name, schema: NotificationSchema },
+      { name: ReportFlag.name, schema: ReportFlagSchema },
     ]),
   ],
   controllers: [
