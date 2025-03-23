@@ -73,10 +73,6 @@ import { ReportComment, ReportCommentSchema } from './schemas/report-comment.sch
 import { Notification, NotificationSchema } from './schemas/notification.schema';
 import { ReportFlag, ReportFlagSchema } from './schemas/report-flag.schema';
 import { AiModel, AiModelSchema } from './schemas/ai-model.schema';
-import { AiModelClass, AiModelClassSchema } from './schemas/ai-model-class.schema';
-import { DetectionResult, DetectionResultSchema } from './schemas/detection-result.schema';
-import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-summary.schema';
-
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -225,9 +221,20 @@ import { NotificationService } from './services/notification.service';
 import {JwtModule} from "@nestjs/jwt";
 
 // Groupped
+
+// Report Tags
 import { ReportTag, ReportTagSchema } from './schemas/report-tag.schema';
 import { ReportTagService } from './services/report-tag.service';
 import { ReportTagController } from './controllers/report-tag.controller';
+
+// AI Models
+import { AiModelService } from './services/ai-model.service';
+import { AiModelController } from './controllers/ai-model.controller';
+import { AiModelClass, AiModelClassSchema } from './schemas/ai-model-class.schema';
+import { DetectionResult, DetectionResultSchema } from './schemas/detection-result.schema';
+import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-summary.schema';
+
+
 
 @Module({
   imports: [
@@ -388,7 +395,8 @@ import { ReportTagController } from './controllers/report-tag.controller';
     ReportTagController,
     CheckinSubmissionController,
     CheckinFormConfigController,
-    NotificationController
+    NotificationController,
+    AiModelController
   ],
   providers: [
     SnapfoodService,
@@ -466,7 +474,8 @@ import { ReportTagController } from './controllers/report-tag.controller';
     ReportTagService,
     CheckinFormConfigService,
     CheckinSubmissionService,
-    NotificationService
+    NotificationService,
+    AiModelService
   ],
 })
 export class AppModule implements NestModule {
