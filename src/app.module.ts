@@ -72,7 +72,10 @@ import { CheckinFormConfig, CheckinFormConfigSchema } from './schemas/checkin-fo
 import { ReportComment, ReportCommentSchema } from './schemas/report-comment.schema';
 import { Notification, NotificationSchema } from './schemas/notification.schema';
 import { ReportFlag, ReportFlagSchema } from './schemas/report-flag.schema';
-
+import { AiModel, AiModelSchema } from './schemas/ai-model.schema';
+import { AiModelClass, AiModelClassSchema } from './schemas/ai-model-class.schema';
+import { DetectionResult, DetectionResultSchema } from './schemas/detection-result.schema';
+import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-summary.schema';
 
 
 // Controller imports
@@ -311,6 +314,10 @@ import { ReportTagController } from './controllers/report-tag.controller';
       { name: ReportComment.name, schema: ReportCommentSchema },
       { name: Notification.name, schema: NotificationSchema },
       { name: ReportFlag.name, schema: ReportFlagSchema },
+      { name: AiModel.name, schema: AiModelSchema },
+      { name: AiModelClass.name, schema: AiModelClassSchema },
+      { name: DetectionResult.name, schema: DetectionResultSchema },
+      { name: DetectionSummary.name, schema: DetectionSummarySchema },
     ]),
   ],
   controllers: [
