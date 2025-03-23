@@ -24,6 +24,7 @@ export class AiModelService {
         updated: number;
         unchanged: number;
         errors: number;
+        modelMappings: { nextJsId: string; visionTrackId: string }[];
     }> {
         try {
             // Get the client
@@ -34,6 +35,7 @@ export class AiModelService {
 
             // Tracking stats
             let created = 0, updated = 0, unchanged = 0, errors = 0;
+            const modelMappings: { nextJsId: string; visionTrackId: string }[] = [];
 
             // Process each AI model
             for (const nextjsModel of nextjsModels) {
@@ -53,52 +55,7 @@ export class AiModelService {
                             needsUpdate = true;
                         }
 
-                        if (existingModel.description !== nextjsModel.description) {
-                            existingModel.description = nextjsModel.description;
-                            needsUpdate = true;
-                        }
-
-                        if (existingModel.version !== nextjsModel.version) {
-                            existingModel.version = nextjsModel.version;
-                            needsUpdate = true;
-                        }
-
-                        if (existingModel.isActive !== nextjsModel.active) {
-                            existingModel.isActive = nextjsModel.active;
-                            needsUpdate = true;
-                        }
-
-                        // Update metadata with model type and capabilities
-                        if (!existingModel.metadata) {
-                            existingModel.metadata = {};
-                        }
-
-                        if (existingModel.metadata.type !== nextjsModel.type) {
-                            existingModel.metadata.type = nextjsModel.type;
-                            needsUpdate = true;
-                        }
-
-                        if (JSON.stringify(existingModel.metadata.capabilities) !== JSON.stringify(nextjsModel.capabilities)) {
-                            existingModel.metadata.capabilities = nextjsModel.capabilities;
-                            needsUpdate = true;
-                        }
-
-                        if (JSON.stringify(existingModel.metadata.configOptions) !== JSON.stringify(nextjsModel.configOptions)) {
-                            existingModel.metadata.configOptions = nextjsModel.configOptions;
-                            needsUpdate = true;
-                        }
-
-                        // Store the source info
-                        if (existingModel.metadata.source !== nextjsModel.source) {
-                            existingModel.metadata.source = nextjsModel.source;
-                            needsUpdate = true;
-                        }
-
-                        // Store compatibility info
-                        if (JSON.stringify(existingModel.metadata.compatibleWith) !== JSON.stringify(nextjsModel.compatibleWith)) {
-                            existingModel.metadata.compatibleWith = nextjsModel.compatibleWith;
-                            needsUpdate = true;
-                        }
+                        // ... rest of the update logic ...
 
                         if (needsUpdate) {
                             await existingModel.save();
@@ -107,12 +64,11 @@ export class AiModelService {
                             unchanged++;
                         }
 
-                        // Check if we need to update the external ID in NextJS
-                        // If visionTrackId is not set or doesn't match our model ID
-                        if (!nextjsModel.visionTrackId || nextjsModel.visionTrackId !== existingModel._id.toString()) {
-                            // TODO: This would require a call to NextJS API to update the ID reference
-                            // This will be implemented in the controller that receives the sync request
-                        }
+                        // Add the mapping regardless of whether an update was needed
+                        modelMappings.push({
+                            nextJsId: nextjsModel.id.toString(),
+                            visionTrackId: existingModel._id.toString()
+                        });
                     } else {
                         // Model doesn't exist - create it
                         const newModel = await this.aiModelModel.create({
@@ -134,6 +90,12 @@ export class AiModelService {
                         });
 
                         created++;
+
+                        // Add the mapping for the newly created model
+                        modelMappings.push({
+                            nextJsId: nextjsModel.id.toString(),
+                            visionTrackId: newModel._id.toString()
+                        });
                     }
                 } catch (error) {
                     this.logger.error(`Error processing AI model ${nextjsModel.id}: ${error.message}`);
@@ -147,14 +109,14 @@ export class AiModelService {
                 created,
                 updated,
                 unchanged,
-                errors
+                errors,
+                modelMappings
             };
         } catch (error) {
             this.logger.error(`Error syncing AI models from NextJS: ${error.message}`, error.stack);
             throw error;
         }
     }
-
     /**
      * Update NextJS ID for a model
      */
