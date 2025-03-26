@@ -1,4 +1,4 @@
-// src/schemas/message.schema.ts
+// src/schemas/social-message.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
@@ -19,7 +19,7 @@ export enum MessageStatus {
 }
 
 @Schema({ timestamps: true })
-export class Message extends Document {
+export class SocialMessage extends Document {
     @Prop({
         type: MongooseSchema.Types.ObjectId,
         ref: 'User',
@@ -44,10 +44,10 @@ export class Message extends Document {
     })
     type: MessageType;
 
-    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Message' })
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'SocialMessage' })
     replyToId?: string;
 
-    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Message' })
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'SocialMessage' })
     forwardedFromId?: string;
 
     @Prop({
@@ -78,10 +78,10 @@ export class Message extends Document {
     isActive: boolean;
 }
 
-export const MessageSchema = SchemaFactory.createForClass(Message);
+export const SocialMessageSchema = SchemaFactory.createForClass(SocialMessage);
 
 // Add indexes
-MessageSchema.index({ chatId: 1, createdAt: -1 });
-MessageSchema.index({ senderId: 1 });
-MessageSchema.index({ clientId: 1 });
-MessageSchema.index({ 'readReceipts.userId': 1 });
+SocialMessageSchema.index({ chatId: 1, createdAt: -1 });
+SocialMessageSchema.index({ senderId: 1 });
+SocialMessageSchema.index({ clientId: 1 });
+SocialMessageSchema.index({ 'readReceipts.userId': 1 });

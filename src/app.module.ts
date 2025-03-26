@@ -136,6 +136,9 @@ import { CommunityReportController } from './controllers/community-report.contro
 import { CheckinSubmissionController } from './controllers/checkin-submission.controller';
 import { CheckinFormConfigController } from './controllers/checkin-form-config.controller';
 import { NotificationController } from './controllers/notification.controller';
+import { CoreNotificationController } from './controllers/core-notification.controller';
+import { SocialChatController } from './controllers/social-chat.controller';
+import { SocialMessageController } from './controllers/social-message.controller';
 
 
 
@@ -217,6 +220,8 @@ import { CommunityReportService } from './services/community-report.service';
 import { CheckinFormConfigService } from './services/checkin-form-config.service';
 import { CheckinSubmissionService } from './services/checkin-submission.service';
 import { NotificationService } from './services/notification.service';
+import { CoreNotificationService } from './services/core-notification.service';
+import { SocialChatService } from './services/social-chat.service';
 
 
 // Others
@@ -400,7 +405,10 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     CheckinSubmissionController,
     CheckinFormConfigController,
     NotificationController,
-    AiModelController
+    AiModelController,
+    CoreNotificationController,
+    SocialChatController,
+    SocialMessageController,
   ],
   providers: [
     SnapfoodService,
@@ -479,7 +487,9 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     CheckinFormConfigService,
     CheckinSubmissionService,
     NotificationService,
-    AiModelService
+    AiModelService,
+    CoreNotificationService,
+    SocialChatService
   ],
 })
 export class AppModule implements NestModule {
