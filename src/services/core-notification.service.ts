@@ -5,8 +5,8 @@ import { Model } from 'mongoose';
 import { User } from '../schemas/user.schema';
 import { OneSignalService } from './onesignal.service';
 import { SupabaseService } from './supabase.service';
-import { Message } from '../schemas/message.schema';
-import { Chat } from '../schemas/chat.schema';
+import { SocialMessage } from '../schemas/social-message.schema';
+import { SocialChat, ChatType } from '../schemas/social-chat.schema';
 
 export interface ChatNotificationOptions {
     chatId: string;
@@ -24,8 +24,8 @@ export class CoreNotificationService {
 
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
-        @InjectModel(Chat.name) private chatModel: Model<Chat>,
-        @InjectModel(Message.name) private messageModel: Model<Message>,
+        @InjectModel(SocialChat.name) private chatModel: Model<SocialChat>,
+        @InjectModel(SocialMessage.name) private messageModel: Model<SocialMessage>,
         private readonly oneSignalService: OneSignalService,
         private readonly supabaseService: SupabaseService,
     ) {}
@@ -71,7 +71,7 @@ export class CoreNotificationService {
             // Find all recipients to get their device tokens
             const recipients = await this.userModel
                 .find({ _id: { $in: recipientIds } })
-                .select('name deviceTokens external_ids')
+                .select('name notifications')
                 .lean();
 
             // Get all external user IDs for recipients (OneSignal)
@@ -81,7 +81,7 @@ export class CoreNotificationService {
 
             // Prepare notification content
             const title = options.title ||
-                (chat.type === 'group' ? `${sender.name} in ${chat.name || 'Group Chat'}` : sender.name);
+                (chat.type === ChatType.GROUP ? `${sender.name} in ${chat.name || 'Group Chat'}` : sender.name);
 
             let notificationMessage = options.message;
             if (!notificationMessage) {
@@ -195,7 +195,7 @@ export class CoreNotificationService {
             }
 
             // Check if the user has a OneSignal ID
-            const oneSignalId = user.external_ids?.oneSignalId;
+            const oneSignalId = user.notifications?.oneSignalId;
             if (!oneSignalId) {
                 throw new Error('User does not have a OneSignal ID');
             }
