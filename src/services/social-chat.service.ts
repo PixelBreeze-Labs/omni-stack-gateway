@@ -4,7 +4,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
-import { Socket } from 'socket.io';
 import { SocialChat, ChatType } from '../schemas/social-chat.schema';
 import { SocialMessage, MessageType, MessageStatus } from '../schemas/social-message.schema';
 import { User } from '../schemas/user.schema';
@@ -261,32 +260,6 @@ export class SocialChatService {
     }
 
     /**
-     * Subscribe a WebSocket client to a chat
-     */
-    async subscribeClientToChat(client: Socket, chatId: string) {
-        try {
-            // Check if user is a participant in this chat
-            const userId = client.data.user._id;
-            const chat = await this.chatModel.findOne({
-                _id: chatId,
-                participants: { $elemMatch: { $eq: userId } }
-            });
-
-            if (!chat) {
-                throw new Error('User is not a participant in this chat');
-            }
-
-            // Join the Socket.io room for this chat
-            client.join(`chat:${chatId}`);
-
-            return { success: true, message: 'Subscribed to chat' };
-        } catch (error) {
-            this.logger.error(`Error subscribing to chat: ${error.message}`, error.stack);
-            throw error;
-        }
-    }
-
-    /**
      * Delete a message (soft delete)
      */
     async deleteMessage(messageId: string, userId: string) {
@@ -342,6 +315,65 @@ export class SocialChatService {
             return { success: true, data: chat };
         } catch (error) {
             this.logger.error(`Error getting chat: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all chats for a user
+     */
+    async getUserChats(userId: string, clientId: string) {
+        try {
+            const chats = await this.chatModel.find({
+                participants: { $in: [userId] },
+                clientId: clientId,
+                isActive: true
+            })
+                .populate('participants', 'name surname')
+                .populate('lastMessageId')
+                .sort({ updatedAt: -1 })
+                .lean();
+
+            return { success: true, data: chats };
+        } catch (error) {
+            this.logger.error(`Error getting user chats: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Update a chat (rename, add/remove participants)
+     */
+    async updateChat(chatId: string, updateData: Partial<SocialChat>) {
+        try {
+            const updatedChat = await this.chatModel.findByIdAndUpdate(
+                chatId,
+                {
+                    $set: {
+                        ...updateData,
+                        updatedAt: new Date()
+                    }
+                },
+                { new: true }
+            )
+                .populate('participants', 'name surname')
+                .lean();
+
+            if (!updatedChat) {
+                throw new Error('Chat not found');
+            }
+
+            // Broadcast chat update through Supabase
+            await this.supabase.channel(`chat:${chatId}`)
+                .send({
+                    type: 'broadcast',
+                    event: 'chat_updated',
+                    payload: updatedChat
+                });
+
+            return { success: true, data: updatedChat };
+        } catch (error) {
+            this.logger.error(`Error updating chat: ${error.message}`, error.stack);
             throw error;
         }
     }

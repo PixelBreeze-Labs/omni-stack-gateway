@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { SocialChatService } from '../services/social-chat.service';
-import { CreateSocialChatDto } from '../dtos/social-chat.dto';
+import { CreateSocialChatDto, UpdateSocialChatDto } from '../dtos/social-chat.dto';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
 
@@ -31,6 +31,13 @@ export class SocialChatController {
         // Ensure client ID is set from the authenticated client
         createChatDto.clientId = req.client.id;
         return this.socialChatService.createChat(createChatDto);
+    }
+
+    @Get()
+    @ApiOperation({ summary: 'Get all chats for the current user' })
+    @ApiResponse({ status: 200, description: 'Returns user chats' })
+    async getUserChats(@Req() req: Request & { client: Client, user: any }) {
+        return this.socialChatService.getUserChats(req.user._id, req.client.id);
     }
 
     @Get(':id')
@@ -54,5 +61,17 @@ export class SocialChatController {
         @Req() req: Request & { client: Client }
     ) {
         return this.socialChatService.getChatMessages(chatId, page, limit);
+    }
+
+    @Patch(':id')
+    @ApiOperation({ summary: 'Update a chat' })
+    @ApiResponse({ status: 200, description: 'Chat updated successfully' })
+    @ApiParam({ name: 'id', description: 'Chat ID' })
+    async updateChat(
+        @Param('id') chatId: string,
+        @Body() updateChatDto: UpdateSocialChatDto,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.socialChatService.updateChat(chatId, updateChatDto);
     }
 }
