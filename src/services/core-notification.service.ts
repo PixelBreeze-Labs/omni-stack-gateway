@@ -76,7 +76,7 @@ export class CoreNotificationService {
 
             // Get all external user IDs for recipients (OneSignal)
             const externalUserIds = recipients
-                .map(user => user.external_ids?.oneSignalId)
+                .map(user => user.notifications?.oneSignalId)
                 .filter(Boolean);
 
             // Prepare notification content
@@ -166,7 +166,7 @@ export class CoreNotificationService {
             return await this.userModel.findByIdAndUpdate(
                 userId,
                 {
-                    $set: { 'external_ids.oneSignalId': oneSignalId }
+                    $set: { 'notifications.oneSignalId': oneSignalId }
                 },
                 { new: true }
             );
