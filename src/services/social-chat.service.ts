@@ -36,6 +36,7 @@ export class SocialChatService {
         this.initChangeStreams();
     }
 
+    // Update in src/services/social-chat.service.ts
     private initChangeStreams() {
         // Watch for new messages
         this.messageModel.watch().on('change', async (change) => {
@@ -62,7 +63,7 @@ export class SocialChatService {
                     await this.coreNotificationService.sendChatMessageNotification({
                         chatId: message.chatId.toString(),
                         messageId: message._id.toString(),
-                        senderId: message.senderId._id.toString()
+                        senderId: message.senderId.toString() // Fix here - don't assume _id is accessible
                     }).catch(err => {
                         this.logger.error(`Error sending notification for message: ${err.message}`);
                     });
