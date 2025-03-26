@@ -19,8 +19,8 @@ export interface ChatNotificationOptions {
 }
 
 @Injectable()
-export class NotificationService {
-    private readonly logger = new Logger(NotificationService.name);
+export class CoreNotificationService {
+    private readonly logger = new Logger(CoreNotificationService.name);
 
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,

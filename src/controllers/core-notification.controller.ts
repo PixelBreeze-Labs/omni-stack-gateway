@@ -15,6 +15,7 @@ import { NotificationService } from '../services/notification.service';
 import { OneSignalService } from '../services/onesignal.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
+import {CoreNotificationService} from "../services/core-notification.service";
 
 class RegisterDeviceDto {
     deviceToken: string;
@@ -38,13 +39,13 @@ class SendChatNotificationDto {
     data?: any;
 }
 
-@ApiTags('Notifications')
+@ApiTags('CoreNotifications')
 @ApiBearerAuth()
-@Controller('notifications')
+@Controller('core-notifications')
 @UseGuards(ClientAuthGuard)
-export class NotificationController {
+export class CoreNotificationController {
     constructor(
-        private readonly notificationService: NotificationService,
+        private readonly coreNotificationService: CoreNotificationService,
         private readonly oneSignalService: OneSignalService,
     ) {}
 
@@ -70,7 +71,7 @@ export class NotificationController {
 
         // Update the user with the OneSignal player ID
         if (result && result.id) {
-            await this.notificationService.updateUserOneSignalId(
+            await this.coreNotificationService.updateUserOneSignalId(
                 userId,
                 result.id,
             );
@@ -122,7 +123,7 @@ export class NotificationController {
         @Req() req: Request & { client: Client },
         @Body() chatNotificationDto: SendChatNotificationDto,
     ) {
-        const result = await this.notificationService.sendChatMessageNotification({
+        const result = await this.coreNotificationService.sendChatMessageNotification({
             ...chatNotificationDto,
         });
 
@@ -148,7 +149,7 @@ export class NotificationController {
         @Query('title') title?: string,
         @Query('message') message?: string,
     ) {
-        const result = await this.notificationService.sendTestNotificationToUser(
+        const result = await this.coreNotificationService.sendTestNotificationToUser(
             userId,
             title,
             message,
