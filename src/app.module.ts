@@ -74,7 +74,7 @@ import { Notification, NotificationSchema } from './schemas/notification.schema'
 import { ReportFlag, ReportFlagSchema } from './schemas/report-flag.schema';
 import { AiModel, AiModelSchema } from './schemas/ai-model.schema';
 import { SocialChat, SocialChatSchema } from './schemas/social-chat.schema';
-import { Message, MessageSchema } from './schemas/message.schema';
+import { SocialMessage, SocialMessageSchema } from './schemas/social-message.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -333,7 +333,7 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
       { name: DetectionResult.name, schema: DetectionResultSchema },
       { name: DetectionSummary.name, schema: DetectionSummarySchema },
       { name: SocialChat.name, schema: SocialChatSchema },
-      { name: Message.name, schema: MessageSchema },
+      { name: SocialMessage.name, schema: SocialMessageSchema },
     ]),
   ],
   controllers: [
