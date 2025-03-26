@@ -1,8 +1,7 @@
 // src/dtos/social-chat.dto.ts
-import { IsString, IsEnum, IsArray, IsOptional, IsObject, IsBoolean, ValidateNested } from 'class-validator';
+import { IsString, IsEnum, IsArray, IsOptional, IsObject, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ChatType } from '../schemas/chat.schema';
-import { Type } from 'class-transformer';
+import { ChatType } from '../schemas/social-chat.schema';
 
 export class CreateSocialChatDto {
   @ApiProperty({ enum: ChatType })
@@ -50,30 +49,4 @@ export class UpdateSocialChatDto {
   @IsObject()
   @IsOptional()
   metadata?: Record<string, any>;
-}
-
-export class SocialChatResponseDto {
-  @ApiProperty()
-  id: string;
-
-  @ApiProperty({ enum: ChatType })
-  type: ChatType;
-
-  @ApiProperty({ type: [Object] })
-  participants: any[];  // Will be populated with user objects
-
-  @ApiProperty({ required: false })
-  name?: string;
-
-  @ApiProperty({ required: false })
-  lastMessage?: any;  // Will be populated with message object
-
-  @ApiProperty()
-  clientId: string;
-
-  @ApiProperty()
-  createdAt: Date;
-
-  @ApiProperty()
-  updatedAt: Date;
 }

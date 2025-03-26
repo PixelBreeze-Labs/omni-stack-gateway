@@ -25,7 +25,7 @@ export class SocialChat extends Document {
     @Prop({ type: String })
     name?: string;  // For group chats
 
-    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Message' })
+    @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'SocialMessage' })
     lastMessageId?: string;
 
     @Prop({
@@ -45,6 +45,6 @@ export class SocialChat extends Document {
 export const SocialChatSchema = SchemaFactory.createForClass(SocialChat);
 
 // Add indexes
-ChatSchema.index({ participants: 1 });
-ChatSchema.index({ clientId: 1 });
-ChatSchema.index({ lastMessageId: 1 });
+SocialChatSchema.index({ participants: 1 });
+SocialChatSchema.index({ clientId: 1 });
+SocialChatSchema.index({ lastMessageId: 1 });
