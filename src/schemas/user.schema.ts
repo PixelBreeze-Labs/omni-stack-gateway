@@ -1,6 +1,6 @@
 // src/schemas/user.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema } from 'mongoose';
+import mongoose, { Document, Schema as MongooseSchema } from 'mongoose';
 import { Wallet } from "./wallet.schema";
 
 export enum RegistrationSource {
@@ -99,6 +99,28 @@ export class User extends Document {
     // Wallet
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Wallet' })
     walletId: string | Wallet;
+
+    @Prop({
+        type: {
+            oneSignalId: { type: String },
+            deviceTokens: { type: [String] },
+            preferences: {
+                chatNotifications: { type: Boolean, default: true },
+                marketingNotifications: { type: Boolean, default: true },
+                mutedChats: { type: [mongoose.Schema.Types.ObjectId], ref: 'Chat' }
+            }
+        },
+        _id: false
+    })
+    notifications?: {
+        oneSignalId?: string;
+        deviceTokens?: string[];
+        preferences?: {
+            chatNotifications: boolean;
+            marketingNotifications: boolean;
+            mutedChats: string[];
+        }
+    };
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
