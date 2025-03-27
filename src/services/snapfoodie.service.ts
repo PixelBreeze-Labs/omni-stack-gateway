@@ -232,8 +232,8 @@ export class SnapfoodieService {
                     { name: { $regex: search, $options: 'i' } },
                     { surname: { $regex: search, $options: 'i' } },
                     { email: { $regex: search, $options: 'i' } },
-                    { phone: { $regex: search, $options: 'i' } },
-                    { 'external_ids.snapFoodId': { $regex: search, $options: 'i' } }
+                    // Since snapFoodId is now a number, we need to handle search differently
+                    ...(isNaN(parseInt(search, 10)) ? [] : [{ 'external_ids.snapFoodId': parseInt(search, 10) }])
                 ];
             }
 
