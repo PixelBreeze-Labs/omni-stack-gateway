@@ -191,7 +191,6 @@ export class SnapfoodieService {
             throw error;
         }
     }
-
     /**
      * Get all users registered via SnapFood
      *
