@@ -12,7 +12,7 @@ export enum RegistrationSource {
     MANUAL = 'manual',
     STAFFLUENT = 'staffluent',
     QYTETARET = 'qytetaret',
-
+    SNAPFOOD = 'snapfood'
 }
 
 

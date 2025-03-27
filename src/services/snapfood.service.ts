@@ -411,6 +411,98 @@ export class SnapfoodService {
         }
     }
 
+    async listUsersWithDevices(params: {
+        page?: number;
+        limit?: number;
+        search?: string;
+    }): Promise<any> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/list-users-with-devices`,
+                {
+                    params: {
+                        page: params.page || 1,
+                        limit: params.limit || 50,
+                        search: params.search
+                    },
+                    headers: {
+                        'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new HttpException(response.data.message || 'Bad request', HttpStatus.BAD_REQUEST);
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Failed to fetch users with devices:', error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to fetch users with devices',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+
+    async updateUserExternalId(userId: number, omniStackUserId: string): Promise<any> {
+        try {
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/v3/omni-stack/update-user-external-id`,
+                {
+                    user_id: userId,
+                    omnistack_user_id: omniStackUserId
+                },
+                {
+                    headers: {
+                        'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                        'Content-Type': 'application/json'
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 400) {
+                this.logger.error('Bad request:', response.data);
+                throw new HttpException(response.data.message || 'Bad request', HttpStatus.BAD_REQUEST);
+            }
+
+            if (response.status === 401) {
+                this.logger.error('Unauthorized:', response.data);
+                throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+            }
+
+            if (response.status === 404) {
+                throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to update external ID for user ${userId}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to update user external ID',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
     // Orders
     async listOrders(params?: {
         page?: number;
