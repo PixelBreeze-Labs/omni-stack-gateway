@@ -62,6 +62,9 @@ export class SnapfoodieService {
             // Process each user
             for (const snapFoodUser of users) {
                 try {
+                    // Convert the snapFoodId to a numeric value
+                    const snapFoodIdNumeric = parseInt(snapFoodUser.id.toString(), 10);
+
                     // Check if user already exists by external ID
                     let user = await this.userModel.findOne({
                         'external_ids.snapFoodId': snapFoodUser.id.toString()
@@ -122,7 +125,7 @@ export class SnapfoodieService {
                                     email: snapFoodUser.email,
                                     registrationSource: RegistrationSource.SNAPFOOD,
                                     external_ids: {
-                                        snapFoodId: snapFoodUser.id.toString(),
+                                        snapFoodId: snapFoodIdNumeric, // Store as a number instead of string
                                         ...(snapFoodUser.external_ids || {})
                                     },
                                     metadata: metadataObj,
@@ -150,7 +153,7 @@ export class SnapfoodieService {
                             email: snapFoodUser.email,
                             registrationSource: RegistrationSource.SNAPFOOD,
                             external_ids: {
-                                snapFoodId: snapFoodUser.id.toString(),
+                                snapFoodId: snapFoodIdNumeric, // Store as a number instead of string
                                 ...(snapFoodUser.external_ids || {})
                             },
                             metadata: metadataObj,
@@ -191,6 +194,7 @@ export class SnapfoodieService {
             throw error;
         }
     }
+
     /**
      * Get all users registered via SnapFood
      *
@@ -228,8 +232,8 @@ export class SnapfoodieService {
                     { name: { $regex: search, $options: 'i' } },
                     { surname: { $regex: search, $options: 'i' } },
                     { email: { $regex: search, $options: 'i' } },
-                    { phone: { $regex: search, $options: 'i' } },
-                    { 'external_ids.snapFoodId': { $regex: search, $options: 'i' } }
+                    // Since snapFoodId is now a number, we need to handle search differently
+                    ...(isNaN(parseInt(search, 10)) ? [] : [{ 'external_ids.snapFoodId': parseInt(search, 10) }])
                 ];
             }
 
