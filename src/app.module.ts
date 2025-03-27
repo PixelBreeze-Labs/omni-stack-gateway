@@ -494,6 +494,7 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     AiModelService,
     CoreNotificationService,
     SocialChatService,
+    SnapfoodieService,
     OneSignalService
   ],
 })
