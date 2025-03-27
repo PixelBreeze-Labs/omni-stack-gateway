@@ -118,9 +118,8 @@ export class SnapfoodieService {
                             {
                                 $set: {
                                     name: firstName,
-                                    surname: lastName,
+                                    surname: lastName || '-',
                                     email: snapFoodUser.email,
-                                    phone: snapFoodUser.phone,
                                     registrationSource: RegistrationSource.SNAPFOOD,
                                     external_ids: {
                                         snapFoodId: snapFoodUser.id.toString(),
@@ -147,9 +146,8 @@ export class SnapfoodieService {
                         // Create new user with proper name/surname
                         const newUser = new this.userModel({
                             name: firstName,
-                            surname: lastName, // Now guaranteed to have a value
+                            surname: lastName || '-', // Now guaranteed to have a value
                             email: snapFoodUser.email,
-                            phone: snapFoodUser.phone,
                             registrationSource: RegistrationSource.SNAPFOOD,
                             external_ids: {
                                 snapFoodId: snapFoodUser.id.toString(),
