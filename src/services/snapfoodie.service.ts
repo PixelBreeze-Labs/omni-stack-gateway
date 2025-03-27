@@ -81,7 +81,6 @@ export class SnapfoodieService {
                         name: firstName,
                         surname: lastName,
                         email: snapFoodUser.email,
-                        phone: snapFoodUser.phone,
                         registrationSource: RegistrationSource.SNAPFOOD,
                         external_ids: {
                             snapFoodId: snapFoodUser.id.toString(),
@@ -202,8 +201,7 @@ export class SnapfoodieService {
                 query.$or = [
                     { name: { $regex: search, $options: 'i' } },
                     { surname: { $regex: search, $options: 'i' } },
-                    { email: { $regex: search, $options: 'i' } },
-                    { phone: { $regex: search, $options: 'i' } }
+                    { email: { $regex: search, $options: 'i' } }
                 ];
             }
 

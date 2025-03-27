@@ -16,6 +16,7 @@ import { VenueBoostService } from './venueboost.service';
 import { TIER_FEATURES, TIER_LIMITS, STAFFLUENT_FEATURES } from '../constants/features.constants';
 import { AppClient } from "../schemas/app-client.schema";
 import { Employee } from "../schemas/employee.schema";
+import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
 
 @Injectable()
 export class AuthService {
@@ -907,6 +908,89 @@ export class AuthService {
                 throw error;
             }
             throw new UnauthorizedException('Authentication failed');
+        }
+    }
+
+    /**
+     * Login for Snapfood users
+     */
+    async snapfoodLogin(loginDto: SnapfoodLoginDto) {
+        try {
+            // Find user by email with SNAPFOOD registration source
+            const user = await this.userModel.findOne({
+                email: loginDto.email,
+                registrationSource: RegistrationSource.SNAPFOOD
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Verify password
+            const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+            if (!isPasswordValid) {
+                throw new UnauthorizedException('Invalid credentials');
+            }
+
+            // Get the first client ID from the user's client_ids array
+            const clientId = user.client_ids && user.client_ids.length > 0
+                ? user.client_ids[0]
+                : null;
+
+            if (!clientId) {
+                throw new NotFoundException('No client associated with this user');
+            }
+
+            // Generate JWT token
+            const token = this.jwtService.sign({
+                sub: user._id.toString(),
+                email: user.email,
+                clientId: clientId,
+                registrationSource: RegistrationSource.SNAPFOOD,
+                role: 'snapfood_user'
+            });
+
+            // Convert Map to regular object for metadata
+            const metadataObj = {};
+            if (user.metadata) {
+                for (const [key, value] of user.metadata.entries()) {
+                    metadataObj[key] = value;
+                }
+            }
+
+            // Return user info with token
+            return {
+                status: 'success',
+                message: 'Authentication successful',
+                token,
+                userId: user._id.toString(),
+                clientId: clientId,
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    surname: user.surname,
+                    email: user.email,
+                    external_ids: user.external_ids,
+                    metadata: metadataObj,
+                    notifications: user.notifications || {
+                        oneSignalId: null,
+                        deviceTokens: [],
+                        preferences: {
+                            chatNotifications: true,
+                            marketingNotifications: true,
+                            mutedChats: []
+                        }
+                    },
+                    isActive: user.isActive,
+                    clientTiers: user.clientTiers || {}
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error in snapfoodLogin: ${error.message}`);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Login failed');
         }
     }
 }
