@@ -16,7 +16,7 @@ import { VenueBoostService } from './venueboost.service';
 import { TIER_FEATURES, TIER_LIMITS, STAFFLUENT_FEATURES } from '../constants/features.constants';
 import { AppClient } from "../schemas/app-client.schema";
 import { Employee } from "../schemas/employee.schema";
-import {SnapfoodLoginDto} from "../../dist/dtos/snapfood-login.dto";
+import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
 
 @Injectable()
 export class AuthService {
@@ -941,7 +941,6 @@ export class AuthService {
                 throw new NotFoundException('No client associated with this user');
             }
 
-
             // Generate JWT token
             const token = this.jwtService.sign({
                 sub: user._id.toString(),
@@ -950,6 +949,14 @@ export class AuthService {
                 registrationSource: RegistrationSource.SNAPFOOD,
                 role: 'snapfood_user'
             });
+
+            // Convert Map to regular object for metadata
+            const metadataObj = {};
+            if (user.metadata) {
+                for (const [key, value] of user.metadata.entries()) {
+                    metadataObj[key] = value;
+                }
+            }
 
             // Return user info with token
             return {
@@ -963,10 +970,19 @@ export class AuthService {
                     name: user.name,
                     surname: user.surname,
                     email: user.email,
-                    phone: user.phone,
                     external_ids: user.external_ids,
-                    //
-
+                    metadata: metadataObj,
+                    notifications: user.notifications || {
+                        oneSignalId: null,
+                        deviceTokens: [],
+                        preferences: {
+                            chatNotifications: true,
+                            marketingNotifications: true,
+                            mutedChats: []
+                        }
+                    },
+                    isActive: user.isActive,
+                    clientTiers: user.clientTiers || {}
                 }
             };
         } catch (error) {

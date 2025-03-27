@@ -4,7 +4,7 @@ import { AuthService } from '../services/auth.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { SalesAssociateLoginDto } from "../dtos/user.dto";
 import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
-
+import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
 
 // Define the mobile login DTO
 class StaffluentMobileLoginDto {
@@ -59,6 +59,16 @@ export class AuthController {
     @ApiResponse({ status: 404, description: 'User or business not found' })
     async getBusinessAdminByUserId(@Body() payload: { userId: string }) {
         const result = await this.authService.getBusinessAdminByUserId(payload.userId);
+        return result;
+    }
+
+    @Post('snapfood/login')
+    @ApiOperation({ summary: 'Snapfood user login' })
+    @ApiResponse({ status: 200, description: 'Login successful' })
+    @ApiResponse({ status: 401, description: 'Invalid credentials' })
+    @ApiResponse({ status: 404, description: 'User not found' })
+    async snapfoodLogin(@Body() loginDto: SnapfoodLoginDto) {
+        const result = await this.authService.snapfoodLogin(loginDto);
         return result;
     }
 }
