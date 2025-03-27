@@ -72,46 +72,57 @@ export class SnapfoodieService {
                         user = await this.userModel.findOne({ email: snapFoodUser.email });
                     }
 
-                    // Prepare the user data
-                    const nameParts = snapFoodUser.full_name.split(' ');
-                    const firstName = nameParts[0] || '';
-                    const lastName = nameParts.slice(1).join(' ') || '';
+                    // Prepare the user data - proper handling of fullName
+                    const fullName = snapFoodUser.full_name || '';
+                    let firstName = '';
+                    let lastName = '-'; // Default surname to prevent validation errors
 
-                    const userData = {
-                        name: firstName,
-                        surname: lastName,
-                        email: snapFoodUser.email,
-                        registrationSource: RegistrationSource.SNAPFOOD,
-                        external_ids: {
-                            snapFoodId: snapFoodUser.id.toString(),
-                            ...(snapFoodUser.external_ids || {})
-                        },
-                        metadata: new Map([
-                            ['verified_by_mobile', snapFoodUser.verified_by_mobile ? 'true' : 'false'],
-                            ['source', snapFoodUser.source || 'unknown'],
-                            ['provider_id', snapFoodUser.provider_id?.toString() || ''],
-                            ['created_at', snapFoodUser.created_at || new Date().toISOString()]
-                        ]),
-                        isActive: !!snapFoodUser.active,
-                        client_ids: [clientId]
+                    // Split the full name and ensure there's always a surname
+                    const nameParts = fullName.split(' ');
+                    if (nameParts.length > 0) {
+                        firstName = nameParts[0] || '';
+                        if (nameParts.length > 1) {
+                            lastName = nameParts.slice(1).join(' ');
+                        }
+                    }
+
+                    // Create metadata as a plain object instead of a Map
+                    const metadataObj = {
+                        verified_by_mobile: snapFoodUser.verified_by_mobile ? 'true' : 'false',
+                        source: snapFoodUser.source || 'unknown',
+                        provider_id: snapFoodUser.provider_id?.toString() || '',
+                        created_at: snapFoodUser.created_at || new Date().toISOString()
                     };
 
                     // Add device information to metadata if available
                     if (snapFoodUser.devices && snapFoodUser.devices.length > 0) {
-                        userData.metadata.set('legacy_devices', JSON.stringify(snapFoodUser.devices));
+                        metadataObj.legacy_devices = JSON.stringify(snapFoodUser.devices);
                     }
 
                     // Add legacy tokens
                     if (snapFoodUser.tokens && snapFoodUser.tokens.length > 0) {
-                        userData.metadata.set('legacy_tokens', JSON.stringify(snapFoodUser.tokens));
+                        metadataObj.legacy_tokens = JSON.stringify(snapFoodUser.tokens);
                     }
 
                     if (user) {
-                        // Update existing user
+                        // Update existing user with proper approach to avoid conflicts
                         await this.userModel.findByIdAndUpdate(
                             user._id,
                             {
-                                $set: userData,
+                                $set: {
+                                    name: firstName,
+                                    surname: lastName,
+                                    email: snapFoodUser.email,
+                                    phone: snapFoodUser.phone,
+                                    registrationSource: RegistrationSource.SNAPFOOD,
+                                    external_ids: {
+                                        snapFoodId: snapFoodUser.id.toString(),
+                                        ...(snapFoodUser.external_ids || {})
+                                    },
+                                    metadata: metadataObj,
+                                    isActive: !!snapFoodUser.active
+                                },
+                                // Handle client_ids correctly to avoid conflict
                                 $addToSet: { client_ids: clientId }
                             }
                         );
@@ -126,9 +137,20 @@ export class SnapfoodieService {
 
                         updated++;
                     } else {
-                        // Create new user
+                        // Create new user with proper name/surname
                         const newUser = new this.userModel({
-                            ...userData,
+                            name: firstName,
+                            surname: lastName, // Now guaranteed to have a value
+                            email: snapFoodUser.email,
+                            phone: snapFoodUser.phone,
+                            registrationSource: RegistrationSource.SNAPFOOD,
+                            external_ids: {
+                                snapFoodId: snapFoodUser.id.toString(),
+                                ...(snapFoodUser.external_ids || {})
+                            },
+                            metadata: metadataObj,
+                            isActive: !!snapFoodUser.active,
+                            client_ids: [clientId],
                             password: 'IMPORTED_USER_' + Math.random().toString(36).substring(2),
                         });
 
