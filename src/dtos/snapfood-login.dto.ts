@@ -7,9 +7,4 @@ export class SnapfoodLoginDto {
   @IsEmail()
   @IsNotEmpty()
   email: string;
-
-  @ApiProperty({ description: 'User password' })
-  @IsString()
-  @IsNotEmpty()
-  password: string;
 }
