@@ -1,4 +1,4 @@
-// src/services/snapfood-sync.service.ts
+// src/services/snapfoodie.service.ts
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -162,6 +162,77 @@ export class SnapfoodieService {
             };
         } catch (error) {
             this.logger.error(`Error syncing SnapFood users: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all users registered via SnapFood
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param options Pagination and search options
+     * @returns Paginated list of SnapFood users
+     */
+    async getSnapfoodUsers(clientId: string, options: {
+        page: number;
+        limit: number;
+        search?: string;
+        sort?: string;
+    }): Promise<{
+        data: any[];
+        meta: {
+            total: number;
+            page: number;
+            limit: number;
+            pages: number;
+        }
+    }> {
+        try {
+            const { page = 1, limit = 10, search, sort = '-createdAt' } = options;
+            const skip = (page - 1) * limit;
+
+            // Build the query to find SnapFood users
+            const query: any = {
+                client_ids: clientId,
+                registrationSource: RegistrationSource.SNAPFOOD
+            };
+
+            // Add search condition if provided
+            if (search) {
+                query.$or = [
+                    { name: { $regex: search, $options: 'i' } },
+                    { surname: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } },
+                    { phone: { $regex: search, $options: 'i' } }
+                ];
+            }
+
+            // Count total users matching criteria
+            const total = await this.userModel.countDocuments(query);
+
+            // Calculate total pages
+            const pages = Math.ceil(total / limit);
+
+            // Fetch users with pagination and sorting
+            const users = await this.userModel
+                .find(query)
+                .select('-password')
+                .sort(sort)
+                .skip(skip)
+                .limit(limit)
+                .exec();
+
+            return {
+                data: users,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    pages
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error getting SnapFood users: ${error.message}`, error.stack);
             throw error;
         }
     }
