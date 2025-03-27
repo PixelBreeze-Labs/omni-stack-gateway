@@ -214,7 +214,7 @@ export class SnapfoodieService {
         }
     }> {
         try {
-            const { page = 1, limit = 10, search, sort = '-createdAt' } = options;
+            const { page = 1, limit = 10, search, sort = '-external_ids.snapFoodId' } = options;
             const skip = (page - 1) * limit;
 
             // Build the query to find SnapFood users
@@ -228,8 +228,20 @@ export class SnapfoodieService {
                 query.$or = [
                     { name: { $regex: search, $options: 'i' } },
                     { surname: { $regex: search, $options: 'i' } },
-                    { email: { $regex: search, $options: 'i' } }
+                    { email: { $regex: search, $options: 'i' } },
+                    { phone: { $regex: search, $options: 'i' } },
+                    { 'external_ids.snapFoodId': { $regex: search, $options: 'i' } }
                 ];
+            }
+
+            // Create a sort configuration object
+            let sortConfig = {};
+            if (sort.startsWith('-')) {
+                // Descending sort
+                sortConfig[sort.substring(1)] = -1;
+            } else {
+                // Ascending sort
+                sortConfig[sort] = 1;
             }
 
             // Count total users matching criteria
@@ -242,7 +254,7 @@ export class SnapfoodieService {
             const users = await this.userModel
                 .find(query)
                 .select('-password')
-                .sort(sort)
+                .sort(sortConfig)
                 .skip(skip)
                 .limit(limit)
                 .exec();
