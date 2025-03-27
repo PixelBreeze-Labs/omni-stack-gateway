@@ -62,6 +62,13 @@ export class SnapfoodieService {
             // Process each user
             for (const snapFoodUser of users) {
                 try {
+                    // Skip users without an email address
+                    if (!snapFoodUser.email || snapFoodUser.email.trim() === '') {
+                        this.logger.warn(`Skipping user ${snapFoodUser.id} - missing email address`);
+                        skipped++;
+                        continue;
+                    }
+
                     // Convert the snapFoodId to a numeric value
                     const snapFoodIdNumeric = parseInt(snapFoodUser.id.toString(), 10);
 
