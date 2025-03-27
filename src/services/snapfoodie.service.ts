@@ -82,17 +82,17 @@ export class SnapfoodieService {
                         user = await this.userModel.findOne({ email: snapFoodUser.email });
                     }
 
-                    // Prepare the user data - proper handling of fullName
-                    const fullName = snapFoodUser.full_name || '';
-                    let firstName = '';
-                    let lastName = '-'; // Default surname to prevent validation errors
+                    let fullName = snapFoodUser.full_name?.trim() || '';
+                    let firstName = '-';
+                    let lastName = '-';
 
-                    // Split the full name and ensure there's always a surname
-                    const nameParts = fullName.split(' ');
-                    if (nameParts.length > 0) {
-                        firstName = nameParts[0] || '';
-                        if (nameParts.length > 1) {
-                            lastName = nameParts.slice(1).join(' ');
+                    if (fullName.length > 0) {
+                        const nameParts = fullName.split(' ').filter(part => part.trim().length > 0);
+                        if (nameParts.length > 0) {
+                            firstName = nameParts[0];
+                            if (nameParts.length > 1) {
+                                lastName = nameParts.slice(1).join(' ');
+                            }
                         }
                     }
 
@@ -127,7 +127,7 @@ export class SnapfoodieService {
                             user._id,
                             {
                                 $set: {
-                                    name: firstName,
+                                    name: firstName || '-',
                                     surname: lastName || '-',
                                     email: snapFoodUser.email,
                                     registrationSource: RegistrationSource.SNAPFOOD,
@@ -155,7 +155,7 @@ export class SnapfoodieService {
                     } else {
                         // Create new user with proper name/surname
                         const newUser = new this.userModel({
-                            name: firstName,
+                            name: firstName || '-',
                             surname: lastName || '-', // Now guaranteed to have a value
                             email: snapFoodUser.email,
                             registrationSource: RegistrationSource.SNAPFOOD,
