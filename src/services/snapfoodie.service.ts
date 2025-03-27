@@ -86,8 +86,15 @@ export class SnapfoodieService {
                         }
                     }
 
-                    // Create metadata as a plain object instead of a Map
-                    const metadataObj = {
+                    // Create metadata as a plain object with proper typing
+                    const metadataObj: {
+                        verified_by_mobile: string;
+                        source: string;
+                        provider_id: string;
+                        created_at: string;
+                        legacy_devices?: string;
+                        legacy_tokens?: string;
+                    } = {
                         verified_by_mobile: snapFoodUser.verified_by_mobile ? 'true' : 'false',
                         source: snapFoodUser.source || 'unknown',
                         provider_id: snapFoodUser.provider_id?.toString() || '',
