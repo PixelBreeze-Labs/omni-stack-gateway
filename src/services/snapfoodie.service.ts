@@ -1,0 +1,168 @@
+// src/services/snapfood-sync.service.ts
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { User, RegistrationSource } from '../schemas/user.schema';
+import { SnapfoodService } from './snapfood.service';
+import { Client } from '../schemas/client.schema';
+
+interface SyncUsersOptions {
+    page: number;
+    limit: number;
+    search?: string;
+}
+
+@Injectable()
+export class SnapfoodieService {
+    private readonly logger = new Logger(SnapfoodieService.name);
+
+    constructor(
+        @InjectModel(User.name) private userModel: Model<User>,
+        @InjectModel(Client.name) private clientModel: Model<Client>,
+        private readonly snapfoodService: SnapfoodService
+    ) {}
+
+
+    /**
+     * Sync SnapFood users to our system
+     *
+     * @param clientId The MongoDB ID of the client
+     * @param options Pagination and search options
+     * @returns Result of the sync operation
+     */
+    async syncUsers(clientId: string, options: SyncUsersOptions): Promise<{
+        success: boolean;
+        message: string;
+        created: number;
+        updated: number;
+        skipped: number;
+        errors: number;
+        errorDetails?: Array<{userId: string, error: string}>;
+    }> {
+        try {
+            // Get the client
+            const client = await this.clientModel.findById(clientId);
+            if (!client) {
+                throw new NotFoundException('Client not found');
+            }
+
+            // Get users from SnapFood
+            const response = await this.snapfoodService.listUsersWithDevices({
+                page: options.page,
+                limit: options.limit,
+                search: options.search
+            });
+
+            const users = response.data || [];
+
+            // Tracking stats
+            let created = 0, updated = 0, skipped = 0, errors = 0;
+            const errorDetails = [];
+
+            // Process each user
+            for (const snapFoodUser of users) {
+                try {
+                    // Check if user already exists by external ID
+                    let user = await this.userModel.findOne({
+                        'external_ids.snapFoodId': snapFoodUser.id.toString()
+                    });
+
+                    // If not, check by email
+                    if (!user) {
+                        user = await this.userModel.findOne({ email: snapFoodUser.email });
+                    }
+
+                    // Prepare the user data
+                    const nameParts = snapFoodUser.full_name.split(' ');
+                    const firstName = nameParts[0] || '';
+                    const lastName = nameParts.slice(1).join(' ') || '';
+
+                    const userData = {
+                        name: firstName,
+                        surname: lastName,
+                        email: snapFoodUser.email,
+                        phone: snapFoodUser.phone,
+                        registrationSource: RegistrationSource.SNAPFOOD,
+                        external_ids: {
+                            snapFoodId: snapFoodUser.id.toString(),
+                            ...(snapFoodUser.external_ids || {})
+                        },
+                        metadata: new Map([
+                            ['verified_by_mobile', snapFoodUser.verified_by_mobile ? 'true' : 'false'],
+                            ['source', snapFoodUser.source || 'unknown'],
+                            ['provider_id', snapFoodUser.provider_id?.toString() || ''],
+                            ['created_at', snapFoodUser.created_at || new Date().toISOString()]
+                        ]),
+                        isActive: !!snapFoodUser.active,
+                        client_ids: [clientId]
+                    };
+
+                    // Add device information to metadata if available
+                    if (snapFoodUser.devices && snapFoodUser.devices.length > 0) {
+                        userData.metadata.set('legacy_devices', JSON.stringify(snapFoodUser.devices));
+                    }
+
+                    // Add legacy tokens
+                    if (snapFoodUser.tokens && snapFoodUser.tokens.length > 0) {
+                        userData.metadata.set('legacy_tokens', JSON.stringify(snapFoodUser.tokens));
+                    }
+
+                    if (user) {
+                        // Update existing user
+                        await this.userModel.findByIdAndUpdate(
+                            user._id,
+                            {
+                                $set: userData,
+                                $addToSet: { client_ids: clientId }
+                            }
+                        );
+
+                        // Update SnapFood with the OmniStack ID if not already there
+                        if (!snapFoodUser.external_ids?.omniStackGateway) {
+                            await this.snapfoodService.updateUserExternalId(
+                                snapFoodUser.id,
+                                user._id.toString()
+                            );
+                        }
+
+                        updated++;
+                    } else {
+                        // Create new user
+                        const newUser = new this.userModel({
+                            ...userData,
+                            password: 'IMPORTED_USER_' + Math.random().toString(36).substring(2),
+                        });
+
+                        await newUser.save();
+
+                        // Update SnapFood with the OmniStack ID
+                        await this.snapfoodService.updateUserExternalId(
+                            snapFoodUser.id,
+                            newUser._id.toString()
+                        );
+
+                        created++;
+                    }
+                } catch (error) {
+                    const errorMsg = `Error processing user: ${error.message}`;
+                    this.logger.error(`Error processing user ${snapFoodUser.id}: ${error.message}`);
+                    errorDetails.push({ userId: snapFoodUser.id.toString(), error: errorMsg });
+                    errors++;
+                }
+            }
+
+            return {
+                success: true,
+                message: `Sync completed: ${created} created, ${updated} updated, ${skipped} skipped, ${errors} errors`,
+                created,
+                updated,
+                skipped,
+                errors,
+                errorDetails
+            };
+        } catch (error) {
+            this.logger.error(`Error syncing SnapFood users: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+}
