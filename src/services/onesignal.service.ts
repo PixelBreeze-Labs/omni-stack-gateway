@@ -10,6 +10,7 @@ interface NotificationOptions {
     data?: any;
     include_player_ids?: string[];
     include_external_user_ids?: string[];
+    included_segments?: string[];  // Add this line for segments
     android_channel_id?: string;
     ios_category?: string;
     ios_badgeType?: string;
@@ -37,9 +38,6 @@ export class OneSignalService {
         this.apiKey = this.configService.get<string>('ONESIGNAL_API_KEY');
     }
 
-    /**
-     * Send a notification through OneSignal
-     */
     async sendNotification(options: NotificationOptions): Promise<any> {
         try {
             const payload = {
@@ -56,12 +54,33 @@ export class OneSignalService {
                 }),
             );
 
+            // Make sure we have a response before accessing its data
+            if (!response) {
+                throw new Error('No response received from OneSignal');
+            }
+
             return response.data;
         } catch (error) {
-            this.logger.error(
-                `OneSignal notification error: ${error.message}`,
-                error.stack,
-            );
+            // Improved error logging
+            if (error.response) {
+                // The request was made and the server responded with a status code
+                // that falls out of the range of 2xx
+                this.logger.error(
+                    `OneSignal notification error: ${error.response.status} - ${JSON.stringify(error.response.data)}`,
+                );
+            } else if (error.request) {
+                // The request was made but no response was received
+                this.logger.error(
+                    `OneSignal notification error: No response received`,
+                    error.request,
+                );
+            } else {
+                // Something happened in setting up the request that triggered an Error
+                this.logger.error(
+                    `OneSignal notification error: ${error.message}`,
+                    error.stack,
+                );
+            }
             throw error;
         }
     }
@@ -104,21 +123,40 @@ export class OneSignalService {
     /**
      * Test function to verify OneSignal configuration
      */
+    /**
+     * Test function to verify OneSignal configuration
+     */
     async sendTestNotification(
-        playerIds: string[],
+        playerIds: string[] | { segment: string; title?: string; message?: string },
         title: string = 'Test Notification',
         message: string = 'This is a test notification from your app',
     ): Promise<any> {
         try {
-            return await this.sendNotification({
-                headings: { en: title },
-                contents: { en: message },
-                include_player_ids: playerIds,
-                data: {
-                    type: 'test',
-                    timestamp: new Date().toISOString(),
-                },
-            });
+            // Check if the first parameter is an object with segment property
+            if (typeof playerIds === 'object' && !Array.isArray(playerIds) && 'segment' in playerIds) {
+                const segmentData = playerIds as { segment: string; title?: string; message?: string };
+
+                return await this.sendNotification({
+                    headings: { en: segmentData.title || title },
+                    contents: { en: segmentData.message || message },
+                    included_segments: [segmentData.segment],
+                    data: {
+                        type: 'test',
+                        timestamp: new Date().toISOString(),
+                    },
+                });
+            } else {
+                // Original behavior with player IDs array
+                return await this.sendNotification({
+                    headings: { en: title },
+                    contents: { en: message },
+                    include_player_ids: playerIds as string[],
+                    data: {
+                        type: 'test',
+                        timestamp: new Date().toISOString(),
+                    },
+                });
+            }
         } catch (error) {
             this.logger.error(
                 `Error sending test notification: ${error.message}`,
