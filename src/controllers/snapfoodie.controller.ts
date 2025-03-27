@@ -20,7 +20,7 @@ import { Client } from '../schemas/client.schema';
 @ApiBearerAuth()
 @Controller('snapfoodie')
 @UseGuards(ClientAuthGuard)
-export class SnapfoodSyncController {
+export class SnapfoodieController {
     constructor(
         private readonly snapfoodieService: SnapfoodieService
     ) {}
