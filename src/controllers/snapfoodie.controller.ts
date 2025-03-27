@@ -16,6 +16,13 @@ import { SnapfoodieService } from '../services/snapfoodie.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
 
+// Define a DTO for the sync options
+class SyncUsersDto {
+    page?: number = 1;
+    limit?: number = 200;
+    search?: string;
+}
+
 @ApiTags('SnapFoodie')
 @ApiBearerAuth()
 @Controller('snapfoodie')
@@ -34,23 +41,19 @@ export class SnapfoodieController {
         status: 200,
         description: 'Users synced successfully'
     })
-    @ApiQuery({ name: 'page', required: false, type: Number })
-    @ApiQuery({ name: 'limit', required: false, type: Number })
-    @ApiQuery({ name: 'search', required: false, type: String })
     async syncUsers(
         @Req() req: Request & { client: Client },
-        @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-        @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-        @Query('search') search?: string
+        @Body() syncOptions: SyncUsersDto
     ) {
-        return this.snapfoodieService.syncUsers(req.client.id, {
-            page,
-            limit,
-            search
-        });
+        // Ensure default values if not provided
+        const options = {
+            page: syncOptions.page || 1,
+            limit: syncOptions.limit || 200,
+            search: syncOptions.search
+        };
+
+        return this.snapfoodieService.syncUsers(req.client.id, options);
     }
-
-
 
     /**
      * Get all users registered via SnapFood
@@ -79,5 +82,4 @@ export class SnapfoodieController {
             sort
         });
     }
-
 }
