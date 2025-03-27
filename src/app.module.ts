@@ -224,6 +224,7 @@ import { NotificationService } from './services/notification.service';
 import { CoreNotificationService } from './services/core-notification.service';
 import { SocialChatService } from './services/social-chat.service';
 import { SnapfoodieService } from './services/snapfoodie.service';
+import { OneSignalService } from './services/onesignal.service';
 
 
 // Others
@@ -493,7 +494,7 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     AiModelService,
     CoreNotificationService,
     SocialChatService,
-    SnapfoodieService
+    OneSignalService
   ],
 })
 export class AppModule implements NestModule {
