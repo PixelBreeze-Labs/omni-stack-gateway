@@ -10,12 +10,22 @@ import {
     Query,
     BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+    ApiTags,
+    ApiOperation,
+    ApiResponse,
+    ApiBearerAuth,
+    ApiBody,
+    ApiParam,
+    ApiQuery,
+    ApiProperty
+} from '@nestjs/swagger';
 import { NotificationService } from '../services/notification.service';
 import { OneSignalService } from '../services/onesignal.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
 import {CoreNotificationService} from "../services/core-notification.service";
+import {IsArray, IsOptional, IsString} from "class-validator";
 
 class RegisterDeviceDto {
     deviceToken: string;
@@ -23,10 +33,24 @@ class RegisterDeviceDto {
     userId: string;
 }
 
-class SendTestNotificationDto {
-    playerIds: string[];
-    title?: string;
-    message?: string;
+export class SendTestNotificationDto {
+    @ApiProperty({ description: 'Array of OneSignal player IDs to send the notification to', required: false })
+    @IsArray()
+    @IsOptional()
+    playerIds?: string[];
+
+    @ApiProperty({ description: 'Segment name to send the notification to', required: false })
+    @IsString()
+    @IsOptional()
+    segment?: string;
+
+    @ApiProperty({ description: 'Notification title' })
+    @IsString()
+    title: string;
+
+    @ApiProperty({ description: 'Notification message' })
+    @IsString()
+    message: string;
 }
 
 class SendChatNotificationDto {
@@ -95,15 +119,39 @@ export class CoreNotificationController {
         @Req() req: Request & { client: Client },
         @Body() testNotificationDto: SendTestNotificationDto,
     ) {
-        if (!testNotificationDto.playerIds || testNotificationDto.playerIds.length === 0) {
-            throw new BadRequestException('At least one player ID is required');
+        let result;
+
+        // Check if we're sending to segments or player IDs
+        if (testNotificationDto.segment) {
+            // Send to segment - create the exact object format expected by the service
+            result = await this.oneSignalService.sendTestNotification(
+                {
+                    segment: testNotificationDto.segment,
+                    title: testNotificationDto.title,
+                    message: testNotificationDto.message
+                },
+                undefined,
+                undefined
+            );
+        } else if (testNotificationDto.playerIds && testNotificationDto.playerIds.length > 0) {
+            // Send to specific player IDs
+            result = await this.oneSignalService.sendTestNotification(
+                testNotificationDto.playerIds,
+                testNotificationDto.title,
+                testNotificationDto.message,
+            );
+        } else {
+            throw new BadRequestException('Either playerIds array or segment name is required');
         }
 
-        const result = await this.oneSignalService.sendTestNotification(
-            testNotificationDto.playerIds,
-            testNotificationDto.title,
-            testNotificationDto.message,
-        );
+        // Check for OneSignal errors
+        if (result.errors && result.errors.length > 0) {
+            return {
+                success: false,
+                message: 'OneSignal reported errors',
+                oneSignalResponse: result
+            };
+        }
 
         return {
             success: true,
