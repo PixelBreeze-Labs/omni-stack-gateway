@@ -493,7 +493,7 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     AiModelService,
     CoreNotificationService,
     SocialChatService,
-
+    SnapfoodieService
   ],
 })
 export class AppModule implements NestModule {
