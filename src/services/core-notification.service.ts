@@ -7,6 +7,8 @@ import { OneSignalService } from './onesignal.service';
 import { SupabaseService } from './supabase.service';
 import { SocialMessage } from '../schemas/social-message.schema';
 import { SocialChat, ChatType } from '../schemas/social-chat.schema';
+import { NOTIFICATION_TYPES, NOTIFICATION_DELIVERY_METHODS, NOTIFICATION_TYPE_TO_DELIVERY_METHOD } from '../constants/notification.constants';
+
 
 export interface ChatNotificationOptions {
     chatId: string;
@@ -217,5 +219,28 @@ export class CoreNotificationService {
             );
             throw error;
         }
+    }
+
+
+    /**
+     * Get all notification types with their corresponding delivery methods in array format
+     * @returns Array of objects with type and method properties
+     */
+    async getNotificationTypesWithMethods(): Promise<Array<{type: string, method: string}>> {
+        const result = [];
+
+        // Loop through all notification types
+        Object.values(NOTIFICATION_TYPES).forEach(type => {
+            // Get the delivery method for this type
+            const method = NOTIFICATION_TYPE_TO_DELIVERY_METHOD[type] || NOTIFICATION_DELIVERY_METHODS.GENERAL_NOTIFICATION;
+
+            // Add to result array
+            result.push({
+                type,
+                method
+            });
+        });
+
+        return result;
     }
 }
