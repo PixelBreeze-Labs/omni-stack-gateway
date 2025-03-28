@@ -36,34 +36,40 @@ export class SocialChatService {
         this.initChangeStreams();
     }
 
-    // Update in src/services/social-chat.service.ts
     private initChangeStreams() {
         // Watch for new messages
         this.messageModel.watch().on('change', async (change) => {
             try {
                 if (change.operationType === 'insert') {
-                    const message = await this.messageModel.findById(change.documentKey._id)
-                        .populate('senderId', 'name surname notifications')
-                        .lean();
+                    // Get the message document without populating sender details first
+                    const rawMessage = await this.messageModel.findById(change.documentKey._id).lean();
 
-                    if (!message) {
+                    if (!rawMessage) {
                         this.logger.warn(`Message not found for change stream: ${change.documentKey._id}`);
                         return;
                     }
 
+                    // Get senderId as a string before populating
+                    const senderId = rawMessage.senderId.toString();
+
+                    // Now get the populated message for broadcasting
+                    const populatedMessage = await this.messageModel.findById(change.documentKey._id)
+                        .populate('senderId', 'name surname notifications')
+                        .lean();
+
                     // Broadcast to Supabase chat room
-                    await this.supabase.channel(`chat:${message.chatId}`)
+                    await this.supabase.channel(`chat:${populatedMessage.chatId}`)
                         .send({
                             type: 'broadcast',
                             event: 'new_message',
-                            payload: message
+                            payload: populatedMessage
                         });
 
-                    // Send push notification for the new message
+                    // Send push notification using the string senderId
                     await this.coreNotificationService.sendChatMessageNotification({
-                        chatId: message.chatId.toString(),
-                        messageId: message._id.toString(),
-                        senderId: message.senderId.toString() // Fix here - don't assume _id is accessible
+                        chatId: rawMessage.chatId.toString(),
+                        messageId: rawMessage._id.toString(),
+                        senderId: senderId // Use the string version of senderId
                     }).catch(err => {
                         this.logger.error(`Error sending notification for message: ${err.message}`);
                     });
@@ -88,9 +94,21 @@ export class SocialChatService {
 
             await chat.save();
 
+            // Log the chat ID for debugging
+            this.logger.debug(`Creating Supabase channel for chat ID: ${chat._id}`);
+
             // Create a Supabase channel for this chat
-            await this.supabase.channel(`chat:${chat._id}`)
-                .subscribe();
+            const channel = this.supabase.channel(`chat:${chat._id}`);
+
+            // Log before subscribing
+            this.logger.debug(`About to subscribe to channel: chat:${chat._id}`);
+
+            const subscription = await channel.subscribe((status) => {
+                this.logger.debug(`Supabase subscription status: ${status}`);
+            });
+
+            // Log after subscription
+            this.logger.debug(`Supabase channel subscribed: ${JSON.stringify(subscription)}`);
 
             return { success: true, data: chat };
         } catch (error) {
