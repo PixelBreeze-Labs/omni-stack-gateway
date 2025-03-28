@@ -18,9 +18,10 @@ export class CreateSocialChatDto {
   @IsOptional()
   name?: string;  // For group chats
 
-  @ApiProperty()
+  @ApiPropertyOptional()  // Changed to optional
   @IsString()
-  clientId: string;
+  @IsOptional()  // Added IsOptional decorator
+  clientId?: string;
 
   @ApiPropertyOptional({ type: Object, description: 'Additional metadata' })
   @IsObject()
