@@ -28,9 +28,11 @@ export class SocialChatController {
     @ApiOperation({ summary: 'Create a new chat' })
     @ApiResponse({ status: 201, description: 'Chat created successfully' })
     async createChat(@Body() createChatDto: CreateSocialChatDto, @Req() req: Request & { client: Client }) {
-        // Ensure client ID is set from the authenticated client
-        createChatDto.clientId = req.client.id;
-        return this.socialChatService.createChat(createChatDto);
+        // Instead of modifying the DTO, pass the clientId as a separate parameter
+        return this.socialChatService.createChat({
+            ...createChatDto,
+            clientId: req.client.id
+        });
     }
 
     @Get()

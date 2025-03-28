@@ -1,5 +1,5 @@
 // src/services/social-chat.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -16,9 +16,11 @@ interface ReplySocialMessageDto extends CreateSocialMessageDto {
 }
 
 @Injectable()
-export class SocialChatService {
+export class SocialChatService implements OnModuleInit {
     private readonly logger = new Logger(SocialChatService.name);
     private supabase: SupabaseClient;
+    private realtimeEnabled = false;
+    private channelStore = {};
 
     constructor(
         @InjectModel(SocialMessage.name) private messageModel: Model<SocialMessage>,
@@ -27,43 +29,224 @@ export class SocialChatService {
         private configService: ConfigService,
         private coreNotificationService: CoreNotificationService
     ) {
-        this.supabase = createClient(
-            this.configService.get('SUPABASE_URL'),
-            this.configService.get('SUPABASE_SERVICE_KEY')
-        );
+        // Initialize Supabase client
+        const supabaseUrl = this.configService.get('SUPABASE_URL');
+        const supabaseKey = this.configService.get('SUPABASE_SERVICE_KEY');
 
-        // Set up MongoDB change streams to broadcast to Supabase
-        this.initChangeStreams();
+        if (!supabaseUrl || !supabaseKey) {
+            this.logger.error('Missing Supabase credentials in environment variables');
+            return;
+        }
+
+        try {
+            this.supabase = createClient(supabaseUrl, supabaseKey, {
+                auth: {
+                    autoRefreshToken: false,
+                    persistSession: false
+                }
+            });
+            this.logger.log('Supabase client initialized');
+        } catch (error) {
+            this.logger.error(`Failed to initialize Supabase client: ${error.message}`, error.stack);
+        }
     }
 
-    // Update in src/services/social-chat.service.ts
+    async onModuleInit() {
+        // Check if Supabase is enabled in config
+        const enableRealtime = this.configService.get('ENABLE_SUPABASE_REALTIME');
+        this.realtimeEnabled = enableRealtime === 'true';
+
+        // Initialize MongoDB change streams
+        this.initChangeStreams();
+
+        // Log status
+        if (this.realtimeEnabled) {
+            this.logger.log('Supabase Realtime is ENABLED');
+
+            // Test the Realtime connection
+            await this.testRealtimeConnection();
+        } else {
+            this.logger.warn('Supabase Realtime is DISABLED - using push notifications only');
+        }
+    }
+
+    /**
+     * Test the Realtime connection by sending a test message
+     */
+    private async testRealtimeConnection() {
+        try {
+            // Create a test channel
+            const testChannel = this.supabase.channel('test');
+
+            // Subscribe to the test channel
+            testChannel.subscribe((status) => {
+                this.logger.log(`Test channel status: ${status}`);
+
+                if (status === 'SUBSCRIBED') {
+                    this.logger.log('Successfully connected to Supabase Realtime!');
+
+                    // Send a test message
+                    setTimeout(async () => {
+                        try {
+                            const result = await testChannel.send({
+                                type: 'broadcast',
+                                event: 'test',
+                                payload: {message: 'Test message'}
+                            });
+
+                            this.logger.log(`Test broadcast result: ${result}`);
+                        } catch (error) {
+                            this.logger.error(`Error sending test message: ${error.message}`);
+                        }
+                    }, 1000);
+                }
+            });
+        } catch (error) {
+            this.logger.error(`Error testing Realtime connection: ${error.message}`);
+        }
+    }
+
+    /**
+     * Broadcast a message to a chat channel
+     */
+    private async broadcastToChannel(chatId: string, event: string, payload: any): Promise<boolean> {
+        if (!this.realtimeEnabled || !this.supabase) {
+            return false;
+        }
+
+        try {
+            // Get or create a channel for this chat
+            const channelName = `chat-${chatId}`;
+
+            if (!this.channelStore[channelName]) {
+                this.channelStore[channelName] = this.supabase.channel(channelName);
+
+                // Subscribe to the channel
+                this.channelStore[channelName].subscribe((status) => {
+                    this.logger.debug(`Channel ${channelName} status: ${status}`);
+                });
+            }
+
+            // Prepare the simplified payload
+            const simplifiedPayload = this.simplifyPayload(payload);
+
+            // Send the broadcast message
+            const result = await this.channelStore[channelName].send({
+                type: 'broadcast',
+                event: event,
+                payload: simplifiedPayload
+            });
+
+            if (result === 'ok') {
+                this.logger.debug(`✅ Successfully broadcast ${event} to ${channelName}`);
+                return true;
+            } else {
+                this.logger.warn(`❌ Failed to broadcast to ${channelName}: ${result}`);
+                return false;
+            }
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting to channel: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Simplify payload to avoid circular references and excessive size
+     */
+    private simplifyPayload(payload: any): any {
+        if (!payload) return payload;
+
+        // For messages, extract only essential fields
+        if (payload._id && payload.chatId && payload.senderId) {
+            return {
+                id: payload._id.toString(),
+                chatId: typeof payload.chatId === 'object' ? payload.chatId.toString() : payload.chatId,
+                senderId: typeof payload.senderId === 'object' ?
+                    (payload.senderId._id ? payload.senderId._id.toString() : payload.senderId.toString())
+                    : payload.senderId,
+                content: payload.content,
+                type: payload.type,
+                createdAt: payload.createdAt,
+                // Include minimal sender info if available
+                sender: payload.senderId && typeof payload.senderId === 'object' ? {
+                    id: payload.senderId._id ? payload.senderId._id.toString() : null,
+                    name: payload.senderId.name,
+                    surname: payload.senderId.surname
+                } : null
+            };
+        }
+
+        // For other types, just convert any MongoDB IDs to strings
+        return this.convertIdsToStrings(payload);
+    }
+
+    /**
+     * Convert MongoDB ObjectIds to strings to avoid serialization issues
+     */
+    private convertIdsToStrings(obj: any): any {
+        if (!obj || typeof obj !== 'object') return obj;
+
+        if (Array.isArray(obj)) {
+            return obj.map(item => this.convertIdsToStrings(item));
+        }
+
+        const result = {};
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const value = obj[key];
+
+                // Check for MongoDB ObjectId
+                if (value && value._bsontype === 'ObjectID') {
+                    result[key] = value.toString();
+                } else if (value && typeof value === 'object') {
+                    result[key] = this.convertIdsToStrings(value);
+                } else {
+                    result[key] = value;
+                }
+            }
+        }
+
+        return result;
+    }
+
     private initChangeStreams() {
+        this.logger.log('Initializing MongoDB change streams');
+
         // Watch for new messages
         this.messageModel.watch().on('change', async (change) => {
             try {
                 if (change.operationType === 'insert') {
-                    const message = await this.messageModel.findById(change.documentKey._id)
-                        .populate('senderId', 'name surname notifications')
-                        .lean();
+                    const rawMessage = await this.messageModel.findById(change.documentKey._id).lean();
 
-                    if (!message) {
+                    if (!rawMessage) {
                         this.logger.warn(`Message not found for change stream: ${change.documentKey._id}`);
                         return;
                     }
 
-                    // Broadcast to Supabase chat room
-                    await this.supabase.channel(`chat:${message.chatId}`)
-                        .send({
-                            type: 'broadcast',
-                            event: 'new_message',
-                            payload: message
-                        });
+                    // Get senderId as a string before populating
+                    const senderId = rawMessage.senderId.toString();
+                    const chatId = rawMessage.chatId.toString();
+                    const messageId = rawMessage._id.toString();
 
-                    // Send push notification for the new message
+                    // Now get the populated message for broadcasting
+                    const populatedMessage = await this.messageModel.findById(change.documentKey._id)
+                        .populate('senderId', 'name surname notifications')
+                        .lean();
+
+                    // Broadcast to Supabase chat room (if enabled)
+                    if (this.realtimeEnabled) {
+                        await this.broadcastToChannel(
+                            chatId,
+                            'new_message',
+                            populatedMessage
+                        );
+                    }
+
+                    // Send push notification
                     await this.coreNotificationService.sendChatMessageNotification({
-                        chatId: message.chatId.toString(),
-                        messageId: message._id.toString(),
-                        senderId: message.senderId.toString() // Fix here - don't assume _id is accessible
+                        chatId: chatId,
+                        messageId: messageId,
+                        senderId: senderId
                     }).catch(err => {
                         this.logger.error(`Error sending notification for message: ${err.message}`);
                     });
@@ -72,6 +255,8 @@ export class SocialChatService {
                 this.logger.error(`Error in change stream handler: ${error.message}`, error.stack);
             }
         });
+
+        this.logger.log('MongoDB change streams initialized');
     }
 
     /**
@@ -88,11 +273,7 @@ export class SocialChatService {
 
             await chat.save();
 
-            // Create a Supabase channel for this chat
-            await this.supabase.channel(`chat:${chat._id}`)
-                .subscribe();
-
-            return { success: true, data: chat };
+            return {success: true, data: chat};
         } catch (error) {
             this.logger.error(`Error creating chat: ${error.message}`, error.stack);
             throw error;
@@ -107,15 +288,15 @@ export class SocialChatService {
             const skip = (page - 1) * limit;
 
             // Fetch messages with populated sender and reply info
-            const messages = await this.messageModel.find({ chatId })
-                .sort({ createdAt: -1 })
+            const messages = await this.messageModel.find({chatId})
+                .sort({createdAt: -1})
                 .skip(skip)
                 .limit(limit)
                 .populate('senderId', 'name surname')
                 .populate('replyToId')
                 .lean();
 
-            const total = await this.messageModel.countDocuments({ chatId });
+            const total = await this.messageModel.countDocuments({chatId});
 
             return {
                 data: messages,
@@ -157,7 +338,7 @@ export class SocialChatService {
                 }
             );
 
-            return { success: true, data: message };
+            return {success: true, data: message};
         } catch (error) {
             this.logger.error(`Error sending message: ${error.message}`, error.stack);
             throw error;
@@ -197,7 +378,7 @@ export class SocialChatService {
                 }
             );
 
-            return { success: true, data: forwardedMessage };
+            return {success: true, data: forwardedMessage};
         } catch (error) {
             this.logger.error(`Error forwarding message: ${error.message}`, error.stack);
             throw error;
@@ -227,7 +408,7 @@ export class SocialChatService {
                 }
             );
 
-            return { success: true, data: reply };
+            return {success: true, data: reply};
         } catch (error) {
             this.logger.error(`Error replying to message: ${error.message}`, error.stack);
             throw error;
@@ -239,6 +420,13 @@ export class SocialChatService {
      */
     async markMessageAsRead(messageId: string, userId: string) {
         try {
+            const message = await this.messageModel.findById(messageId);
+            if (!message) {
+                throw new Error('Message not found');
+            }
+
+            const chatId = message.chatId.toString();
+
             const result = await this.messageModel.findByIdAndUpdate(
                 messageId,
                 {
@@ -250,10 +438,19 @@ export class SocialChatService {
                         }
                     }
                 },
-                { new: true }
+                {new: true}
             );
 
-            return { success: true, data: result };
+            // Broadcast read receipt if Realtime is enabled
+            if (this.realtimeEnabled) {
+                await this.broadcastToChannel(
+                    chatId,
+                    'message_read',
+                    {messageId, userId, timestamp: new Date()}
+                );
+            }
+
+            return {success: true, data: result};
         } catch (error) {
             this.logger.error(`Error marking message as read: ${error.message}`, error.stack);
             throw error;
@@ -284,15 +481,16 @@ export class SocialChatService {
             };
             await message.save();
 
-            // Broadcast deletion through Supabase
-            await this.supabase.channel(`chat:${message.chatId}`)
-                .send({
-                    type: 'broadcast',
-                    event: 'message_deleted',
-                    payload: { messageId: message._id }
-                });
+            // Broadcast deletion through Supabase if Realtime is enabled
+            if (this.realtimeEnabled) {
+                await this.broadcastToChannel(
+                    message.chatId.toString(),
+                    'message_deleted',
+                    {messageId: message._id.toString()}
+                );
+            }
 
-            return { success: true };
+            return {success: true};
         } catch (error) {
             this.logger.error(`Error deleting message: ${error.message}`, error.stack);
             throw error;
@@ -313,7 +511,7 @@ export class SocialChatService {
                 throw new Error('Chat not found');
             }
 
-            return { success: true, data: chat };
+            return {success: true, data: chat};
         } catch (error) {
             this.logger.error(`Error getting chat: ${error.message}`, error.stack);
             throw error;
@@ -326,16 +524,16 @@ export class SocialChatService {
     async getUserChats(userId: string, clientId: string) {
         try {
             const chats = await this.chatModel.find({
-                participants: { $in: [userId] },
+                participants: {$in: [userId]},
                 clientId: clientId,
                 isActive: true
             })
                 .populate('participants', 'name surname')
                 .populate('lastMessageId')
-                .sort({ updatedAt: -1 })
+                .sort({updatedAt: -1})
                 .lean();
 
-            return { success: true, data: chats };
+            return {success: true, data: chats};
         } catch (error) {
             this.logger.error(`Error getting user chats: ${error.message}`, error.stack);
             throw error;
@@ -355,7 +553,7 @@ export class SocialChatService {
                         updatedAt: new Date()
                     }
                 },
-                { new: true }
+                {new: true}
             )
                 .populate('participants', 'name surname')
                 .lean();
@@ -364,18 +562,33 @@ export class SocialChatService {
                 throw new Error('Chat not found');
             }
 
-            // Broadcast chat update through Supabase
-            await this.supabase.channel(`chat:${chatId}`)
-                .send({
-                    type: 'broadcast',
-                    event: 'chat_updated',
-                    payload: updatedChat
-                });
+            // Broadcast chat update through Supabase if Realtime is enabled
+            if (this.realtimeEnabled) {
+                await this.broadcastToChannel(
+                    chatId,
+                    'chat_updated',
+                    {
+                        id: updatedChat._id.toString(),
+                        name: updatedChat.name,
+                        updated: new Date()
+                    }
+                );
+            }
 
-            return { success: true, data: updatedChat };
+            return {success: true, data: updatedChat};
         } catch (error) {
             this.logger.error(`Error updating chat: ${error.message}`, error.stack);
             throw error;
         }
+    }
+
+    /**
+     * Get Supabase Realtime status
+     */
+    getRealtimeStatus() {
+        return {
+            enabled: this.realtimeEnabled,
+            activeChannels: Object.keys(this.channelStore).length
+        };
     }
 }

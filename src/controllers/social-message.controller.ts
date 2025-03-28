@@ -26,9 +26,11 @@ export class SocialMessageController {
     @ApiOperation({ summary: 'Send a new message' })
     @ApiResponse({ status: 201, description: 'Message sent successfully' })
     async sendMessage(@Body() createMessageDto: CreateSocialMessageDto, @Req() req: Request & { client: Client }) {
-        // Ensure client ID is set from the authenticated client
-        createMessageDto.clientId = req.client.id;
-        return this.socialChatService.sendMessage(createMessageDto);
+
+        return this.socialChatService.sendMessage({
+            ...createMessageDto,
+            clientId: req.client.id
+        });
     }
 
     @Post(':id/forward')

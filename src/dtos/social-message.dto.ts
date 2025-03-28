@@ -4,9 +4,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MessageType } from '../schemas/social-message.schema';
 
 export class CreateSocialMessageDto {
-  @ApiProperty()
+  @ApiPropertyOptional()  // Changed to optional since controller sets it
   @IsString()
-  senderId: string;
+  @IsOptional()  // Added IsOptional
+  senderId?: string;
 
   @ApiProperty()
   @IsString()
@@ -31,9 +32,10 @@ export class CreateSocialMessageDto {
   @IsOptional()
   forwardedFromId?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()  // Changed to optional
   @IsString()
-  clientId: string;
+  @IsOptional()  // Added IsOptional
+  clientId?: string;
 
   @ApiPropertyOptional({ type: Object })
   @IsObject()
