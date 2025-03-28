@@ -209,4 +209,18 @@ export class CoreNotificationController {
             oneSignalResponse: result,
         };
     }
+
+    /**
+     * Get all notification types with their corresponding delivery methods
+     */
+    @Get('types-with-methods')
+    @ApiOperation({ summary: 'Get all notification types with their corresponding delivery methods' })
+    @ApiResponse({ status: 200, description: 'Successfully retrieved notification types with methods' })
+    async getNotificationTypesWithMethods() {
+        const typesWithMethods = await this.coreNotificationService.getNotificationTypesWithMethods();
+        return {
+            success: true,
+            data: typesWithMethods
+        };
+    }
 }
