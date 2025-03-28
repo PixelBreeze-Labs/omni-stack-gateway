@@ -10,6 +10,7 @@ import { User } from '../schemas/user.schema';
 import { CoreNotificationService } from './core-notification.service';
 import { CreateSocialMessageDto } from '../dtos/social-message.dto';
 import { CreateSocialChatDto } from '../dtos/social-chat.dto';
+import { ChatGateway } from '../gateways/chat.gateway';
 
 interface ReplySocialMessageDto extends CreateSocialMessageDto {
     replyToId: string;
@@ -27,7 +28,8 @@ export class SocialChatService implements OnModuleInit {
         @InjectModel(SocialChat.name) private chatModel: Model<SocialChat>,
         @InjectModel(User.name) private userModel: Model<User>,
         private configService: ConfigService,
-        private coreNotificationService: CoreNotificationService
+        private coreNotificationService: CoreNotificationService,
+        private chatGateway: ChatGateway // Inject the chat gateway
     ) {
         // Initialize Supabase client
         const supabaseUrl = this.configService.get('SUPABASE_URL');
@@ -66,7 +68,7 @@ export class SocialChatService implements OnModuleInit {
             // Test the Realtime connection
             await this.testRealtimeConnection();
         } else {
-            this.logger.warn('Supabase Realtime is DISABLED - using push notifications only');
+            this.logger.warn('Supabase Realtime is DISABLED - using Socket.io and push notifications');
         }
     }
 
@@ -110,8 +112,17 @@ export class SocialChatService implements OnModuleInit {
      * Broadcast a message to a chat channel
      */
     private async broadcastToChannel(chatId: string, event: string, payload: any): Promise<boolean> {
+        // Always broadcast via Socket.io
+        try {
+            const simplifiedPayload = this.simplifyPayload(payload);
+            this.chatGateway.broadcastToChat(chatId, event, simplifiedPayload);
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting to Socket.io: ${error.message}`);
+        }
+
+        // Additionally broadcast via Supabase if enabled
         if (!this.realtimeEnabled || !this.supabase) {
-            return false;
+            return true; // Return true since Socket.io broadcast was attempted
         }
 
         try {
@@ -233,14 +244,12 @@ export class SocialChatService implements OnModuleInit {
                         .populate('senderId', 'name surname notifications')
                         .lean();
 
-                    // Broadcast to Supabase chat room (if enabled)
-                    if (this.realtimeEnabled) {
-                        await this.broadcastToChannel(
-                            chatId,
-                            'new_message',
-                            populatedMessage
-                        );
-                    }
+                    // Broadcast to clients
+                    await this.broadcastToChannel(
+                        chatId,
+                        'new_message',
+                        populatedMessage
+                    );
 
                     // Send push notification
                     await this.coreNotificationService.sendChatMessageNotification({
@@ -441,14 +450,12 @@ export class SocialChatService implements OnModuleInit {
                 {new: true}
             );
 
-            // Broadcast read receipt if Realtime is enabled
-            if (this.realtimeEnabled) {
-                await this.broadcastToChannel(
-                    chatId,
-                    'message_read',
-                    {messageId, userId, timestamp: new Date()}
-                );
-            }
+            // Broadcast read receipt
+            await this.broadcastToChannel(
+                chatId,
+                'message_read',
+                {messageId, userId, timestamp: new Date()}
+            );
 
             return {success: true, data: result};
         } catch (error) {
@@ -481,14 +488,12 @@ export class SocialChatService implements OnModuleInit {
             };
             await message.save();
 
-            // Broadcast deletion through Supabase if Realtime is enabled
-            if (this.realtimeEnabled) {
-                await this.broadcastToChannel(
-                    message.chatId.toString(),
-                    'message_deleted',
-                    {messageId: message._id.toString()}
-                );
-            }
+            // Broadcast deletion
+            await this.broadcastToChannel(
+                message.chatId.toString(),
+                'message_deleted',
+                {messageId: message._id.toString()}
+            );
 
             return {success: true};
         } catch (error) {
@@ -562,18 +567,16 @@ export class SocialChatService implements OnModuleInit {
                 throw new Error('Chat not found');
             }
 
-            // Broadcast chat update through Supabase if Realtime is enabled
-            if (this.realtimeEnabled) {
-                await this.broadcastToChannel(
-                    chatId,
-                    'chat_updated',
-                    {
-                        id: updatedChat._id.toString(),
-                        name: updatedChat.name,
-                        updated: new Date()
-                    }
-                );
-            }
+            // Broadcast chat update
+            await this.broadcastToChannel(
+                chatId,
+                'chat_updated',
+                {
+                    id: updatedChat._id.toString(),
+                    name: updatedChat.name,
+                    updated: new Date()
+                }
+            );
 
             return {success: true, data: updatedChat};
         } catch (error) {
@@ -583,12 +586,18 @@ export class SocialChatService implements OnModuleInit {
     }
 
     /**
-     * Get Supabase Realtime status
+     * Get Realtime status
      */
     getRealtimeStatus() {
         return {
-            enabled: this.realtimeEnabled,
-            activeChannels: Object.keys(this.channelStore).length
+            supabase: {
+                enabled: this.realtimeEnabled,
+                activeChannels: Object.keys(this.channelStore).length
+            },
+            socketio: {
+                enabled: true,
+                connections: this.chatGateway.getConnectionsCount()
+            }
         };
     }
 }
