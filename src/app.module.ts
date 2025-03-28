@@ -11,6 +11,7 @@ import { ApiKeyMiddleware } from './middleware/api-key.middleware';
 import { EmailService } from './services/email.service';
 import configuration from './config/configuration';
 import { MongooseModuleAsyncOptions } from '@nestjs/mongoose';
+import { ChatGateway } from './gateways/chat.gateway';
 
 // Schema imports
 import { ClientAppSchema } from './schemas/client-app.schema';
@@ -495,7 +496,8 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     CoreNotificationService,
     SocialChatService,
     SnapfoodieService,
-    OneSignalService
+    OneSignalService,
+    ChatGateway
   ],
 })
 export class AppModule implements NestModule {
