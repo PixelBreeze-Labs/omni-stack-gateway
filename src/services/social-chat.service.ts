@@ -1,5 +1,5 @@
 // src/services/social-chat.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -16,9 +16,10 @@ interface ReplySocialMessageDto extends CreateSocialMessageDto {
 }
 
 @Injectable()
-export class SocialChatService {
+export class SocialChatService implements OnModuleInit {
     private readonly logger = new Logger(SocialChatService.name);
     private supabase: SupabaseClient;
+    private realtimeEnabled = false;
 
     constructor(
         @InjectModel(SocialMessage.name) private messageModel: Model<SocialMessage>,
@@ -27,21 +28,76 @@ export class SocialChatService {
         private configService: ConfigService,
         private coreNotificationService: CoreNotificationService
     ) {
-        this.supabase = createClient(
-            this.configService.get('SUPABASE_URL'),
-            this.configService.get('SUPABASE_SERVICE_KEY')
-        );
+        // Initialize Supabase client
+        const supabaseUrl = this.configService.get('SUPABASE_URL');
+        const supabaseKey = this.configService.get('SUPABASE_SERVICE_KEY');
 
-        // Set up MongoDB change streams to broadcast to Supabase
+        if (!supabaseUrl || !supabaseKey) {
+            this.logger.error('Missing Supabase credentials in environment variables');
+            return;
+        }
+
+        try {
+            this.supabase = createClient(supabaseUrl, supabaseKey);
+            this.logger.log('Supabase client initialized');
+        } catch (error) {
+            this.logger.error(`Failed to initialize Supabase client: ${error.message}`, error.stack);
+        }
+    }
+
+    async onModuleInit() {
+        // Check if Supabase is enabled in config
+        const enableRealtime = this.configService.get('ENABLE_SUPABASE_REALTIME');
+        this.realtimeEnabled = enableRealtime === 'true';
+
+        // Initialize MongoDB change streams regardless of Realtime status
         this.initChangeStreams();
+
+        // Log status
+        if (this.realtimeEnabled) {
+            this.logger.log('Supabase Realtime is ENABLED');
+        } else {
+            this.logger.warn('Supabase Realtime is DISABLED - falling back to push notifications only');
+        }
+    }
+
+    private async broadcastToChannel(chatId: string, event: string, payload: any): Promise<boolean> {
+        if (!this.realtimeEnabled || !this.supabase) {
+            return false;
+        }
+
+        try {
+            // Create a direct channel reference each time
+            const channelId = `chat:${chatId}`;
+            const channel = this.supabase.channel(channelId);
+
+            // Send the message
+            const result = await channel.send({
+                type: 'broadcast',
+                event: event,
+                payload: payload
+            });
+
+            if (result === 'ok') {
+                this.logger.log(`✅ Supabase broadcast success: ${channelId} event=${event}`); // Add this log
+                return true;
+            } else {
+                this.logger.warn(`❌ Supabase broadcast failed: ${channelId} result=${result}`); // Add this log
+                return false;
+            }
+        } catch (error) {
+            this.logger.error(`❌ Supabase broadcast error: ${error.message}`);
+            return false;
+        }
     }
 
     private initChangeStreams() {
+        this.logger.log('Initializing MongoDB change streams');
+
         // Watch for new messages
         this.messageModel.watch().on('change', async (change) => {
             try {
                 if (change.operationType === 'insert') {
-                    // Get the message document without populating sender details first
                     const rawMessage = await this.messageModel.findById(change.documentKey._id).lean();
 
                     if (!rawMessage) {
@@ -51,25 +107,27 @@ export class SocialChatService {
 
                     // Get senderId as a string before populating
                     const senderId = rawMessage.senderId.toString();
+                    const chatId = rawMessage.chatId.toString();
 
                     // Now get the populated message for broadcasting
                     const populatedMessage = await this.messageModel.findById(change.documentKey._id)
                         .populate('senderId', 'name surname notifications')
                         .lean();
 
-                    // Broadcast to Supabase chat room
-                    await this.supabase.channel(`chat:${populatedMessage.chatId}`)
-                        .send({
-                            type: 'broadcast',
-                            event: 'new_message',
-                            payload: populatedMessage
-                        });
+                    // Broadcast to Supabase chat room (if enabled)
+                    if (this.realtimeEnabled) {
+                        await this.broadcastToChannel(
+                            chatId,
+                            'new_message',
+                            populatedMessage
+                        );
+                    }
 
-                    // Send push notification using the string senderId
+                    // Send push notification using the string senderId (always do this regardless of Realtime status)
                     await this.coreNotificationService.sendChatMessageNotification({
-                        chatId: rawMessage.chatId.toString(),
+                        chatId: chatId,
                         messageId: rawMessage._id.toString(),
-                        senderId: senderId // Use the string version of senderId
+                        senderId: senderId
                     }).catch(err => {
                         this.logger.error(`Error sending notification for message: ${err.message}`);
                     });
@@ -78,6 +136,8 @@ export class SocialChatService {
                 this.logger.error(`Error in change stream handler: ${error.message}`, error.stack);
             }
         });
+
+        this.logger.log('MongoDB change streams initialized');
     }
 
     /**
@@ -93,22 +153,6 @@ export class SocialChatService {
             });
 
             await chat.save();
-
-            // Log the chat ID for debugging
-            this.logger.debug(`Creating Supabase channel for chat ID: ${chat._id}`);
-
-            // Create a Supabase channel for this chat
-            const channel = this.supabase.channel(`chat:${chat._id}`);
-
-            // Log before subscribing
-            this.logger.debug(`About to subscribe to channel: chat:${chat._id}`);
-
-            const subscription = await channel.subscribe((status) => {
-                this.logger.debug(`Supabase subscription status: ${status}`);
-            });
-
-            // Log after subscription
-            this.logger.debug(`Supabase channel subscribed: ${JSON.stringify(subscription)}`);
 
             return { success: true, data: chat };
         } catch (error) {
@@ -257,6 +301,13 @@ export class SocialChatService {
      */
     async markMessageAsRead(messageId: string, userId: string) {
         try {
+            const message = await this.messageModel.findById(messageId);
+            if (!message) {
+                throw new Error('Message not found');
+            }
+
+            const chatId = message.chatId.toString();
+
             const result = await this.messageModel.findByIdAndUpdate(
                 messageId,
                 {
@@ -270,6 +321,15 @@ export class SocialChatService {
                 },
                 { new: true }
             );
+
+            // Broadcast read receipt if Realtime is enabled
+            if (this.realtimeEnabled) {
+                await this.broadcastToChannel(
+                    chatId,
+                    'message_read',
+                    { messageId, userId, timestamp: new Date() }
+                );
+            }
 
             return { success: true, data: result };
         } catch (error) {
@@ -302,13 +362,14 @@ export class SocialChatService {
             };
             await message.save();
 
-            // Broadcast deletion through Supabase
-            await this.supabase.channel(`chat:${message.chatId}`)
-                .send({
-                    type: 'broadcast',
-                    event: 'message_deleted',
-                    payload: { messageId: message._id }
-                });
+            // Broadcast deletion through Supabase if Realtime is enabled
+            if (this.realtimeEnabled) {
+                await this.broadcastToChannel(
+                    message.chatId.toString(),
+                    'message_deleted',
+                    { messageId: message._id }
+                );
+            }
 
             return { success: true };
         } catch (error) {
@@ -382,18 +443,28 @@ export class SocialChatService {
                 throw new Error('Chat not found');
             }
 
-            // Broadcast chat update through Supabase
-            await this.supabase.channel(`chat:${chatId}`)
-                .send({
-                    type: 'broadcast',
-                    event: 'chat_updated',
-                    payload: updatedChat
-                });
+            // Broadcast chat update through Supabase if Realtime is enabled
+            if (this.realtimeEnabled) {
+                await this.broadcastToChannel(
+                    chatId,
+                    'chat_updated',
+                    updatedChat
+                );
+            }
 
             return { success: true, data: updatedChat };
         } catch (error) {
             this.logger.error(`Error updating chat: ${error.message}`, error.stack);
             throw error;
         }
+    }
+
+    /**
+     * Get Supabase Realtime status
+     */
+    getRealtimeStatus() {
+        return {
+            enabled: this.realtimeEnabled
+        };
     }
 }
