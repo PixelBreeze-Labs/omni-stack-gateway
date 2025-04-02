@@ -916,21 +916,26 @@ export class AuthService {
      */
     async snapfoodLogin(loginDto: SnapfoodLoginDto) {
         try {
-            // Find user by email with SNAPFOOD registration source
-            const user = await this.userModel.findOne({
-                email: loginDto.email,
+            // Build query based on provided credentials
+            const query: any = {
                 registrationSource: RegistrationSource.SNAPFOOD
-            });
+            };
+
+            if (loginDto.email) {
+                query.email = loginDto.email;
+            } else if (loginDto.snapFoodId) {
+                // Query by snapFoodId in external_ids
+                query['external_ids.snapFoodId'] = loginDto.snapFoodId;
+            } else {
+                throw new UnauthorizedException('Either email or SnapFood ID must be provided');
+            }
+
+            // Find user by the constructed query
+            const user = await this.userModel.findOne(query);
 
             if (!user) {
                 throw new UnauthorizedException('Invalid credentials');
             }
-
-            // // Verify password
-            // const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
-            // if (!isPasswordValid) {
-            //     throw new UnauthorizedException('Invalid credentials');
-            // }
 
             // Get the first client ID from the user's client_ids array
             const clientId = user.client_ids && user.client_ids.length > 0
