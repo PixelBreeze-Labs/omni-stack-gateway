@@ -924,8 +924,12 @@ export class AuthService {
             if (loginDto.email) {
                 query.email = loginDto.email;
             } else if (loginDto.snapFoodId) {
-                // Query by snapFoodId in external_ids
-                query['external_ids.snapFoodId'] = loginDto.snapFoodId;
+                // Convert snapFoodId to a number if it's provided as a string but stored as a number
+                const snapFoodIdValue = isNaN(Number(loginDto.snapFoodId))
+                    ? loginDto.snapFoodId
+                    : Number(loginDto.snapFoodId);
+
+                query['external_ids.snapFoodId'] = snapFoodIdValue;
             } else {
                 throw new UnauthorizedException('Either email or SnapFood ID must be provided');
             }
