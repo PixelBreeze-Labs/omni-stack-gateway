@@ -5,7 +5,7 @@ import {InventoryItem} from "../schemas/inventory-item.schema";
 import {CreateAdjustmentDto, ListAdjustmentsDto} from "../dtos/inventory-adjustment.dto";
 import {InjectModel} from "@nestjs/mongoose";
 import {Product} from "../schemas/product.schema";
-import { Document, Model } from 'mongoose';
+import { Document, Model, ClientSession } from 'mongoose';
 import {IInventoryAdjustment} from "../interfaces/inventory-adjustment.interface";
 
 @Injectable()
@@ -24,18 +24,36 @@ export class InventoryAdjustmentService {
             const product = await this.productModel.findById(dto.productId);
             if (!product) throw new NotFoundException('Product not found');
 
-            const adjustment = await this.adjustmentModel.create({
-                ...dto,
-                status: 'PENDING',
-                // TODO: dynamic cost price
-                valueImpact: this.calculateValueImpact(dto.type, dto.quantity, 0)
+            // Get current inventory to calculate value impact for SET operations
+            const currentInventory = await this.inventoryModel.findOne({
+                productId: dto.productId,
+                warehouseId: dto.warehouseId
             });
 
+            // Get product cost price (fallback to 0 if not available)
+            const costPrice = product.costPrice || 0;
+            
+            // Calculate value impact based on current inventory and cost price
+            const valueImpact = this.calculateValueImpact(
+                dto.type, 
+                dto.quantity, 
+                costPrice, 
+                currentInventory?.quantity || 0
+            );
+
+            const adjustment = await this.adjustmentModel.create([{
+                ...dto,
+                status: 'PENDING',
+                valueImpact
+            }], { session });
+
             await session.commitTransaction();
-            return adjustment;
+            return adjustment[0];
         } catch (error) {
             await session.abortTransaction();
             throw error;
+        } finally {
+            await session.endSession();
         }
     }
 
@@ -107,7 +125,7 @@ export class InventoryAdjustmentService {
         );
     }
 
-    private async updateInventory(adjustment: any) {
+    private async updateInventory(adjustment: InventoryAdjustment) {
         const update = this.getInventoryUpdate(adjustment);
         await this.inventoryModel.updateOne(
             {
@@ -132,14 +150,16 @@ export class InventoryAdjustmentService {
         }
     }
 
-    private calculateValueImpact(type: string, quantity: number, costPrice: number): number {
+    private calculateValueImpact(type: string, quantity: number, costPrice: number, currentQuantity: number = 0): number {
         switch (type) {
             case 'INCREASE':
                 return quantity * costPrice;
             case 'DECREASE':
                 return -(quantity * costPrice);
             case 'SET':
-                return 0; // Requires current quantity to calculate
+                // Calculate the difference between current and new quantity
+                const quantityDifference = quantity - currentQuantity;
+                return quantityDifference * costPrice;
             default:
                 return 0;
         }
