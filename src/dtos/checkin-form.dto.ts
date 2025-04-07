@@ -12,8 +12,7 @@ import {
   IsMongoId,
   ValidateNested,
   IsDate,
-  IsDateString,
-  // Changed IsTimeString to a more appropriate validator
+  IsDateString
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { FormField } from '../schemas/checkin-form-config.schema';
