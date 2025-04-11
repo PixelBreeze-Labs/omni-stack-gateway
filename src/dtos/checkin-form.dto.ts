@@ -18,6 +18,7 @@ import { Type } from 'class-transformer';
 import { FormField } from '../schemas/checkin-form-config.schema';
 import { SubmissionStatus } from '../schemas/checkin-submission.schema';
 
+
 // DTO for form field configuration
 export class FormFieldDto implements Partial<FormField> {
   @ApiProperty({ description: 'Field name (identifier)' })
