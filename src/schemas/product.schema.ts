@@ -60,6 +60,9 @@ export class Product extends Document {
     @Prop({ type: [String] })
     gallery?: string[];
 
+    @Prop({ type: Number }) // Make sure it's a Number
+    costPrice?: number; // The '?' means it might not always be there
+
     @Prop({ type: Object })
     imageMetadata?: {
         width: number;
