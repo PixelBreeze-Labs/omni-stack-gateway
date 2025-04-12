@@ -1071,7 +1071,7 @@ export class SnapfoodService {
             // Only add active if it's explicitly set (omit it to get all blogs)
             if (params?.active !== undefined) {
                 // Convert to string because the API expects a string value
-                queryParams.active = params.active ? 'true' : 'false';
+                queryParams.active = params.active ? true : false;
             }
 
             // Only add category_id if it's a valid integer
