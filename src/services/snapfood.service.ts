@@ -1037,7 +1037,7 @@ export class SnapfoodService {
     async listBlogCategories(): Promise<BlogCategoriesResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/v3/omni-stack/blogs/categories`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs/categories`,
                 {
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
                     validateStatus: (status) => status < 500
@@ -1062,7 +1062,7 @@ export class SnapfoodService {
     }): Promise<BlogsResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/v3/omni-stack/blogs`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs`,
                 {
                     params,
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
@@ -1082,7 +1082,7 @@ export class SnapfoodService {
     async getBlog(id: string): Promise<BlogResponse> {
         try {
             const response$ = this.httpService.get(
-                `${this.baseUrl}/v3/omni-stack/blogs/${id}`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs/${id}`,
                 {
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
                     validateStatus: (status) => status < 500
@@ -1110,7 +1110,7 @@ export class SnapfoodService {
     async createBlog(data: any): Promise<BlogCreateResponse> {
         try {
             const response$ = this.httpService.post(
-                `${this.baseUrl}/v3/omni-stack/blogs`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs`,
                 data,
                 {
                     headers: {
@@ -1149,7 +1149,7 @@ export class SnapfoodService {
             // the system might expect a PUT request instead. Let's double-check if the
             // system you're talking to prefers PUT for updates. If it does, change 'POST' to 'PUT' below!
             const response$ = this.httpService.post(
-                `${this.baseUrl}/v3/omni-stack/blogs/${id}`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs/${id}`,
                 data,
                 {
                     headers: {
@@ -1189,7 +1189,7 @@ export class SnapfoodService {
     async deleteBlog(id: string): Promise<BlogDeleteResponse> {
         try {
             const response$ = this.httpService.delete(
-                `${this.baseUrl}/v3/omni-stack/blogs/${id}`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs/${id}`,
                 {
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
                     validateStatus: (status) => status < 500
@@ -1218,7 +1218,7 @@ export class SnapfoodService {
     async toggleBlogStatus(id: string): Promise<BlogToggleStatusResponse> {
         try {
             const response$ = this.httpService.put(
-                `${this.baseUrl}/v3/omni-stack/blogs/${id}/toggle-status`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs/${id}/toggle-status`,
                 {},
                 {
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
@@ -1248,7 +1248,7 @@ export class SnapfoodService {
     async incrementNotificationReadCount(id: string): Promise<BlogNotificationReadResponse> {
         try {
             const response$ = this.httpService.put(
-                `${this.baseUrl}/v3/omni-stack/blogs/${id}/notification-read`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs/${id}/notification-read`,
                 {},
                 {
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
@@ -1285,7 +1285,7 @@ export class SnapfoodService {
     ): Promise<BlogSendNotificationResponse> {
         try {
             const response$ = this.httpService.post(
-                `${this.baseUrl}/v3/omni-stack/blogs/${id}/send-notification`,
+                `${this.baseUrl}/v3/omni-stack/os-blogs/${id}/send-notification`,
                 data,
                 {
                     headers: {
