@@ -1061,11 +1061,23 @@ export class SnapfoodService {
         active?: boolean;
     }): Promise<BlogsResponse> {
         try {
-
             // Create a new params object to manipulate
-            const queryParams: any = { page: params?.page || 1, per_page: params?.per_page || 10, title: params?.title, active: params?.active };
+            const queryParams: any = {
+                page: params?.page || 1,
+                per_page: params?.per_page || 10,
+                title: params?.title
+            };
+
+            // Only add active if it's explicitly set (omit it to get all blogs)
+            if (params?.active !== undefined) {
+                // Convert to string because the API expects a string value
+                queryParams.active = params.active ? 'true' : 'false';
+            }
+
             // Only add category_id if it's a valid integer
-            if (params?.category_id !== undefined && Number.isInteger(params.category_id)) { queryParams.category_id = params.category_id; }
+            if (params?.category_id !== undefined && Number.isInteger(params.category_id)) {
+                queryParams.category_id = params.category_id;
+            }
 
             const response$ = this.httpService.get(
                 `${this.baseUrl}/v3/omni-stack/os-blogs`,
