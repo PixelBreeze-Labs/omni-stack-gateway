@@ -1,5 +1,20 @@
-import {Controller, Get, Query, Param, Res, UseGuards} from '@nestjs/common';
+import {
+    Controller,
+    Get,
+    Query,
+    Param,
+    Res,
+    UseGuards,
+    Post,
+    Body,
+    UploadedFile,
+    Put,
+    Delete,
+    UseInterceptors
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express'; // Import FileInterceptor
+
 import { Response } from 'express';  // Add this import
 import { SnapfoodService } from '../services/snapfood.service';
 import {
@@ -31,7 +46,13 @@ import {
     RecentOrdersResponse,
     DateRangeChartData,
     PromotionStats,
-    CashbackStats
+    CashbackStats,
+    BlogSendNotificationResponse,
+    BlogNotificationReadResponse,
+    BlogResponse,
+    BlogCreateResponse,
+    BlogToggleStatusResponse,
+    BlogsResponse, BlogCategoriesResponse, BlogUpdateResponse, BlogDeleteResponse
 } from '../types/snapfood.types';
 import {ClientAuthGuard} from "../guards/client-auth.guard";
 import {IsSnapFood} from "../decorators/snapfood.decorator";
@@ -601,4 +622,129 @@ export class SnapFoodController {
             per_page: perPage
         });
     }
+
+    @Get('blogs/categories')
+    @ApiOperation({ summary: 'List blog categories' })
+    @ApiResponse({ status: 200, description: 'Returns list of blog categories' })
+    async listBlogCategories(): Promise<BlogCategoriesResponse> {
+        return await this.snapfoodService.listBlogCategories();
+    }
+
+    @Get('blogs')
+    @ApiOperation({ summary: 'List blogs' })
+    @ApiResponse({ status: 200, description: 'Returns list of blogs with pagination' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'per_page', required: false })
+    @ApiQuery({ name: 'category_id', required: false })
+    @ApiQuery({ name: 'title', required: false })
+    @ApiQuery({ name: 'active', required: false })
+    async listBlogs(
+        @Query('page') page?: number,
+        @Query('per_page') perPage?: number,
+        @Query('category_id') categoryId?: number,
+        @Query('title') title?: string,
+        @Query('active') active?: boolean,
+    ): Promise<BlogsResponse> {
+        return await this.snapfoodService.listBlogs({
+            page,
+            per_page: perPage,
+            category_id: categoryId,
+            title,
+            active
+        });
+    }
+
+    @Get('blogs/:id')
+    @ApiOperation({ summary: 'Get blog by ID' })
+    @ApiResponse({ status: 200, description: 'Returns blog details' })
+    @ApiResponse({ status: 404, description: 'Blog not found' })
+    async getBlog(@Param('id') id: string): Promise<BlogResponse> {
+        return await this.snapfoodService.getBlog(id);
+    }
+
+    @Post('blogs')
+    @ApiOperation({ summary: 'Create a new blog' })
+    @ApiResponse({ status: 201, description: 'Returns created blog details' })
+    @ApiResponse({ status: 422, description: 'Validation error' })
+    @UseInterceptors(FileInterceptor('image_cover'))
+    async createBlog(
+        @Body() createBlogDto: any,
+        @UploadedFile() image?: Express.Multer.File,
+    ): Promise<BlogCreateResponse> {
+        const formData = new FormData();
+        for (const key in createBlogDto) {
+            formData.append(key, createBlogDto[key]);
+        }
+        if (image) {
+            // Try creating a Blob-like object from the buffer
+            const blob = new Blob([image.buffer]);
+            formData.append('image_cover', blob, image.originalname);
+        }
+        return await this.snapfoodService.createBlog(formData);
+    }
+
+    @Put('blogs/:id')
+    @ApiOperation({ summary: 'Update blog' })
+    @ApiResponse({ status: 200, description: 'Returns updated blog details' })
+    @ApiResponse({ status: 404, description: 'Blog not found' })
+    @ApiResponse({ status: 422, description: 'Validation error' })
+    @UseInterceptors(FileInterceptor('image_cover'))
+    async updateBlog(
+        @Param('id') id: string,
+        @Body() updateBlogDto: any,
+        @UploadedFile() image?: Express.Multer.File,
+    ): Promise<BlogUpdateResponse> {
+        const formData = new FormData();
+        for (const key in updateBlogDto) {
+            formData.append(key, updateBlogDto[key]);
+        }
+        if (image) {
+            // Try creating a Blob-like object from the buffer
+            const blob = new Blob([image.buffer]);
+            formData.append('image_cover', blob, image.originalname);
+        }
+        return await this.snapfoodService.updateBlog(id, formData);
+    }
+
+    @Delete('blogs/:id')
+    @ApiOperation({ summary: 'Delete blog' })
+    @ApiResponse({ status: 200, description: 'Blog deleted successfully' })
+    @ApiResponse({ status: 404, description: 'Blog not found' })
+    async deleteBlog(@Param('id') id: string): Promise<BlogDeleteResponse> {
+        return await this.snapfoodService.deleteBlog(id);
+    }
+
+    @Put('blogs/:id/toggle-status')
+    @ApiOperation({ summary: 'Toggle blog status (active/inactive)' })
+    @ApiResponse({ status: 200, description: 'Blog status toggled successfully' })
+    @ApiResponse({ status: 404, description: 'Blog not found' })
+    async toggleBlogStatus(@Param('id') id: string): Promise<BlogToggleStatusResponse> {
+        return await this.snapfoodService.toggleBlogStatus(id);
+    }
+
+
+    @Put('blogs/:id/notification-read')
+    @ApiOperation({ summary: 'Increment notification read count for a blog' })
+    @ApiResponse({ status: 200, description: 'Notification read count incremented successfully' })
+    @ApiResponse({ status: 404, description: 'Blog not found' })
+    async incrementNotificationReadCount(@Param('id') id: string): Promise<BlogNotificationReadResponse> {
+        return await this.snapfoodService.incrementNotificationReadCount(id);
+    }
+
+    @Post('blogs/:id/send-notification')
+    @ApiOperation({ summary: 'Send notification for a blog' })
+    @ApiResponse({ status: 200, description: 'Notification sent successfully' })
+    @ApiResponse({ status: 404, description: 'Blog not found or no devices available' })
+    @ApiResponse({ status: 422, description: 'Validation error' })
+    async sendBlogNotification(
+        @Param('id') id: string,
+        @Body() notificationDto: {
+            notification_title: string;
+            notification_title_en: string;
+            target_user_id?: number;
+        }
+    ): Promise<BlogSendNotificationResponse> {
+        return await this.snapfoodService.sendBlogNotification(id, notificationDto);
+    }
+
 }

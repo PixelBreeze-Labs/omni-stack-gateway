@@ -355,3 +355,116 @@ export interface DateRangeChartData {
     data: number[];
     total: number;
 }
+
+
+export interface Blog {
+    id: number;
+    title: string;
+    content: string;
+    title_en: string;
+    content_en: string;
+    author: string;
+    image_cover: string;
+    active: boolean;
+    read_count: number;
+    notifications_sent: number;
+    notifications_read_count: number;
+    show_quiz: boolean;
+    created_at: string;
+    updated_at: string;
+    slug: string;
+    hash_id: string;
+    categories: BlogCategory[];
+}
+
+export interface BlogCategory {
+    id: number;
+    title: string;
+    sq_title?: string;
+}
+
+export interface BlogsResponse {
+    success: boolean;
+    blogs: {
+        data: Blog[];
+        current_page: number;
+        per_page: number;
+        total: number;
+        last_page: number;
+    };
+}
+
+export interface BlogResponse {
+    success: boolean;
+    blog: Blog;
+}
+
+export interface BlogCategoriesResponse {
+    success: boolean;
+    categories: BlogCategory[];
+}
+
+export interface QuizQuestion {
+    id: number;
+    question_text: string;
+    answers: QuizAnswer[];
+}
+
+export interface QuizAnswer {
+    id: number;
+    answer_text: string;
+    is_correct: boolean;
+}
+
+export interface Quiz {
+    id: number;
+    blog_id: number;
+    title: string;
+    created_at: string;
+    updated_at: string;
+    questions: QuizQuestion[];
+}
+
+
+export interface BlogCreateResponse {
+    success: boolean;
+    message: string;
+    blog: Blog;
+    notifications_sent: number;
+    quiz_generated: boolean;
+}
+
+export interface BlogUpdateResponse {
+    success: boolean;
+    message: string;
+    blog: Blog;
+    notifications_sent?: number;
+}
+
+export interface BlogDeleteResponse {
+    success: boolean;
+    message: string;
+}
+
+export interface BlogToggleStatusResponse {
+    success: boolean;
+    message: string;
+    active: boolean;
+}
+
+export interface BlogNotificationReadResponse {
+    success: boolean;
+    message: string;
+    notifications_read_count: number;
+}
+
+export interface BlogSendNotificationResponse {
+    success: boolean;
+    message: string;
+    notifications_sent: number;
+    total_devices: number;
+    failed_notifications: Array<{
+        user_id: number;
+        error: string;
+    }>;
+}

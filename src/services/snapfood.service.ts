@@ -31,7 +31,16 @@ import {
     PromotionStats,
     CashbackStats,
     DateRangeChartData,
-    AverageOrderValueResponse, CustomerGeneralStatsResponse, ExportProductsResponse, GeneralInfoResponse
+    AverageOrderValueResponse,
+    CustomerGeneralStatsResponse,
+    ExportProductsResponse,
+    GeneralInfoResponse,
+    BlogSendNotificationResponse,
+    BlogNotificationReadResponse,
+    BlogResponse,
+    BlogCreateResponse,
+    BlogToggleStatusResponse,
+    BlogsResponse, BlogCategoriesResponse, BlogUpdateResponse, BlogDeleteResponse
 } from '../types/snapfood.types';
 @Injectable()
 export class SnapfoodService {
@@ -1020,6 +1029,294 @@ export class SnapfoodService {
             }
             throw new HttpException(
                 'Failed to fetch vendors',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async listBlogCategories(): Promise<BlogCategoriesResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/blogs/categories`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch blog categories:', error);
+            throw new HttpException(
+                'Failed to fetch blog categories',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async listBlogs(params?: {
+        page?: number;
+        per_page?: number;
+        category_id?: number;
+        title?: string;
+        active?: boolean;
+    }): Promise<BlogsResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/blogs`,
+                {
+                    params,
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+            return (await lastValueFrom(response$)).data;
+        } catch (error) {
+            this.logger.error('Failed to fetch blogs:', error);
+            throw new HttpException(
+                'Failed to fetch blogs',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async getBlog(id: string): Promise<BlogResponse> {
+        try {
+            const response$ = this.httpService.get(
+                `${this.baseUrl}/v3/omni-stack/blogs/${id}`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to fetch blog with ID ${id}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to fetch blog',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+    async createBlog(data: any): Promise<BlogCreateResponse> {
+        try {
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/v3/omni-stack/blogs`,
+                data,
+                {
+                    headers: {
+                        'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                        'Content-Type': 'multipart/form-data'
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 422) {
+                throw new HttpException(
+                    { message: 'Something went wrong with the info you sent!', errors: response.data.errors },
+                    HttpStatus.UNPROCESSABLE_ENTITY
+                );
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error('Oops! Couldn\'t create the blog post:', error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Uh oh! Creating the blog post didn\'t work.',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async updateBlog(id: string, data: any): Promise<BlogUpdateResponse> {
+        try {
+            // It's common to use POST for creating new things, but sometimes for updating,
+            // the system might expect a PUT request instead. Let's double-check if the
+            // system you're talking to prefers PUT for updates. If it does, change 'POST' to 'PUT' below!
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/v3/omni-stack/blogs/${id}`,
+                data,
+                {
+                    headers: {
+                        'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                        'Content-Type': 'multipart/form-data'
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Hmm, couldn\'t find that blog post!', HttpStatus.NOT_FOUND);
+            }
+
+            if (response.status === 422) {
+                throw new HttpException(
+                    { message: 'Looks like some info you sent for the update wasn\'t quite right!', errors: response.data.errors },
+                    HttpStatus.UNPROCESSABLE_ENTITY
+                );
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Oh no! Updating blog post with ID ${id} failed:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Yikes! Updating the blog post didn\'t go as planned.',
+            HttpStatus.INTERNAL_SERVER_ERROR
+        );
+        }
+    }
+
+    async deleteBlog(id: string): Promise<BlogDeleteResponse> {
+        try {
+            const response$ = this.httpService.delete(
+                `${this.baseUrl}/v3/omni-stack/blogs/${id}`,
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to delete blog with ID ${id}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to delete blog',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async toggleBlogStatus(id: string): Promise<BlogToggleStatusResponse> {
+        try {
+            const response$ = this.httpService.put(
+                `${this.baseUrl}/v3/omni-stack/blogs/${id}/toggle-status`,
+                {},
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to toggle status for blog with ID ${id}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to toggle blog status',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async incrementNotificationReadCount(id: string): Promise<BlogNotificationReadResponse> {
+        try {
+            const response$ = this.httpService.put(
+                `${this.baseUrl}/v3/omni-stack/blogs/${id}/notification-read`,
+                {},
+                {
+                    headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to increment notification read count for blog with ID ${id}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to increment notification read count',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    async sendBlogNotification(
+        id: string,
+        data: {
+            notification_title: string;
+            notification_title_en: string;
+            target_user_id?: number;
+        }
+    ): Promise<BlogSendNotificationResponse> {
+        try {
+            const response$ = this.httpService.post(
+                `${this.baseUrl}/v3/omni-stack/blogs/${id}/send-notification`,
+                data,
+                {
+                    headers: {
+                        'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                        'Content-Type': 'application/json'
+                    },
+                    validateStatus: (status) => status < 500
+                }
+            );
+
+            const response = await lastValueFrom(response$);
+
+            if (response.status === 404) {
+                throw new HttpException('Blog not found or no devices available', HttpStatus.NOT_FOUND);
+            }
+
+            if (response.status === 422) {
+                throw new HttpException(
+                    { message: 'Validation error', errors: response.data.errors },
+                    HttpStatus.UNPROCESSABLE_ENTITY
+                );
+            }
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to send notification for blog with ID ${id}:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to send blog notification',
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
         }
