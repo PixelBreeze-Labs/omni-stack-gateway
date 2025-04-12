@@ -637,20 +637,26 @@ export class SnapFoodController {
     @ApiQuery({ name: 'per_page', required: false })
     @ApiQuery({ name: 'category_id', required: false })
     @ApiQuery({ name: 'title', required: false })
-    @ApiQuery({ name: 'active', required: false })
+    @ApiQuery({ name: 'active', required: false, type: 'boolean' })
     async listBlogs(
         @Query('page') page?: number,
         @Query('per_page') perPage?: number,
         @Query('category_id') categoryId?: number,
         @Query('title') title?: string,
-        @Query('active') active?: boolean,
+        @Query('active') active?: string,
     ): Promise<BlogsResponse> {
+        // Convert string 'true'/'false' to actual boolean if the parameter is provided
+        let activeBoolean: boolean | undefined = undefined;
+        if (active !== undefined) {
+            activeBoolean = active.toLowerCase() === 'true';
+        }
+
         return await this.snapfoodService.listBlogs({
             page,
             per_page: perPage,
             category_id: categoryId,
             title,
-            active
+            active: activeBoolean
         });
     }
 
