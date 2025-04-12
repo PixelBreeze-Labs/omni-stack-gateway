@@ -1061,10 +1061,16 @@ export class SnapfoodService {
         active?: boolean;
     }): Promise<BlogsResponse> {
         try {
+
+            // Create a new params object to manipulate
+            const queryParams: any = { page: params?.page || 1, per_page: params?.per_page || 10, title: params?.title, active: params?.active };
+            // Only add category_id if it's a valid integer
+            if (params?.category_id !== undefined && Number.isInteger(params.category_id)) { queryParams.category_id = params.category_id; }
+
             const response$ = this.httpService.get(
                 `${this.baseUrl}/v3/omni-stack/os-blogs`,
                 {
-                    params,
+                    params: queryParams,
                     headers: { 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey },
                     validateStatus: (status) => status < 500
                 }
