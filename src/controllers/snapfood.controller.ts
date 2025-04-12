@@ -643,12 +643,12 @@ export class SnapFoodController {
         @Query('per_page') perPage?: number,
         @Query('category_id') categoryId?: number,
         @Query('title') title?: string,
-        @Query('active') active?: string,
+        @Query('active') active?: boolean,
     ): Promise<BlogsResponse> {
         // Convert string 'true'/'false' to actual boolean if the parameter is provided
         let activeBoolean: boolean | undefined = undefined;
         if (active !== undefined) {
-            activeBoolean = active.toLowerCase() === 'true';
+            activeBoolean = active;
         }
 
         return await this.snapfoodService.listBlogs({
