@@ -235,4 +235,54 @@ export class SupabaseService {
                 return 'application/octet-stream';
         }
     }
+
+    /**
+     * Upload an image specifically for blog posts
+     * @param buffer Image file buffer
+     * @param filename Original filename
+     * @returns Public URL of the uploaded image
+     */
+    async uploadBlogImage(buffer: Buffer, filename: string): Promise<string> {
+        const timestamp = Date.now();
+        const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const path = `blogs/images/${timestamp}_${safeFilename}`;
+
+        const { data, error } = await this.supabase
+            .storage
+            .from('products') // Using existing bucket
+            .upload(path, buffer, {
+                contentType: this.getContentTypeFromFilename(filename),
+                upsert: true
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = this.supabase
+            .storage
+            .from('products')
+            .getPublicUrl(data.path);
+
+        return publicUrl;
+    }
+
+    /**
+     * Helper method to get content type for blog images
+     */
+    private getContentTypeFromFilename(filename: string): string {
+        const ext = filename.split('.').pop()?.toLowerCase();
+
+        switch (ext) {
+            case 'jpg':
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'png':
+                return 'image/png';
+            case 'gif':
+                return 'image/gif';
+            case 'webp':
+                return 'image/webp';
+            default:
+                return 'image/jpeg'; // Default to jpeg for blog images
+        }
+    }
 }

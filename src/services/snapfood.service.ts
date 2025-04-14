@@ -42,6 +42,7 @@ import {
     BlogToggleStatusResponse,
     BlogsResponse, BlogCategoriesResponse, BlogUpdateResponse, BlogDeleteResponse
 } from '../types/snapfood.types';
+import {SupabaseService} from "./supabase.service";
 @Injectable()
 export class SnapfoodService {
     private readonly logger = new Logger(SnapfoodService.name);
@@ -51,6 +52,7 @@ export class SnapfoodService {
     constructor(
         private readonly httpService: HttpService,
         private readonly configService: ConfigService,
+        private readonly supabaseService: SupabaseService,
     ) {
         this.baseUrl = this.configService.get<string>('snapfood.baseUrl');
         this.apiKey = this.configService.get<string>('snapfood.apiKey');
@@ -1335,6 +1337,35 @@ export class SnapfoodService {
             }
             throw new HttpException(
                 'Failed to send blog notification',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+
+    /**
+     * Upload a blog image to Supabase storage and return the URL
+     * @param file Image file buffer
+     * @param filename Original filename
+     * @returns Object containing the public URL of the uploaded image
+     */
+    async uploadBlogImage(file: Buffer, filename: string): Promise<{ success: boolean; url: string }> {
+        try {
+            this.logger.log(`Uploading blog image: ${filename}`);
+
+            // Use the supabase service to upload the image
+            const publicUrl = await this.supabaseService.uploadBlogImage(file, filename);
+
+            this.logger.log(`Successfully uploaded blog image: ${publicUrl}`);
+
+            return {
+                success: true,
+                url: publicUrl
+            };
+        } catch (error) {
+            this.logger.error(`Failed to upload blog image ${filename}:`, error);
+            throw new HttpException(
+                'Failed to upload blog image',
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
         }
