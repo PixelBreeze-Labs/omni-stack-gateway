@@ -692,7 +692,7 @@ export class SnapFoodController {
     }
 
 
-    @Put('blogs/:id')
+    @Post('blogs/:id')
     @ApiOperation({ summary: 'Update blog' })
     @ApiResponse({ status: 200, description: 'Returns updated blog details' })
     @ApiResponse({ status: 404, description: 'Blog not found' })

@@ -1180,48 +1180,41 @@ export class SnapfoodService {
         }
     }
 
-    async updateBlog(id: string, data: any): Promise<BlogUpdateResponse> {
+    async updateBlog(id: string, data: FormData): Promise<BlogUpdateResponse> {
         try {
-            // It's common to use POST for creating new things, but sometimes for updating,
-            // the system might expect a PUT request instead. Let's double-check if the
-            // system you're talking to prefers PUT for updates. If it does, change 'POST' to 'PUT' below!
+            const headers = {
+                ...data.getHeaders(),
+                'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+            };
+
             const response$ = this.httpService.post(
                 `${this.baseUrl}/v3/omni-stack/os-blogs/${id}`,
                 data,
-                {
-                    headers: {
-                        'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
-                        'Content-Type': 'multipart/form-data'
-                    },
-                    validateStatus: (status) => status < 500
-                }
+                { headers, validateStatus: (status) => status < 500 }
             );
 
             const response = await lastValueFrom(response$);
 
             if (response.status === 404) {
-                throw new HttpException('Hmm, couldn\'t find that blog post!', HttpStatus.NOT_FOUND);
+                throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
             }
 
             if (response.status === 422) {
                 throw new HttpException(
-                    { message: 'Looks like some info you sent for the update wasn\'t quite right!', errors: response.data.errors },
+                    { message: 'Validation error', errors: response.data.errors },
                     HttpStatus.UNPROCESSABLE_ENTITY
                 );
             }
 
             return response.data;
         } catch (error) {
-            this.logger.error(`Oh no! Updating blog post with ID ${id} failed:`, error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException(
-                'Yikes! Updating the blog post didn\'t go as planned.',
-            HttpStatus.INTERNAL_SERVER_ERROR
-        );
+            this.logger.error(`Failed to update blog with ID ${id}:`, error);
+            throw error instanceof HttpException
+                ? error
+                : new HttpException('Failed to update blog', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
 
     async deleteBlog(id: string): Promise<BlogDeleteResponse> {
         try {
