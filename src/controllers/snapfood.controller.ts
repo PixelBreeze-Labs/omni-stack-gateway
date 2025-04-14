@@ -56,6 +56,8 @@ import {
 } from '../types/snapfood.types';
 import {ClientAuthGuard} from "../guards/client-auth.guard";
 import {IsSnapFood} from "../decorators/snapfood.decorator";
+import * as FormData from 'form-data';
+
 
 @ApiTags('SnapFood')
 @ApiBearerAuth()
