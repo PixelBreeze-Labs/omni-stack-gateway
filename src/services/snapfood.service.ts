@@ -1129,12 +1129,9 @@ export class SnapfoodService {
     }
     async createBlog(data: any): Promise<BlogCreateResponse> {
         try {
-            // Determine if data is FormData (with image) or plain object (without image)
-            const isFormData = data instanceof FormData;
-
             const headers = {
                 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
-                'Content-Type': isFormData ? 'multipart/form-data' : 'application/json'
+                'Content-Type': 'multipart/form-data'
             };
 
             const response$ = this.httpService.post(
@@ -1163,7 +1160,7 @@ export class SnapfoodService {
             }
             throw new HttpException(
                 'Failed to create blog',
-                HttpStatus.INTERNAL_SERVER_ERROR
+                error
             );
         }
     }
