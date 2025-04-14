@@ -1129,14 +1129,19 @@ export class SnapfoodService {
     }
     async createBlog(data: any): Promise<BlogCreateResponse> {
         try {
+            // Determine if data is FormData (with image) or plain object (without image)
+            const isFormData = data instanceof FormData;
+
+            const headers = {
+                'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
+                'Content-Type': isFormData ? 'multipart/form-data' : 'application/json'
+            };
+
             const response$ = this.httpService.post(
                 `${this.baseUrl}/v3/omni-stack/os-blogs`,
                 data,
                 {
-                    headers: {
-                        'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
-                        'Content-Type': 'multipart/form-data'
-                    },
+                    headers,
                     validateStatus: (status) => status < 500
                 }
             );
@@ -1145,19 +1150,19 @@ export class SnapfoodService {
 
             if (response.status === 422) {
                 throw new HttpException(
-                    { message: 'Something went wrong with the info you sent!', errors: response.data.errors },
+                    { message: 'Validation error', errors: response.data.errors },
                     HttpStatus.UNPROCESSABLE_ENTITY
                 );
             }
 
             return response.data;
         } catch (error) {
-            this.logger.error('Oops! Couldn\'t create the blog post:', error);
+            this.logger.error('Failed to create blog:', error);
             if (error instanceof HttpException) {
                 throw error;
             }
             throw new HttpException(
-                'Uh oh! Creating the blog post didn\'t work.',
+                'Failed to create blog',
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
         }
