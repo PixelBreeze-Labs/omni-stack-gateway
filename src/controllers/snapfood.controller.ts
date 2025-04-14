@@ -670,23 +670,34 @@ export class SnapFoodController {
 
     @Post('blogs')
     @ApiOperation({ summary: 'Create a new blog' })
-    @ApiResponse({ status: 201, description: 'Returns created blog details' })
-    @ApiResponse({ status: 422, description: 'Validation error' })
     @UseInterceptors(FileInterceptor('image_cover'))
     async createBlog(
         @Body() createBlogDto: any,
         @UploadedFile() image?: Express.Multer.File,
     ): Promise<BlogCreateResponse> {
-        const formData = new FormData();
-        for (const key in createBlogDto) {
-            formData.append(key, createBlogDto[key]);
+        try {
+            if (image) {
+                // With image: use FormData
+                const formData = new FormData();
+
+                // Add all fields to FormData
+                for (const key in createBlogDto) {
+                    formData.append(key, createBlogDto[key]);
+                }
+
+                // Add image to FormData
+                const blob = new Blob([image.buffer]);
+                formData.append('image_cover', blob, image.originalname);
+
+                return await this.snapfoodService.createBlog(formData);
+            } else {
+                // Without image: use regular JSON body
+                return await this.snapfoodService.createBlog(createBlogDto);
+            }
+        } catch (error) {
+            console.error('Failed to create blog:', error);
+            throw error;
         }
-        if (image) {
-            // Try creating a Blob-like object from the buffer
-            const blob = new Blob([image.buffer]);
-            formData.append('image_cover', blob, image.originalname);
-        }
-        return await this.snapfoodService.createBlog(formData);
     }
 
     @Put('blogs/:id')
