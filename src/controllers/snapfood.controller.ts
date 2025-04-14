@@ -696,9 +696,6 @@ export class SnapFoodController {
 
     @Post('blogs/:id')
     @ApiOperation({ summary: 'Update blog' })
-    @ApiResponse({ status: 200, description: 'Returns updated blog details' })
-    @ApiResponse({ status: 404, description: 'Blog not found' })
-    @ApiResponse({ status: 422, description: 'Validation error' })
     @UseInterceptors(FileInterceptor('image_cover'))
     async updateBlog(
         @Param('id') id: string,
@@ -706,14 +703,40 @@ export class SnapFoodController {
         @UploadedFile() image?: Express.Multer.File,
     ): Promise<BlogUpdateResponse> {
         const formData = new FormData();
+
+        // Log what we received
+        console.log('Received DTO:', updateBlogDto);
+
+        // Handle blog categories specifically
+        if (updateBlogDto.blog_categories) {
+            const categories = Array.isArray(updateBlogDto.blog_categories)
+                ? updateBlogDto.blog_categories
+                : [updateBlogDto.blog_categories];
+
+            // Clear any existing blog_categories field to avoid duplication
+            delete updateBlogDto.blog_categories;
+
+            // Add each category with the correct array notation
+            categories.forEach(category => {
+                formData.append('blog_categories[]', category.toString());
+            });
+        }
+
+        // Handle remaining fields
         for (const key in updateBlogDto) {
             formData.append(key, updateBlogDto[key]);
         }
+
         if (image) {
-            // Try creating a Blob-like object from the buffer
-            const blob = new Blob([image.buffer]);
-            formData.append('image_cover', blob, image.originalname);
+            formData.append('image_cover', image.buffer, {
+                filename: image.originalname,
+                contentType: image.mimetype
+            });
         }
+
+        // Debug what we're sending
+        // console.log('Form data entries:', [...formData.entries()].map(entry => `${entry[0]}=${entry[1]}`));
+
         return await this.snapfoodService.updateBlog(id, formData);
     }
 
