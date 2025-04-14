@@ -10,7 +10,7 @@ import {
     UploadedFile,
     Put,
     Delete,
-    UseInterceptors
+    UseInterceptors, HttpStatus, HttpException
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express'; // Import FileInterceptor
@@ -751,6 +751,39 @@ export class SnapFoodController {
         }
     ): Promise<BlogSendNotificationResponse> {
         return await this.snapfoodService.sendBlogNotification(id, notificationDto);
+    }
+
+    @Post('blogs/upload-image')
+    @ApiOperation({ summary: 'Upload an image for a blog post' })
+    @ApiResponse({ status: 200, description: 'Returns URL of the uploaded image' })
+    @ApiResponse({ status: 500, description: 'Upload failed' })
+    @UseInterceptors(FileInterceptor('image'))
+    async uploadBlogImage(
+        @UploadedFile() file: Express.Multer.File
+    ): Promise<{ success: boolean; url: string }> {
+        if (!file) {
+            throw new HttpException('No image file provided', HttpStatus.BAD_REQUEST);
+        }
+
+        // Check file type
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+            throw new HttpException(
+                'Invalid file type. Only JPG, PNG, GIF and WEBP images are allowed.',
+                HttpStatus.BAD_REQUEST
+            );
+        }
+
+        // Check file size (limit to 5MB)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            throw new HttpException(
+                'File too large. Maximum size is 5MB.',
+                HttpStatus.BAD_REQUEST
+            );
+        }
+
+        return await this.snapfoodService.uploadBlogImage(file.buffer, file.originalname);
     }
 
 }
