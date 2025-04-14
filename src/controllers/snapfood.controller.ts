@@ -676,29 +676,21 @@ export class SnapFoodController {
         @UploadedFile() image?: Express.Multer.File,
     ): Promise<BlogCreateResponse> {
         try {
-            if (image) {
-                // With image: use FormData
-                const formData = new FormData();
-
-                // Add all fields to FormData
-                for (const key in createBlogDto) {
-                    formData.append(key, createBlogDto[key]);
-                }
-
-                // Add image to FormData
-                const blob = new Blob([image.buffer]);
-                formData.append('image_cover', blob, image.originalname);
-
-                return await this.snapfoodService.createBlog(formData);
-            } else {
-                // Without image: use regular JSON body
-                return await this.snapfoodService.createBlog(createBlogDto);
+            if (!image) {
+                throw new HttpException('Image is required when creating a blog.', HttpStatus.BAD_REQUEST);
             }
+
+            // Include image in the DTO
+            createBlogDto.image_cover = image;
+
+            // Forward the request to SnapfoodService with the file and data
+            return await this.snapfoodService.createBlog(createBlogDto);
         } catch (error) {
             console.error('Failed to create blog:', error);
             throw error;
         }
     }
+
 
     @Put('blogs/:id')
     @ApiOperation({ summary: 'Update blog' })

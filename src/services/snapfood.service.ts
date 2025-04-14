@@ -42,6 +42,7 @@ import {
     BlogToggleStatusResponse,
     BlogsResponse, BlogCategoriesResponse, BlogUpdateResponse, BlogDeleteResponse
 } from '../types/snapfood.types';
+import * as FormData from 'form-data'; // 👈 import
 import {SupabaseService} from "./supabase.service";
 @Injectable()
 export class SnapfoodService {
@@ -1127,20 +1128,39 @@ export class SnapfoodService {
             );
         }
     }
+
     async createBlog(data: any): Promise<BlogCreateResponse> {
         try {
+            const form = new FormData();
+
+            // Append all text fields
+            for (const key in data) {
+                if (key === 'image_cover') continue; // handle separately
+                if (Array.isArray(data[key])) {
+                    // Laravel expects multiple values with same key for arrays
+                    data[key].forEach((val: any) => form.append(`${key}[]`, val));
+                } else {
+                    form.append(key, data[key]);
+                }
+            }
+
+            // Append image file
+            if (data.image_cover?.buffer && data.image_cover?.originalname) {
+                form.append('image_cover', data.image_cover.buffer, {
+                    filename: data.image_cover.originalname,
+                    contentType: data.image_cover.mimetype
+                });
+            }
+
             const headers = {
+                ...form.getHeaders(),
                 'SF-API-OMNI-STACK-GATEWAY-API-KEY': this.apiKey,
-                'Content-Type': 'multipart/form-data'
             };
 
             const response$ = this.httpService.post(
                 `${this.baseUrl}/v3/omni-stack/os-blogs`,
-                data,
-                {
-                    headers,
-                    validateStatus: (status) => status < 500
-                }
+                form,
+                { headers, validateStatus: (status) => status < 500 }
             );
 
             const response = await lastValueFrom(response$);
@@ -1155,13 +1175,8 @@ export class SnapfoodService {
             return response.data;
         } catch (error) {
             this.logger.error('Failed to create blog:', error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException(
-                'Failed to create blog',
-                error
-            );
+            if (error instanceof HttpException) throw error;
+            throw new HttpException('Failed to create blog', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
