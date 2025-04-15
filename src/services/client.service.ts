@@ -12,7 +12,17 @@ export class ClientService {
         private readonly clientApiKeyService: ClientApiKeyService,
     ) {}
 
-    async findAll(query: ListClientDto): Promise<Client[]> {
+    async findAll(query: ListClientDto): Promise<{
+        data: Client[];
+        total: number;
+        message: string;
+        metrics: {
+            totalClients: number;
+            activeClients: number;
+            inactiveClients: number;
+            recentClients: number;
+        };
+    }> {
         const { limit = 10, skip = 0, search, status } = query;
         const filter: any = {};
 
@@ -27,12 +37,39 @@ export class ClientService {
             filter.status = status;
         }
 
-        return this.clientModel
+        // Get the data with pagination
+        const data = await this.clientModel
             .find(filter)
             .select('+apiKey')
             .skip(skip)
             .limit(limit)
             .sort({ createdAt: -1 });
+
+        // Get total count for pagination
+        const total = await this.clientModel.countDocuments(filter);
+
+        // Get metrics
+        const [totalClients, activeClients, inactiveClients, recentClients] = await Promise.all([
+            this.clientModel.countDocuments(),
+            this.clientModel.countDocuments({ isActive: true }),
+            this.clientModel.countDocuments({ isActive: false }),
+            this.clientModel.countDocuments({
+                createdAt: { $gt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+            })
+        ]);
+
+        // Return combined response
+        return {
+            data,
+            total,
+            message: 'Clients fetched successfully',
+            metrics: {
+                totalClients,
+                activeClients,
+                inactiveClients,
+                recentClients
+            }
+        };
     }
 
     async findOne(id: string): Promise<Client> {
