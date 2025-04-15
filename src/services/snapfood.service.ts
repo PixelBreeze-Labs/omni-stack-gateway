@@ -44,6 +44,11 @@ import {
 } from '../types/snapfood.types';
 import * as FormData from 'form-data'; // 👈 import
 import {SupabaseService} from "./supabase.service";
+import { Model } from 'mongoose';
+
+import {User, RegistrationSource} from "../schemas/user.schema";
+import { InjectModel } from '@nestjs/mongoose';
+
 @Injectable()
 export class SnapfoodService {
     private readonly logger = new Logger(SnapfoodService.name);
@@ -54,6 +59,8 @@ export class SnapfoodService {
         private readonly httpService: HttpService,
         private readonly configService: ConfigService,
         private readonly supabaseService: SupabaseService,
+        @InjectModel(User.name) private userModel: Model<User>,
+
     ) {
         this.baseUrl = this.configService.get<string>('snapfood.baseUrl');
         this.apiKey = this.configService.get<string>('snapfood.apiKey');
@@ -1378,6 +1385,102 @@ export class SnapfoodService {
                 'Failed to upload blog image',
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
+        }
+    }
+
+    /**
+     * Create or update a user from Snapfood
+     * @param data User data from Snapfood
+     * @returns The created/updated user
+     */
+    async syncSnapfoodUser(data: {
+        snapfoodUserId: number;
+        email: string;
+        fullName: string;
+        phone?: string;
+        verified: boolean;
+        providerId?: number; // 2=Facebook, 4=Google, 5=Apple
+    }): Promise<User> {
+        try {
+            this.logger.log(`Syncing Snapfood user with ID: ${data.snapfoodUserId}`);
+
+            // Check if user already exists by snapfoodUserId
+            let user = await this.userModel.findOne({
+                'external_ids.snapFoodId': data.snapfoodUserId
+            });
+
+            // Parse fullName into first and last name
+            const nameParts = data.fullName.split(' ');
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+
+            // Determine registration provider based on providerId
+            let providerName = '';
+            switch (data.providerId) {
+                case 2:
+                    providerName = 'Facebook';
+                    break;
+                case 4:
+                    providerName = 'Google';
+                    break;
+                case 5:
+                    providerName = 'Apple';
+                    break;
+                default:
+                    providerName = 'Email/Password';
+            }
+
+            if (user) {
+                // Update existing user
+                this.logger.log(`Updating existing user with Snapfood ID: ${data.snapfoodUserId}`);
+
+                user.name = firstName;
+                user.surname = lastName;
+                user.email = data.email;
+
+                // Only update phone if provided and user doesn't already have a phone
+                if (data.phone && (!user.metadata.get('phone') || !user.metadata.get('verified'))) {
+                    user.metadata.set('phone', data.phone);
+                    user.metadata.set('verified', data.verified.toString());
+                }
+
+                // Update metadata with provider info if not already set
+                if (!user.metadata.get('registrationProvider')) {
+                    user.metadata.set('registrationProvider', providerName);
+                }
+
+                await user.save();
+                return user;
+            } else {
+                // Create new user
+                this.logger.log(`Creating new user for Snapfood ID: ${data.snapfoodUserId}`);
+
+                const newUser = new this.userModel({
+                    name: firstName,
+                    surname: lastName,
+                    email: data.email,
+                    registrationSource: RegistrationSource.SNAPFOOD,
+                    external_ids: {
+                        snapFoodId: data.snapfoodUserId
+                    },
+                    metadata: new Map([
+                        ['registrationProvider', providerName],
+                        ['verified', data.verified.toString()]
+                    ]),
+                    isActive: true
+                });
+
+                // Add phone if provided
+                if (data.phone) {
+                    newUser.metadata.set('phone', data.phone);
+                }
+
+                await newUser.save();
+                return newUser;
+            }
+        } catch (error) {
+            this.logger.error(`Failed to sync Snapfood user: ${error.message}`, error.stack);
+            throw error;
         }
     }
 }
