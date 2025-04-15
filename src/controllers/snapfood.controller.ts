@@ -12,7 +12,7 @@ import {
     Delete,
     UseInterceptors, HttpStatus, HttpException
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth, ApiBody} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express'; // Import FileInterceptor
 
 import { Response } from 'express';  // Add this import
@@ -814,4 +814,53 @@ export class SnapFoodController {
         return await this.snapfoodService.uploadBlogImage(file.buffer, file.originalname);
     }
 
+
+    @ApiOperation({ summary: 'Sync Snapfood user' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                snapfoodUserId: { type: 'number', example: 123 },
+                email: { type: 'string', example: 'user@example.com' },
+                fullName: { type: 'string', example: 'John Doe' },
+                phone: { type: 'string', example: '+355123456789' },
+                verified: { type: 'boolean', example: true },
+                providerId: { type: 'number', example: 2 }
+            },
+            required: ['snapfoodUserId', 'email', 'fullName', 'verified']
+        }
+    })
+    @ApiResponse({ status: 200, description: 'User synced successfully' })
+    @ApiResponse({ status: 400, description: 'Bad request' })
+    @Post('register')
+    async syncSnapfoodUser(@Body() userData: {
+        snapfoodUserId: number;
+        email: string;
+        fullName: string;
+        phone?: string;
+        verified: boolean;
+        providerId?: number;
+    }) {
+        if (!userData.snapfoodUserId || !userData.email || !userData.fullName) {
+            throw new HttpException(
+                'User ID, email and full name are required',
+                HttpStatus.BAD_REQUEST
+            );
+        }
+
+        try {
+            const user = await this.snapfoodService.syncSnapfoodUser(userData);
+
+            return {
+                success: true,
+                userId: user._id,
+                message: 'User synced successfully'
+            };
+        } catch (error) {
+            throw new HttpException(
+                `Failed to sync user: ${error.message}`,
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
 }
