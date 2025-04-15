@@ -4,7 +4,8 @@ import {
     Inject,
     Injectable,
     NotFoundException,
-    UnauthorizedException
+    UnauthorizedException,
+    Logger
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -79,6 +80,9 @@ export interface UserRegistrationResponse {
 }
 @Injectable()
 export class UserService {
+
+    private readonly logger = new Logger(UserService.name);
+
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Store.name) private storeModel: Model<Store>,
@@ -97,7 +101,7 @@ export class UserService {
     private generateReferralCode(): string {
         return crypto.randomBytes(6).toString('hex').toUpperCase();
     }
-    
+
     async create(createUserDto: CreateUserDto & { client_ids: string[] }) {
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
         const user = new this.userModel({
@@ -1360,5 +1364,21 @@ export class UserService {
                 pages: Math.ceil(total / limit)
             }
         };
+    }
+
+
+    async findBySnapfoodId(snapfoodId: number): Promise<User | null> {
+        this.logger.debug(`Looking up user with Snapfood ID: ${snapfoodId}`);
+
+        const user = await this.userModel.findOne({
+            'external_ids.snapFoodId': snapfoodId
+        }).exec();
+
+        if (!user) {
+            this.logger.debug(`No user found with Snapfood ID: ${snapfoodId}`);
+            return null;
+        }
+
+        return user;
     }
 }
