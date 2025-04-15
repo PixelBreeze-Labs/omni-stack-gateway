@@ -15,7 +15,17 @@ export class ClientController {
     @ApiQuery({ type: ListClientDto })
     @ApiResponse({ status: 200, description: 'List of clients' })
     @Get()
-    async findAll(@Query() query: ListClientDto): Promise<Client[]> {
+    async findAll(@Query() query: ListClientDto): Promise<{
+        data: Client[];
+        total: number;
+        message: string;
+        metrics: {
+            totalClients: number;
+            activeClients: number;
+            inactiveClients: number;
+            recentClients: number;
+        };
+    }> {
         return this.clientService.findAll(query);
     }
 
