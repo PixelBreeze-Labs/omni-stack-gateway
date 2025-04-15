@@ -76,6 +76,7 @@ import { ReportFlag, ReportFlagSchema } from './schemas/report-flag.schema';
 import { AiModel, AiModelSchema } from './schemas/ai-model.schema';
 import { SocialChat, SocialChatSchema } from './schemas/social-chat.schema';
 import { SocialMessage, SocialMessageSchema } from './schemas/social-message.schema';
+import { VerificationPhone, VerificationPhoneSchema } from './schemas/verification-phone.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -141,6 +142,7 @@ import { CoreNotificationController } from './controllers/core-notification.cont
 import { SocialChatController } from './controllers/social-chat.controller';
 import { SocialMessageController } from './controllers/social-message.controller';
 import { SnapfoodieController } from './controllers/snapfoodie.controller';
+import { VerificationController } from './controllers/verification-phone.controller';
 
 
 
@@ -244,6 +246,7 @@ import { AiModelController } from './controllers/ai-model.controller';
 import { AiModelClass, AiModelClassSchema } from './schemas/ai-model-class.schema';
 import { DetectionResult, DetectionResultSchema } from './schemas/detection-result.schema';
 import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-summary.schema';
+import {TwilioVerificationService} from "./services/twilio-verification.service";
 
 
 
@@ -338,6 +341,7 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
       { name: DetectionSummary.name, schema: DetectionSummarySchema },
       { name: SocialChat.name, schema: SocialChatSchema },
       { name: SocialMessage.name, schema: SocialMessageSchema },
+      { name: VerificationPhone.name, schema: VerificationPhoneSchema },
     ]),
   ],
   controllers: [
@@ -414,6 +418,7 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     SocialChatController,
     SocialMessageController,
     SnapfoodieController,
+    VerificationController
   ],
   providers: [
     SnapfoodService,
@@ -497,7 +502,8 @@ import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-su
     SocialChatService,
     SnapfoodieService,
     OneSignalService,
-    ChatGateway
+    ChatGateway,
+    TwilioVerificationService
   ],
 })
 export class AppModule implements NestModule {
