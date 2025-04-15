@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Client } from '../schemas/client.schema';
 import { CreateClientDto, UpdateClientDto, ListClientDto } from '../dtos/client.dto';
 import { ClientApiKeyService } from './client-api-key.service';
+import { ClientStatus } from '../enums/clients.enum';
 
 @Injectable()
 export class ClientService {
@@ -23,19 +24,50 @@ export class ClientService {
             recentClients: number;
         };
     }> {
-        const { limit = 10, skip = 0, search, status } = query;
+        // Default values
+        const limit = query.limit || 10;
+
+        // Handle pagination - support both skip and page parameters
+        let skip = 0;
+        if (query.page) {
+            // If page is provided, calculate skip
+            skip = (query.page - 1) * limit;
+        } else if (query.skip) {
+            // Otherwise use skip directly if provided
+            skip = query.skip;
+        }
+
         const filter: any = {};
 
-        if (search) {
+        // Handle search
+        if (query.search) {
             filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { code: { $regex: search, $options: 'i' } }
+                { name: { $regex: query.search, $options: 'i' } },
+                { code: { $regex: query.search, $options: 'i' } }
             ];
         }
 
-        if (status) {
-            filter.status = status;
+        // Handle status filter - map status enum to isActive boolean
+        if (query.status === ClientStatus.ACTIVE) {
+            filter.isActive = true;
+        } else if (query.status === ClientStatus.INACTIVE) {
+            filter.isActive = false;
         }
+
+        // Handle date filters
+        if (query.fromDate) {
+            filter.createdAt = filter.createdAt || {};
+            filter.createdAt.$gte = new Date(query.fromDate);
+        }
+
+        if (query.toDate) {
+            filter.createdAt = filter.createdAt || {};
+            filter.createdAt.$lte = new Date(query.toDate);
+        }
+
+        // Log the query for debugging
+        console.log(`Query params: ${JSON.stringify(query)}`);
+        console.log(`MongoDB filter: ${JSON.stringify(filter)}, skip: ${skip}, limit: ${limit}`);
 
         // Get the data with pagination
         const data = await this.clientModel
@@ -82,7 +114,8 @@ export class ClientService {
         const apiKey = await this.clientApiKeyService.generateApiKey();
         const client = new this.clientModel({
             ...createClientDto,
-            apiKey
+            apiKey,
+            isActive: true // Default to active
         });
         return client.save();
     }

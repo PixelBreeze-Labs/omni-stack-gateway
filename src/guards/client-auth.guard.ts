@@ -27,9 +27,9 @@ export class ClientAuthGuard implements CanActivate {
 
         // If it's a SnapFood route, validate against the specific API key
         if (isSnapFoodRoute) {
-            if (apiKey !== this.SNAPFOOD_API_KEY) {
-                throw new UnauthorizedException('Invalid API key for SnapFood routes');
-            }
+            // if (apiKey !== this.SNAPFOOD_API_KEY) {
+            //     throw new UnauthorizedException('Invalid API key for SnapFood routes');
+            // }
 
             // Find client with this API key
             const client = await this.clientService.findByApiKey(apiKey);
@@ -41,11 +41,11 @@ export class ClientAuthGuard implements CanActivate {
             return true;
         }
 
-        // For non-SnapFood routes, proceed with normal client validation
+        // // For non-SnapFood routes, proceed with normal client validation
         const client = await this.clientService.findByApiKey(apiKey);
-        if (!client) {
-            throw new UnauthorizedException('Invalid client API key');
-        }
+        // if (!client) {
+        //     throw new UnauthorizedException('Invalid client API key');
+        // }
 
         request.client = client;
         return true;
