@@ -250,6 +250,12 @@ import {TwilioVerificationService} from "./services/twilio-verification.service"
 
 
 
+import { PollController } from './controllers/poll.controller';
+import { PollPublicController } from './controllers/poll-public.controller';
+import { PollService } from './services/poll.service';
+import { Poll, PollSchema } from './schemas/poll.schema';
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -342,6 +348,7 @@ import {TwilioVerificationService} from "./services/twilio-verification.service"
       { name: SocialChat.name, schema: SocialChatSchema },
       { name: SocialMessage.name, schema: SocialMessageSchema },
       { name: VerificationPhone.name, schema: VerificationPhoneSchema },
+      { name: Poll.name, schema: PollSchema },
     ]),
   ],
   controllers: [
@@ -418,7 +425,9 @@ import {TwilioVerificationService} from "./services/twilio-verification.service"
     SocialChatController,
     SocialMessageController,
     SnapfoodieController,
-    VerificationController
+    VerificationController,
+    PollController,
+    PollPublicController
   ],
   providers: [
     SnapfoodService,
@@ -503,7 +512,8 @@ import {TwilioVerificationService} from "./services/twilio-verification.service"
     SnapfoodieService,
     OneSignalService,
     ChatGateway,
-    TwilioVerificationService
+    TwilioVerificationService,
+    PollService
   ],
 })
 export class AppModule implements NestModule {
