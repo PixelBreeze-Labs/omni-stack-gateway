@@ -282,88 +282,82 @@ export class ReportsService {
         };
     }
     
-   // Method to get WP Reports data for client details page
-   async getWPReportsForClient(clientId: string): Promise<any> {
-    // For special WP Reports card, we need to get statistics for reports
-    // This queries all reports for applications associated with this client
+    // Method to get WP Reports data for client details page
+    async getWPReportsForClient(clientId: string): Promise<any> {
+        // First get the client to find associated client app IDs
+        const client = await this.clientModel.findById(clientId).exec();
+        if (!client || !client.clientAppIds || !client.clientAppIds.length) {
+            return {
+                activeForms: 0,
+                secureReports: 0,
+                lastReportDate: null,
+                reportCounts: {
+                    total: 0,
+                    pending: 0,
+                    resolved: 0
+                }
+            };
+        }
 
-    // First, get all client apps associated with this client
-    const clientApps = await this.clientAppModel.find({ 
-        client: clientId 
-    }).exec();
-    
-    const clientAppIds = clientApps.map(app => app._id.toString());
-    
-    if (!clientAppIds.length) {
+        const clientAppIds = client.clientAppIds.map(id => id.toString());
+
+        // Get all client apps by their IDs
+        const clientApps = await this.clientAppModel.find({
+            _id: { $in: clientAppIds }
+        }).exec();
+
+        // Count secure reports (those with files attached)
+        const secureReports = await this.reportModel.countDocuments({
+            'clientApp.id': { $in: clientAppIds },
+            'content.files.0': { $exists: true }
+        });
+
+        // Get the most recent report date
+        const latestReport = await this.reportModel.findOne({
+            'clientApp.id': { $in: clientAppIds }
+        }).sort({ createdAt: -1 }).limit(1).exec();
+
+        const lastReportDate = latestReport?.createdAt || latestReport?.metadata?.timestamp || null;
+
+        // Get total reports count
+        const totalReports = await this.reportModel.countDocuments({
+            'clientApp.id': { $in: clientAppIds }
+        });
+
+        // Get pending reports count
+        const pendingReports = await this.reportModel.countDocuments({
+            'clientApp.id': { $in: clientAppIds },
+            status: 'pending'
+        });
+
+        // Get resolved reports count
+        const resolvedReports = await this.reportModel.countDocuments({
+            'clientApp.id': { $in: clientAppIds },
+            status: 'resolved'
+        });
+
+        // Count active forms (based on unique domain entries)
+        const domains = new Set<string>();
+        for (const app of clientApps) {
+            if (Array.isArray(app.domain)) {
+                app.domain.forEach(d => domains.add(d));
+            } else if (app.domain) {
+                domains.add(app.domain);
+            }
+        }
+
         return {
-            activeForms: 0,
-            secureReports: 0,
-            lastReportDate: null,
+            activeForms: domains.size || clientApps.length,
+            secureReports,
+            lastReportDate,
             reportCounts: {
-                total: 0,
-                pending: 0,
-                resolved: 0
+                total: totalReports,
+                pending: pendingReports,
+                resolved: resolvedReports
             }
         };
     }
-    
-    // Count secure reports (those with files attached)
-    const secureReports = await this.reportModel.countDocuments({
-        'clientApp.id': { $in: clientAppIds },
-        'content.files.0': { $exists: true } // At least one file
-    });
-    
-    // Get the most recent report date
-    const latestReport = await this.reportModel
-        .findOne({
-            'clientApp.id': { $in: clientAppIds }
-        })
-        .sort({ createdAt: -1 })
-        .limit(1)
-        .exec();
-        
-    // Access the createdAt field safely based on your schema
-    const lastReportDate = latestReport ? 
-        (latestReport.createdAt || latestReport.metadata?.timestamp || null) : null;
-    
-    // Get total reports count
-    const totalReports = await this.reportModel.countDocuments({
-        'clientApp.id': { $in: clientAppIds }
-    });
-    
-    // Get pending reports count
-    const pendingReports = await this.reportModel.countDocuments({
-        'clientApp.id': { $in: clientAppIds },
-        status: 'pending'
-    });
-    
-    // Get resolved reports count
-    const resolvedReports = await this.reportModel.countDocuments({
-        'clientApp.id': { $in: clientAppIds },
-        status: 'resolved'
-    });
-    
-    // Count active forms (unique domain names in clientApps)
-    const domains = new Set();
-    clientApps.forEach(app => {
-        if (Array.isArray(app.domain)) {
-            app.domain.forEach(d => domains.add(d));
-        } else if (app.domain) {
-            domains.add(app.domain);
-        }
-    });
-    
-    return {
-        activeForms: domains.size || clientApps.length, // Fallback to app count
-        secureReports,
-        lastReportDate,
-        reportCounts: {
-            total: totalReports,
-            pending: pendingReports,
-            resolved: resolvedReports
-        }
-    };
-}
+
 
 async getReportsSummaryByClientId(clientId: string): Promise<ReportsSummary> {
     // First get the client to find associated client app IDs
