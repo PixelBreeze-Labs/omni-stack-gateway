@@ -72,6 +72,31 @@ export class Poll extends Document {
   
   @Prop({ default: '#f0f0f5' })
   progressBarBackgroundColor: string;
+  
+  // Dark mode properties
+  @Prop({ default: false })
+  darkMode: boolean;
+  
+  @Prop({ default: '#222222' })
+  darkModeBackground: string;
+  
+  @Prop({ default: '#ffffff' })
+  darkModeTextColor: string;
+  
+  @Prop({ default: '#333333' })
+  darkModeOptionBackground: string;
+  
+  @Prop({ default: '#444444' })
+  darkModeOptionHover: string;
+  
+  @Prop({ default: '#ffffff' })
+  darkModeLinkColor: string;
+  
+  @Prop({ default: '#2597a4' })
+  darkModeLinkHoverColor: string;
+  
+  @Prop({ default: '#444444' })
+  darkModeProgressBackground: string;
 }
 
 export const PollSchema = SchemaFactory.createForClass(Poll);

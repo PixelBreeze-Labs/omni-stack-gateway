@@ -131,6 +131,54 @@ import {
     @IsHexColor()
     @IsOptional()
     progressBarBackgroundColor?: string = '#f0f0f5';
+    
+    // Dark mode properties
+    @ApiPropertyOptional({ description: 'Enable dark mode version of the poll', default: false })
+    @IsBoolean()
+    @IsOptional()
+    darkMode?: boolean = false;
+    
+    @ApiPropertyOptional({ description: 'Dark mode background color', default: '#222222' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeBackground?: string = '#222222';
+    
+    @ApiPropertyOptional({ description: 'Dark mode text color', default: '#ffffff' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeTextColor?: string = '#ffffff';
+    
+    @ApiPropertyOptional({ description: 'Dark mode option background color', default: '#333333' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeOptionBackground?: string = '#333333';
+    
+    @ApiPropertyOptional({ description: 'Dark mode option hover color', default: '#444444' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeOptionHover?: string = '#444444';
+    
+    @ApiPropertyOptional({ description: 'Dark mode link color', default: '#ffffff' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeLinkColor?: string = '#ffffff';
+    
+    @ApiPropertyOptional({ description: 'Dark mode link hover color', default: '#2597a4' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeLinkHoverColor?: string = '#2597a4';
+    
+    @ApiPropertyOptional({ description: 'Dark mode progress bar background', default: '#444444' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeProgressBackground?: string = '#444444';
   }
   
   export class UpdatePollDto {
@@ -222,6 +270,54 @@ import {
     @IsHexColor()
     @IsOptional()
     progressBarBackgroundColor?: string;
+    
+    // Dark mode properties
+    @ApiPropertyOptional({ description: 'Enable dark mode version of the poll' })
+    @IsBoolean()
+    @IsOptional()
+    darkMode?: boolean;
+    
+    @ApiPropertyOptional({ description: 'Dark mode background color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeBackground?: string;
+    
+    @ApiPropertyOptional({ description: 'Dark mode text color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeTextColor?: string;
+    
+    @ApiPropertyOptional({ description: 'Dark mode option background color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeOptionBackground?: string;
+    
+    @ApiPropertyOptional({ description: 'Dark mode option hover color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeOptionHover?: string;
+    
+    @ApiPropertyOptional({ description: 'Dark mode link color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeLinkColor?: string;
+    
+    @ApiPropertyOptional({ description: 'Dark mode link hover color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeLinkHoverColor?: string;
+    
+    @ApiPropertyOptional({ description: 'Dark mode progress bar background' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeProgressBackground?: string;
   }
   
   export class PollVoteDto {
