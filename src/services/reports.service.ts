@@ -236,7 +236,10 @@ export class ReportsService {
         
         const last24HoursCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            createdAt: { $gte: last24Hours }
+            $or: [
+                { 'metadata.timestamp': { $exists: true, $gte: last24Hours } },
+                { createdAt: { $exists: true, $gte: last24Hours }, 'metadata.timestamp': { $exists: false } }
+            ]
         });
         
         // Last week
@@ -245,8 +248,12 @@ export class ReportsService {
         
         const lastWeekCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            createdAt: { $gte: lastWeek }
+            $or: [
+                { 'metadata.timestamp': { $exists: true, $gte: lastWeek } },
+                { createdAt: { $exists: true, $gte: lastWeek }, 'metadata.timestamp': { $exists: false } }
+            ]
         });
+    
         
         // Last month
         const lastMonth = new Date(now);
@@ -254,7 +261,10 @@ export class ReportsService {
         
         const lastMonthCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            createdAt: { $gte: lastMonth }
+            $or: [
+                { 'metadata.timestamp': { $exists: true, $gte: lastMonth } },
+                { createdAt: { $exists: true, $gte: lastMonth }, 'metadata.timestamp': { $exists: false } }
+            ]
         });
         
         // Total count
@@ -444,7 +454,10 @@ async getReportsSummaryByClientId(clientId: string): Promise<ReportsSummary> {
     
     const last24HoursCount = await this.reportModel.countDocuments({
         ...baseFilter,
-        createdAt: { $gte: last24Hours }
+        $or: [
+            { 'metadata.timestamp': { $exists: true, $gte: last24Hours } },
+            { createdAt: { $exists: true, $gte: last24Hours }, 'metadata.timestamp': { $exists: false } }
+        ]
     });
     
     // Last week
@@ -453,7 +466,10 @@ async getReportsSummaryByClientId(clientId: string): Promise<ReportsSummary> {
     
     const lastWeekCount = await this.reportModel.countDocuments({
         ...baseFilter,
-        createdAt: { $gte: lastWeek }
+        $or: [
+            { 'metadata.timestamp': { $exists: true, $gte: lastWeek } },
+            { createdAt: { $exists: true, $gte: lastWeek }, 'metadata.timestamp': { $exists: false } }
+        ]
     });
     
     // Last month
@@ -462,7 +478,10 @@ async getReportsSummaryByClientId(clientId: string): Promise<ReportsSummary> {
     
     const lastMonthCount = await this.reportModel.countDocuments({
         ...baseFilter,
-        createdAt: { $gte: lastMonth }
+        $or: [
+            { 'metadata.timestamp': { $exists: true, $gte: lastMonth } },
+            { createdAt: { $exists: true, $gte: lastMonth }, 'metadata.timestamp': { $exists: false } }
+        ]
     });
     
     // Total count
