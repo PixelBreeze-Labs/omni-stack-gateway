@@ -1,5 +1,5 @@
 // src/controllers/client-app.controller.ts
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ClientAppService } from '../services/client-app.service';
 import { CreateClientAppDto, UpdateClientAppDto, ListClientAppDto } from '../dtos/client-app.dto';
 import { ApiKeyAuthGuard } from '../guards/api-key-auth.guard';
@@ -77,6 +77,11 @@ export class ClientAppController {
 @ApiOperation({ summary: 'Get dashboard data' })
 @ApiResponse({ status: 200, description: 'Dashboard data' })
 async getDashboardData() {
-  return this.clientAppService.getDashboardData();
+  try {
+    return await this.clientAppService.getDashboardData();
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    throw new InternalServerErrorException('Error fetching dashboard data');
+  }
 }
 }

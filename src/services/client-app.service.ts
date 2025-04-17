@@ -200,63 +200,89 @@ export class ClientAppService {
         recentApps: any[];
         clientsWithMostApps: any[];
     }> {
-        // Get basic metrics
-        const [totalApps, activeApps, inactiveApps, recentApps] = await Promise.all([
-            this.clientAppModel.countDocuments(),
-            this.clientAppModel.countDocuments({ status: 'active' }),
-            this.clientAppModel.countDocuments({ status: 'inactive' }),
-            this.clientAppModel.countDocuments({
-                configuredAt: { $gt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-            })
-        ]);
-    
-        // Get apps by type
-        const appsByTypeResult = await this.clientAppModel.aggregate([
-            { $group: { _id: "$type", count: { $sum: 1 } } },
-            { $sort: { count: -1 } }
-        ]);
-    
-        const appsByType = appsByTypeResult.map(item => ({
-            type: item._id,
-            count: item.count
-        }));
-    
-        // Get most recent apps
-        const recentAppsList = await this.clientAppModel
-            .find()
-            .sort({ configuredAt: -1 })
-            .limit(5);
-        
-        // Enhance with client data
-        const enhancedRecentApps = await this.enhanceWithClientData(recentAppsList);
-    
-        // Get clients with most apps (requires help from the client service)
-        let clientsWithMostApps = [];
         try {
-            // This is a simplified approach - in reality, you'd need to coordinate with the client service
-            // to get clients sorted by number of apps they have
-            const clientAppCounts = await this.clientModel.aggregate([
-                { $project: { name: 1, code: 1, appCount: { $size: "$clientAppIds" } } },
-                { $sort: { appCount: -1 } },
-                { $limit: 5 }
+            // Get basic metrics
+            const [totalApps, activeApps, inactiveApps, recentAppsCount] = await Promise.all([
+                this.clientAppModel.countDocuments(),
+                this.clientAppModel.countDocuments({ status: 'active' }),
+                this.clientAppModel.countDocuments({ status: 'inactive' }),
+                this.clientAppModel.countDocuments({
+                    configuredAt: { $gt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+                })
             ]);
     
-            clientsWithMostApps = clientAppCounts;
-        } catch (error) {
-            console.error("Error getting clients with most apps:", error);
-            // Provide empty array as fallback
-        }
+            // Get apps by type
+            const appsByTypeResult = await this.clientAppModel.aggregate([
+                { $group: { _id: "$type", count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]);
     
-        return {
-            metrics: {
-                totalApps,
-                activeApps,
-                inactiveApps,
-                recentApps,
-                appsByType
-            },
-            recentApps: enhancedRecentApps,
-            clientsWithMostApps
-        };
+            const appsByType = appsByTypeResult.map(item => ({
+                type: item._id || 'unknown',
+                count: item.count
+            }));
+    
+            // Get most recent apps
+            const recentAppsList = await this.clientAppModel
+                .find()
+                .sort({ configuredAt: -1 })
+                .limit(5);
+            
+            // Enhance with client data
+            const enhancedRecentApps = await this.enhanceWithClientData(recentAppsList);
+    
+            // Get clients with most apps - handle this safely
+            let clientsWithMostApps = [];
+            
+            // Check if clientModel is properly injected
+            if (this.clientModel) {
+                try {
+                    // Make sure clientAppIds exists and is an array before counting its size
+                    const clientAppCounts = await this.clientModel.aggregate([
+                        // Filter to only include clients that have the clientAppIds field and it's an array
+                        { $match: { clientAppIds: { $exists: true, $type: 'array' } } },
+                        // Add a field with the count
+                        { $addFields: { appCount: { $size: "$clientAppIds" } } },
+                        // Project only the fields we need
+                        { $project: { name: 1, code: 1, appCount: 1 } },
+                        // Sort by app count descending
+                        { $sort: { appCount: -1 } },
+                        // Limit to top 5
+                        { $limit: 5 }
+                    ]);
+    
+                    clientsWithMostApps = clientAppCounts;
+                } catch (error) {
+                    console.error("Error getting clients with most apps:", error);
+                    // Just use an empty array if there's an error
+                }
+            }
+    
+            return {
+                metrics: {
+                    totalApps,
+                    activeApps,
+                    inactiveApps,
+                    recentApps: recentAppsCount,
+                    appsByType
+                },
+                recentApps: enhancedRecentApps,
+                clientsWithMostApps
+            };
+        } catch (error) {
+            console.error("Error in getDashboardData:", error);
+            // Return a fallback with empty/zero values
+            return {
+                metrics: {
+                    totalApps: 0,
+                    activeApps: 0,
+                    inactiveApps: 0,
+                    recentApps: 0,
+                    appsByType: []
+                },
+                recentApps: [],
+                clientsWithMostApps: []
+            };
+        }
     }
 }
