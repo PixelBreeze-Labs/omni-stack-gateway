@@ -23,6 +23,19 @@ export class ClientAppController {
         return this.clientAppService.findAll(query);
     }
 
+
+    @Get('dashboard')
+@ApiOperation({ summary: 'Get dashboard data' })
+@ApiResponse({ status: 200, description: 'Dashboard data' })
+async getDashboardData() {
+  try {
+    return await this.clientAppService.getDashboardData();
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    throw new InternalServerErrorException('Error fetching dashboard data');
+  }
+}
+
     @ApiOperation({ summary: 'Get client app by ID' })
     @ApiParam({ name: 'id', description: 'Client App ID' })
     @ApiResponse({ status: 200, description: 'Client app details' })
@@ -73,15 +86,5 @@ export class ClientAppController {
         return this.clientAppService.remove(id);
     }
 
-    @Get('dashboard')
-@ApiOperation({ summary: 'Get dashboard data' })
-@ApiResponse({ status: 200, description: 'Dashboard data' })
-async getDashboardData() {
-  try {
-    return await this.clientAppService.getDashboardData();
-  } catch (error) {
-    console.error('Error fetching dashboard data:', error);
-    throw new InternalServerErrorException('Error fetching dashboard data');
-  }
-}
+    
 }
