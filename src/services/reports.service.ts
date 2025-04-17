@@ -102,38 +102,32 @@ export class ReportsService {
         if (query.search) {
             const searchRegex = new RegExp(query.search, 'i');
             filter.$or = [
-                { 'content.sender.name': searchRegex },
-                { 'content.sender.email': searchRegex },
+                { 'content.name': searchRegex },
+                { 'content.email': searchRegex },
                 { 'content.message': searchRegex },
             ];
         }
     
-        // Handle date range filtering - FIXED
+        // Handle date range filtering - FIXED to use Date objects instead of string comparison
         if (query.fromDate || query.toDate) {
-            // Create date filters object rather than adding to $or
-            filter.$and = filter.$and || [];  
-            const dateFilter = {};
+            filter['metadata.timestamp'] = {};
             
             if (query.fromDate) {
                 const fromDate = new Date(query.fromDate);
                 // Set to beginning of day (00:00:00)
                 fromDate.setHours(0, 0, 0, 0);
-                dateFilter['metadata.timestamp'] = dateFilter['metadata.timestamp'] || {};
-                dateFilter['metadata.timestamp'].$gte = fromDate;
+                filter['metadata.timestamp'].$gte = { $date: fromDate };
             }
             
             if (query.toDate) {
                 const toDate = new Date(query.toDate);
                 // Set to end of day (23:59:59)
                 toDate.setHours(23, 59, 59, 999);
-                dateFilter['metadata.timestamp'] = dateFilter['metadata.timestamp'] || {};
-                dateFilter['metadata.timestamp'].$lte = toDate;
+                filter['metadata.timestamp'].$lte = { $date: toDate };
             }
-            
-            filter.$and.push(dateFilter);
         }
     
-        // Determine sort order - use metadata.timestamp
+        // Determine sort order
         sort['metadata.timestamp'] = -1;
     
         // Handle pagination
@@ -194,106 +188,106 @@ export class ReportsService {
         return await this.reportModel.findByIdAndDelete(id).exec();
     }
 
-    // Fix getReportsSummary method to correctly handle date filtering for recent activities
-async getReportsSummary(clientAppId?: string): Promise<ReportsSummary> {
-    const baseFilter = clientAppId ? { 'clientApp.id': clientAppId } : {};
-
-    // Get counts by status
-    const pendingCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        status: 'pending'
-    });
-
-    const inProgressCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        status: 'in_progress'
-    });
-
-    const resolvedCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        status: 'resolved'
-    });
-
-    const closedCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        status: 'closed'
-    });
-
-    const archivedCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        status: 'archived'
-    });
-
-    // Get counts by priority
-    const highPriorityCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        priority: 'high'
-    });
-
-    const mediumPriorityCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        priority: 'medium'
-    });
-
-    const lowPriorityCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        priority: 'low'
-    });
-
-    // Get recent activity counts - FIXED to handle dates correctly
-    const now = new Date();
-
-    // Last 24 hours
-    const last24Hours = new Date(now);
-    last24Hours.setHours(now.getHours() - 24);
-
-    const last24HoursCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        'metadata.timestamp': { $gte: last24Hours.toISOString() }
-    });
-
-    // Last week
-    const lastWeek = new Date(now);
-    lastWeek.setDate(now.getDate() - 7);
-
-    const lastWeekCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        'metadata.timestamp': { $gte: lastWeek.toISOString() }
-    });
-
-    // Last month
-    const lastMonth = new Date(now);
-    lastMonth.setMonth(now.getMonth() - 1);
-
-    const lastMonthCount = await this.reportModel.countDocuments({
-        ...baseFilter,
-        'metadata.timestamp': { $gte: lastMonth.toISOString() }
-    });
-
-    // Total count
-    const totalCount = await this.reportModel.countDocuments(baseFilter);
-
-    return {
-        total: totalCount,
-        byStatus: {
-            pending: pendingCount,
-            in_progress: inProgressCount,
-            resolved: resolvedCount,
-            closed: closedCount,
-            archived: archivedCount
-        },
-        byPriority: {
-            low: lowPriorityCount,
-            medium: mediumPriorityCount,
-            high: highPriorityCount
-        },
-        recentActivity: {
-            last24Hours: last24HoursCount,
-            lastWeek: lastWeekCount,
-            lastMonth: lastMonthCount
-        }
-    };
-}
+    async getReportsSummary(clientAppId?: string): Promise<ReportsSummary> {
+        const baseFilter = clientAppId ? { 'clientApp.id': clientAppId } : {};
+    
+        // Get counts by status
+        const pendingCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'pending'
+        });
+    
+        const inProgressCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'in_progress'
+        });
+    
+        const resolvedCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'resolved'
+        });
+    
+        const closedCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'closed'
+        });
+    
+        const archivedCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'archived'
+        });
+    
+        // Get counts by priority
+        const highPriorityCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            priority: 'high'
+        });
+    
+        const mediumPriorityCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            priority: 'medium'
+        });
+    
+        const lowPriorityCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            priority: 'low'
+        });
+    
+        // Get recent activity counts - FIXED to handle dates correctly
+        // Use Date objects instead of ISO strings for comparison
+        const now = new Date();
+    
+        // Last 24 hours
+        const last24Hours = new Date(now);
+        last24Hours.setHours(now.getHours() - 24);
+    
+        const last24HoursCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            'metadata.timestamp': { $gte: { $date: last24Hours } }
+        });
+    
+        // Last week
+        const lastWeek = new Date(now);
+        lastWeek.setDate(now.getDate() - 7);
+    
+        const lastWeekCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            'metadata.timestamp': { $gte: { $date: lastWeek } }
+        });
+    
+        // Last month
+        const lastMonth = new Date(now);
+        lastMonth.setMonth(now.getMonth() - 1);
+    
+        const lastMonthCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            'metadata.timestamp': { $gte: { $date: lastMonth } }
+        });
+    
+        // Total count
+        const totalCount = await this.reportModel.countDocuments(baseFilter);
+    
+        return {
+            total: totalCount,
+            byStatus: {
+                pending: pendingCount,
+                in_progress: inProgressCount,
+                resolved: resolvedCount,
+                closed: closedCount,
+                archived: archivedCount
+            },
+            byPriority: {
+                low: lowPriorityCount,
+                medium: mediumPriorityCount,
+                high: highPriorityCount
+            },
+            recentActivity: {
+                last24Hours: last24HoursCount,
+                lastWeek: lastWeekCount,
+                lastMonth: lastMonthCount
+            }
+        };
+    }
 
     // Method to get WP Reports data for client details page
     async getWPReportsForClient(clientId: string): Promise<any> {
@@ -386,7 +380,7 @@ async getReportsSummary(clientAppId?: string): Promise<ReportsSummary> {
     async getReportsSummaryByClientId(clientId: string): Promise<ReportsSummary> {
         // First get the client to find associated client app IDs
         const client = await this.clientModel.findById(clientId).exec();
-
+    
         if (!client || !client.clientAppIds || client.clientAppIds.length === 0) {
             // Return empty summary if client doesn't exist or has no apps
             return {
@@ -410,97 +404,88 @@ async getReportsSummary(clientAppId?: string): Promise<ReportsSummary> {
                 }
             };
         }
-
+    
         // Convert clientAppIds to strings for comparing
         const clientAppIds = client.clientAppIds.map(id => id.toString());
-
+    
         // Create a filter to match reports for any of these client apps
         const baseFilter = { 'clientApp.id': { $in: clientAppIds } };
-
+    
         // Get counts by status
         const pendingCount = await this.reportModel.countDocuments({
             ...baseFilter,
             status: 'pending'
         });
-
+    
         const inProgressCount = await this.reportModel.countDocuments({
             ...baseFilter,
             status: 'in_progress'
         });
-
+    
         const resolvedCount = await this.reportModel.countDocuments({
             ...baseFilter,
             status: 'resolved'
         });
-
+    
         const closedCount = await this.reportModel.countDocuments({
             ...baseFilter,
             status: 'closed'
         });
-
+    
         const archivedCount = await this.reportModel.countDocuments({
             ...baseFilter,
             status: 'archived'
         });
-
+    
         // Get counts by priority
         const highPriorityCount = await this.reportModel.countDocuments({
             ...baseFilter,
             priority: 'high'
         });
-
+    
         const mediumPriorityCount = await this.reportModel.countDocuments({
             ...baseFilter,
             priority: 'medium'
         });
-
+    
         const lowPriorityCount = await this.reportModel.countDocuments({
             ...baseFilter,
             priority: 'low'
         });
-
-        // Get recent activity counts based on BOTH metadata.timestamp and createdAt
+    
+        // Get recent activity counts - SOLUTION 1: Use MongoDB $date operator
         const now = new Date();
-
+    
         // Last 24 hours
         const last24Hours = new Date(now);
         last24Hours.setHours(now.getHours() - 24);
-
+    
         const last24HoursCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            $or: [
-                { 'metadata.timestamp': { $gte: last24Hours } },
-                { createdAt: { $gte: last24Hours } }
-            ]
+            'metadata.timestamp': { $gte: last24Hours.toISOString() }
         });
-
+    
         // Last week
         const lastWeek = new Date(now);
         lastWeek.setDate(now.getDate() - 7);
-
+    
         const lastWeekCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            $or: [
-                { 'metadata.timestamp': { $gte: lastWeek } },
-                { createdAt: { $gte: lastWeek } }
-            ]
+            'metadata.timestamp': { $gte: lastWeek.toISOString() }
         });
-
+    
         // Last month
         const lastMonth = new Date(now);
         lastMonth.setMonth(now.getMonth() - 1);
-
+    
         const lastMonthCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            $or: [
-                { 'metadata.timestamp': { $gte: lastMonth } },
-                { createdAt: { $gte: lastMonth } }
-            ]
+            'metadata.timestamp': { $gte: lastMonth.toISOString() }
         });
-
+    
         // Total count
         const totalCount = await this.reportModel.countDocuments(baseFilter);
-
+    
         return {
             total: totalCount,
             byStatus: {
@@ -522,4 +507,110 @@ async getReportsSummary(clientAppId?: string): Promise<ReportsSummary> {
             }
         };
     }
+    
+    // Alternate implementation if the above doesn't work
+async getReportsSummaryAlternate(clientAppId?: string): Promise<ReportsSummary> {
+    const baseFilter = clientAppId ? { 'clientApp.id': clientAppId } : {};
+
+    // Total count
+    const totalCount = await this.reportModel.countDocuments(baseFilter);
+    
+    // Get counts by status
+    const pendingCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'pending'
+    });
+
+    const inProgressCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'in_progress'
+    });
+
+    const resolvedCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'resolved'
+    });
+
+    const closedCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'closed'
+    });
+
+    const archivedCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'archived'
+    });
+
+    // Get counts by priority
+    const highPriorityCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        priority: 'high'
+    });
+
+    const mediumPriorityCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        priority: 'medium'
+    });
+
+    const lowPriorityCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        priority: 'low'
+    });
+
+    // Get recent activity counts using aggregation
+    const now = new Date();
+    
+    // Last 24 hours - using comparison directly on the Date object
+    const last24Hours = new Date(now);
+    last24Hours.setHours(now.getHours() - 24);
+    
+    // Get all reports and filter in memory - fallback if the date comparison doesn't work
+    const allReports = await this.reportModel.find(baseFilter).exec();
+    
+    const last24HoursCount = allReports.filter(report => {
+        const reportDate = new Date(report.metadata.timestamp);
+        return reportDate >= last24Hours;
+    }).length;
+    
+    // Last week
+    const lastWeek = new Date(now);
+    lastWeek.setDate(now.getDate() - 7);
+    
+    const lastWeekCount = allReports.filter(report => {
+        const reportDate = new Date(report.metadata.timestamp);
+        return reportDate >= lastWeek;
+    }).length;
+    
+    // Last month
+    const lastMonth = new Date(now);
+    lastMonth.setMonth(now.getMonth() - 1);
+    
+    const lastMonthCount = allReports.filter(report => {
+        const reportDate = new Date(report.metadata.timestamp);
+        return reportDate >= lastMonth;
+    }).length;
+
+    return {
+        total: totalCount,
+        byStatus: {
+            pending: pendingCount,
+            in_progress: inProgressCount,
+            resolved: resolvedCount,
+            closed: closedCount,
+            archived: archivedCount
+        },
+        byPriority: {
+            low: lowPriorityCount,
+            medium: mediumPriorityCount,
+            high: highPriorityCount
+        },
+        recentActivity: {
+            last24Hours: last24HoursCount,
+            lastWeek: lastWeekCount,
+            lastMonth: lastMonthCount
+        }
+    };
+}
+
+    
 }
