@@ -8,7 +8,8 @@ import {
     ValidateNested,
     IsEnum,
     IsNumber,
-    IsMongoId
+    IsMongoId,
+    IsHexColor
   } from 'class-validator';
   import { Type } from 'class-transformer';
   import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -26,6 +27,7 @@ import {
   
     @ApiPropertyOptional({ description: 'Custom highlight color for this option' })
     @IsString()
+    @IsHexColor()
     @IsOptional()
     customHighlight?: string;
   }
@@ -43,6 +45,7 @@ import {
   
     @ApiPropertyOptional({ description: 'Default highlight color for poll results', default: '#2597a4' })
     @IsString()
+    @IsHexColor()
     @IsOptional()
     highlightColor?: string = '#2597a4';
   
@@ -65,10 +68,11 @@ import {
     @IsOptional()
     autoEmbed?: boolean = false;
   
-    @ApiPropertyOptional({ description: 'Locations to auto-embed the poll' })
-    @IsString()
+    @ApiPropertyOptional({ description: 'Locations to auto-embed the poll (array of post IDs)' })
+    @IsArray()
+    @IsNumber({}, { each: true })
     @IsOptional()
-    autoEmbedLocations?: string;
+    autoEmbedLocations?: number[] = [];
   
     @ApiProperty({ type: [PollOptionDto], description: 'Poll options' })
     @IsArray()
@@ -85,6 +89,48 @@ import {
     @IsNumber()
     @IsOptional()
     wordpressId?: number;
+
+    @ApiPropertyOptional({ description: 'Vote button color', default: '#0a0a0a' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    voteButtonColor?: string = '#0a0a0a';
+
+    @ApiPropertyOptional({ description: 'Vote button hover color', default: '#1d7a84' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    voteButtonHoverColor?: string = '#1d7a84';
+
+    @ApiPropertyOptional({ description: 'Options background color', default: '#fcfcfc' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    optionsBackgroundColor?: string = '#fcfcfc';
+
+    @ApiPropertyOptional({ description: 'Options hover color', default: '#f7f9fc' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    optionsHoverColor?: string = '#f7f9fc';
+
+    @ApiPropertyOptional({ description: 'Results link color', default: '#0a0a0a' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    resultsLinkColor?: string = '#0a0a0a';
+
+    @ApiPropertyOptional({ description: 'Results link hover color', default: '#1d7a84' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    resultsLinkHoverColor?: string = '#1d7a84';
+
+    @ApiPropertyOptional({ description: 'Progress bar background color', default: '#f0f0f5' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    progressBarBackgroundColor?: string = '#f0f0f5';
   }
   
   export class UpdatePollDto {
@@ -100,6 +146,7 @@ import {
   
     @ApiPropertyOptional({ description: 'Default highlight color for poll results' })
     @IsString()
+    @IsHexColor()
     @IsOptional()
     highlightColor?: string;
   
@@ -121,10 +168,11 @@ import {
     @IsOptional()
     autoEmbed?: boolean;
   
-    @ApiPropertyOptional({ description: 'Locations to auto-embed the poll' })
-    @IsString()
+    @ApiPropertyOptional({ description: 'Locations to auto-embed the poll (array of post IDs)' })
+    @IsArray()
+    @IsNumber({}, { each: true })
     @IsOptional()
-    autoEmbedLocations?: string;
+    autoEmbedLocations?: number[];
   
     @ApiPropertyOptional({ type: [PollOptionDto], description: 'Poll options' })
     @IsArray()
@@ -132,6 +180,48 @@ import {
     @Type(() => PollOptionDto)
     @IsOptional()
     options?: PollOptionDto[];
+
+    @ApiPropertyOptional({ description: 'Vote button color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    voteButtonColor?: string;
+
+    @ApiPropertyOptional({ description: 'Vote button hover color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    voteButtonHoverColor?: string;
+
+    @ApiPropertyOptional({ description: 'Options background color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    optionsBackgroundColor?: string;
+
+    @ApiPropertyOptional({ description: 'Options hover color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    optionsHoverColor?: string;
+
+    @ApiPropertyOptional({ description: 'Results link color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    resultsLinkColor?: string;
+
+    @ApiPropertyOptional({ description: 'Results link hover color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    resultsLinkHoverColor?: string;
+
+    @ApiPropertyOptional({ description: 'Progress bar background color' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    progressBarBackgroundColor?: string;
   }
   
   export class PollVoteDto {
