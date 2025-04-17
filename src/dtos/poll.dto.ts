@@ -132,6 +132,25 @@ import {
     @IsOptional()
     progressBarBackgroundColor?: string = '#f0f0f5';
     
+    // Radio button styling
+    @ApiPropertyOptional({ description: 'Radio button border color (unchecked)', default: '#d0d5dd' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    radioBorderColor?: string = '#d0d5dd';
+
+    @ApiPropertyOptional({ description: 'Radio button border color (checked)', default: '#2597a4' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    radioCheckedBorderColor?: string = '#2597a4';
+
+    @ApiPropertyOptional({ description: 'Radio button dot color (checked)', default: '#2597a4' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    radioCheckedDotColor?: string = '#2597a4';
+    
     // Dark mode properties
     @ApiPropertyOptional({ description: 'Enable dark mode version of the poll', default: false })
     @IsBoolean()
@@ -179,6 +198,25 @@ import {
     @IsHexColor()
     @IsOptional()
     darkModeProgressBackground?: string = '#444444';
+    
+    // Dark mode radio button styling
+    @ApiPropertyOptional({ description: 'Dark mode radio border color (unchecked)', default: '#444444' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeRadioBorder?: string = '#444444';
+
+    @ApiPropertyOptional({ description: 'Dark mode radio border color (checked)', default: '#2597a4' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeRadioCheckedBorder?: string = '#2597a4';
+
+    @ApiPropertyOptional({ description: 'Dark mode radio dot color (checked)', default: '#2597a4' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeRadioCheckedDot?: string = '#2597a4';
   }
   
   export class UpdatePollDto {
@@ -271,6 +309,25 @@ import {
     @IsOptional()
     progressBarBackgroundColor?: string;
     
+    // Radio button styling
+    @ApiPropertyOptional({ description: 'Radio button border color (unchecked)' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    radioBorderColor?: string;
+
+    @ApiPropertyOptional({ description: 'Radio button border color (checked)' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    radioCheckedBorderColor?: string;
+
+    @ApiPropertyOptional({ description: 'Radio button dot color (checked)' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    radioCheckedDotColor?: string;
+    
     // Dark mode properties
     @ApiPropertyOptional({ description: 'Enable dark mode version of the poll' })
     @IsBoolean()
@@ -318,6 +375,25 @@ import {
     @IsHexColor()
     @IsOptional()
     darkModeProgressBackground?: string;
+    
+    // Dark mode radio button styling
+    @ApiPropertyOptional({ description: 'Dark mode radio border color (unchecked)' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeRadioBorder?: string;
+
+    @ApiPropertyOptional({ description: 'Dark mode radio border color (checked)' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeRadioCheckedBorder?: string;
+
+    @ApiPropertyOptional({ description: 'Dark mode radio dot color (checked)' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    darkModeRadioCheckedDot?: string;
   }
   
   export class PollVoteDto {
