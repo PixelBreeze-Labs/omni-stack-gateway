@@ -1,13 +1,11 @@
-
 // src/services/reports.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import {FileAttachment, Report} from '../interfaces/report.interface';
+import { FileAttachment, Report, ReportsSummary } from '../interfaces/report.interface';
 import { ClientApp } from '../interfaces/client-app.interface';
 import { EmailService } from './email.service';
 import { SupabaseService } from './supabase.service';
-
 
 @Injectable()
 export class ReportsService {
@@ -84,15 +82,82 @@ export class ReportsService {
             return savedReport;
         }
     }
-    async findAll(query: any): Promise<Report[]> {
-        const filter = {};
-        if (query.status) filter['status'] = query.status;
-        if (query.clientAppId) filter['clientApp.id'] = query.clientAppId;
 
-        return await this.reportModel
+    async findAll(query: any): Promise<{ 
+        data: Report[]; 
+        total: number; 
+        message: string;
+        summary?: ReportsSummary;
+    }> {
+        const filter: any = {};
+        
+        // Apply filters
+        if (query.status) filter.status = query.status;
+        if (query.clientAppId) filter['clientApp.id'] = query.clientAppId;
+        if (query.priority) filter.priority = query.priority;
+        
+        // Add search capability (search in sender name, email, or message content)
+        if (query.search) {
+            const searchRegex = new RegExp(query.search, 'i');
+            filter.$or = [
+                { 'content.sender.name': searchRegex },
+                { 'content.sender.email': searchRegex },
+                { 'content.message': searchRegex },
+            ];
+        }
+        
+        // Handle date range filtering
+        if (query.fromDate || query.toDate) {
+            filter.createdAt = {};
+            
+            if (query.fromDate) {
+                filter.createdAt.$gte = new Date(query.fromDate);
+            }
+            
+            if (query.toDate) {
+                // Add one day to toDate to include the entire day
+                const toDate = new Date(query.toDate);
+                toDate.setDate(toDate.getDate() + 1);
+                filter.createdAt.$lte = toDate;
+            }
+        }
+        
+        // Handle pagination
+        const limit = query.limit ? parseInt(query.limit) : 10;
+        let skip = 0;
+        
+        if (query.page) {
+            skip = (parseInt(query.page) - 1) * limit;
+        } else if (query.skip) {
+            skip = parseInt(query.skip);
+        }
+        
+        // Log query for debugging
+        console.log(`Reports query: ${JSON.stringify(query)}`);
+        console.log(`MongoDB filter: ${JSON.stringify(filter)}, skip: ${skip}, limit: ${limit}`);
+        
+        // Execute queries
+        const data = await this.reportModel
             .find(filter)
-            .sort({ 'metadata.timestamp': -1 })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
             .exec();
+            
+        const total = await this.reportModel.countDocuments(filter);
+        
+        // Get summary if requested
+        let summary = null;
+        if (query.includeSummary === 'true') {
+            summary = await this.getReportsSummary(query.clientAppId);
+        }
+        
+        return {
+            data,
+            total,
+            message: 'Reports fetched successfully',
+            summary
+        };
     }
 
     async findOne(id: string): Promise<Report> {
@@ -114,4 +179,187 @@ export class ReportsService {
     async delete(id: string): Promise<Report> {
         return await this.reportModel.findByIdAndDelete(id).exec();
     }
+    
+    async getReportsSummary(clientAppId?: string): Promise<ReportsSummary> {
+        const baseFilter = clientAppId ? { 'clientApp.id': clientAppId } : {};
+        
+        // Get counts by status
+        const pendingCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'pending'
+        });
+        
+        const inProgressCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'in_progress'
+        });
+        
+        const resolvedCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'resolved'
+        });
+        
+        const closedCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'closed'
+        });
+        
+        const archivedCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            status: 'archived'
+        });
+        
+        // Get counts by priority
+        const highPriorityCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            priority: 'high'
+        });
+        
+        const mediumPriorityCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            priority: 'medium'
+        });
+        
+        const lowPriorityCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            priority: 'low'
+        });
+        
+        // Get recent activity counts
+        const now = new Date();
+        
+        // Last 24 hours
+        const last24Hours = new Date(now);
+        last24Hours.setHours(now.getHours() - 24);
+        
+        const last24HoursCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            createdAt: { $gte: last24Hours }
+        });
+        
+        // Last week
+        const lastWeek = new Date(now);
+        lastWeek.setDate(now.getDate() - 7);
+        
+        const lastWeekCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            createdAt: { $gte: lastWeek }
+        });
+        
+        // Last month
+        const lastMonth = new Date(now);
+        lastMonth.setMonth(now.getMonth() - 1);
+        
+        const lastMonthCount = await this.reportModel.countDocuments({
+            ...baseFilter,
+            createdAt: { $gte: lastMonth }
+        });
+        
+        // Total count
+        const totalCount = await this.reportModel.countDocuments(baseFilter);
+        
+        return {
+            total: totalCount,
+            byStatus: {
+                pending: pendingCount,
+                in_progress: inProgressCount,
+                resolved: resolvedCount,
+                closed: closedCount,
+                archived: archivedCount
+            },
+            byPriority: {
+                low: lowPriorityCount,
+                medium: mediumPriorityCount,
+                high: highPriorityCount
+            },
+            recentActivity: {
+                last24Hours: last24HoursCount,
+                lastWeek: lastWeekCount,
+                lastMonth: lastMonthCount
+            }
+        };
+    }
+    
+   // Method to get WP Reports data for client details page
+   async getWPReportsForClient(clientId: string): Promise<any> {
+    // For special WP Reports card, we need to get statistics for reports
+    // This queries all reports for applications associated with this client
+
+    // First, get all client apps associated with this client
+    const clientApps = await this.clientAppModel.find({ 
+        client: clientId 
+    }).exec();
+    
+    const clientAppIds = clientApps.map(app => app._id.toString());
+    
+    if (!clientAppIds.length) {
+        return {
+            activeForms: 0,
+            secureReports: 0,
+            lastReportDate: null,
+            reportCounts: {
+                total: 0,
+                pending: 0,
+                resolved: 0
+            }
+        };
+    }
+    
+    // Count secure reports (those with files attached)
+    const secureReports = await this.reportModel.countDocuments({
+        'clientApp.id': { $in: clientAppIds },
+        'content.files.0': { $exists: true } // At least one file
+    });
+    
+    // Get the most recent report date
+    const latestReport = await this.reportModel
+        .findOne({
+            'clientApp.id': { $in: clientAppIds }
+        })
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .exec();
+        
+    // Access the createdAt field safely based on your schema
+    const lastReportDate = latestReport ? 
+        (latestReport.createdAt || latestReport.metadata?.timestamp || null) : null;
+    
+    // Get total reports count
+    const totalReports = await this.reportModel.countDocuments({
+        'clientApp.id': { $in: clientAppIds }
+    });
+    
+    // Get pending reports count
+    const pendingReports = await this.reportModel.countDocuments({
+        'clientApp.id': { $in: clientAppIds },
+        status: 'pending'
+    });
+    
+    // Get resolved reports count
+    const resolvedReports = await this.reportModel.countDocuments({
+        'clientApp.id': { $in: clientAppIds },
+        status: 'resolved'
+    });
+    
+    // Count active forms (unique domain names in clientApps)
+    const domains = new Set();
+    clientApps.forEach(app => {
+        if (Array.isArray(app.domain)) {
+            app.domain.forEach(d => domains.add(d));
+        } else if (app.domain) {
+            domains.add(app.domain);
+        }
+    });
+    
+    return {
+        activeForms: domains.size || clientApps.length, // Fallback to app count
+        secureReports,
+        lastReportDate,
+        reportCounts: {
+            total: totalReports,
+            pending: pendingReports,
+            resolved: resolvedReports
+        }
+    };
+}
 }

@@ -32,10 +32,10 @@ export class ClientController {
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Get client by ID' })
     @ApiParam({ name: 'id', description: 'Client ID' })
-    @ApiResponse({ status: 200, description: 'Client details' })
+    @ApiResponse({ status: 200, description: 'Client details with special features' })
     @Get(':id')
     @UseGuards(ClientAuthGuard)
-    async findOne(@Param('id') id: string): Promise<Client> {
+    async findOne(@Param('id') id: string): Promise<{ client: Client, specialFeatures?: any }> {
         return this.clientService.findOne(id);
     }
 
