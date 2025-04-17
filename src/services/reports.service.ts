@@ -98,32 +98,35 @@ export class ReportsService {
         if (query.clientAppId) filter['clientApp.id'] = query.clientAppId;
         if (query.priority) filter.priority = query.priority;
     
-        // Add search capability (search in sender name, email, or message content)
+        // Add search capability (search in content fields)
         if (query.search) {
             const searchRegex = new RegExp(query.search, 'i');
             filter.$or = [
                 { 'content.name': searchRegex },
-                { 'content.email': searchRegex },
-                { 'content.message': searchRegex },
+                { 'content.message': searchRegex }
             ];
         }
     
-        // Handle date range filtering - FIXED to use Date objects instead of string comparison
+        // Handle date range filtering - FIXED to use ISO strings for comparison
         if (query.fromDate || query.toDate) {
-            filter['metadata.timestamp'] = {};
-            
             if (query.fromDate) {
                 const fromDate = new Date(query.fromDate);
                 // Set to beginning of day (00:00:00)
                 fromDate.setHours(0, 0, 0, 0);
-                filter['metadata.timestamp'].$gte = { $date: fromDate };
+                
+                // Create the filter structure
+                filter['metadata.timestamp'] = filter['metadata.timestamp'] || {};
+                filter['metadata.timestamp'].$gte = fromDate.toISOString();
             }
             
             if (query.toDate) {
                 const toDate = new Date(query.toDate);
                 // Set to end of day (23:59:59)
                 toDate.setHours(23, 59, 59, 999);
-                filter['metadata.timestamp'].$lte = { $date: toDate };
+                
+                // Create the filter structure
+                filter['metadata.timestamp'] = filter['metadata.timestamp'] || {};
+                filter['metadata.timestamp'].$lte = toDate.toISOString();
             }
         }
     
@@ -507,7 +510,7 @@ export class ReportsService {
             }
         };
     }
-    
+
     // Alternate implementation if the above doesn't work
 async getReportsSummaryAlternate(clientAppId?: string): Promise<ReportsSummary> {
     const baseFilter = clientAppId ? { 'clientApp.id': clientAppId } : {};
