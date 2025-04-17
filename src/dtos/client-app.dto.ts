@@ -1,3 +1,4 @@
+// src/dtos/client-app.dto.ts
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsArray, IsEmail, IsNumber, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
@@ -70,4 +71,13 @@ export class ListClientAppDto {
     @IsOptional()
     @IsEnum(['active', 'inactive'])
     status?: string;
+    
+    @ApiProperty({
+        enum: ['wordpress', 'react', 'vue', 'other', 'next'],
+        required: false,
+        description: 'Filter by app type'
+    })
+    @IsOptional()
+    @IsEnum(['wordpress', 'react', 'vue', 'other', 'next'])
+    type?: string;
 }

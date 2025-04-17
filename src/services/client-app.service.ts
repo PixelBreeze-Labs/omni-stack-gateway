@@ -27,7 +27,8 @@ export class ClientAppService {
             recentApps: number;
         };
     }> {
-        const { limit = 10, skip = 0, search, status } = query;
+        // Use destructuring with only properties that exist in ListClientAppDto
+        const { limit = 10, skip = 0, search, status, type } = query as ListClientAppDto & { type?: string };
 
         const filter: any = {};
 
@@ -40,6 +41,10 @@ export class ClientAppService {
 
         if (status) {
             filter.status = status;
+        }
+
+        if (type) {
+            filter.type = type;
         }
 
         const data = await this.clientAppModel
@@ -125,6 +130,7 @@ export class ClientAppService {
     async remove(id: string) {
         const result = await this.clientAppModel.findByIdAndDelete(id);
         if (!result) throw new NotFoundException('Client App not found');
+        return { success: true };
     }
 
     async findByApiKey(apiKey: string): Promise<ClientApp> {
