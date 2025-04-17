@@ -49,6 +49,17 @@ export class ReportsController {
         };
     }
 
+    @ApiOperation({ summary: 'Get reports summary by client ID' })
+    @ApiParam({ name: 'clientId', description: 'Client ID' })
+    @Get('summary/client/:clientId')
+    async getReportsSummaryByClientId(@Param('clientId') clientId: string) {
+        const summary = await this.reportsService.getReportsSummaryByClientId(clientId);
+        return {
+            summary,
+            message: 'Client reports summary fetched successfully',
+        };
+    }
+
     @ApiOperation({ summary: 'Get WP Reports for client' })
     @ApiParam({ name: 'clientId', description: 'Client ID' })
     @Get('wp-reports/:clientId')
