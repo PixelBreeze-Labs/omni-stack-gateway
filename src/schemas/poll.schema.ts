@@ -97,6 +97,26 @@ export class Poll extends Document {
   
   @Prop({ default: '#444444' })
   darkModeProgressBackground: string;
+
+  // Radio button styling
+  @Prop({ default: '#d0d5dd' })
+  radioBorderColor: string;
+
+  @Prop({ default: '#2597a4' })
+  radioCheckedBorderColor: string;
+
+  @Prop({ default: '#2597a4' })
+  radioCheckedDotColor: string;
+
+  // Dark mode versions
+  @Prop({ default: '#444444' })
+  darkModeRadioBorder: string;
+
+  @Prop({ default: '#2597a4' })
+  darkModeRadioCheckedBorder: string;
+
+  @Prop({ default: '#2597a4' })
+  darkModeRadioCheckedDot: string;
 }
 
 export const PollSchema = SchemaFactory.createForClass(Poll);
