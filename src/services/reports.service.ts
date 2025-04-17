@@ -108,25 +108,59 @@ export class ReportsService {
             ];
         }
 
-        // Handle date range filtering
+        // Handle date range filtering - improved to handle both metadata.timestamp and createdAt
         if (query.fromDate || query.toDate) {
-            filter['metadata.timestamp'] = { $exists: true }; // Ensure timestamp exists
+            // Create a compound OR query to handle both fields
+            const dateFilters = [];
+            
+            // Create filter parts for both metadata.timestamp and createdAt
             if (query.fromDate) {
                 const fromDate = new Date(query.fromDate);
-                filter['metadata.timestamp'] = { $gte: fromDate };
-            }
-            if (query.toDate) {
-                const toDate = new Date(query.toDate);
-                toDate.setDate(toDate.getDate() + 1);
-                if (filter['metadata.timestamp']) {
-                    filter['metadata.timestamp'] = { ...filter['metadata.timestamp'], $lte: toDate };
+                // Set to beginning of day (00:00:00)
+                fromDate.setHours(0, 0, 0, 0);
+                
+                if (query.toDate) {
+                    const toDate = new Date(query.toDate);
+                    // Set to end of day (23:59:59)
+                    toDate.setHours(23, 59, 59, 999);
+                    
+                    // Create complete range filters
+                    dateFilters.push({ 
+                        'metadata.timestamp': { 
+                            $gte: fromDate,
+                            $lte: toDate 
+                        } 
+                    });
+                    
+                    dateFilters.push({ 
+                        createdAt: { 
+                            $gte: fromDate,
+                            $lte: toDate
+                        } 
+                    });
                 } else {
-                    filter['metadata.timestamp'] = { $lte: toDate };
+                    // Only fromDate specified
+                    dateFilters.push({ 'metadata.timestamp': { $gte: fromDate } });
+                    dateFilters.push({ createdAt: { $gte: fromDate } });
                 }
+            } else if (query.toDate) {
+                // Only toDate specified
+                const toDate = new Date(query.toDate);
+                // Set to end of day (23:59:59)
+                toDate.setHours(23, 59, 59, 999);
+                
+                dateFilters.push({ 'metadata.timestamp': { $lte: toDate } });
+                dateFilters.push({ createdAt: { $lte: toDate } });
+            }
+            
+            // Add the compound date filter to the main filter
+            if (dateFilters.length > 0) {
+                filter.$or = filter.$or || [];
+                filter.$or = [...filter.$or, ...dateFilters];
             }
         }
 
-        // Determine sort order
+        // Determine sort order - use metadata.timestamp if available, otherwise fall back to createdAt
         sort['metadata.timestamp'] = -1;
 
         // Handle pagination
@@ -232,7 +266,7 @@ export class ReportsService {
             priority: 'low'
         });
 
-        // Get recent activity counts based on metadata.timestamp
+        // Get recent activity counts - improved to handle both metadata.timestamp and createdAt
         const now = new Date();
 
         // Last 24 hours
@@ -241,7 +275,10 @@ export class ReportsService {
 
         const last24HoursCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            'metadata.timestamp': { $exists: true, $gte: last24Hours }
+            $or: [
+                { 'metadata.timestamp': { $gte: last24Hours } },
+                { createdAt: { $gte: last24Hours } }
+            ]
         });
 
         // Last week
@@ -250,7 +287,10 @@ export class ReportsService {
 
         const lastWeekCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            'metadata.timestamp': { $exists: true, $gte: lastWeek }
+            $or: [
+                { 'metadata.timestamp': { $gte: lastWeek } },
+                { createdAt: { $gte: lastWeek } }
+            ]
         });
 
         // Last month
@@ -259,7 +299,10 @@ export class ReportsService {
 
         const lastMonthCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            'metadata.timestamp': { $exists: true, $gte: lastMonth }
+            $or: [
+                { 'metadata.timestamp': { $gte: lastMonth } },
+                { createdAt: { $gte: lastMonth } }
+            ]
         });
 
         // Total count
@@ -317,12 +360,24 @@ export class ReportsService {
             'content.files.0': { $exists: true }
         });
 
-        // Get the most recent report by metadata timestamp
-        const latestReport = await this.reportModel.findOne({
-            'clientApp.id': { $in: clientAppIds }
+        // Get the most recent report - first try by metadata.timestamp
+        const latestByMetadata = await this.reportModel.findOne({
+            'clientApp.id': { $in: clientAppIds },
+            'metadata.timestamp': { $exists: true }
         }).sort({ 'metadata.timestamp': -1 }).limit(1).exec();
 
-        const lastReportDate = latestReport?.metadata?.timestamp || null;
+        // If no report with metadata.timestamp, try by createdAt
+        const latestByCreatedAt = !latestByMetadata ? 
+            await this.reportModel.findOne({
+                'clientApp.id': { $in: clientAppIds }
+            }).sort({ createdAt: -1 }).limit(1).exec() : 
+            null;
+
+        // Determine the latest report and its date
+        const latestReport = latestByMetadata || latestByCreatedAt;
+        const lastReportDate = latestReport
+            ? (latestReport.metadata?.timestamp || latestReport.createdAt)
+            : null;
 
         // Get total reports count
         const totalReports = await this.reportModel.countDocuments({
@@ -439,7 +494,7 @@ export class ReportsService {
             priority: 'low'
         });
 
-        // Get recent activity counts based on metadata.timestamp
+        // Get recent activity counts based on BOTH metadata.timestamp and createdAt
         const now = new Date();
 
         // Last 24 hours
@@ -448,7 +503,10 @@ export class ReportsService {
 
         const last24HoursCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            'metadata.timestamp': { $exists: true, $gte: last24Hours }
+            $or: [
+                { 'metadata.timestamp': { $gte: last24Hours } },
+                { createdAt: { $gte: last24Hours } }
+            ]
         });
 
         // Last week
@@ -457,17 +515,22 @@ export class ReportsService {
 
         const lastWeekCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            'metadata.timestamp': { $exists: true, $gte: lastWeek }
+            $or: [
+                { 'metadata.timestamp': { $gte: lastWeek } },
+                { createdAt: { $gte: lastWeek } }
+            ]
         });
 
         // Last month
         const lastMonth = new Date(now);
-
         lastMonth.setMonth(now.getMonth() - 1);
 
         const lastMonthCount = await this.reportModel.countDocuments({
             ...baseFilter,
-            'metadata.timestamp': { $exists: true, $gte: lastMonth }
+            $or: [
+                { 'metadata.timestamp': { $gte: lastMonth } },
+                { createdAt: { $gte: lastMonth } }
+            ]
         });
 
         // Total count
