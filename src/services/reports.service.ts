@@ -6,12 +6,14 @@ import { FileAttachment, Report, ReportsSummary } from '../interfaces/report.int
 import { ClientApp } from '../interfaces/client-app.interface';
 import { EmailService } from './email.service';
 import { SupabaseService } from './supabase.service';
+import { Client } from '../schemas/client.schema';
 
 @Injectable()
 export class ReportsService {
     constructor(
         @InjectModel('Report') private readonly reportModel: Model<Report>,
         @InjectModel('ClientApp') private readonly clientAppModel: Model<ClientApp>,
+        @InjectModel('Client') private readonly clientModel: Model<Client>,
         private readonly emailService: EmailService,
         private readonly supabaseService: SupabaseService
     ) {}
@@ -359,6 +361,137 @@ export class ReportsService {
             total: totalReports,
             pending: pendingReports,
             resolved: resolvedReports
+        }
+    };
+}
+
+async getReportsSummaryByClientId(clientId: string): Promise<ReportsSummary> {
+    // First get the client to find associated client app IDs
+    const client = await this.clientModel.findById(clientId).exec();
+    
+    if (!client || !client.clientAppIds || client.clientAppIds.length === 0) {
+        // Return empty summary if client doesn't exist or has no apps
+        return {
+            total: 0,
+            byStatus: {
+                pending: 0,
+                in_progress: 0,
+                resolved: 0,
+                closed: 0,
+                archived: 0
+            },
+            byPriority: {
+                low: 0,
+                medium: 0,
+                high: 0
+            },
+            recentActivity: {
+                last24Hours: 0,
+                lastWeek: 0,
+                lastMonth: 0
+            }
+        };
+    }
+    
+    // Convert clientAppIds to strings for comparing
+    const clientAppIds = client.clientAppIds.map(id => id.toString());
+    
+    // Create a filter to match reports for any of these client apps
+    const baseFilter = { 'clientApp.id': { $in: clientAppIds } };
+    
+    // Get counts by status
+    const pendingCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'pending'
+    });
+    
+    const inProgressCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'in_progress'
+    });
+    
+    const resolvedCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'resolved'
+    });
+    
+    const closedCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'closed'
+    });
+    
+    const archivedCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        status: 'archived'
+    });
+    
+    // Get counts by priority
+    const highPriorityCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        priority: 'high'
+    });
+    
+    const mediumPriorityCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        priority: 'medium'
+    });
+    
+    const lowPriorityCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        priority: 'low'
+    });
+    
+    // Get recent activity counts
+    const now = new Date();
+    
+    // Last 24 hours
+    const last24Hours = new Date(now);
+    last24Hours.setHours(now.getHours() - 24);
+    
+    const last24HoursCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        createdAt: { $gte: last24Hours }
+    });
+    
+    // Last week
+    const lastWeek = new Date(now);
+    lastWeek.setDate(now.getDate() - 7);
+    
+    const lastWeekCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        createdAt: { $gte: lastWeek }
+    });
+    
+    // Last month
+    const lastMonth = new Date(now);
+    lastMonth.setMonth(now.getMonth() - 1);
+    
+    const lastMonthCount = await this.reportModel.countDocuments({
+        ...baseFilter,
+        createdAt: { $gte: lastMonth }
+    });
+    
+    // Total count
+    const totalCount = await this.reportModel.countDocuments(baseFilter);
+    
+    return {
+        total: totalCount,
+        byStatus: {
+            pending: pendingCount,
+            in_progress: inProgressCount,
+            resolved: resolvedCount,
+            closed: closedCount,
+            archived: archivedCount
+        },
+        byPriority: {
+            low: lowPriorityCount,
+            medium: mediumPriorityCount,
+            high: highPriorityCount
+        },
+        recentActivity: {
+            last24Hours: last24HoursCount,
+            lastWeek: lastWeekCount,
+            lastMonth: lastMonthCount
         }
     };
 }
