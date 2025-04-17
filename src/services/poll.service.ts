@@ -17,7 +17,22 @@ export class PollService {
     ) {}
 
     async create(createPollDto: CreatePollDto): Promise<Poll> {
-        // Create the poll
+        // Handle autoEmbedLocations conversion from string to array if needed
+        if (typeof createPollDto.autoEmbedLocations === 'string') {
+            try {
+                createPollDto.autoEmbedLocations = JSON.parse(createPollDto.autoEmbedLocations);
+            } catch (e) {
+                // If parsing fails, initialize as empty array
+                createPollDto.autoEmbedLocations = [];
+            }
+        }
+        
+        // Ensure autoEmbedLocations is an array
+        if (!Array.isArray(createPollDto.autoEmbedLocations)) {
+            createPollDto.autoEmbedLocations = [];
+        }
+        
+        // Create the poll with all style customization fields
         const newPoll = new this.pollModel(createPollDto);
         return await newPoll.save();
     }
@@ -104,7 +119,17 @@ export class PollService {
             throw new NotFoundException(`Poll with ID ${id} not found`);
         }
 
-        // Update the poll
+        // Handle autoEmbedLocations conversion from string to array if needed
+        if (typeof updatePollDto.autoEmbedLocations === 'string') {
+            try {
+                updatePollDto.autoEmbedLocations = JSON.parse(updatePollDto.autoEmbedLocations);
+            } catch (e) {
+                // If parsing fails, keep the existing value
+                updatePollDto.autoEmbedLocations = existingPoll.autoEmbedLocations;
+            }
+        }
+
+        // Update the poll with all style customization fields
         return await this.pollModel.findByIdAndUpdate(
             id,
             updatePollDto,
