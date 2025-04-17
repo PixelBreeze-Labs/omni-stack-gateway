@@ -10,11 +10,13 @@ import {
     UpdateClientAppDto,
     ListClientAppDto
 } from '../dtos/client-app.dto';
+import { Client } from '../schemas/client.schema';
 
 @Injectable()
 export class ClientAppService {
     constructor(
         @InjectModel('ClientApp') private clientAppModel: Model<ClientApp>,
+        @InjectModel(Client.name) private clientModel: Model<Client>,
         private clientService: ClientService
     ) {}
 
@@ -185,5 +187,76 @@ export class ClientAppService {
             
             return appObj;
         });
+    }
+
+    async getDashboardData(): Promise<{
+        metrics: {
+            totalApps: number;
+            activeApps: number;
+            inactiveApps: number;
+            recentApps: number;
+            appsByType: { type: string; count: number }[];
+        };
+        recentApps: any[];
+        clientsWithMostApps: any[];
+    }> {
+        // Get basic metrics
+        const [totalApps, activeApps, inactiveApps, recentApps] = await Promise.all([
+            this.clientAppModel.countDocuments(),
+            this.clientAppModel.countDocuments({ status: 'active' }),
+            this.clientAppModel.countDocuments({ status: 'inactive' }),
+            this.clientAppModel.countDocuments({
+                configuredAt: { $gt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+            })
+        ]);
+    
+        // Get apps by type
+        const appsByTypeResult = await this.clientAppModel.aggregate([
+            { $group: { _id: "$type", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ]);
+    
+        const appsByType = appsByTypeResult.map(item => ({
+            type: item._id,
+            count: item.count
+        }));
+    
+        // Get most recent apps
+        const recentAppsList = await this.clientAppModel
+            .find()
+            .sort({ configuredAt: -1 })
+            .limit(5);
+        
+        // Enhance with client data
+        const enhancedRecentApps = await this.enhanceWithClientData(recentAppsList);
+    
+        // Get clients with most apps (requires help from the client service)
+        let clientsWithMostApps = [];
+        try {
+            // This is a simplified approach - in reality, you'd need to coordinate with the client service
+            // to get clients sorted by number of apps they have
+            const clientAppCounts = await this.clientModel.aggregate([
+                { $project: { name: 1, code: 1, appCount: { $size: "$clientAppIds" } } },
+                { $sort: { appCount: -1 } },
+                { $limit: 5 }
+            ]);
+    
+            clientsWithMostApps = clientAppCounts;
+        } catch (error) {
+            console.error("Error getting clients with most apps:", error);
+            // Provide empty array as fallback
+        }
+    
+        return {
+            metrics: {
+                totalApps,
+                activeApps,
+                inactiveApps,
+                recentApps,
+                appsByType
+            },
+            recentApps: enhancedRecentApps,
+            clientsWithMostApps
+        };
     }
 }
