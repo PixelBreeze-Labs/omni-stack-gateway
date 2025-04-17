@@ -105,7 +105,7 @@ export class ClientService {
     }
 
     async findOne(id: string): Promise<Client> {
-        const client = await this.clientModel.findById(id);
+        const client = await this.clientModel.findById(id).select('+apiKey');
         if (!client) throw new NotFoundException('Client not found');
         return client;
     }
