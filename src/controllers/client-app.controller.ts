@@ -72,4 +72,11 @@ export class ClientAppController {
     async remove(@Param('id') id: string) {
         return this.clientAppService.remove(id);
     }
+
+    @Get('dashboard')
+@ApiOperation({ summary: 'Get dashboard data' })
+@ApiResponse({ status: 200, description: 'Dashboard data' })
+async getDashboardData() {
+  return this.clientAppService.getDashboardData();
+}
 }
