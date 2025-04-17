@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as crypto from 'crypto';
 import { ClientApp } from '../schemas/client-app.schema';
+import { ClientService } from './client.service';
 import {
     CreateClientAppDto,
     UpdateClientAppDto,
@@ -13,11 +14,12 @@ import {
 @Injectable()
 export class ClientAppService {
     constructor(
-        @InjectModel('ClientApp') private clientAppModel: Model<ClientApp>
+        @InjectModel('ClientApp') private clientAppModel: Model<ClientApp>,
+        private clientService: ClientService
     ) {}
 
     async findAll(query: ListClientAppDto): Promise<{
-        data: ClientApp[];
+        data: any[];
         total: number;
         message: string;
         metrics: {
@@ -64,8 +66,11 @@ export class ClientAppService {
             })
         ]);
 
+        // Enhance with client data
+        const enhancedData = await this.enhanceWithClientData(data);
+
         return {
-            data,
+            data: enhancedData,
             total,
             message: 'Client apps fetched successfully',
             metrics: {
@@ -80,7 +85,10 @@ export class ClientAppService {
     async findOne(id: string) {
         const clientApp = await this.clientAppModel.findById(id);
         if (!clientApp) throw new NotFoundException('Client App not found');
-        return clientApp;
+        
+        // Enhance with client data
+        const enhancedData = await this.enhanceWithClientData([clientApp]);
+        return enhancedData[0];
     }
 
     async create(createClientAppDto: CreateClientAppDto) {
@@ -118,13 +126,21 @@ export class ClientAppService {
                 }
             }
         });
-        return clientApp.save();
+        
+        const savedApp = await clientApp.save();
+        
+        // Enhance with client data
+        const enhancedData = await this.enhanceWithClientData([savedApp]);
+        return enhancedData[0];
     }
 
     async update(id: string, updateClientAppDto: UpdateClientAppDto) {
         const clientApp = await this.clientAppModel.findByIdAndUpdate(id, updateClientAppDto, { new: true });
         if (!clientApp) throw new NotFoundException('Client App not found');
-        return clientApp;
+        
+        // Enhance with client data
+        const enhancedData = await this.enhanceWithClientData([clientApp]);
+        return enhancedData[0];
     }
 
     async remove(id: string) {
@@ -133,9 +149,41 @@ export class ClientAppService {
         return { success: true };
     }
 
-    async findByApiKey(apiKey: string): Promise<ClientApp> {
+    async findByApiKey(apiKey: string): Promise<any> {
         const clientApp = await this.clientAppModel.findOne({ apiKey });
         if (!clientApp) throw new NotFoundException('Invalid API key');
-        return clientApp;
+        
+        // Enhance with client data
+        const enhancedData = await this.enhanceWithClientData([clientApp]);
+        return enhancedData[0];
+    }
+
+    // Helper method to enhance client apps with client data
+    private async enhanceWithClientData(clientApps: ClientApp[]): Promise<any[]> {
+        if (!clientApps || clientApps.length === 0) {
+            return [];
+        }
+        
+        // Get all client app IDs
+        const appIds = clientApps.map(app => app._id.toString());
+        
+        // Get client info for these app IDs
+        const clientInfoMap = await this.clientService.getClientInfoForApps(appIds);
+        
+        // Enhance each app with its client info
+        return clientApps.map(app => {
+            const appObj = app.toObject ? app.toObject() : { ...app };
+            const appId = appObj._id.toString();
+            
+            // Add client data if available
+            if (clientInfoMap[appId]) {
+                appObj.client = clientInfoMap[appId];
+            } else {
+                // Add empty client data as fallback
+                appObj.client = { name: null, code: null };
+            }
+            
+            return appObj;
+        });
     }
 }
