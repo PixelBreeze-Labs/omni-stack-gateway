@@ -312,13 +312,13 @@ export class ReportsService {
             'content.files.0': { $exists: true }
         });
 
-        // Get the most recent report date
-        const latestReport = await this.reportModel.findOne({
-            'clientApp.id': { $in: clientAppIds }
-        }).sort({ createdAt: -1 }).limit(1).exec();
+       // Get the most recent report by metadata timestamp
+const latestReport = await this.reportModel.findOne({
+    'clientApp.id': { $in: clientAppIds },
+    'metadata.timestamp': { $exists: true }
+}).sort({ 'metadata.timestamp': -1 }).limit(1).exec();
 
-        const lastReportDate = latestReport?.createdAt || latestReport?.metadata?.timestamp || null;
-
+const lastReportDate = latestReport?.metadata?.timestamp || latestReport?.createdAt || null;
         // Get total reports count
         const totalReports = await this.reportModel.countDocuments({
             'clientApp.id': { $in: clientAppIds }
