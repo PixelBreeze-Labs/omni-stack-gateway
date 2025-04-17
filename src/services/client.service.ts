@@ -159,4 +159,51 @@ export class ClientService {
             modifiedCount: result.modifiedCount
         };
     }
+
+    // Find clients that have this client app in their clientAppIds array
+    async findClientsByAppId(appId: string): Promise<Client[]> {
+        if (!appId) {
+            return [];
+        }
+
+        // Find all clients that reference this client app
+        const clients = await this.clientModel.find({
+            clientAppIds: appId
+        }).exec();
+
+        return clients;
+    }
+
+    // Get basic client info for all client apps
+    async getClientInfoForApps(appIds: string[]): Promise<Record<string, any>> {
+        if (!appIds || appIds.length === 0) {
+            return {};
+        }
+
+        // Find all clients that reference any of these client apps
+        const clients = await this.clientModel.find({
+            clientAppIds: { $in: appIds }
+        }).exec();
+
+        // Create a map of appId -> client info
+        const appClientMap: Record<string, any> = {};
+        
+        // For each client, associate it with the app IDs it contains
+        clients.forEach(client => {
+            const clientInfo = {
+                _id: client._id,
+                name: client.name,
+                code: client.code
+            };
+            
+            // Map this client info to each app ID it references
+            client.clientAppIds.forEach(appId => {
+                if (appIds.includes(appId.toString())) {
+                    appClientMap[appId.toString()] = clientInfo;
+                }
+            });
+        });
+
+        return appClientMap;
+    }
 }
