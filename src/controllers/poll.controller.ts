@@ -132,6 +132,7 @@ export class PollController {
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Update a poll' })
     @ApiParam({ name: 'id', description: 'Poll ID' })
+    @ApiQuery({ name: 'clientId', description: 'Client ID (optional)', required: false })
     @ApiBody({ type: UpdatePollDto })
     @ApiResponse({ 
         status: HttpStatus.OK, 
@@ -143,9 +144,13 @@ export class PollController {
     async update(
         @Param('id') id: string,
         @Body() updatePollDto: UpdatePollDto,
+        @Query('clientId') queryClientId: string,
         @Req() req: Request & { client: any }
     ): Promise<Poll> {
-        return this.pollService.update(id, req.client.id, updatePollDto);
+        // Use the clientId from query parameter if provided, otherwise use the authenticated client's ID
+        const clientId = queryClientId || req.client.id;
+        
+        return this.pollService.update(id, clientId, updatePollDto);
     }
 
     @Delete(':id')
@@ -154,13 +159,18 @@ export class PollController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: 'Delete a poll' })
     @ApiParam({ name: 'id', description: 'Poll ID' })
+    @ApiQuery({ name: 'clientId', description: 'Client ID (optional)', required: false })
     @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'The poll has been successfully deleted' })
     @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Poll not found' })
     async remove(
         @Param('id') id: string,
+        @Query('clientId') queryClientId: string,
         @Req() req: Request & { client: any }
     ): Promise<void> {
-        return this.pollService.delete(id, req.client.id);
+        // Use the clientId from query parameter if provided, otherwise use the authenticated client's ID
+        const clientId = queryClientId || req.client.id;
+        
+        return this.pollService.delete(id, clientId);
     }
 
     @Post(':id/vote')
