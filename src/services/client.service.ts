@@ -6,6 +6,7 @@ import { CreateClientDto, UpdateClientDto, ListClientDto } from '../dtos/client.
 import { ClientApiKeyService } from './client-api-key.service';
 import { ClientStatus } from '../enums/clients.enum';
 import { ReportsService } from './reports.service';
+import { PollService } from '../services/poll.service';
 
 @Injectable()
 export class ClientService {
@@ -13,6 +14,8 @@ export class ClientService {
         @InjectModel(Client.name) private clientModel: Model<Client>,
         private readonly clientApiKeyService: ClientApiKeyService,
         private readonly reportsService: ReportsService, // Inject ReportsService
+        private readonly pollService: PollService, // Inject PollService
+
     ) {}
 
     async findAll(query: ListClientDto): Promise<{
@@ -116,16 +119,22 @@ export class ClientService {
         // Check for specific client IDs that need special WP Reports data
         if (id === "67feac2cd5060f88345d0056" || id === "680027c0860084f81c6090cd") {
             try {
+                // Get WP Reports data
                 const wpReportsData = await this.reportsService.getWPReportsForClient(id);
                 
-                // Add polls data for special clients
+                // Get dynamic polls data
+                const pollsStats = await this.pollService.getStats(id);
+                
+                // Format the polls data
                 const pollsData = {
-                    activePolls: id === "67feac2cd5060f88345d0056" ? 12 : 4,
-                    responses: id === "67feac2cd5060f88345d0056" ? 1254 : 387,
-                    lastPollDate: id === "67feac2cd5060f88345d0056" ? 
-                        "2025-04-12T10:30:00.000Z" : "2025-04-09T14:15:00.000Z",
-                    mostActivePoll: id === "67feac2cd5060f88345d0056" ? 
-                        "Reader Satisfaction" : "Customer Experience"
+                    activePolls: pollsStats.totalPolls || 0,
+                    responses: pollsStats.totalVotes || 0,
+                    lastPollDate: pollsStats.latestPolls && pollsStats.latestPolls.length > 0 
+                        ? pollsStats.latestPolls[0].createdAt 
+                        : null,
+                    mostActivePoll: pollsStats.mostPopularPoll 
+                        ? pollsStats.mostPopularPoll.title 
+                        : "No active polls"
                 };
                 
                 specialFeatures = {
