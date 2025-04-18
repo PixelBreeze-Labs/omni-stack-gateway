@@ -20,6 +20,7 @@ import {
     ApiBearerAuth,
     ApiParam,
     ApiBody,
+    ApiQuery
 } from '@nestjs/swagger';
 import { PollService } from '../services/poll.service';
 import {
@@ -89,6 +90,7 @@ export class PollController {
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Get a specific poll' })
     @ApiParam({ name: 'id', description: 'Poll ID' })
+    @ApiQuery({ name: 'clientId', description: 'Client ID (optional)', required: false })
     @ApiResponse({ 
         status: HttpStatus.OK, 
         description: 'The poll data', 
@@ -97,9 +99,14 @@ export class PollController {
     @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Poll not found' })
     async findOne(
         @Param('id') id: string,
+        @Query('clientId') queryClientId: string,
         @Req() req: Request & { client: any }
     ): Promise<Poll> {
-        return this.pollService.findOne(id, req.client.id);
+        // Use the clientId from query parameter if provided, otherwise use the authenticated client's ID
+        const clientId = queryClientId || req.client.id;
+
+        
+        return this.pollService.findOne(id, clientId);
     }
 
     @Get('wordpress/:wordpressId')
