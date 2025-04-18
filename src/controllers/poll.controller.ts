@@ -176,4 +176,37 @@ export class PollController {
     ): Promise<Poll> {
         return this.pollService.vote(id, req.client.id, voteDto);
     }
+
+    @Get('stats/by-client/:clientId')
+@UseGuards(ClientAuthGuard)
+@ApiBearerAuth()
+@ApiOperation({ summary: 'Get poll statistics for a specific client' })
+@ApiParam({ name: 'clientId', description: 'Client ID' })
+@ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Poll statistics' 
+})
+async getStatsByClientId(
+    @Param('clientId') clientId: string,
+    @Req() req: Request & { client: any }
+) {
+    return this.pollService.getStats(clientId);
+}
+
+    @Get('by-client/:clientId')
+@UseGuards(ClientAuthGuard)
+@ApiBearerAuth()
+@ApiOperation({ summary: 'Get all polls for a specific client' })
+@ApiParam({ name: 'clientId', description: 'Client ID' })
+@ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'List of polls', 
+})
+async findAllByClientId(
+    @Param('clientId') clientId: string,
+    @Query() query: ListPollsQueryDto,
+    @Req() req: Request & { client: any }
+) {
+    return this.pollService.findAll(clientId, query);
+}
 }
