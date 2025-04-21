@@ -103,9 +103,17 @@ export class UserController {
         @Param('venueShortCode') venueShortCode: string,
         @Headers('webhook-api-key') webhookApiKey: string,
         @Headers('x-api-key') apiKey: string,
-        @Body() userData: GetOrCreateUserDto
+        @Body() userData: any // Use 'any' to capture all incoming fields
     ) {
-        return this.userService.getOrCreateWithLoyalty(venueShortCode, webhookApiKey, userData);
+        // Extract the email_verify_link if it exists
+        const { email_verify_link, ...userDataWithoutLink } = userData;
+        
+        return this.userService.getOrCreateWithLoyalty(
+            venueShortCode, 
+            webhookApiKey, 
+            userDataWithoutLink as GetOrCreateUserDto,
+            email_verify_link
+        );
     }
 
     @Get(':venueShortCode/wallet-info/:userId')
