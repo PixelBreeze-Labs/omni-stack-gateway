@@ -230,6 +230,18 @@ export class UserService {
             totalSpend: 0
         });
 
+        // Extract email verification link from metadata if it exists
+        const emailVerifyLink = createUserDto.metadata?.email_verify_link;
+        
+        // Initialize metadata map if it doesn't exist
+        user.metadata = user.metadata || new Map<string, any>();
+            
+        // If there's an email verification link in the metadata, store it
+        if (emailVerifyLink) {
+            user.metadata.set('email_verify_link', emailVerifyLink);
+            user.metadata.set('email_verified', 'false');
+        }
+
         // 7. Handle referral logic if a referral code was provided.
         if (referredByUser) {
             user.referredBy = referredByUser._id;
@@ -332,6 +344,28 @@ export class UserService {
             });
         }
 
+        // First, send verification email if we have a link
+        if (emailVerifyLink) {
+            try {
+                await this.emailService.sendTemplateEmail(
+                    'MetroShop',                          
+                    'metroshop@omnistackhub.xyz',         
+                    savedUser.email,                      
+                    'Mirë se vini në MetroShop! Verifikoni Adresën tuaj të Email-it',
+                    'templates/metroshop/email-verification.html',
+                    {
+                        name: savedUser.name,
+                        verifyLink: emailVerifyLink,
+                    },
+                );
+                
+                this.logger.log(`Verification email sent to ${savedUser.email}`);
+            } catch (error) {
+                this.logger.error(`Failed to send verification email: ${error.message}`);
+                // Continue even if verification email fails
+            }
+        }
+
         // Last. After saving the user, send the welcome email using your HTML template
         await this.emailService.sendTemplateEmail(
             'MetroShop',                          // fromName: The display name of the sender
@@ -402,7 +436,9 @@ export class UserService {
                 external_ids: {
                     venueBoostId: externalId
                 },
-                client_ids: [requestClient._id.toString()]
+                client_ids: [requestClient._id.toString()],
+                // Extract the email verification link if provided
+                metadata: userData.email_verify_link ? { email_verify_link: userData.email_verify_link } : undefined
             };
 
             return await this.registerUser(createUserDto);

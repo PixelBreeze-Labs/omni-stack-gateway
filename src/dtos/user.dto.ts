@@ -115,6 +115,10 @@ export class GetOrCreateUserDto {
     email: string;
     phone: string;
     password: string;
+
+    @IsString()
+    @IsOptional()
+    email_verify_link?: string;
 }
 
 export class ChangePasswordDto {
