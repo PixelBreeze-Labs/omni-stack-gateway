@@ -50,7 +50,7 @@ export class WalletService {
 
     async addCredit(walletId: string, amount: number, data: {
         description: string;
-        source: 'points_redemption' | 'refund' | 'manual_adjustment' | 'reward';
+        source: 'points_redemption' | 'refund' | 'manual_adjustment' | 'reward' | 'referral';
         metadata?: Record<string, any>;
         processedBy?: string;
     }): Promise<Wallet> {

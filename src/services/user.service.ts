@@ -240,40 +240,60 @@ export class UserService {
         user.metadata.set('email_verified', 'false');
     }
 
-        // 7. Handle referral logic if a referral code was provided.
-        if (referredByUser) {
-            user.referredBy = referredByUser._id;
-            await this.userModel.updateOne(
-                { _id: referredByUser._id },
-                {
-                    $push: { referrals: user._id },
-                    $inc: { referralsRemaining: -1 }
-                }
-            );
+       // 7. Handle referral logic if a referral code was provided.
+       if (referredByUser) {
+        user.referredBy = referredByUser._id;
+        await this.userModel.updateOne(
+            { _id: referredByUser._id },
+            {
+                $push: { referrals: user._id },
+                $inc: { referralsRemaining: -1 }
+            }
+        );
 
-            if (
-                loyaltyClient.loyaltyProgram &&
-                Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
-                loyaltyClient.loyaltyProgram.membershipTiers.length > 0
-            ) {
-                // Look up the referrer's tier from their stored clientTiers, using primary client's id.
-                const referrerTierName = referredByUser.clientTiers
-                    ? referredByUser.clientTiers[primaryClient._id.toString()]
-                    : null;
-                if (!referrerTierName) {
-                    console.error('No tier found for referrer');
-                } else {
-                    const referrerTier = loyaltyClient.loyaltyProgram.membershipTiers
-                        .find(tier => tier.name === referrerTierName);
-                    if (referrerTier?.referralPoints) {
-                        await this.userModel.updateOne(
-                            { _id: referredByUser._id },
-                            { $inc: { points: referrerTier.referralPoints } }
-                        );
-                    }
+        if (
+            loyaltyClient.loyaltyProgram &&
+            Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
+            loyaltyClient.loyaltyProgram.membershipTiers.length > 0
+        ) {
+            // Look up the referrer's tier from their stored clientTiers, using primary client's id.
+            const referrerTierName = referredByUser.clientTiers
+                ? referredByUser.clientTiers[primaryClient._id.toString()]
+                : null;
+            if (!referrerTierName) {
+                console.error('No tier found for referrer');
+            } else {
+                const referrerTier = loyaltyClient.loyaltyProgram.membershipTiers
+                    .find(tier => tier.name === referrerTierName);
+                if (referrerTier?.referralPoints) {
+                    const referralPoints = referrerTier.referralPoints;
+                    await this.userModel.updateOne(
+                        { _id: referredByUser._id },
+                        { $inc: { points: referralPoints } }
+                    );
+
+                    // *** Create a wallet transaction for the referral points ***
+                    const referrerWallet = await this.walletService.findOrCreateWallet(
+                        referredByUser._id.toString(),
+                        primaryClient._id.toString(),
+                        primaryClient.defaultCurrency || 'EUR'
+                    );
+                    await this.walletService.addCredit(
+                        referrerWallet._id.toString(),
+                        referralPoints,
+                        {
+                            description: `Referral bonus for ${createUserDto.name} ${createUserDto.surname}`,
+                            source: 'referral',
+                            metadata: {
+                                referredUserId: user._id.toString(),
+                                points: referralPoints
+                            }
+                        }
+                    );
                 }
             }
         }
+    }
 
         // 8. Save the new user.
         const savedUser = await user.save();
