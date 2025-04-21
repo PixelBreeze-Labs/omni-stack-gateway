@@ -50,8 +50,8 @@ export interface ReferralInfo {
     name: string;
     email: string;
     tier: string;
-    total_spend: number;
-    points: number;
+    total_spend?: number;
+    points?: number;
     joined_date: Date;
 }
 
@@ -568,8 +568,8 @@ export class UserService {
                 name: r.name,
                 email: r.email,
                 tier: r.clientTiers[requestClient._id.toString()] || 'Default Tier',
-                total_spend: r.totalSpend,
-                points: r.points,
+                // total_spend: r.totalSpend,
+                // points: r.points,
                 joined_date: r.createdAt
             })),
             loyaltyTier: currentTierName,
