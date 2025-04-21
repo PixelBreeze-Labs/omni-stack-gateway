@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ju Keni Fituar Pikë Bonus Referimi në MetroShop!</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Manrope', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            padding: 20px 10px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 24px;
+            border-radius: 16px;
+            background-color: #fff;
+            text-align: left;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 16px;
+        }
+        .logo {
+            width: 150px;
+            margin-top: 15px;
+            margin-bottom: 20px;
+        }
+        .title {
+            color: #000;
+            font-size: 28px;
+            line-height: 42px;
+            font-weight: bold;
+            margin: 24px 0 8px;
+        }
+        .content {
+            font-size: 16px;
+            line-height: 24px;
+            color: #666666;
+            margin: 24px 0;
+        }
+        .points {
+            font-size: 36px;
+            font-weight: bold;
+            color: #cb0000;
+            text-align: center;
+            margin: 30px 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #cb0000;
+            color: #ffffff!important;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .button-container {
+            width: 100%;
+            text-align: center;
+            margin: 30px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid #f0f0f0;
+            font-size: 14px;
+            color: #666;
+        }
+        .referral-info {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="https://metroshop.al/metroshop-logo.png" alt="MetroShop" class="logo" style="display: inline-block;" />
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="title">Lajme të mira, {{referrerName}}!</div>
+        </div>
+
+        <div class="content">
+            <p>
+                Dikush sapo u regjistrua në MetroShop duke përdorur kodin tuaj të referimit!
+            </p>
+            
+            <div class="points">
+                +{{referralPoints}} Pikë
+            </div>
+            
+            <div class="referral-info">
+                <p><strong>Detajet e referimit:</strong></p>
+                <p>Përdoruesi: {{referredName}}</p>
+                <p>Data e regjistrimit: {{registrationDate}}</p>
+            </div>
+            
+            <p>
+                Pikët janë shtuar në llogarinë tuaj dhe mund t'i përdorni për blerjet tuaja të ardhshme në MetroShop.
+            </p>
+            
+            <div class="button-container">
+                <a href="https://metroshop.al/account/wallet" class="button">Shiko Llogarinë Tënde</a>
+            </div>
+            
+            <p>
+                Vazhdoni të ndani kodin tuaj të referimit <strong>{{referralCode}}</strong> me miqtë dhe familjen për të fituar më shumë pikë.
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>Faleminderit që jeni pjesë e MetroShop!<br />Ekipi i MetroShop</p>
+        </div>
+    </div>
+</body>
+</html>
