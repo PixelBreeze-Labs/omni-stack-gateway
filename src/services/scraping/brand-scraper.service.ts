@@ -51,7 +51,6 @@ export class BrandScraperService {
         });
 
         try {
-            console.log('Navigating to URL:', url);
             const page = await browser.newPage();
             await page.setViewport({ width: 1920, height: 1080 });
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
@@ -64,7 +63,6 @@ export class BrandScraperService {
             await page.waitForSelector(this.SELECTORS.container, { timeout: 60000 });
 
             const productElements = await this.identifyProductElements(page);
-            console.log(`Found ${productElements.length} products`);
 
             const products = [];
             for (const element of productElements) {
@@ -94,7 +92,6 @@ export class BrandScraperService {
         const description = await element.$eval(this.SELECTORS.description, el => el.textContent.trim());
         const priceText = await element.$eval(this.SELECTORS.price, el => el.textContent.trim());
         const imageUrl = await element.$eval('img.swa-product-tile-plp__image', (img: HTMLImageElement) => img.src);
-        console.log('Found image URL:', imageUrl);
 
         // Process image if present
         let images = [];

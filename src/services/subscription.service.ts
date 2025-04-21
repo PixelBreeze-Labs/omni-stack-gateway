@@ -247,7 +247,6 @@ export class SubscriptionService {
      * Helper method to calculate subscription metrics directly from the allBusinesses array
      */
     private calculateMetricsFromSubscriptions(subscriptions: Subscription[]): SubscriptionMetrics {
-        console.log(`Calculating metrics from ${subscriptions.length} subscription objects`);
 
         const totalSubscriptions = subscriptions.length;
         let activeSubscriptions = 0;
@@ -366,8 +365,6 @@ export class SubscriptionService {
      */
     async getSubscriptions(clientId: string, query: SubscriptionParams = {}): Promise<SubscriptionsResponse> {
         try {
-            console.log('Starting getSubscriptions with clientId:', clientId);
-
             // Prepare filters: only include businesses that have a Stripe subscription
             const filters: any = {clientId, stripeSubscriptionId: {$exists: true, $ne: null}};
 
@@ -388,8 +385,6 @@ export class SubscriptionService {
                 ];
             }
 
-            console.log('Filters:', JSON.stringify(filters));
-
             // Pagination setup
             const page = query.page ? Number(query.page) : 1;
             const limit = query.limit ? Number(query.limit) : 10;
@@ -399,9 +394,7 @@ export class SubscriptionService {
             let total = 0;
             try {
                 total = await this.businessModel.countDocuments(filters);
-                console.log('Total documents count:', total);
             } catch (countError) {
-                console.error('Error counting documents:', countError);
                 throw new Error(`Error counting documents: ${countError.message}`);
             }
 
@@ -415,15 +408,12 @@ export class SubscriptionService {
                     .skip(skip)
                     .limit(limit)
                     .lean();
-                console.log(`Found ${businesses.length} businesses`);
             } catch (findError) {
-                console.error('Error finding businesses:', findError);
                 throw new Error(`Error finding businesses: ${findError.message}`);
             }
 
             // If no businesses found, return empty results
             if (businesses.length === 0) {
-                console.log('No businesses found, returning empty results');
                 return {
                     items: [],
                     total: 0,
@@ -455,11 +445,8 @@ export class SubscriptionService {
                     .map((b: any) => b.adminUserId)
                     .filter((id: any) => id != null);
 
-                console.log(`Found ${adminUserIds.length} admin user IDs`);
-
                 if (adminUserIds.length > 0) {
                     adminUsers = await this.userModel.find({_id: {$in: adminUserIds}}).lean();
-                    console.log(`Found ${adminUsers.length} admin users`);
                 }
             } catch (error) {
                 console.error('Error fetching admin users:', error);
@@ -482,11 +469,8 @@ export class SubscriptionService {
                     .map((b: any) => b.subscriptionDetails?.planId)
                     .filter((id: any) => id != null);
 
-                console.log(`Found ${productIds.length} product IDs`);
-
                 if (productIds.length > 0) {
                     products = await this.productModel.find({_id: {$in: productIds}}).lean();
-                    console.log(`Found ${products.length} products`);
                 }
             } catch (error) {
                 console.error('Error fetching products:', error);
@@ -617,11 +601,8 @@ export class SubscriptionService {
      */
     private async calculateSubscriptionMetrics(clientId: string, baseFilters: any): Promise<SubscriptionMetrics> {
         try {
-            console.log('Calculating subscription metrics');
-
             // Get all businesses with subscriptions for metrics calculation
             const allBusinesses = await this.businessModel.find(baseFilters).lean() as any[];
-            console.log(`Found ${allBusinesses.length} businesses for metrics calculation`);
 
             // Count by directly iterating through businesses
             let totalSubscriptions = allBusinesses.length;

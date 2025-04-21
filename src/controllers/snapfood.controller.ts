@@ -704,9 +704,6 @@ export class SnapFoodController {
     ): Promise<BlogUpdateResponse> {
         const formData = new FormData();
 
-        // Log what we received
-        console.log('Received DTO:', updateBlogDto);
-
         // Handle blog categories specifically
         if (updateBlogDto.blog_categories) {
             const categories = Array.isArray(updateBlogDto.blog_categories)
@@ -733,9 +730,6 @@ export class SnapFoodController {
                 contentType: image.mimetype
             });
         }
-
-        // Debug what we're sending
-        // console.log('Form data entries:', [...formData.entries()].map(entry => `${entry[0]}=${entry[1]}`));
 
         return await this.snapfoodService.updateBlog(id, formData);
     }

@@ -102,8 +102,6 @@ export class CommunityReportService {
             }
         }
 
-        console.log('Report tags for simple create:', reportTagsArray);
-
         // Create the report object
         const now = new Date();
         const report = await this.reportModel.create({
@@ -144,8 +142,6 @@ export class CommunityReportService {
         files: Express.Multer.File[] = [],
         audioFile?: Express.Multer.File
     ): Promise<Report> {
-        console.log('Raw reportData:', reportData);
-
         // Handle reportTags directly in FormData format (simple, direct approach)
         let reportTagsArray: string[] = [];
 
@@ -181,8 +177,6 @@ export class CommunityReportService {
                 index++;
             }
         }
-
-        console.log('Final reportTagsArray:', reportTagsArray);
 
         // Use the standard create method but override reportTags
         const mediaUrls: string[] = [];
@@ -238,7 +232,6 @@ export class CommunityReportService {
             updatedAt: now
         });
 
-        console.log('Created report with reportTags:', report.reportTags);
         return report;
     }
 
@@ -555,8 +548,6 @@ export class CommunityReportService {
 
         // Always update the timestamp
         updateFields['updatedAt'] = new Date();
-
-        console.log('Updating specific fields only:', updateFields);
 
         try {
             // Use Mongoose's updateOne method but only with specific fields
@@ -1281,9 +1272,6 @@ export class CommunityReportService {
 
     async updateReportTags(id: string, clientId: string, reportTags: string[]): Promise<Report> {
         try {
-            // First, log the parameters
-            console.log(`Updating tags for report: ID=${id}, clientId=${clientId}, tags=`, reportTags);
-
             // Use findOneAndUpdate to do the entire operation in one step
             // This is safer and prevents race conditions
             const updatedReport = await this.reportModel.findOneAndUpdate(
@@ -2644,8 +2632,6 @@ export class CommunityReportService {
             throw new NotFoundException(`Report with ID ${id} not found`);
         }
 
-        console.log(`Updating isFeatured field only for report ${id} to: ${isFeatured}`);
-
         // Update only the isFeatured field and updatedAt timestamp
         const result = await this.reportModel.updateOne(
             { _id: id },
@@ -2691,8 +2677,6 @@ export class CommunityReportService {
         }
 
         const oldStatus = existingReport.status;
-
-        console.log(`Updating status field only for report ${id} to: ${status}`);
 
         // Update only the status field and updatedAt timestamp
         const result = await this.reportModel.updateOne(
@@ -2832,8 +2816,6 @@ export class CommunityReportService {
                 select: 'name surname email image'
             })
             .lean();
-
-        console.log(`Found ${comments.length} comments for report ${reportId}`, query);
 
         // Transform comments into a more frontend-friendly format
         const transformedComments = comments.map(comment => {
