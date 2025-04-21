@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Regjistrimi i Anëtarit të Ri</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Manrope', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            padding: 20px 10px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 24px;
+            border-radius: 16px;
+            background-color: #fff;
+            text-align: left;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 16px;
+        }
+        .logo {
+            width: 150px;
+            margin-top: 15px;
+            margin-bottom: 20px;
+        }
+        .title {
+            color: #000;
+            font-size: 28px;
+            line-height: 42px;
+            font-weight: bold;
+            margin: 24px 0 8px;
+        }
+        .content {
+            font-size: 16px;
+            line-height: 24px;
+            color: #666666;
+        }
+        .member-table {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            margin: 24px 0;
+        }
+        .member-table th, .member-table td {
+            text-align: left;
+            padding: 10px 20px;
+        }
+        .member-table tr:nth-child(odd) th, .member-table tr:nth-child(odd) td {
+            background-color: #f9f1f1;
+        }
+        .button {
+            display: inline-block;
+            background-color: #cb0000;
+            color: #ffffff!important;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .button-container {
+            width: 100%;
+            text-align: center;
+            margin: 30px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid #f0f0f0;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="https://metroshop.al/metroshop-logo.png" alt="MetroShop" class="logo" style="display: inline-block;" />
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="title">Regjistrimi i një anëtari të ri</div>
+        </div>
+
+        <div class="content">
+            <p>
+                {{#if source == 'landing_page'}}
+                Një anëtar i ri është regjistruar nga 
+                {{else}}
+                Një anëtar i ri u regjistrua në 
+                {{/if}}
+                <span style="color: #cb0000; font-weight: bold">{{sourceText}}</span>.
+            </p>
+
+            <h2 style="font-size: 20px; font-weight: bold">Detajet e Anëtarit</h2>
+            <table class="member-table">
+                <tr>
+                    <th>Emri</th>
+                    <td>{{member.first_name}} {{member.last_name}}</td>
+                </tr>
+                <tr>
+                    <th>Email</th>
+                    <td>{{member.email}}</td>
+                </tr>
+                {{#if member.phone_number}}
+                <tr>
+                    <th>Numri i Telefonit</th>
+                    <td>{{member.phone_number}}</td>
+                </tr>
+                {{/if}}
+                {{#if preferredBrand}}
+                <tr>
+                    <th>Brendi i Preferuar</th>
+                    <td>{{preferredBrand}}</td>
+                </tr>
+                {{/if}}
+                {{#if source == 'from_my_club'}}
+                    {{#if member.city}}
+                    <tr>
+                        <th>Qyteti</th>
+                        <td>{{member.city}}</td>
+                    </tr>
+                    {{/if}}
+                    {{#if member.address}}
+                    <tr>
+                        <th>Adresa</th>
+                        <td>{{member.address}}</td>
+                    </tr>
+                    {{/if}}
+                    {{#if member.birthday}}
+                    <tr>
+                        <th>Ditëlindja</th>
+                        <td>{{member.birthday}}</td>
+                    </tr>
+                    {{/if}}
+                {{/if}}
+            </table>
+
+            <p>
+                Faleminderit,<br />MetroShop Team
+            </p>
+
+            <div class="button-container">
+                <a href="https://admin.metroshop.al/" class="button">Paneli i Adminit</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; {{year}} MetroShop. Të gjitha të drejtat të rezervuara.</p>
+        </div>
+    </div>
+</body>
+</html>
