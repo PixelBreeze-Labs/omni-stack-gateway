@@ -76,9 +76,7 @@ export class EmailService {
                     },
                 },
             );
-            console.log('Email sent successfully:', response.data);
         } catch (error) {
-            console.error('Failed to send email:', error.response?.data || error.message);
             throw new InternalServerErrorException(
                 `Failed to send email: ${error.response?.data?.message || error.message}`,
             );
@@ -138,9 +136,7 @@ export class EmailService {
                     },
                 },
             );
-            console.log('Template email sent successfully:', response.data);
         } catch (error) {
-            console.error('Failed to send template email:', error.response?.data || error.message);
             throw new InternalServerErrorException(
                 `Failed to send template email: ${error.response?.data?.message || error.message}`,
             );

@@ -143,10 +143,7 @@ export class ReportsService {
             skip = parseInt(query.skip);
         }
     
-        // Log query for debugging
-        console.log(`Reports query: ${JSON.stringify(query)}`);
-        console.log(`MongoDB filter: ${JSON.stringify(filter)}, sort: ${JSON.stringify(sort)}, skip: ${skip}, limit: ${limit}`);
-    
+       
         // Execute queries
         const data = await this.reportModel
             .find(filter)

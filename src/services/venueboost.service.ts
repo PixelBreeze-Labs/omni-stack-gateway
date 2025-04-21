@@ -73,7 +73,6 @@ export class VenueBoostService {
     }
 
     async acceptMember(memberId: number) {
-        console.log(1,memberId);
         try {
             const response$ = this.httpService.post(`${this.baseUrl}/members-os/accept`, {
                 member_id: memberId

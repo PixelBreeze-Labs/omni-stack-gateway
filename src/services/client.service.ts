@@ -70,10 +70,6 @@ export class ClientService {
             filter.createdAt.$lte = new Date(query.toDate);
         }
 
-        // Log the query for debugging
-        console.log(`Query params: ${JSON.stringify(query)}`);
-        console.log(`MongoDB filter: ${JSON.stringify(filter)}, skip: ${skip}, limit: ${limit}`);
-
         // Get the data with pagination
         const data = await this.clientModel
             .find(filter)
