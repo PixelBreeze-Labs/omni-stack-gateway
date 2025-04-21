@@ -351,7 +351,7 @@ export class UserService {
                     'metroshop@omnistackhub.xyz',         
                     savedUser.email,                      
                     'Mirë se vini në MetroShop! Verifikoni Adresën tuaj të Email-it',
-                    'templates/metroshop/email-verification.html',
+                    'templates/metroshop/first-email-verification-template.html',
                     {
                         name: savedUser.name,
                         verifyLink: verifyLink,
@@ -441,7 +441,7 @@ export class UserService {
                 email_verify_link: userData.email_verify_link
             };
 
-            return await this.registerUser(createUserDto);
+            return await this.registerUser(createUserDto, email_verify_link);
         }
 
         // Get or create wallet

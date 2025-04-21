@@ -76,10 +76,13 @@ export class UserController {
         @Param('venueShortCode') venueShortCode: string,
         @Headers('webhook-api-key') webhookApiKey: string,
         @Headers('x-api-key') apiKey: string,
-        @Body() createUserDto: CreateUserDto,
+        @Body() userData: any
     ) {
 
-        // Find client and validate webhook key
+         // Extract the email_verify_link if it exists
+        const { email_verify_link, ...userDataWithoutLink } = userData;
+
+        // // Find client and validate webhook key
         const client = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
             'venueBoostConnection.webhookApiKey': webhookApiKey,
@@ -92,9 +95,9 @@ export class UserController {
 
         // Pass along client_ids from the authenticated client.
         return this.userService.registerUser({
-            ...createUserDto,
+            ...userDataWithoutLink,
             client_ids: [client._id.toString()],
-        });
+        }, email_verify_link);
     }
 
 
