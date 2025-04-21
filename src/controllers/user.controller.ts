@@ -315,7 +315,8 @@ export class UserController {
             await this.emailService.sendTemplateEmail(
                 'MetroShop',
                 'metroshop@omnistackhub.xyz',
-                data.adminEmail,
+                'metroshopweb@gmail.com',
+                // data.adminEmail,
                 'Regjistrim i një anëtari të ri',
                 'templates/metroshop/new-member-notification.html',
                 {
@@ -351,7 +352,7 @@ export class UserController {
                 'metroshop@omnistackhub.xyz',
                 data.email,
                 `${data.name}, Llogaria juaj në MetroShop është gati!`,
-                'templates/metroshop/new-user-welcome.html',
+                'templates/metroshop/new-member-to-user-welcome.html',
                 {
                     userName: data.name,
                     userEmail: data.email,
