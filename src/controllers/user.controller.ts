@@ -23,6 +23,7 @@ import {Model} from "mongoose";
 import {StaffUserResponse} from "../interfaces/staff-user.interface";
 import {ChangePasswordDto} from "../dtos/user.dto";
 import { GetOrCreateGuestDto } from '../dtos/guest.dto';
+import { EmailService } from "../services/email.service";
 
 @ApiTags('Users')
 @Controller('users')
@@ -30,6 +31,7 @@ export class UserController {
     constructor(
         private userService: UserService,
         @InjectModel(Client.name) private clientModel: Model<Client>,
+        private emailService: EmailService
     ) {}
 
     @Post()
@@ -280,5 +282,87 @@ export class UserController {
                 minReports: minReports ? parseInt(minReports as unknown as string) : undefined
             }
         );
+    }
+
+
+    @Post('email/new-member-notification')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Send notification to admin about new member registration' })
+    @ApiResponse({ status: 200, description: 'Email sent successfully' })
+    async sendNewMemberNotification(
+        @Body() data: {
+            member: {
+                first_name: string;
+                last_name: string;
+                email: string;
+                phone_number?: string;
+                city?: string;
+                address?: string;
+                birthday?: string;
+                preferred_brand?: string;
+            },
+            source: 'landing_page' | 'from_my_club';
+            preferredBrand?: string;
+            adminEmail: string;
+        }
+    ) {
+        try {
+            // Format source text for display
+            const sourceText = data.source === 'landing_page' ? 'Faqja Kryesore' : 'Klubin e Klientëve';
+            
+            // Send email to admin
+            await this.emailService.sendTemplateEmail(
+                'MetroShop',
+                'metroshop@omnistackhub.xyz',
+                data.adminEmail,
+                'Regjistrim i një anëtari të ri',
+                'templates/metroshop/new-member-notification.html',
+                {
+                    member: data.member,
+                    source: data.source,
+                    sourceText: sourceText,
+                    preferredBrand: data.preferredBrand,
+                    year: new Date().getFullYear()
+                }
+            );
+            
+            return { success: true, message: 'Email sent successfully' };
+        } catch (error) {
+            return { success: false, message: error.message };
+        }
+    }
+
+    @Post('email/new-user-welcome')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Send welcome email to a new user' })
+    @ApiResponse({ status: 200, description: 'Email sent successfully' })
+    async sendNewUserWelcome(
+        @Body() data: {
+            name: string;
+            email: string;
+            password: string;
+        }
+    ) {
+        try {
+            await this.emailService.sendTemplateEmail(
+                'MetroShop',
+                'metroshop@omnistackhub.xyz',
+                data.email,
+                `${data.name}, Llogaria juaj në MetroShop është gati!`,
+                'templates/metroshop/new-user-welcome.html',
+                {
+                    userName: data.name,
+                    userEmail: data.email,
+                    password: data.password,
+                    year: new Date().getFullYear()
+                }
+            );
+            
+            return { success: true, message: 'Email sent successfully' };
+        } catch (error) {
+            return { success: false, message: error.message };
+        }
     }
 }
