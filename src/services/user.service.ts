@@ -143,7 +143,10 @@ export class UserService {
         return this.userModel.findByIdAndDelete(id).exec();
     }
 
-    async registerUser(createUserDto: CreateUserDto & { client_ids: string[] }): Promise<UserRegistrationResponse> {
+    async registerUser(
+        createUserDto: CreateUserDto & { client_ids: string[] },
+        email_verify_link?: string
+    ): Promise<UserRegistrationResponse> {
         // 1. Check referral code if provided
         let referredByUser = null;
         if (createUserDto.referralCode) {
@@ -230,17 +233,12 @@ export class UserService {
             totalSpend: 0
         });
 
-        // Extract email verification link from metadata if it exists
-        const emailVerifyLink = createUserDto.metadata?.email_verify_link;
-        
-        // Initialize metadata map if it doesn't exist
-        user.metadata = user.metadata || new Map<string, any>();
-            
-        // If there's an email verification link in the metadata, store it
-        if (emailVerifyLink) {
-            user.metadata.set('email_verify_link', emailVerifyLink);
-            user.metadata.set('email_verified', 'false');
-        }
+        // Initialize metadata and set the email_verify_link
+    user.metadata = user.metadata || new Map<string, any>();
+    if (email_verify_link) {
+        user.metadata.set('email_verify_link', email_verify_link);
+        user.metadata.set('email_verified', 'false');
+    }
 
         // 7. Handle referral logic if a referral code was provided.
         if (referredByUser) {
@@ -344,9 +342,10 @@ export class UserService {
             });
         }
 
-        // First, send verification email if we have a link
-        if (emailVerifyLink) {
+        const verifyLink = user.metadata.get('email_verify_link');
+        if (verifyLink && createUserDto.registrationSource === 'metroshop') {
             try {
+                // Send verification email
                 await this.emailService.sendTemplateEmail(
                     'MetroShop',                          
                     'metroshop@omnistackhub.xyz',         
@@ -355,7 +354,7 @@ export class UserService {
                     'templates/metroshop/email-verification.html',
                     {
                         name: savedUser.name,
-                        verifyLink: emailVerifyLink,
+                        verifyLink: verifyLink,
                     },
                 );
                 
@@ -402,7 +401,8 @@ export class UserService {
     async getOrCreateWithLoyalty(
         venueShortCode: string,
         webhookApiKey: string,
-        userData: GetOrCreateUserDto
+        userData: GetOrCreateUserDto,
+        email_verify_link?: string
     ): Promise<any> {
         const requestClient = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
@@ -426,7 +426,7 @@ export class UserService {
 
         if (!existingUser) {
             // Create new user with proper type casting
-            const createUserDto: CreateUserDto & { client_ids: string[] } = {
+            const createUserDto: CreateUserDto & { client_ids: string[], email_verify_link?: string } = {
                 name: userData.name,
                 surname: userData.surname === '-' ? '' : userData.surname,
                 email: userData.email,
@@ -437,8 +437,8 @@ export class UserService {
                     venueBoostId: externalId
                 },
                 client_ids: [requestClient._id.toString()],
-                // Extract the email verification link if provided
-                metadata: userData.email_verify_link ? { email_verify_link: userData.email_verify_link } : undefined
+                // Just pass the email_verify_link directly
+                email_verify_link: userData.email_verify_link
             };
 
             return await this.registerUser(createUserDto);
