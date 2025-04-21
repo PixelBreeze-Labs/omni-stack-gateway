@@ -50,8 +50,8 @@ export interface ReferralInfo {
     name: string;
     email: string;
     tier: string;
-    total_spend: number;
-    points: number;
+    total_spend?: number;
+    points?: number;
     joined_date: Date;
 }
 
@@ -250,7 +250,7 @@ export class UserService {
                 $inc: { referralsRemaining: -1 }
             }
         );
-
+    
         if (
             loyaltyClient.loyaltyProgram &&
             Array.isArray(loyaltyClient.loyaltyProgram.membershipTiers) &&
@@ -271,8 +271,8 @@ export class UserService {
                         { _id: referredByUser._id },
                         { $inc: { points: referralPoints } }
                     );
-
-                    // *** Create a wallet transaction for the referral points ***
+    
+                    // Create a wallet transaction for the referral points
                     const referrerWallet = await this.walletService.findOrCreateWallet(
                         referredByUser._id.toString(),
                         primaryClient._id.toString(),
@@ -290,6 +290,37 @@ export class UserService {
                             }
                         }
                     );
+                    
+                
+                    try {
+                        // Format the registration date
+                        const registrationDate = new Date().toLocaleDateString('sq-AL', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                        });
+                        
+                        // Send email notification about referral bonus
+                        await this.emailService.sendTemplateEmail(
+                            'MetroShop',                          
+                            'metroshop@omnistackhub.xyz',         
+                            referredByUser.email,                      
+                            `Ju keni fituar ${referralPoints} pikë referimi!`,
+                            'templates/metroshop/referral-bonus-email.html',
+                            {
+                                referrerName: referredByUser.name,
+                                referredName: `${createUserDto.name} ${createUserDto.surname}`.trim(),
+                                referralPoints: referralPoints,
+                                registrationDate: registrationDate,
+                                referralCode: referredByUser.referralCode
+                            },
+                        );
+                        
+                        this.logger.log(`Referral bonus email sent to ${referredByUser.email}`);
+                    } catch (error) {
+                        this.logger.error(`Failed to send referral bonus email: ${error.message}`);
+                        // Continue execution even if email fails
+                    }
                 }
             }
         }
@@ -568,8 +599,8 @@ export class UserService {
                 name: r.name,
                 email: r.email,
                 tier: r.clientTiers[requestClient._id.toString()] || 'Default Tier',
-                total_spend: r.totalSpend,
-                points: r.points,
+                // total_spend: r.totalSpend,
+                // points: r.points,
                 joined_date: r.createdAt
             })),
             loyaltyTier: currentTierName,
