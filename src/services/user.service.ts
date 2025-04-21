@@ -334,10 +334,10 @@ export class UserService {
 
         // Last. After saving the user, send the welcome email using your HTML template
         await this.emailService.sendTemplateEmail(
-            'Metroshop',                          // fromName: The display name of the sender
+            'MetroShop',                          // fromName: The display name of the sender
             'metroshop@omnistackhub.xyz',            // fromEmail: The verified sender email address
             savedUser.email,                          // to: Recipient email address
-            'Mirë se vjen në Metroshop!',           // subject: Email subject
+            'Mirë se vjen në MetroShop!',           // subject: Email subject
             'templates/metroshop/welcome-email-template.html', // templatePath: Relative path to your template file
             {
                 discount_percentage: '10%',             // Data for {{discount_percentage}}

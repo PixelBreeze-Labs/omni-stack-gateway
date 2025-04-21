@@ -1,6 +1,6 @@
-# Metroshop Email Templates
+# MetroShop Email Templates
 
-This repository contains email templates for various customer interactions with Metroshop.
+This repository contains email templates for various customer interactions with MetroShop.
 
 ## Template List
 
@@ -10,21 +10,21 @@ This repository contains email templates for various customer interactions with 
 | Cart Abandonment Reminder (1st) | cart-abandonment-reminder-template.html | Ups! Mos harrove diçka në shportë? | Yes | 2024-05-20 |
 | Cart Abandonment Reminder (2nd) | cart-abandonment-reminder-2nd-template.html | Ke harruar produkte në shportë! | Yes | 2024-05-20 |
 | Cart Abandonment Reminder (3rd) | cart-abandonment-reminder-3rd-template.html | Oferta e fundit për produktet në shportë! | Yes | 2024-06-13 |
-| Customer Milestone Recognition | customer-milestone-recognition-template.html | Urime! Je një prej anëtarëve të çmuar të Metroshop! | Yes | 2024-06-13 |
-| Feedback and Survey | feedback-and-survey-template.html | Vlerësimi yt i sinqertë do të na ndihmojë në Metroshop! | No | 2024-09-09 |
+| Customer Milestone Recognition | customer-milestone-recognition-template.html | Urime! Je një prej anëtarëve të çmuar të MetroShop! | Yes | 2024-06-13 |
+| Feedback and Survey | feedback-and-survey-template.html | Vlerësimi yt i sinqertë do të na ndihmojë në MetroShop! | No | 2024-09-09 |
 | First Purchase Reminder | first-purchase-reminder-template.html | Ende duke menduar? 15% ULJE ekstra | Yes | 2024-06-13 |
 | First Purchase Confirmation | first-purchase-template.html | Porosia e parë u krye me sukses! ULJE | Yes | 2024-05-20 |
-| Post-Purchase Thank You | post-purchase-thank-you-template.html | Faleminderit për blerjen në Metroshop! | No | 2024-05-20 |
-| Information Update Request | information-update-request-template.html | Përditëso të dhënat e tua në Metroshop | No | 2024-06-13 |
+| Post-Purchase Thank You | post-purchase-thank-you-template.html | Faleminderit për blerjen në MetroShop! | No | 2024-05-20 |
+| Information Update Request | information-update-request-template.html | Përditëso të dhënat e tua në MetroShop | No | 2024-06-13 |
 | Order Confirmation | order-confirmation-template.html | Porosia u regjistrua! Ofertë speciale vetëm për ty! | Yes | 2024-09-05 |
 | Re-engagement | re-engagement-template.html | Na ke munguar! Surprizë speciale vetëm për ty! | Yes | 2024-06-13 |
 | Repeat Purchases | repeat-purchases-template.html | Faleminderit për besnikërinë! | Yes | 2024-05-20 |
-| Welcome Email | welcome-email-template.html | Mirë se vjen në Metroshop! 10% ULJE | Yes | 2024-05-20 |
+| Welcome Email | welcome-email-template.html | Mirë se vjen në MetroShop! 10% ULJE | Yes | 2024-05-20 |
 | Yearly Summary | yearly-summary-template.html | Një vit që kaluam së bashku! | Yes | 2024-06-13 |
 
 ## Usage
 
-These templates are used in various email campaigns and automated sequences for Metroshop. Each template is designed to engage customers at different stages of their journey with the shop.
+These templates are used in various email campaigns and automated sequences for MetroShop. Each template is designed to engage customers at different stages of their journey with the shop.
 
 ## Variables
 
@@ -50,4 +50,4 @@ When updating these templates, ensure that:
 
 ## Contact
 
-For any questions or issues regarding these email templates, please contact the Metroshop development team.
+For any questions or issues regarding these email templates, please contact the MetroShop development team.
