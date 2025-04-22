@@ -311,26 +311,30 @@ export class UserController {
             // Format source text for display
             const sourceText = data.source === 'landing_page' ? 'Faqja Kryesore' : 'Klubin e Klientëve';
             
+            // Boolean flags for template conditionals
+            const isLandingPage = data.source === 'landing_page';
+            const isMyClub = data.source === 'from_my_club';
+            
             // Send email to admin
             await this.emailService.sendTemplateEmail(
                 'MetroShop',
                 'metroshop@omnistackhub.xyz',
-                'metroshopweb@gmail.com',
-                // data.adminEmail,
+                'metroshopweb@gmail.com', // Fixed email or data.adminEmail
                 'Regjistrim i një anëtari të ri',
                 'templates/metroshop/new-member-notification.html',
                 {
                     member: data.member,
-                    source: data.source,
                     sourceText: sourceText,
                     preferredBrand: data.preferredBrand,
+                    isLandingPage: isLandingPage,
+                    isMyClub: isMyClub,
                     year: new Date().getFullYear()
                 }
             );
             
             return { success: true, message: 'Email sent successfully' };
         } catch (error) {
-            return { success: false, message: error.message };
+            return { success: false, message: 'Failed to send template email: ' + error.message };
         }
     }
 
