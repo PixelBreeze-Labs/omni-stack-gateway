@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Regjistrimi i Anëtarit të Ri</title>
+    <title>Mirë se vini në MetroShop!</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap');
         
@@ -47,20 +47,11 @@
             line-height: 24px;
             color: #666666;
         }
-        .member-table {
-            width: 100%;
-            border-collapse: collapse;
+        .credentials {
+            background-color: #f9f9f9;
             border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-            margin: 24px 0;
-        }
-        .member-table th, .member-table td {
-            text-align: left;
-            padding: 10px 20px;
-        }
-        .member-table tr:nth-child(odd) th, .member-table tr:nth-child(odd) td {
-            background-color: #f9f1f1;
+            padding: 16px;
+            margin: 20px 0;
         }
         .button {
             display: inline-block;
@@ -96,70 +87,37 @@
 
     <div class="container">
         <div class="header">
-            <div class="title">Regjistrimi i një anëtari të ri</div>
+            <div class="title">Mirë se vjen, {{userName}}!</div>
         </div>
 
         <div class="content">
             <p>
-                {{#if source == 'landing_page'}}
-                Një anëtar i ri është regjistruar nga 
-                {{else}}
-                Një anëtar i ri u regjistrua në 
-                {{/if}}
-                <span style="color: #cb0000; font-weight: bold">{{sourceText}}</span>.
+                Ne jemi të lumtur që ju kemi në platformën tonë. Llogaria juaj është
+                krijuar me sukses.
             </p>
-
-            <h2 style="font-size: 20px; font-weight: bold">Detajet e Anëtarit</h2>
-            <table class="member-table">
-                <tr>
-                    <th>Emri</th>
-                    <td>{{member.first_name}} {{member.last_name}}</td>
-                </tr>
-                <tr>
-                    <th>Email</th>
-                    <td>{{member.email}}</td>
-                </tr>
-                {{#if member.phone_number}}
-                <tr>
-                    <th>Numri i Telefonit</th>
-                    <td>{{member.phone_number}}</td>
-                </tr>
-                {{/if}}
-                {{#if preferredBrand}}
-                <tr>
-                    <th>Brendi i Preferuar</th>
-                    <td>{{preferredBrand}}</td>
-                </tr>
-                {{/if}}
-                {{#if source == 'from_my_club'}}
-                    {{#if member.city}}
-                    <tr>
-                        <th>Qyteti</th>
-                        <td>{{member.city}}</td>
-                    </tr>
-                    {{/if}}
-                    {{#if member.address}}
-                    <tr>
-                        <th>Adresa</th>
-                        <td>{{member.address}}</td>
-                    </tr>
-                    {{/if}}
-                    {{#if member.birthday}}
-                    <tr>
-                        <th>Ditëlindja</th>
-                        <td>{{member.birthday}}</td>
-                    </tr>
-                    {{/if}}
-                {{/if}}
-            </table>
-
+            
             <p>
-                Faleminderit,<br />MetroShop Team
+                Detajet tuaja të hyrjes janë si më poshtë:
+            </p>
+            
+            <div class="credentials">
+                <p><strong>Email:</strong> {{userEmail}}</p>
+                <p><strong>Fjalëkalimi:</strong> {{password}}</p>
+            </div>
+            
+            <p>
+                Ju lutemi, hyni dhe ndryshoni fjalëkalimin tuaj sa më parë që të
+                siguroni llogarinë tuaj.
             </p>
 
             <div class="button-container">
-                <a href="https://admin.metroshop.al/" class="button">Paneli i Adminit</a>
+                <a href="https://metroshop.al/login" class="button">Hyni tani</a>
             </div>
+            
+            <p>
+                Faleminderit që u bashkuat me ne!<br>
+                <span style="color: #cb0000; font-weight: bold">Ekipi MetroShop</span>
+            </p>
         </div>
 
         <div class="footer">
