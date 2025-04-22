@@ -101,7 +101,7 @@
 
         <div class="content">
             <p>
-                {{#if source == 'landing_page'}}
+                {{#if isLandingPage}}
                 Një anëtar i ri është regjistruar nga 
                 {{else}}
                 Një anëtar i ri u regjistrua në 
@@ -131,7 +131,7 @@
                     <td>{{preferredBrand}}</td>
                 </tr>
                 {{/if}}
-                {{#if source == 'from_my_club'}}
+                {{#if isMyClub}}
                     {{#if member.city}}
                     <tr>
                         <th>Qyteti</th>
