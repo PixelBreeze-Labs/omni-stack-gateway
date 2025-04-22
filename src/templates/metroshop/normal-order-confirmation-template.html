@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faleminderit për blerjen në MetroShop!</title>
+    <style type="text/css">
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap');
+
+        body {
+            font-family: 'Manrope', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #3b3f44;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+
+        .header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .logo {
+            width: 150px;
+            margin: 20px auto;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .title {
+            color: #1F2D3D;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .order-info {
+            margin: 25px 0;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .order-details {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+
+        .order-details th {
+            text-align: left;
+            padding: 12px;
+            background-color: #f2f2f2;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .order-details td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .order-summary {
+            text-align: right;
+            margin-top: 20px;
+        }
+
+        .button {
+            display: inline-block;
+            background-color: #cb0000;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .social-icons {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .social-icon {
+            display: inline-block;
+            margin: 0 8px;
+        }
+
+        .footer {
+            background-color: #eff2f7;
+            padding: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <img src="https://metroshop.al/metroshop-logo.png" alt="MetroShop" class="logo">
+        <h1 class="title">Faleminderit për blerjen tuaj!</h1>
+        <p>Porosia juaj është konfirmuar dhe është duke u përpunuar.</p>
+    </div>
+
+    <div class="content">
+        <p>Përshëndetje {{customerName}},</p>
+
+        <p>Ne sapo morëm porosinë tuaj dhe jemi duke e përgatitur për t'ju dërguar. Më poshtë do të gjeni detajet e porosisë tuaj.</p>
+
+        <div class="order-info">
+            <p><strong>Numri i Porosisë:</strong> {{orderNumber}}</p>
+            <p><strong>Data:</strong> {{orderDate}} {{orderTime}}</p>
+            <p><strong>Metoda e Pagesës:</strong> {{paymentMethod}}</p>
+            <p><strong>Adresa e Dërgesës:</strong> {{shippingAddress}}</p>
+        </div>
+
+        <h3>Produktet e Porositura</h3>
+
+        <table class="order-details">
+            <thead>
+            <tr>
+                <th>Produkti</th>
+                <th>Sasia</th>
+                <th>Çmimi</th>
+                <th>Totali</th>
+            </tr>
+            </thead>
+            <tbody>
+            {{#each orderItems}}
+            <tr>
+                <td>{{name}}</td>
+                <td>{{quantity}}</td>
+                <td>{{price}} {{../currency}}</td>
+                <td>{{total}} {{../currency}}</td>
+            </tr>
+            {{/each}}
+            </tbody>
+        </table>
+
+        <div class="order-summary">
+            <p><strong>Nëntotali:</strong> {{subtotal}} {{currency}}</p>
+            <p><strong>Totali:</strong> {{total}} {{currency}}</p>
+        </div>
+
+        <div class="button-container">
+            <a href="https://metroshop.al/orders/{{orderNumber}}" class="button">Gjurmo Porosinë</a>
+        </div>
+
+        <p>Ke pyetje apo nevojë për ndihmë? Ekipi ynë i shërbimit ndaj klientit është këtu për të ndihmuar! Na kontakto në email apo në rrjetet tona sociale.</p>
+
+        <p>Faleminderit që besove në MetroShop! Premtojmë të bëjmë gjithmonë më të mirën për të të kënaqur!</p>
+
+        <p><strong>Ps. Na ndiq në rrjetet tona sociale për të mos humbur asgjë:</strong></p>
+
+        <div class="social-icons">
+            <a href="https://www.instagram.com/bybest.shop/" class="social-icon">
+                <img src="https://creative-assets.mailinblue.com/editor/social-icons/rounded_colored/instagram_32px.png" width="32" alt="Instagram">
+            </a>
+            <a href="https://www.facebook.com/bybest.shop" class="social-icon">
+                <img src="https://creative-assets.mailinblue.com/editor/social-icons/rounded_colored/facebook_32px.png" width="32" alt="Facebook">
+            </a>
+            <a href="https://www.tiktok.com/@bybestshop" class="social-icon">
+                <img src="https://creative-assets.mailinblue.com/editor/social-icons/rounded_colored/tiktok_32px.png" width="32" alt="TikTok">
+            </a>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Copyright ©️ {{year}} - By Best Duty Free Sh.p.k<br>
+            Të gjitha të drejtat e rezervuara</p>
+
+        <p><strong>Na kontakto në e-mail</strong><br>
+            socialmediae-comm@bybest.shop</p>
+
+        <p><a href="https://metroshop.al/" style="color: #222; text-decoration: underline;">www.bybest.shop</a></p>
+    </div>
+</div>
+</body>
+</html>
