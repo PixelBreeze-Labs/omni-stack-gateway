@@ -452,8 +452,7 @@ export class UserService {
     async getOrCreateWithLoyalty(
         venueShortCode: string,
         webhookApiKey: string,
-        userData: GetOrCreateUserDto,
-        email_verify_link?: string
+        userData: GetOrCreateUserDto
     ): Promise<any> {
         const requestClient = await this.clientModel.findOne({
             'venueBoostConnection.venueShortCode': venueShortCode,
@@ -477,7 +476,7 @@ export class UserService {
 
         if (!existingUser) {
             // Create new user with proper type casting
-            const createUserDto: CreateUserDto & { client_ids: string[], email_verify_link?: string } = {
+            const createUserDto: CreateUserDto & { client_ids: string[] } = {
                 name: userData.name,
                 surname: userData.surname === '-' ? '' : userData.surname,
                 email: userData.email,
@@ -488,11 +487,9 @@ export class UserService {
                     venueBoostId: externalId
                 },
                 client_ids: [requestClient._id.toString()],
-                // Just pass the email_verify_link directly
-                email_verify_link: userData.email_verify_link
             };
 
-            return await this.registerUser(createUserDto, email_verify_link);
+            return await this.registerUser(createUserDto);
         }
 
         // Get or create wallet
