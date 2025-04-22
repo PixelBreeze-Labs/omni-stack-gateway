@@ -41,7 +41,8 @@ export class OrderCronService {
             // Send thank you emails for these orders immediately
             for (const order of orders) {
                 try {
-                    await this.orderService.sendThankYouEmail(order._id);
+                    // Convert _id to string to fix the type error
+                    await this.orderService.sendThankYouEmail(order._id.toString());
                     this.logger.log(`Sent thank you email for order ${order.orderNumber}`);
                 } catch (error) {
                     this.logger.error(`Error sending thank you for order ${order.orderNumber}: ${error.message}`);
@@ -53,7 +54,4 @@ export class OrderCronService {
             this.logger.error(`Error in thank you email cron job: ${error.message}`);
         }
     }
-
-
-
 }
