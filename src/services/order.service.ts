@@ -1,17 +1,22 @@
 // src/services/order.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Order } from '../schemas/order.schema';
 import { ListOrderDto, UpdateOrderStatusDto } from '../dtos/order.dto';
+import { EmailService } from './email.service';
 
 @Injectable()
 export class OrderService {
+    private readonly logger = new Logger(OrderService.name);
+
     constructor(
-        @InjectModel(Order.name) private orderModel: Model<Order>
+        @InjectModel(Order.name) private orderModel: Model<Order>,
+        private emailService: EmailService
     ) {}
 
     async findAll(query: ListOrderDto & { clientId: string }) {
+        // Previous implementation remains the same
         const {
             clientId,
             search,
@@ -76,6 +81,7 @@ export class OrderService {
     }
 
     async findOne(id: string, clientId: string) {
+        // Previous implementation remains the same
         const order = await this.orderModel
             .findOne({ _id: id, clientId })
             .populate('customerId', 'name email')
@@ -92,6 +98,7 @@ export class OrderService {
     }
 
     async updateStatus(id: string, clientId: string, updateStatusDto: UpdateOrderStatusDto) {
+        // Previous implementation remains the same
         const order = await this.orderModel.findOne({ _id: id, clientId });
         if (!order) {
             throw new NotFoundException('Order not found');
@@ -121,6 +128,7 @@ export class OrderService {
     }
 
     async addNote(id: string, clientId: string, note: string) {
+        // Previous implementation remains the same
         const order = await this.orderModel.findOne({ _id: id, clientId });
         if (!order) {
             throw new NotFoundException('Order not found');
@@ -143,5 +151,59 @@ export class OrderService {
             ...updatedOrder.toObject(),
             id: updatedOrder._id
         };
+    }
+
+    async sendThankYouEmail(orderId: string) {
+        try {
+            // Get the latest order data and populate customerId field
+            const order = await this.orderModel
+                .findById(orderId)
+                .populate('customerId', 'name email');
+
+            if (!order) {
+                throw new Error('Order not found');
+            }
+
+            // Extract customer information from order
+            const customerEmail = order.source?.externalCustomerEmail ||
+                (order.customerId && (order.customerId as any).email);
+
+            if (!customerEmail) {
+                throw new Error('No customer email available for this order');
+            }
+
+            const customerName = (order.customerId && (order.customerId as any).name) ||
+                order.metadata?.shippingInfo?.name ||
+                'Valued Customer';
+
+            // Send the thank you email using the existing template
+            await this.emailService.sendTemplateEmail(
+                'MetroShop',
+                'metroshop@omnistackhub.xyz',
+                customerEmail,
+                'Faleminderit për blerjen në MetroShop!',
+                'templates/metroshop/post-purchase-thank-you-template.html',
+                {
+                    customerName: customerName,
+                    year: new Date().getFullYear()
+                }
+            );
+
+            // Update order metadata to track email sent
+            await this.orderModel.findByIdAndUpdate(
+                orderId,
+                {
+                    $set: {
+                        'metadata.emailStatus.thankYouSent': true,
+                        'metadata.emailStatus.thankYouSentDate': new Date()
+                    }
+                }
+            );
+
+            return { success: true };
+        } catch (error) {
+            this.logger.error(`Failed to send thank you email: ${error.message}`);
+            return { success: false, message: error.message };
+        }
     }
 }

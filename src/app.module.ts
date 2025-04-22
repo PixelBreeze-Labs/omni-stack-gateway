@@ -254,6 +254,7 @@ import { PollController } from './controllers/poll.controller';
 import { PollPublicController } from './controllers/poll-public.controller';
 import { PollService } from './services/poll.service';
 import { Poll, PollSchema } from './schemas/poll.schema';
+import { OrderCronService } from './services/order-cron.service';
 
 
 @Module({
@@ -513,7 +514,8 @@ import { Poll, PollSchema } from './schemas/poll.schema';
     OneSignalService,
     ChatGateway,
     TwilioVerificationService,
-    PollService
+    PollService,
+    OrderCronService
   ],
 })
 export class AppModule implements NestModule {

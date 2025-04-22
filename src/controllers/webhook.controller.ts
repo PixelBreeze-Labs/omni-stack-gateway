@@ -14,6 +14,7 @@ import { Model } from 'mongoose';
 import { Client } from '../schemas/client.schema';
 import { Order } from '../schemas/order.schema';
 import { CustomerService } from '../services/customer.service';
+import { EmailService } from '../services/email.service';
 
 @ApiTags('Webhooks')
 @Controller('webhooks')
@@ -23,7 +24,8 @@ export class WebhookController {
     constructor(
         @InjectModel(Client.name) private clientModel: Model<Client>,
         @InjectModel(Order.name) private orderModel: Model<Order>,
-        private readonly customerService: CustomerService
+        private readonly customerService: CustomerService,
+        private readonly emailService: EmailService
     ) {}
 
     @Post('orders/:venueShortCode')
@@ -52,7 +54,7 @@ export class WebhookController {
 
             // Try to find existing customer by email
             let customerId = null;
-            const customerEmail = orderData.customer_email || orderData.billing_email;
+            const customerEmail = orderData.customer_email || orderData.billing_email || orderData.shipping_email;
 
             if (customerEmail) {
                 try {
@@ -109,6 +111,10 @@ export class WebhookController {
 
                 metadata: {
                     originalOrder: orderData,
+                    emailStatus: {
+                        confirmationSent: false,
+                        thankYouSent: false
+                    },
                     shippingInfo: {
                         name: orderData.shipping_name,
                         surname: orderData.shipping_surname,
@@ -134,6 +140,54 @@ export class WebhookController {
 
             // Save the order
             const savedOrder = await this.orderModel.create(order);
+
+            // Send confirmation email if we have a customer email
+            if (customerEmail) {
+                try {
+                    // Get customer name from order
+                    const customerName = orderData.shipping_name && orderData.shipping_surname ?
+                        `${orderData.shipping_name} ${orderData.shipping_surname}` :
+                        (orderData.billing_name || 'Valued Customer');
+
+                    // Send the email
+                    await this.emailService.sendTemplateEmail(
+                        'MetroShop',
+                        'metroshop@omnistackhub.xyz',
+                        customerEmail,
+                        'MetroShop - Porosia u krye',
+                        'templates/metroshop/normal-order-confirmation-template.html',
+                        {
+                            customerName: customerName,
+                            orderNumber: orderData.order_number,
+                            orderDate: new Date().toLocaleDateString('sq-AL'),
+                            orderTime: new Date().toLocaleTimeString('sq-AL'),
+                            orderItems: order.items,
+                            subtotal: orderData.subtotal,
+                            total: orderData.total_amount,
+                            currency: orderData.currency || 'ALL',
+                            shippingAddress: orderData.shipping_address || 'Not provided',
+                            paymentMethod: this.getReadablePaymentMethod(orderData.payment_method_id),
+                            year: new Date().getFullYear()
+                        }
+                    );
+
+                    // Update order to reflect email was sent
+                    await this.orderModel.findByIdAndUpdate(
+                        savedOrder._id,
+                        {
+                            $set: {
+                                'metadata.emailStatus.confirmationSent': true,
+                                'metadata.emailStatus.confirmationSentDate': new Date()
+                            }
+                        }
+                    );
+
+                    this.logger.log(`Order confirmation email sent to ${customerEmail}`);
+                } catch (error) {
+                    this.logger.error(`Failed to send order confirmation email: ${error.message}`);
+                    // Continue even if email sending fails
+                }
+            }
 
             this.logger.log(`Order processed successfully: ${savedOrder._id}, Customer ID: ${customerId || 'Not found'}`);
 
@@ -193,5 +247,16 @@ export class WebhookController {
             5: 'BKT'
         };
         return methodMap[methodId] || 'UNKNOWN';
+    }
+
+    private getReadablePaymentMethod(methodId: number): string {
+        const methodMap = {
+            1: 'Kartë',
+            2: 'Para në dorëzim',
+            3: 'Transfertë Bankare',
+            4: 'Stripe',
+            5: 'BKT'
+        };
+        return methodMap[methodId] || 'Pagesë elektronike';
     }
 }
