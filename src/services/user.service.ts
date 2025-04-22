@@ -383,11 +383,11 @@ export class UserService {
                     venueBoostId: createUserDto.external_ids.venueBoostCustomerId
                 },
                 address: {
-                    addressLine1: createUserDto.address.addressLine1,
-                    postcode: createUserDto.address.postcode,
-                    city: createUserDto.address.city,
-                    state: createUserDto.address.state,
-                    country: createUserDto.address.country
+                    addressLine1: createUserDto?.address?.addressLine1 || '',
+                    postcode: createUserDto?.address?.postcode || '',
+                    city: createUserDto?.address?.city || '',
+                    state: createUserDto?.address?.state || '',
+                    country: createUserDto?.address?.country || ''
                 },
                 status: 'ACTIVE'
             });
@@ -478,7 +478,7 @@ export class UserService {
             // Create new user with proper type casting
             const createUserDto: CreateUserDto & { client_ids: string[] } = {
                 name: userData.name,
-                surname: userData.surname === '-' ? '' : userData.surname,
+                surname: userData.surname === '-' ? '-' : userData.surname,
                 email: userData.email,
                 phone: userData.phone,
                 password: userData.password,
