@@ -32,6 +32,11 @@ export class PollService {
             createPollDto.autoEmbedLocations = [];
         }
         
+        // If autoEmbedAllPosts is enabled, we can set autoEmbed to true as well
+        if (createPollDto.autoEmbedAllPosts) {
+            createPollDto.autoEmbed = true;
+        }
+        
         // Create the poll with all style customization fields
         const newPoll = new this.pollModel(createPollDto);
         return await newPoll.save();
@@ -127,6 +132,11 @@ export class PollService {
                 // If parsing fails, keep the existing value
                 updatePollDto.autoEmbedLocations = existingPoll.autoEmbedLocations;
             }
+        }
+        
+        // If autoEmbedAllPosts is being enabled, ensure autoEmbed is also enabled
+        if (updatePollDto.autoEmbedAllPosts) {
+            updatePollDto.autoEmbed = true;
         }
 
         // Update the poll with all style customization fields
