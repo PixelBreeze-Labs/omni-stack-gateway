@@ -258,6 +258,11 @@ export class CreatePollDto {
   @IsHexColor()
   @IsOptional()
   darkModeRadioCheckedDot?: string = '#2597a4';
+
+  @ApiPropertyOptional({ description: 'Allow users to vote multiple times', default: false })
+  @IsBoolean()
+  @IsOptional()
+  allowMultipleVotes?: boolean = false;
 }
 
 export class UpdatePollDto {
@@ -265,6 +270,11 @@ export class UpdatePollDto {
   @IsString()
   @IsOptional()
   title?: string;
+
+  @ApiPropertyOptional({ description: 'Allow users to vote multiple times' })
+  @IsBoolean()
+  @IsOptional()
+  allowMultipleVotes?: boolean;
 
   @ApiPropertyOptional({ description: 'Poll description' })
   @IsString()
