@@ -139,6 +139,9 @@ export class Poll extends Document {
 
   @Prop({ default: '#2597a4' })
   darkModeRadioCheckedDot: string;
+
+  @Prop({ default: false })
+  allowMultipleVotes: boolean;
 }
 
 export const PollSchema = SchemaFactory.createForClass(Poll);
