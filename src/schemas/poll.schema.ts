@@ -35,6 +35,10 @@ export class Poll extends Document {
 
   @Prop({ default: false })
   autoEmbed: boolean;
+  
+  // New property for embedding in all posts
+  @Prop({ default: false })
+  autoEmbedAllPosts: boolean;
 
   @Prop({ type: [Number], default: [] })
   autoEmbedLocations: number[];
@@ -73,6 +77,15 @@ export class Poll extends Document {
   @Prop({ default: '#f0f0f5' })
   progressBarBackgroundColor: string;
   
+  @Prop({ default: '#ffffff' })
+  percentageLabelColor: string;
+  
+  @Prop({ default: '#d0d5dd' })
+  iconColor: string;
+  
+  @Prop({ default: '#2597a4' })
+  iconHoverColor: string;
+  
   // Dark mode properties
   @Prop({ default: false })
   darkMode: boolean;
@@ -97,6 +110,15 @@ export class Poll extends Document {
   
   @Prop({ default: '#444444' })
   darkModeProgressBackground: string;
+  
+  @Prop({ default: '#ffffff' })
+  darkModePercentageLabelColor: string;
+  
+  @Prop({ default: '#ffffff' })
+  darkModeIconColor: string;
+  
+  @Prop({ default: '#2597a4' })
+  darkModeIconHoverColor: string;
 
   // Radio button styling
   @Prop({ default: '#d0d5dd' })
