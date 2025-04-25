@@ -1,8 +1,8 @@
-// src/services/exchange-rate.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { Currency } from '../enums/currency.enum';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class ExchangeRateService {
@@ -20,9 +20,9 @@ export class ExchangeRateService {
     private async updateRates() {
         try {
             const apiKey = this.configService.get('EXCHANGE_API_KEY');
-            const response = await this.httpService.get(
-                `https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`
-            ).toPromise();
+            const response = await firstValueFrom(
+                this.httpService.get(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`)
+            );
 
             this.rates = this.formatRates(response.data.rates);
         } catch (error) {
@@ -49,9 +49,10 @@ export class ExchangeRateService {
         }
 
         try {
-            const response = await this.httpService.get(
-                `https://v6.exchangerate-api.com/v6/${this.configService.get('EXCHANGE_API_KEY')}/pair/${from}/${to}/${amount}`
-            ).toPromise();
+            const apiKey = this.configService.get('EXCHANGE_API_KEY');
+            const response = await firstValueFrom(
+                this.httpService.get(`https://v6.exchangerate-api.com/v6/${apiKey}/pair/${from}/${to}/${amount}`)
+            );
 
             return {
                 amount: response.data.conversion_result,
