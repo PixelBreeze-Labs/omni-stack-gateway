@@ -6,7 +6,9 @@ export enum AIAssistantType {
     FOOD = 'food',
     SALES = 'sales',
     ANALYTICS = 'analytics',
-    ADMIN = 'admin'
+    ADMIN = 'admin',
+    PRODUCT = 'product',
+    MARKETING = 'marketing'
 }
 
 export interface AIQueryContext {
@@ -16,6 +18,8 @@ export interface AIQueryContext {
     customerId?: string;
     vendorId?: string;
     searchTerm?: string;
+    productId?: string;
+    categoryId?: string;
 }
 
 export interface AIQueryResponse {
