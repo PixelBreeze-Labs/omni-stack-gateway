@@ -257,6 +257,12 @@ import { Poll, PollSchema } from './schemas/poll.schema';
 import { OrderCronService } from './services/order-cron.service';
 
 
+// CRM
+import { CRMService } from './services/crm.service';
+import { CRMAIAssistantService } from './services/crm-ai-assistant.service';
+import { CRMAIAssistantController } from './controllers/crm-ai-assistant.controller';
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -428,7 +434,8 @@ import { OrderCronService } from './services/order-cron.service';
     SnapfoodieController,
     VerificationController,
     PollController,
-    PollPublicController
+    PollPublicController,
+    CRMAIAssistantController
   ],
   providers: [
     SnapfoodService,
@@ -515,7 +522,9 @@ import { OrderCronService } from './services/order-cron.service';
     ChatGateway,
     TwilioVerificationService,
     PollService,
-    OrderCronService
+    OrderCronService,
+    CRMAIAssistantService,
+    CRMService
   ],
 })
 export class AppModule implements NestModule {
