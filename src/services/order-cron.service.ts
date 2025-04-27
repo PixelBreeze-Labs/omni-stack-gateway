@@ -17,11 +17,6 @@ export class OrderCronService {
         private orderService: OrderService
     ) {}
 
-    async onModuleInit() {
-        // Run the job immediately on startup for testing
-        this.logger.log('Testing cron job manually...');
-        await this.sendThankYouEmails();
-      }
     /**
      * Send thank you emails for orders that are completed and haven't received a thank you email yet
      * Runs every 10 minutes
