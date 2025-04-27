@@ -17,6 +17,11 @@ export class OrderCronService {
         private orderService: OrderService
     ) {}
 
+    async onModuleInit() {
+        // Run the job immediately on startup for testing
+        this.logger.log('Testing cron job manually...');
+        await this.sendThankYouEmails();
+      }
     /**
      * Send thank you emails for orders that are completed and haven't received a thank you email yet
      * Runs every 10 minutes
@@ -35,11 +40,9 @@ export class OrderCronService {
         
         try {
             // Find completed orders that:
-            // 1. Are in paid status
-            // 2. Haven't received a thank you email yet
-            // 3. Have confirmation email sent
+            // 1. Haven't received a thank you email yet
+            // 2. Have confirmation email sent
             const orders = await this.orderModel.find({
-                status: 'PAID',
                 'metadata.emailStatus.confirmationSent': true,
                 'metadata.emailStatus.thankYouSent': { $ne: true },
                 'metadata.emailStatus.thankYouScheduled': { $ne: true }
