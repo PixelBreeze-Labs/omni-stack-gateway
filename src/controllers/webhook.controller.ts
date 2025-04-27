@@ -251,12 +251,9 @@ export class WebhookController {
 
     private getReadablePaymentMethod(methodId: number): string {
         const methodMap = {
-            1: 'Kartë',
-            2: 'Para në dorëzim',
-            3: 'Transfertë Bankare',
-            4: 'Stripe',
-            5: 'BKT'
+            1: 'Para në dorëzim',
+            2: 'BKT'
         };
-        return methodMap[methodId] || 'Pagesë elektronike';
+        return methodMap[methodId] || 'Pagesë e pacaktuar';
     }
 }
