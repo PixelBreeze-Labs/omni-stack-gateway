@@ -17,9 +17,9 @@ export class OrderCronService {
 
     /**
      * Send thank you emails for orders that are completed and haven't received a thank you email yet
-     * Runs every hour
+     * Runs every 10 minutes
      */
-    @Cron(CronExpression.EVERY_HOUR)
+    @Cron('*/10 * * * *')
     async sendThankYouEmails() {
         this.logger.log('Running scheduled job: Send thank you emails for completed orders');
 
@@ -34,7 +34,7 @@ export class OrderCronService {
                 'metadata.emailStatus.confirmationSent': true,
                 'metadata.emailStatus.thankYouSent': { $ne: true },
                 'metadata.emailStatus.thankYouScheduled': { $ne: true }
-            }).limit(10); // Process in smaller batches since we're running every hour
+            }).limit(10); // Process in smaller batches since we're running every 10 minutes
 
             this.logger.log(`Found ${orders.length} orders that need thank you emails`);
 
