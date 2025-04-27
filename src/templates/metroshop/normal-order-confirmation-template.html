@@ -111,24 +111,100 @@
             font-size: 14px;
             color: #666;
         }
+        
+        /* New styles for the order status icon */
+        .order-status-icon {
+            width: 100px;
+            height: 100px;
+            margin: 20px auto;
+            display: block;
+        }
+        
+        /* New styles for the Shop Again button section */
+        .shop-again-section {
+            background-color: #e9bd45;
+            text-align: center;
+            padding: 30px 20px;
+            margin: 30px 0;
+        }
+        
+        .shop-again-title {
+            color: #ffffff;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        
+        .shop-again-button {
+            display: inline-block;
+            background-color: #000000;
+            color: white!important;
+            padding: 15px 40px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .order-status-header {
+            background-color: #000000;
+            color: #ffffff;
+            text-align: center;
+            padding: 15px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .order-thank-you {
+            text-align: center;
+            font-size: 28px;
+            font-weight: bold;
+            margin: 30px 0 20px;
+        }
+        
+        .order-recipient {
+            text-align: center;
+            font-size: 20px;
+            margin: 10px 0;
+        }
+        
+        .order-timestamp {
+            text-align: center;
+            font-size: 16px;
+            margin: 10px 0 30px;
+        }
+        
+        .order-number-display {
+            text-align: right;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 15px;
+            background-color: #f2f2f2;
+        }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="header">
-        <img src="https://metroshop.al/metroshop-logo.png" alt="MetroShop" class="logo">
-        <h1 class="title">Faleminderit për blerjen tuaj!</h1>
-        <p>Porosia juaj është konfirmuar dhe është duke u përpunuar.</p>
+    <div class="order-status-header">
+        Porosia u Pranua
     </div>
 
     <div class="content">
-        <p>Përshëndetje {{customerName}},</p>
-
-        <p>Ne sapo morëm porosinë tuaj dhe jemi duke e përgatitur për t'ju dërguar. Më poshtë do të gjeni detajet e porosisë tuaj.</p>
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/logos/order-image.png" alt="Order Confirmed" class="order-status-icon">
+        
+        <h1 class="order-thank-you">Faleminderit për Porosinë Tuaj!</h1>
+        
+        <p class="order-recipient">I/E nderuar {{customerName}},</p>
+        <p class="order-timestamp">Këtu janë detajet e porosisë tuaj të bërë më {{orderDate}} {{orderTime}}</p>
+        
+        <table style="background-color: #f2f2f2; padding: 15px; width: 100%;">
+            <tr>
+                <td style="text-align: left;"><strong>Detajet e Porosisë</strong></td>
+                <td style="text-align: right;"><strong>#{{orderNumber}}</strong></td>
+            </tr>
+        </table>
 
         <div class="order-info">
-            <p><strong>Numri i Porosisë:</strong> {{orderNumber}}</p>
-            <p><strong>Data:</strong> {{orderDate}} {{orderTime}}</p>
             <p><strong>Metoda e Pagesës:</strong> {{paymentMethod}}</p>
             <p><strong>Adresa e Dërgesës:</strong> {{shippingAddress}}</p>
         </div>
@@ -158,18 +234,22 @@
 
         <div class="order-summary">
             <p><strong>Nëntotali:</strong> {{subtotal}} {{currency}}</p>
+            <p><strong>Kosto e Transportit:</strong> {{shippingCost}} {{currency}}</p>
             <p><strong>Totali:</strong> {{total}} {{currency}}</p>
         </div>
 
         <div class="button-container">
-            <a href="https://metroshop.al/orders/{{orderNumber}}" class="button">Gjurmo Porosinë</a>
+            <a href="https://metroshop.al/tracking/{{orderNumber}}" class="button">Gjurmo Porosinë</a>
         </div>
 
-        <p>Ke pyetje apo nevojë për ndihmë? Ekipi ynë i shërbimit ndaj klientit është këtu për të ndihmuar! Na kontakto në email apo në rrjetet tona sociale.</p>
+        <div class="shop-again-section">
+            <h2 class="shop-again-title">Merr porosinë tënde të radhës.</h2>
+            <a href="https://metroshop.al/" class="shop-again-button">Blej Përsëri</a>
+        </div>
 
-        <p>Faleminderit që besove në MetroShop! Premtojmë të bëjmë gjithmonë më të mirën për të të kënaqur!</p>
+        <p style="margin-top: 20px; font-size: 18px; font-weight: bold; text-align: center;">Rruga "Sami Frashëri"<br>Tiranë, Shqipëri</p>
 
-        <p><strong>Ps. Na ndiq në rrjetet tona sociale për të mos humbur asgjë:</strong></p>
+        <p style="text-align: center;">Ke pyetje apo nevojë për ndihmë? Ekipi ynë i shërbimit ndaj klientit është këtu për të ndihmuar! Na kontakto në email apo në rrjetet tona sociale.</p>
 
         <div class="social-icons">
             <a href="https://www.instagram.com/bybest.shop/" class="social-icon">
