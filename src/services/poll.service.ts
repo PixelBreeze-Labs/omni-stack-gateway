@@ -398,7 +398,7 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
         };
     }
 
-    async findOne(id: string, clientId: string): Promise<Poll> {
+    async findOne(id: string, clientId: string): Promise<any> {
         // Look for polls where this client is in the clientIds array
         const poll = await this.pollModel.findOne({ 
             _id: id,
@@ -409,28 +409,40 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
             throw new NotFoundException(`Poll with ID ${id} not found`);
         }
         
-        // Convert to object with all mongoose options enabled
-        const pollObj = poll.toObject({ 
-            virtuals: true,
-            getters: true
-        });
+        // Create a plain object
+        const pollObj = poll.toObject();
         
-        // Access the clientStyleOverrides directly from the document
-        let clientOverrides = null;
+        // Get client-specific overrides
+        let overrides = null;
         
-        // Try to get client overrides using get method if it's a Map
-        if (poll.clientStyleOverrides && typeof poll.clientStyleOverrides.get === 'function') {
-            clientOverrides = poll.clientStyleOverrides.get(clientId);
+        // Try first from _doc which contains the applied overrides
+        if (poll['_doc'] && typeof poll['_doc'] === 'object') {
+            const docKeys = ['highlightColor', 'darkMode', 'voteButtonColor'];
+            // Check if _doc contains style properties
+            if (docKeys.every(key => key in poll['_doc'])) {
+                overrides = poll['_doc'];
+            }
         }
         
-        // Apply overrides if they exist
-        if (clientOverrides) {
-            // Apply each override to the poll object
-            for (const [key, value] of Object.entries(clientOverrides)) {
-                if (value !== undefined && value !== null) {
-                    pollObj[key] = value;
+        // If not found in _doc, try from parent's clientStyleOverrides
+        if (!overrides && poll['$__parent'] && 
+            poll['$__parent'].clientStyleOverrides && 
+            poll['$__parent'].clientStyleOverrides[clientId]) {
+            overrides = poll['$__parent'].clientStyleOverrides[clientId];
+        }
+        
+        // Apply overrides if found
+        if (overrides) {
+            Object.keys(overrides).forEach(key => {
+                if (key !== 'clientStyleOverrides' && overrides[key] !== undefined) {
+                    pollObj[key] = overrides[key];
                 }
-            }
+            });
+        }
+        
+        // Ensure clientStyleOverrides is included
+        if (poll['$__parent'] && poll['$__parent'].clientStyleOverrides) {
+            pollObj.clientStyleOverrides = poll['$__parent'].clientStyleOverrides;
         }
         
         return pollObj;
