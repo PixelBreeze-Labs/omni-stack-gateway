@@ -2,7 +2,7 @@
 import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Poll } from '../schemas/poll.schema';
+import { Poll, PollOption } from '../schemas/poll.schema';
 import { 
     CreatePollDto,
     CreateMultiClientPollDto, 
@@ -185,6 +185,7 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                 const brandBasedDefaults = {
                     // Light mode colors from brand colors
                     highlightColor: clientApp.brandColors.primaryColor || '#2597a4',
+                    optionHighlightColor: clientApp.brandColors.primaryColor || '#2597a4',
                     voteButtonColor: clientApp.brandColors.primaryColor || '#0a0a0a',
                     voteButtonHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
                     iconColor: clientApp.brandColors.secondaryColor || '#d0d5dd',
@@ -432,17 +433,17 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
             Object.entries(overrides).forEach(([key, value]) => {
                 pollObj[key] = value;
             });
+        }
+        
+        // Important: Apply the optionHighlightColor to each option
+        if (pollObj.options && Array.isArray(pollObj.options)) {
+            const highlightToUse = pollObj.optionHighlightColor || pollObj.highlightColor;
             
-            // If there's a optionHighlightColor override, apply it to each option's customHighlight
-            if (overrides.optionHighlightColor && pollObj.options && Array.isArray(pollObj.options)) {
-                pollObj.options = pollObj.options.map(option => {
-                    // Only override if no specific customHighlight is set for this option
-                    if (!option.customHighlight) {
-                        option.customHighlight = overrides.optionHighlightColor;
-                    }
-                    return option;
-                });
-            }
+            pollObj.options = pollObj.options.map((option: PollOption) => {
+                // Add highlightColor to each option unless it has a customHighlight
+                option.customHighlight = highlightToUse;
+                return option;
+            });
         }
         
         return pollObj;
