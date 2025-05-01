@@ -2,7 +2,8 @@
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsArray, IsEmail, IsNumber, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsHexColor } from 'class-validator';
 
 export class CreateClientAppDto {
     @ApiProperty({ description: 'Client app name' })
@@ -81,3 +82,41 @@ export class ListClientAppDto {
     @IsEnum(['wordpress', 'react', 'vue', 'other', 'next'])
     type?: string;
 }
+
+export class ClientAppBrandColorsDto {
+    @ApiPropertyOptional({ description: 'Primary color', default: '#2597a4' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    primaryColor?: string;
+  
+    @ApiPropertyOptional({ description: 'Primary hover color', default: '#1d7a84' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    primaryHoverColor?: string;
+  
+    @ApiPropertyOptional({ description: 'Secondary color', default: '#0a0a0a' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    secondaryColor?: string;
+  
+    @ApiPropertyOptional({ description: 'Secondary hover color', default: '#6c757d' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    secondaryHoverColor?: string;
+  
+    @ApiPropertyOptional({ description: 'Text on primary color', default: '#ffffff' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    textOnPrimaryColor?: string;
+  
+    @ApiPropertyOptional({ description: 'Text color', default: '#0a0a0a' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    textColor?: string;
+  }
