@@ -162,22 +162,35 @@ export class ClientAppService {
     }
 
     // Helper method to enhance client apps with client data
+    // If for some reason it's not being included, you could explicitly ensure it is:
     private async enhanceWithClientData(clientApps: ClientApp[]): Promise<any[]> {
         if (!clientApps || clientApps.length === 0) {
             return [];
         }
-        
+    
         // Get all client app IDs
         const appIds = clientApps.map(app => app._id.toString());
-        
+    
         // Get client info for these app IDs
         const clientInfoMap = await this.clientService.getClientInfoForApps(appIds);
-        
+    
         // Enhance each app with its client info
         return clientApps.map(app => {
             const appObj = app.toObject ? app.toObject() : { ...app };
             const appId = appObj._id.toString();
             
+            // Make sure brandColors is included
+            if (!appObj.brandColors) {
+                appObj.brandColors = {
+                    primaryColor: '#2597a4',
+                    primaryHoverColor: '#1d7a84',
+                    secondaryColor: '#0a0a0a',
+                    secondaryHoverColor: '#6c757d',
+                    textOnPrimaryColor: '#ffffff',
+                    textColor: '#0a0a0a'
+                };
+            }
+      
             // Add client data if available
             if (clientInfoMap[appId]) {
                 appObj.client = clientInfoMap[appId];
@@ -185,7 +198,7 @@ export class ClientAppService {
                 // Add empty client data as fallback
                 appObj.client = { name: null, code: null };
             }
-            
+      
             return appObj;
         });
     }
