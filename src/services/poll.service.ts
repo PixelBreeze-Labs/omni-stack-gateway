@@ -409,16 +409,30 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
             throw new NotFoundException(`Poll with ID ${id} not found`);
         }
         
-        // Convert to a plain JavaScript object
-        const pollObj = poll.toObject();
+        // Create a plain object with all getters and virtuals
+        const pollObj = poll.toObject({ getters: true, virtuals: true });
         
-        // Apply client-specific style overrides to the top-level properties
+        // Use type assertion to access internal properties safely
+        const pollAny = poll as any;
+        
+        // First try: directly apply from _doc if it exists in the document
+        if (pollAny._doc) {
+            // Apply all properties from _doc to pollObj
+            Object.entries(pollAny._doc).forEach(([key, value]) => {
+                if (value !== undefined && 
+                    !['_id', '__v', 'id', 'clientIds', 'clientStyleOverrides'].includes(key)) {
+                    pollObj[key] = value;
+                }
+            });
+        }
+        
+        // Second try: apply from clientStyleOverrides if it exists
         if (pollObj.clientStyleOverrides && 
             pollObj.clientStyleOverrides[clientId]) {
             
             const clientOverrides = pollObj.clientStyleOverrides[clientId];
             
-            // Apply each override directly to the top-level object
+            // Apply each override to the poll object
             Object.entries(clientOverrides).forEach(([key, value]) => {
                 if (value !== undefined) {
                     pollObj[key] = value;
