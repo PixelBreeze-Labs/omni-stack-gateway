@@ -409,8 +409,10 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
             throw new NotFoundException(`Poll with ID ${id} not found`);
         }
     
-        // Apply client-specific style overrides if they exist
+        // Always convert to plain object first
         const pollObj = poll.toObject();
+        
+        // Apply client-specific style overrides if they exist
         const clientOverrides = poll.clientStyleOverrides?.get(clientId);
         
         if (clientOverrides) {
@@ -420,10 +422,10 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                     pollObj[key] = value;
                 }
             }
-            return pollObj;
         }
     
-        return poll;
+        // Always return the plain object with any overrides applied
+        return pollObj;
     }
 
     /**
