@@ -10,11 +10,107 @@ export class PollOption {
   @Prop({ default: 0 })
   votes: number;
 
+  // New: Track votes by client ID
+  @Prop({ type: Map, of: Number, default: () => new Map() })
+  clientVotes: Map<string, number>;
+
   @Prop()
   customHighlight?: string;
 }
 
 export const PollOptionSchema = SchemaFactory.createForClass(PollOption);
+
+// Define all potential style overrides a client can have
+@Schema({ _id: false })
+export class ClientStyleOverride {
+  // Light mode colors
+  @Prop()
+  highlightColor?: string;
+
+  @Prop()
+  voteButtonColor?: string;
+
+  @Prop()
+  voteButtonHoverColor?: string;
+
+  @Prop()
+  optionsBackgroundColor?: string;
+
+  @Prop()
+  optionsHoverColor?: string;
+
+  @Prop()
+  resultsLinkColor?: string;
+
+  @Prop()
+  resultsLinkHoverColor?: string;
+
+  @Prop()
+  progressBarBackgroundColor?: string;
+
+  @Prop()
+  percentageLabelColor?: string;
+
+  @Prop()
+  iconColor?: string;
+
+  @Prop()
+  iconHoverColor?: string;
+
+  @Prop()
+  radioBorderColor?: string;
+
+  @Prop()
+  radioCheckedBorderColor?: string;
+
+  @Prop()
+  radioCheckedDotColor?: string;
+
+  // Dark mode specific styles
+  @Prop()
+  darkMode?: boolean;
+
+  @Prop()
+  darkModeBackground?: string;
+
+  @Prop()
+  darkModeTextColor?: string;
+
+  @Prop()
+  darkModeOptionBackground?: string;
+
+  @Prop()
+  darkModeOptionHover?: string;
+
+  @Prop()
+  darkModeLinkColor?: string;
+
+  @Prop()
+  darkModeLinkHoverColor?: string;
+
+  @Prop()
+  darkModeProgressBackground?: string;
+
+  @Prop()
+  darkModePercentageLabelColor?: string;
+
+  @Prop()
+  darkModeIconColor?: string;
+
+  @Prop()
+  darkModeIconHoverColor?: string;
+
+  @Prop()
+  darkModeRadioBorder?: string;
+
+  @Prop()
+  darkModeRadioCheckedBorder?: string;
+
+  @Prop()
+  darkModeRadioCheckedDot?: string;
+}
+
+export const ClientStyleOverrideSchema = SchemaFactory.createForClass(ClientStyleOverride);
 
 @Schema({ timestamps: true })
 export class Poll extends Document {
@@ -46,24 +142,23 @@ export class Poll extends Document {
   options: PollOption[];
 
   @Prop({ type: Date, default: Date.now })
-  createdAt: Date;
+createdAt: Date;
 
-  // Modified: Make this an array to support multiple clients
+
+  // Multi-client properties
   @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Client' }], required: true })
   clientIds: string[];
 
-  // Keep the original clientId for backward compatibility and as the primary client
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: true })
-  clientId: string;
+  clientId: string; // Primary client who created the poll
+
+  @Prop({ default: false })
+  isMultiClient: boolean;
 
   @Prop()
   wordpressId?: number;
 
-  // New property for unified/multi-client polls
-  @Prop({ default: false })
-  isMultiClient: boolean;
-
-  // Style customization properties
+  // Style customization properties - base styles
   @Prop({ default: '#0a0a0a' })
   voteButtonColor: string;
   
@@ -93,6 +188,16 @@ export class Poll extends Document {
   
   @Prop({ default: '#2597a4' })
   iconHoverColor: string;
+  
+  // Radio button styling
+  @Prop({ default: '#d0d5dd' })
+  radioBorderColor: string;
+
+  @Prop({ default: '#2597a4' })
+  radioCheckedBorderColor: string;
+
+  @Prop({ default: '#2597a4' })
+  radioCheckedDotColor: string;
   
   // Dark mode properties
   @Prop({ default: false })
@@ -128,17 +233,6 @@ export class Poll extends Document {
   @Prop({ default: '#2597a4' })
   darkModeIconHoverColor: string;
 
-  // Radio button styling
-  @Prop({ default: '#d0d5dd' })
-  radioBorderColor: string;
-
-  @Prop({ default: '#2597a4' })
-  radioCheckedBorderColor: string;
-
-  @Prop({ default: '#2597a4' })
-  radioCheckedDotColor: string;
-
-  // Dark mode versions
   @Prop({ default: '#444444' })
   darkModeRadioBorder: string;
 
@@ -151,22 +245,13 @@ export class Poll extends Document {
   @Prop({ default: false })
   allowMultipleVotes: boolean;
 
-  // Client-specific overrides for styling - stored as a map of clientId to override values
-  @Prop({ type: Map, of: Object, default: () => new Map() })
-clientStyleOverrides: Map<string, {
-    highlightColor?: string;
-    voteButtonColor?: string;
-    voteButtonHoverColor?: string;
-    iconColor?: string;
-    iconHoverColor?: string;
-    resultsLinkColor?: string;
-    resultsLinkHoverColor?: string;
-    radioCheckedBorderColor?: string;
-    radioCheckedDotColor?: string;
-  }>;
+  // Client-specific style overrides - store all style overrides for each client
+  @Prop({ type: Map, of: ClientStyleOverrideSchema, default: () => new Map() })
+  clientStyleOverrides: Map<string, ClientStyleOverride>;
 }
 
 export const PollSchema = SchemaFactory.createForClass(Poll);
 
 // Add index for efficient multi-client queries
 PollSchema.index({ clientIds: 1 });
+PollSchema.index({ clientId: 1 });

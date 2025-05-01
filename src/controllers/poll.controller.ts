@@ -26,6 +26,7 @@ import {
 import { PollService } from '../services/poll.service';
 import {
     CreatePollDto,
+    CreateMultiClientPollDto,
     UpdatePollDto,
     PollVoteDto,
     ListPollsQueryDto,
@@ -60,9 +61,28 @@ export class PollController {
         createPollDto.clientId = req.client.id;
         
         // Create the poll
-        const poll = await this.pollService.create(createPollDto);
+        return this.pollService.create(createPollDto);
+    }
+
+    @Post('multi-client')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create a new multi-client poll' })
+    @ApiResponse({
+        status: HttpStatus.CREATED,
+        description: 'The multi-client poll has been successfully created',
+        type: Poll
+    })
+    @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input' })
+    async createMultiClient(
+        @Body() createMultiClientPollDto: CreateMultiClientPollDto,
+        @Req() req: Request & { client: any }
+    ): Promise<Poll> {
+        // Ensure the clientId in the DTO matches the authenticated client
+        createMultiClientPollDto.clientId = req.client.id;
         
-        return poll;
+        // Create the multi-client poll
+        return this.pollService.createMultiClientPoll(createMultiClientPollDto);
     }
 
     @Get()
@@ -71,7 +91,7 @@ export class PollController {
     @ApiOperation({ summary: 'Get all polls for the client' })
     @ApiResponse({ 
         status: HttpStatus.OK, 
-        description: 'List of polls', 
+        description: 'List of polls' 
     })
     @ApiQuery({ name: 'includeMultiClient', description: 'Include multi-client polls', required: false, type: Boolean })
     async findAll(
@@ -79,6 +99,36 @@ export class PollController {
         @Req() req: Request & { client: any }
     ) {
         return this.pollService.findAll(req.client.id, query);
+    }
+
+    @Get('owned')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get all polls owned by the client (primary client)' })
+    @ApiResponse({ 
+        status: HttpStatus.OK, 
+        description: 'List of owned polls'
+    })
+    async findOwnedPolls(
+        @Query() query: ListPollsQueryDto,
+        @Req() req: Request & { client: any }
+    ) {
+        return this.pollService.findOwnedPolls(req.client.id, query);
+    }
+
+    @Get('multi-client')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get all multi-client polls the client has access to' })
+    @ApiResponse({ 
+        status: HttpStatus.OK, 
+        description: 'List of multi-client polls'
+    })
+    async findMultiClientPolls(
+        @Query() query: ListPollsQueryDto,
+        @Req() req: Request & { client: any }
+    ) {
+        return this.pollService.findMultiClientPolls(req.client.id, query);
     }
 
     @Get('stats')
@@ -159,7 +209,6 @@ export class PollController {
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Update a poll' })
     @ApiParam({ name: 'id', description: 'Poll ID' })
-    @ApiQuery({ name: 'clientId', description: 'Client ID (optional)', required: false })
     @ApiBody({ type: UpdatePollDto })
     @ApiResponse({ 
         status: HttpStatus.OK, 
@@ -168,19 +217,13 @@ export class PollController {
     })
     @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Poll not found' })
     @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input' })
+    @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Not authorized to update this poll' })
     async update(
         @Param('id') id: string,
         @Body() updatePollDto: UpdatePollDto,
-        @Query('clientId') queryClientId: string,
         @Req() req: Request & { client: any }
     ): Promise<Poll> {
-        // Use the clientId from query parameter if provided, otherwise use the authenticated client's ID
-        const clientId = queryClientId || req.client.id;
-        
-        const updatedPoll = await this.pollService.update(id, clientId, updatePollDto);
-        
-        
-        return updatedPoll;
+        return this.pollService.update(id, req.client.id, updatePollDto);
     }
 
     @Delete(':id')
@@ -189,23 +232,14 @@ export class PollController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: 'Delete a poll' })
     @ApiParam({ name: 'id', description: 'Poll ID' })
-    @ApiQuery({ name: 'clientId', description: 'Client ID (optional)', required: false })
     @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'The poll has been successfully deleted' })
     @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Poll not found' })
+    @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Not authorized to delete this poll' })
     async remove(
         @Param('id') id: string,
-        @Query('clientId') queryClientId: string,
         @Req() req: Request & { client: any }
     ): Promise<void> {
-        // Use the clientId from query parameter if provided, otherwise use the authenticated client's ID
-        const clientId = queryClientId || req.client.id;
-        
-        // Get the poll before deletion for sync notification
-        const poll = await this.pollService.findOne(id, clientId);
-        const isMultiClient = poll.isMultiClient && poll.clientIds.length > 1;
-        
-        // Delete the poll
-        await this.pollService.delete(id, clientId);
+        await this.pollService.delete(id, req.client.id);
     }
 
     @Post(':id/vote')
@@ -226,9 +260,7 @@ export class PollController {
         @Body() voteDto: PollVoteDto,
         @Req() req: Request & { client: any }
     ): Promise<Poll> {
-        const updatedPoll = await this.pollService.vote(id, req.client.id, voteDto);
-        
-        return updatedPoll;
+        return this.pollService.vote(id, req.client.id, voteDto);
     }
 
     @Post(':id/clients')
@@ -250,8 +282,7 @@ export class PollController {
         @Body() addClientDto: AddClientToPollDto,
         @Req() req: Request & { client: any }
     ): Promise<Poll> {
-        const updatedPoll = await this.pollService.addClient(id, req.client.id, addClientDto);
-        return updatedPoll;
+        return this.pollService.addClient(id, req.client.id, addClientDto);
     }
 
     @Delete(':id/clients/:clientId')
@@ -278,132 +309,6 @@ export class PollController {
             clientId: clientIdToRemove
         };
         
-        const updatedPoll = await this.pollService.removeClient(id, req.client.id, removeClientDto);
-        return updatedPoll;
-    }
-
-    @Get('stats/by-client/:clientId')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get poll statistics for a specific client' })
-    @ApiParam({ name: 'clientId', description: 'Client ID' })
-    @ApiResponse({ 
-        status: HttpStatus.OK, 
-        description: 'Poll statistics' 
-    })
-    async getStatsByClientId(
-        @Param('clientId') clientId: string,
-        @Req() req: Request & { client: any }
-    ) {
-        // Check if requesting client is authorized to view other clients' stats
-        // This might require additional authorization logic
-        if (req.client.id !== clientId && !req.client.isAdmin) {
-            throw new UnauthorizedException('Not authorized to view statistics for this client');
-        }
-        
-        return this.pollService.getStats(clientId);
-    }
-
-    @Get('by-client/:clientId')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get all polls for a specific client' })
-    @ApiParam({ name: 'clientId', description: 'Client ID' })
-    @ApiResponse({ 
-        status: HttpStatus.OK, 
-        description: 'List of polls'
-    })
-    async findAllByClientId(
-        @Param('clientId') clientId: string,
-        @Query() query: ListPollsQueryDto,
-        @Req() req: Request & { client: any }
-    ) {
-        // Check if requesting client is authorized to view other clients' polls
-        // This might require additional authorization logic
-        if (req.client.id !== clientId && !req.client.isAdmin) {
-            throw new UnauthorizedException('Not authorized to view polls for this client');
-        }
-        
-        return this.pollService.findAll(clientId, query);
-    }
-
-    @Get('multi-client')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get all multi-client polls the client has access to' })
-    @ApiResponse({ 
-        status: HttpStatus.OK, 
-        description: 'List of multi-client polls'
-    })
-    async findMultiClientPolls(
-        @Query() query: ListPollsQueryDto,
-        @Req() req: Request & { client: any }
-    ) {
-        // Set includeMultiClient to true and add filter for isMultiClient
-        const multiClientQuery = {
-            ...query,
-            includeMultiClient: true,
-            isMultiClient: true
-        };
-        
-        return this.pollService.findAll(req.client.id, multiClientQuery);
-    }
-
-    @Get('owned')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get all polls owned by the client (primary client)' })
-    @ApiResponse({ 
-        status: HttpStatus.OK, 
-        description: 'List of owned polls'
-    })
-    async findOwnedPolls(
-        @Query() query: ListPollsQueryDto,
-        @Req() req: Request & { client: any }
-    ) {
-        // Override the includeMultiClient flag and use clientId as primary
-        const ownedQuery = {
-            ...query,
-            primaryClientOnly: true
-        };
-        
-        // Custom method to get only polls where this client is the primary
-        const filter = { clientId: req.client.id };
-        
-        // Add search if provided
-        if (query.search) {
-            filter['$or'] = [
-                { title: new RegExp(query.search, 'i') },
-                { description: new RegExp(query.search, 'i') }
-            ];
-        }
-        
-        const sort: any = {};
-        sort[query.sortBy || 'createdAt'] = query.sortOrder === 'asc' ? 1 : -1;
-        
-        const page = query.page || 1;
-        const limit = query.limit || 10;
-        const skip = (page - 1) * limit;
-        
-        const [polls, total] = await Promise.all([
-            this.pollService['pollModel']
-                .find(filter)
-                .sort(sort)
-                .skip(skip)
-                .limit(limit)
-                .exec(),
-            this.pollService['pollModel'].countDocuments(filter)
-        ]);
-        
-        return {
-            data: polls,
-            meta: {
-                total,
-                page,
-                limit,
-                pages: Math.ceil(total / limit),
-                hasNext: page * limit < total
-            }
-        };
+        return this.pollService.removeClient(id, req.client.id, removeClientDto);
     }
 }
