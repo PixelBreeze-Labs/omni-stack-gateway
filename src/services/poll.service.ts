@@ -409,45 +409,25 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
             throw new NotFoundException(`Poll with ID ${id} not found`);
         }
         
-        // Create a plain object
+        // Convert to a plain JavaScript object
         const pollObj = poll.toObject();
         
-        // Get client-specific overrides
-        let overrides = null;
-        
-        // Try first from _doc which contains the applied overrides
-        if (poll['_doc'] && typeof poll['_doc'] === 'object') {
-            const docKeys = ['highlightColor', 'darkMode', 'voteButtonColor'];
-            // Check if _doc contains style properties
-            if (docKeys.every(key => key in poll['_doc'])) {
-                overrides = poll['_doc'];
-            }
-        }
-        
-        // If not found in _doc, try from parent's clientStyleOverrides
-        if (!overrides && poll['$__parent'] && 
-            poll['$__parent'].clientStyleOverrides && 
-            poll['$__parent'].clientStyleOverrides[clientId]) {
-            overrides = poll['$__parent'].clientStyleOverrides[clientId];
-        }
-        
-        // Apply overrides if found
-        if (overrides) {
-            Object.keys(overrides).forEach(key => {
-                if (key !== 'clientStyleOverrides' && overrides[key] !== undefined) {
-                    pollObj[key] = overrides[key];
+        // Apply client-specific style overrides to the top-level properties
+        if (pollObj.clientStyleOverrides && 
+            pollObj.clientStyleOverrides[clientId]) {
+            
+            const clientOverrides = pollObj.clientStyleOverrides[clientId];
+            
+            // Apply each override directly to the top-level object
+            Object.entries(clientOverrides).forEach(([key, value]) => {
+                if (value !== undefined) {
+                    pollObj[key] = value;
                 }
             });
         }
         
-        // Ensure clientStyleOverrides is included
-        if (poll['$__parent'] && poll['$__parent'].clientStyleOverrides) {
-            pollObj.clientStyleOverrides = poll['$__parent'].clientStyleOverrides;
-        }
-        
         return pollObj;
     }
-
     /**
      * Find a poll by WordPress ID
      */
