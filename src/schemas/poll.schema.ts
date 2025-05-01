@@ -126,6 +126,9 @@ export class Poll extends Document {
   @Prop({ default: '#2597a4' })
   highlightColor: string;
 
+  @Prop({ default: '#2597a4' })
+optionHighlightColor: string;
+
   @Prop({ default: 'fade', enum: ['fade', 'slide', 'pulse', 'bounce', 'none'] })
   highlightAnimation: string;
 
