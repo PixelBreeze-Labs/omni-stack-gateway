@@ -8,7 +8,8 @@ import { ClientService } from './client.service';
 import {
     CreateClientAppDto,
     UpdateClientAppDto,
-    ListClientAppDto
+    ListClientAppDto,
+    ClientAppBrandColorsDto
 } from '../dtos/client-app.dto';
 import { Client } from '../schemas/client.schema';
 
@@ -285,7 +286,7 @@ export class ClientAppService {
             };
         }
     }
-    
+
     async findDefaultAppForClient(clientId: string): Promise<ClientApp | null> {
         if (!clientId) {
             return null;
@@ -306,4 +307,22 @@ export class ClientAppService {
         
         return clientApp;
     }
+
+    async updateBrandColors(id: string, brandColorsDto: ClientAppBrandColorsDto): Promise<any> {
+        const clientApp = await this.clientAppModel.findById(id);
+        if (!clientApp) throw new NotFoundException('Client App not found');
+        
+        // Update brand colors
+        clientApp.brandColors = {
+          ...clientApp.brandColors,
+          ...brandColorsDto
+        };
+        
+        // Save the updated client app
+        const updatedApp = await clientApp.save();
+        
+        // Enhance with client data
+        const enhancedData = await this.enhanceWithClientData([updatedApp]);
+        return enhancedData[0];
+      }
 }

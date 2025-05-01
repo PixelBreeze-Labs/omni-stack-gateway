@@ -1,7 +1,7 @@
 // src/controllers/client-app.controller.ts
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ClientAppService } from '../services/client-app.service';
-import { CreateClientAppDto, UpdateClientAppDto, ListClientAppDto } from '../dtos/client-app.dto';
+import { CreateClientAppDto, UpdateClientAppDto, ListClientAppDto, ClientAppBrandColorsDto } from '../dtos/client-app.dto';
 import { ApiKeyAuthGuard } from '../guards/api-key-auth.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam, ApiSecurity } from '@nestjs/swagger';
 import { ClientAuthGuard } from 'src/guards/client-auth.guard';
@@ -84,6 +84,18 @@ async getDashboardData() {
     @UseGuards(ClientAuthGuard)
     async remove(@Param('id') id: string) {
         return this.clientAppService.remove(id);
+    }
+
+    @ApiOperation({ summary: 'Update client app brand colors' })
+    @ApiParam({ name: 'id', description: 'Client App ID' })
+    @ApiResponse({ status: 200, description: 'Brand colors updated' })
+    @Put(':id/brand-colors')
+    @UseGuards(ClientAuthGuard)
+    async updateBrandColors(
+        @Param('id') id: string,
+        @Body() brandColorsDto: ClientAppBrandColorsDto
+    ) {
+        return this.clientAppService.updateBrandColors(id, brandColorsDto);
     }
 
     
