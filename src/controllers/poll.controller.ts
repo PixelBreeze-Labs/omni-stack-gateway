@@ -75,12 +75,8 @@ export class PollController {
     })
     @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input' })
     async createMultiClient(
-        @Body() createMultiClientPollDto: CreateMultiClientPollDto,
-        @Req() req: Request & { client: any }
+        @Body() createMultiClientPollDto: CreateMultiClientPollDto
     ): Promise<Poll> {
-        // Ensure the clientId in the DTO matches the authenticated client
-        createMultiClientPollDto.clientId = req.client.id;
-        
         // Create the multi-client poll
         return this.pollService.createMultiClientPoll(createMultiClientPollDto);
     }
