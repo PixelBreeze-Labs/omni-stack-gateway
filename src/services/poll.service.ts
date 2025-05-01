@@ -150,7 +150,7 @@ export class PollService {
         return await newPoll.save();
     }
     
-    /**
+   /**
  * Specifically create a multi-client poll
  */
 async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto): Promise<Poll> {
@@ -162,7 +162,7 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
         throw new BadRequestException('Multi-client poll requires at least one additional client');
     }
     
-    // Initialize client style overrides if not already present
+    // Initialize client style overrides as an empty object if not provided
     if (!createMultiClientPollDto.clientStyleOverrides) {
         createMultiClientPollDto.clientStyleOverrides = {};
     }
@@ -175,14 +175,14 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
     
     // Generate style overrides based on each client's brand colors
     for (const clientId of allClientIds) {
-        // Check if explicit overrides are already provided for this client
-        const existingOverrides = createMultiClientPollDto.clientStyleOverrides[clientId] || {};
-        
         try {
             const clientApp = await this.clientAppService.findDefaultAppForClient(clientId);
             if (clientApp && clientApp.brandColors) {
-                // Start with brand colors for overrides
-                const brandOverrides = {
+                // Get any existing overrides for this client
+                const existingOverrides = createMultiClientPollDto.clientStyleOverrides[clientId] || {};
+                
+                // Create brand-based default overrides
+                const brandBasedDefaults = {
                     // Light mode colors from brand colors
                     highlightColor: clientApp.brandColors.primaryColor || '#2597a4',
                     voteButtonColor: clientApp.brandColors.secondaryColor || '#0a0a0a',
@@ -194,10 +194,8 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                     radioCheckedBorderColor: clientApp.brandColors.primaryColor || '#2597a4',
                     radioCheckedDotColor: clientApp.brandColors.primaryColor || '#2597a4',
                     
-                    // Use the client's dark mode preference if it exists
-                    darkMode: clientApp.brandColors.darkModePreference !== undefined 
-                        ? clientApp.brandColors.darkModePreference 
-                        : false,
+                    // Dark mode setting from client preferences
+                    darkMode: clientApp.brandColors.darkModePreference === true,
                     
                     // Dark mode colors derived from brand colors
                     darkModeBackground: '#222222', 
@@ -210,23 +208,38 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                     darkModeRadioCheckedDot: clientApp.brandColors.primaryColor || '#2597a4'
                 };
                 
-                // Merge with any explicit overrides provided in the DTO
-                createMultiClientPollDto.clientStyleOverrides[clientId] = {
-                    ...brandOverrides,
-                    ...existingOverrides
-                };
+                // Create completely new object combining defaults and explicit overrides
+                const finalOverrides = {};
+                
+                // First copy all brand-based defaults
+                Object.assign(finalOverrides, brandBasedDefaults);
+                
+                // Then apply explicit overrides
+                for (const [key, value] of Object.entries(existingOverrides)) {
+                    // Ensure we don't lose boolean false values
+                    if (value !== undefined) {
+                        finalOverrides[key] = value;
+                    }
+                }
+                
+                // Set the overrides for this client
+                createMultiClientPollDto.clientStyleOverrides[clientId] = finalOverrides;
             }
         } catch (error) {
-            // If we can't fetch client app info but have explicit overrides, keep those
-            if (Object.keys(existingOverrides).length > 0) {
-                createMultiClientPollDto.clientStyleOverrides[clientId] = existingOverrides;
+            // If there's an error, just use any explicit overrides that were provided
+            // but don't remove existing overrides
+            if (!createMultiClientPollDto.clientStyleOverrides[clientId]) {
+                createMultiClientPollDto.clientStyleOverrides[clientId] = {};
             }
-            console.error(`Error fetching brand colors for client ${clientId}:`, error);
         }
     }
     
     // Use the standard create method with the updated DTO
-    return await this.create(createMultiClientPollDto);
+    return await this.create({
+        ...createMultiClientPollDto,
+        // Ensure clientStyleOverrides is correctly passed
+        clientStyleOverrides: { ...createMultiClientPollDto.clientStyleOverrides }
+    });
 }
 
     /**
@@ -454,6 +467,11 @@ async update(id: string, clientId: string, updatePollDto: UpdatePollDto): Promis
             // Get existing overrides or create empty object
             const existingClientOverrides = existingPoll.clientStyleOverrides.get(clientId) || {};
             
+            // Specifically handle darkMode to ensure it can be toggled properly
+            if (clientOverrides.darkMode !== undefined) {
+                existingClientOverrides.darkMode = clientOverrides.darkMode;
+            }
+            
             // Merge existing with new overrides
             const mergedOverrides = {
                 ...existingClientOverrides,
@@ -489,6 +507,15 @@ async update(id: string, clientId: string, updatePollDto: UpdatePollDto): Promis
         if (existingPoll.isMultiClient && !updatePollDto.isMultiClient) {
             // Reset to just the primary client
             updatePollDto['clientIds'] = [existingPoll.clientId];
+            
+            // Clear any style overrides for other clients
+            const primaryClientOverrides = existingPoll.clientStyleOverrides.get(existingPoll.clientId.toString());
+            existingPoll.clientStyleOverrides.clear();
+            
+            // Keep only the primary client's overrides if they exist
+            if (primaryClientOverrides) {
+                existingPoll.clientStyleOverrides.set(existingPoll.clientId.toString(), primaryClientOverrides);
+            }
         }
     }
     
@@ -496,6 +523,8 @@ async update(id: string, clientId: string, updatePollDto: UpdatePollDto): Promis
     if (updatePollDto.additionalClientIds?.length > 0) {
         // Start with the primary client
         const updatedClientIds = [existingPoll.clientId];
+        const existingClientIds = existingPoll.clientIds.map(id => id.toString());
+        const newClientIds = [];
         
         // Add additional client IDs
         for (const clientId of updatePollDto.additionalClientIds) {
@@ -508,15 +537,76 @@ async update(id: string, clientId: string, updatePollDto: UpdatePollDto): Promis
             // Only add if not the primary client and not already in the list
             if (clientId !== existingPoll.clientId.toString() && !updatedClientIds.includes(clientId)) {
                 updatedClientIds.push(clientId);
+                
+                // Check if this is a new client being added
+                if (!existingClientIds.includes(clientId)) {
+                    newClientIds.push(clientId);
+                }
+            }
+        }
+        
+        // Generate brand-based style overrides for any new clients
+        for (const newClientId of newClientIds) {
+            // Skip if client already has style overrides
+            if (existingPoll.clientStyleOverrides.has(newClientId)) continue;
+            
+            try {
+                const clientApp = await this.clientAppService.findDefaultAppForClient(newClientId);
+                if (clientApp && clientApp.brandColors) {
+                    // Create comprehensive style overrides based on brand colors
+                    const brandOverrides = {
+                        // Light mode colors
+                        highlightColor: clientApp.brandColors.primaryColor || '#2597a4',
+                        voteButtonColor: clientApp.brandColors.secondaryColor || '#0a0a0a',
+                        voteButtonHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
+                        iconColor: clientApp.brandColors.secondaryColor || '#d0d5dd',
+                        iconHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
+                        resultsLinkColor: clientApp.brandColors.secondaryColor || '#0a0a0a',
+                        resultsLinkHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
+                        radioCheckedBorderColor: clientApp.brandColors.primaryColor || '#2597a4',
+                        radioCheckedDotColor: clientApp.brandColors.primaryColor || '#2597a4',
+                        
+                        // Dark mode setting from client preferences
+                        darkMode: clientApp.brandColors.darkModePreference !== undefined 
+                            ? clientApp.brandColors.darkModePreference 
+                            : false,
+                        
+                        // Dark mode derived colors
+                        darkModeBackground: '#222222',
+                        darkModeTextColor: '#ffffff',
+                        darkModeLinkColor: '#ffffff',
+                        darkModeLinkHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
+                        darkModeIconColor: '#ffffff',
+                        darkModeIconHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
+                        darkModeRadioCheckedBorder: clientApp.brandColors.primaryColor || '#2597a4',
+                        darkModeRadioCheckedDot: clientApp.brandColors.primaryColor || '#2597a4'
+                    };
+                    
+                    // Set brand-based overrides for the new client
+                    existingPoll.clientStyleOverrides.set(newClientId, brandOverrides);
+                }
+            } catch (err) {
+                console.error(`Error fetching brand colors for client ${newClientId}:`, err);
+                // Continue without adding overrides if we can't fetch client app info
             }
         }
         
         // Set the updated clientIds
         updatePollDto['clientIds'] = updatedClientIds;
         
+        // Remove style overrides for clients that are no longer in the list
+        const currentClients = new Set(updatedClientIds.map(id => id.toString()));
+        for (const [clientId] of existingPoll.clientStyleOverrides.entries()) {
+            if (!currentClients.has(clientId)) {
+                existingPoll.clientStyleOverrides.delete(clientId);
+            }
+        }
+        
         // Ensure isMultiClient is set if we have more than one client
         if (updatedClientIds.length > 1) {
             updatePollDto.isMultiClient = true;
+        } else {
+            updatePollDto.isMultiClient = false;
         }
     }
     
@@ -525,11 +615,16 @@ async update(id: string, clientId: string, updatePollDto: UpdatePollDto): Promis
         // Handle client style overrides separately to avoid issues with Map conversion
         for (const [clientId, overrides] of Object.entries(updatePollDto.clientStyleOverrides)) {
             // Skip if client ID is not in the clientIds array (after any updates)
-            const updatedClientIds = updatePollDto['clientIds'] || existingPoll.clientIds;
+            const updatedClientIds = updatePollDto['clientIds'] || existingPoll.clientIds.map(id => id.toString());
             if (!updatedClientIds.includes(clientId)) continue;
             
             // Get existing overrides for this client
             const existingClientOverrides = existingPoll.clientStyleOverrides.get(clientId) || {};
+            
+            // Specifically handle darkMode to ensure it can be toggled properly
+            if (overrides.darkMode !== undefined) {
+                existingClientOverrides.darkMode = overrides.darkMode;
+            }
             
             // Merge existing with new overrides
             const mergedOverrides = {
@@ -737,74 +832,126 @@ async getStats(clientId: string) {
 }
 
     /**
-     * Add a client to an existing poll
-     */
-    async addClient(id: string, requestingClientId: string, addClientDto: AddClientToPollDto): Promise<Poll> {
-        // Get the poll and check if the requesting client is the primary client
-        const poll = await this.pollModel.findOne({ 
+ * Add a client to an existing poll
+ */
+async addClient(id: string, requestingClientId: string, addClientDto: AddClientToPollDto): Promise<Poll> {
+    // Get the poll and check if the requesting client is the primary client
+    const poll = await this.pollModel.findOne({ 
+        _id: id,
+        clientId: requestingClientId 
+    }).exec();
+    
+    if (!poll) {
+        // Check if the poll exists but this client is not the primary
+        const sharedPoll = await this.pollModel.findOne({
             _id: id,
-            clientId: requestingClientId 
+            clientIds: requestingClientId
         }).exec();
         
-        if (!poll) {
-            // Check if the poll exists but this client is not the primary
-            const sharedPoll = await this.pollModel.findOne({
-                _id: id,
-                clientIds: requestingClientId
-            }).exec();
-            
-            if (sharedPoll) {
-                throw new UnauthorizedException('Only the primary client can add clients to the poll');
-            } else {
-                throw new NotFoundException(`Poll with ID ${id} not found`);
-            }
+        if (sharedPoll) {
+            throw new UnauthorizedException('Only the primary client can add clients to the poll');
+        } else {
+            throw new NotFoundException(`Poll with ID ${id} not found`);
         }
-        
-        const { clientId, styleOverrides } = addClientDto;
-        
-        // Validate that the client exists
-        const clientExists = await this.clientService.clientExists(clientId);
-        if (!clientExists) {
-            throw new BadRequestException(`Client with ID ${clientId} does not exist`);
-        }
-        
-        // Check if client is already added
-        if (poll.clientIds.includes(clientId)) {
-            // If already added, just update style overrides if provided
-            if (styleOverrides) {
-                poll.clientStyleOverrides.set(clientId, styleOverrides);
-                await poll.save();
-            }
-            return poll;
-        }
-        
-        // Add client to clientIds array
-        poll.clientIds.push(clientId);
-        
-        // Set isMultiClient to true
-        poll.isMultiClient = true;
-        
-        // Add style overrides if provided
-        if (styleOverrides) {
-            // Apply client app brand colors for any missing overrides
-            try {
-                const clientApp = await this.clientAppService.findDefaultAppForClient(clientId);
-                if (clientApp && clientApp.brandColors) {
-                    if (!styleOverrides.highlightColor) {
-                        styleOverrides.highlightColor = clientApp.brandColors.primaryColor;
-                    }
-                    // Apply other brand colors as needed
-                }
-            } catch (err) {
-                // Just continue if we can't find client app info
-            }
-            
-            poll.clientStyleOverrides.set(clientId, styleOverrides);
-        }
-        
-        // Save the updated poll
-        return await poll.save();
     }
+    
+    const { clientId, styleOverrides } = addClientDto;
+    
+    // Validate that the client exists
+    const clientExists = await this.clientService.clientExists(clientId);
+    if (!clientExists) {
+        throw new BadRequestException(`Client with ID ${clientId} does not exist`);
+    }
+    
+    // Check if client is already added
+    if (poll.clientIds.includes(clientId)) {
+        // If already added, just update style overrides if provided
+        if (styleOverrides) {
+            // Get existing overrides
+            const existingOverrides = poll.clientStyleOverrides.get(clientId) || {};
+            
+            // Specifically handle darkMode flag to ensure it can be toggled correctly
+            if (styleOverrides.darkMode !== undefined) {
+                existingOverrides.darkMode = styleOverrides.darkMode;
+            }
+            
+            // Merge with new overrides
+            const mergedOverrides = {
+                ...existingOverrides,
+                ...styleOverrides
+            };
+            
+            poll.clientStyleOverrides.set(clientId, mergedOverrides);
+            await poll.save();
+        }
+        return poll;
+    }
+    
+    // Add client to clientIds array
+    poll.clientIds.push(clientId);
+    
+    // Set isMultiClient to true
+    poll.isMultiClient = true;
+    
+    // Generate default style overrides from the client's brand colors
+    let clientStyleOverrides = {};
+    
+    try {
+        const clientApp = await this.clientAppService.findDefaultAppForClient(clientId);
+        if (clientApp && clientApp.brandColors) {
+            // Create comprehensive style overrides based on brand colors
+            clientStyleOverrides = {
+                // Light mode colors
+                highlightColor: clientApp.brandColors.primaryColor || '#2597a4',
+                voteButtonColor: clientApp.brandColors.secondaryColor || '#0a0a0a',
+                voteButtonHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
+                iconColor: clientApp.brandColors.secondaryColor || '#d0d5dd',
+                iconHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
+                resultsLinkColor: clientApp.brandColors.secondaryColor || '#0a0a0a',
+                resultsLinkHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
+                radioCheckedBorderColor: clientApp.brandColors.primaryColor || '#2597a4',
+                radioCheckedDotColor: clientApp.brandColors.primaryColor || '#2597a4',
+                
+                // Dark mode setting from client preferences
+                darkMode: clientApp.brandColors.darkModePreference !== undefined 
+                    ? clientApp.brandColors.darkModePreference 
+                    : false,
+                
+                // Dark mode derived colors
+                darkModeBackground: '#222222',
+                darkModeTextColor: '#ffffff',
+                darkModeLinkColor: '#ffffff',
+                darkModeLinkHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
+                darkModeIconColor: '#ffffff',
+                darkModeIconHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
+                darkModeRadioCheckedBorder: clientApp.brandColors.primaryColor || '#2597a4',
+                darkModeRadioCheckedDot: clientApp.brandColors.primaryColor || '#2597a4'
+            };
+        }
+    } catch (err) {
+        console.error(`Error fetching brand colors for client ${clientId}:`, err);
+        // Continue with empty overrides if we can't fetch client app info
+    }
+    
+    // If style overrides were provided, merge them with the defaults
+    if (styleOverrides) {
+        // Handle darkMode explicitly to ensure it can be toggled properly
+        if (styleOverrides.darkMode !== undefined) {
+            clientStyleOverrides['darkMode'] = styleOverrides.darkMode;
+        }
+        
+        clientStyleOverrides = {
+            ...clientStyleOverrides,
+            ...styleOverrides
+        };
+    }
+    
+    // Set the final style overrides
+    poll.clientStyleOverrides.set(clientId, clientStyleOverrides);
+    
+    // Save the updated poll
+    return await poll.save();
+}
 
     /**
      * Remove a client from an existing poll
