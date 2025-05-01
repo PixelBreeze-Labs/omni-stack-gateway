@@ -36,7 +36,6 @@ export class Poll extends Document {
   @Prop({ default: false })
   autoEmbed: boolean;
   
-  // New property for embedding in all posts
   @Prop({ default: false })
   autoEmbedAllPosts: boolean;
 
@@ -49,11 +48,20 @@ export class Poll extends Document {
   @Prop({ type: Date, default: Date.now })
   createdAt: Date;
 
+  // Modified: Make this an array to support multiple clients
+  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Client' }], required: true })
+  clientIds: string[];
+
+  // Keep the original clientId for backward compatibility and as the primary client
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: true })
   clientId: string;
 
   @Prop()
   wordpressId?: number;
+
+  // New property for unified/multi-client polls
+  @Prop({ default: false })
+  isMultiClient: boolean;
 
   // Style customization properties
   @Prop({ default: '#0a0a0a' })
@@ -142,6 +150,23 @@ export class Poll extends Document {
 
   @Prop({ default: false })
   allowMultipleVotes: boolean;
+
+  // Client-specific overrides for styling - stored as a map of clientId to override values
+  @Prop({ type: Map, of: Object, default: () => new Map() })
+clientStyleOverrides: Map<string, {
+    highlightColor?: string;
+    voteButtonColor?: string;
+    voteButtonHoverColor?: string;
+    iconColor?: string;
+    iconHoverColor?: string;
+    resultsLinkColor?: string;
+    resultsLinkHoverColor?: string;
+    radioCheckedBorderColor?: string;
+    radioCheckedDotColor?: string;
+  }>;
 }
 
 export const PollSchema = SchemaFactory.createForClass(Poll);
+
+// Add index for efficient multi-client queries
+PollSchema.index({ clientIds: 1 });

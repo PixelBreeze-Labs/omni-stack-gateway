@@ -3,6 +3,29 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
 @Schema()
+export class ClientAppBrandColors {
+    @Prop({ default: '#2597a4' })
+    primaryColor: string;
+
+    @Prop({ default: '#1d7a84' })
+    primaryHoverColor: string;
+
+    @Prop({ default: '#0a0a0a' })
+    secondaryColor: string;
+
+    @Prop({ default: '#6c757d' })
+    secondaryHoverColor: string;
+
+    @Prop({ default: '#ffffff' })
+    textOnPrimaryColor: string;
+
+    @Prop({ default: '#0a0a0a' })
+    textColor: string;
+}
+
+export const ClientAppBrandColorsSchema = SchemaFactory.createForClass(ClientAppBrandColors);
+
+@Schema()
 export class ClientApp extends Document {
     @Prop({ required: true })
     name: string;
@@ -21,6 +44,10 @@ export class ClientApp extends Document {
 
     @Prop({ required: true, enum: ['active', 'inactive'], default: 'active' })
     status: string;
+
+    // Add brand colors configuration
+    @Prop({ type: ClientAppBrandColorsSchema, default: () => ({}) })
+    brandColors: ClientAppBrandColors;
 
     @Prop({
         type: {

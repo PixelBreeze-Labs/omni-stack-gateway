@@ -285,4 +285,25 @@ export class ClientAppService {
             };
         }
     }
+    
+    async findDefaultAppForClient(clientId: string): Promise<ClientApp | null> {
+        if (!clientId) {
+            return null;
+        }
+        
+        // First, check if the client exists and get its clientAppIds
+        const client = await this.clientModel.findById(clientId);
+        if (!client || !client.clientAppIds || client.clientAppIds.length === 0) {
+            return null;
+        }
+        
+        // Find the first active app from the client's apps
+        // We'll consider the first active app as the default one
+        const clientApp = await this.clientAppModel.findOne({
+            _id: { $in: client.clientAppIds },
+            status: 'active'
+        }).sort({ configuredAt: -1 }); // Get the most recently configured one
+        
+        return clientApp;
+    }
 }

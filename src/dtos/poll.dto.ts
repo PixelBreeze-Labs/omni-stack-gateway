@@ -9,7 +9,8 @@ import {
   IsEnum,
   IsNumber,
   IsMongoId,
-  IsHexColor
+  IsHexColor,
+  IsObject
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -30,6 +31,62 @@ export class PollOptionDto {
   @IsHexColor()
   @IsOptional()
   customHighlight?: string;
+}
+
+export class ClientStyleOverrideDto {
+  @ApiPropertyOptional({ description: 'Highlight color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  highlightColor?: string;
+
+  @ApiPropertyOptional({ description: 'Vote button color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  voteButtonColor?: string;
+
+  @ApiPropertyOptional({ description: 'Vote button hover color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  voteButtonHoverColor?: string;
+
+  @ApiPropertyOptional({ description: 'Icon color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  iconColor?: string;
+
+  @ApiPropertyOptional({ description: 'Icon hover color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  iconHoverColor?: string;
+
+  @ApiPropertyOptional({ description: 'Results link color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  resultsLinkColor?: string;
+
+  @ApiPropertyOptional({ description: 'Results link hover color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  resultsLinkHoverColor?: string;
+
+  @ApiPropertyOptional({ description: 'Radio checked border color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  radioCheckedBorderColor?: string;
+
+  @ApiPropertyOptional({ description: 'Radio checked dot color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  radioCheckedDotColor?: string;
 }
 
 export class CreatePollDto {
@@ -85,10 +142,26 @@ export class CreatePollDto {
   @Type(() => PollOptionDto)
   options: PollOptionDto[];
 
-  @ApiProperty({ description: 'Client ID' })
+  @ApiProperty({ description: 'Primary Client ID' })
   @IsMongoId()
   @IsNotEmpty()
   clientId: string;
+
+  @ApiPropertyOptional({ description: 'Make this poll available to multiple clients', default: false })
+  @IsBoolean()
+  @IsOptional()
+  isMultiClient?: boolean = false;
+
+  @ApiPropertyOptional({ description: 'Additional client IDs for multi-client poll', type: [String] })
+  @IsArray()
+  @IsMongoId({ each: true })
+  @IsOptional()
+  additionalClientIds?: string[] = [];
+
+  @ApiPropertyOptional({ description: 'Client-specific style overrides' })
+  @IsObject()
+  @IsOptional()
+  clientStyleOverrides?: Record<string, ClientStyleOverrideDto> = {};
 
   @ApiPropertyOptional({ description: 'Original WordPress Poll ID' })
   @IsNumber()
@@ -265,6 +338,69 @@ export class CreatePollDto {
   allowMultipleVotes?: boolean = false;
 }
 
+export class PollVoteDto {
+  @ApiProperty({ description: 'Option ID to vote for' })
+  @IsNumber()
+  @IsNotEmpty()
+  optionIndex: number;
+}
+
+export class ListPollsQueryDto {
+  @ApiPropertyOptional({ description: 'Search term for poll title', required: false })
+  @IsString()
+  @IsOptional()
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Page number', default: 1, minimum: 1 })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ description: 'Results per page', default: 10, minimum: 1 })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  limit?: number = 10;
+
+  @ApiPropertyOptional({ description: 'Sort field', default: 'createdAt' })
+  @IsString()
+  @IsOptional()
+  sortBy?: string = 'createdAt';
+
+  @ApiPropertyOptional({ description: 'Sort direction', enum: ['asc', 'desc'], default: 'desc' })
+  @IsEnum(['asc', 'desc'])
+  @IsOptional()
+  sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @ApiPropertyOptional({ description: 'Include polls shared between multiple clients', default: true })
+  @IsBoolean()
+  @IsOptional()
+  includeMultiClient?: boolean = true;
+}
+
+// New DTO for adding a client to a poll
+export class AddClientToPollDto {
+  @ApiProperty({ description: 'Client ID to add to poll' })
+  @IsMongoId()
+  @IsNotEmpty()
+  clientId: string;
+  
+  @ApiPropertyOptional({ description: 'Style overrides for this client' })
+  @ValidateNested()
+  @Type(() => ClientStyleOverrideDto)
+  @IsOptional()
+  styleOverrides?: ClientStyleOverrideDto;
+}
+
+// New DTO for removing a client from a poll
+export class RemoveClientFromPollDto {
+  @ApiProperty({ description: 'Client ID to remove from poll' })
+  @IsMongoId()
+  @IsNotEmpty()
+  clientId: string;
+}
+
 export class UpdatePollDto {
   @ApiPropertyOptional({ description: 'Poll title' })
   @IsString()
@@ -322,6 +458,22 @@ export class UpdatePollDto {
   @Type(() => PollOptionDto)
   @IsOptional()
   options?: PollOptionDto[];
+
+  @ApiPropertyOptional({ description: 'Make this poll available to multiple clients' })
+  @IsBoolean()
+  @IsOptional()
+  isMultiClient?: boolean;
+
+  @ApiPropertyOptional({ description: 'Additional client IDs for multi-client poll', type: [String] })
+  @IsArray()
+  @IsMongoId({ each: true })
+  @IsOptional()
+  additionalClientIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Client-specific style overrides' })
+  @IsObject()
+  @IsOptional()
+  clientStyleOverrides?: Record<string, ClientStyleOverrideDto>;
 
   @ApiPropertyOptional({ description: 'Vote button color' })
   @IsString()
@@ -486,40 +638,4 @@ export class UpdatePollDto {
   @IsHexColor()
   @IsOptional()
   darkModeRadioCheckedDot?: string;
-}
-
-export class PollVoteDto {
-  @ApiProperty({ description: 'Option ID to vote for' })
-  @IsNumber()
-  @IsNotEmpty()
-  optionIndex: number;
-}
-
-export class ListPollsQueryDto {
-  @ApiPropertyOptional({ description: 'Search term for poll title', required: false })
-  @IsString()
-  @IsOptional()
-  search?: string;
-
-  @ApiPropertyOptional({ description: 'Page number', default: 1, minimum: 1 })
-  @IsNumber()
-  @IsOptional()
-  @Type(() => Number)
-  page?: number = 1;
-
-  @ApiPropertyOptional({ description: 'Results per page', default: 10, minimum: 1 })
-  @IsNumber()
-  @IsOptional()
-  @Type(() => Number)
-  limit?: number = 10;
-
-  @ApiPropertyOptional({ description: 'Sort field', default: 'createdAt' })
-  @IsString()
-  @IsOptional()
-  sortBy?: string = 'createdAt';
-
-  @ApiPropertyOptional({ description: 'Sort direction', enum: ['asc', 'desc'], default: 'desc' })
-  @IsEnum(['asc', 'desc'])
-  @IsOptional()
-  sortOrder?: 'asc' | 'desc' = 'desc';
 }
