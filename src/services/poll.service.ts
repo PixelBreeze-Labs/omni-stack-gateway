@@ -209,7 +209,12 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                     darkModeIconColor: '#ffffff',
                     darkModeIconHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
                     darkModeRadioCheckedBorder: clientApp.brandColors.primaryColor || '#2597a4',
-                    darkModeRadioCheckedDot: clientApp.brandColors.primaryColor || '#2597a4'
+                    darkModeRadioCheckedDot: clientApp.brandColors.primaryColor || '#2597a4',
+                    darkModeOptionBackground: clientApp.brandColors.optionsBackgroundColor || '#333333',
+                    darkModeOptionHover: clientApp.brandColors.optionsHoverColor || '#444444',
+                    darkModeProgressBackground: clientApp.brandColors.progressBarBackgroundColor || '#333333',
+                    darkModePercentageLabelColor: clientApp.brandColors.percentageLabelColor || '#ffffff',
+                    darkModeRadioBorder: clientApp.brandColors.primaryColor || '#2597a4'
                 };
                 
                 // Create completely new object combining defaults and explicit overrides
