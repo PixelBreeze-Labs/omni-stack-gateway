@@ -185,7 +185,7 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                 const brandBasedDefaults = {
                     // Light mode colors from brand colors
                     highlightColor: clientApp.brandColors.primaryColor || '#2597a4',
-                    voteButtonColor: clientApp.brandColors.secondaryColor || '#0a0a0a',
+                    voteButtonColor: clientApp.brandColors.primaryColor || '#0a0a0a',
                     voteButtonHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
                     iconColor: clientApp.brandColors.secondaryColor || '#d0d5dd',
                     iconHoverColor: clientApp.brandColors.primaryColor || '#2597a4',
@@ -193,10 +193,10 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                     resultsLinkHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
                     radioCheckedBorderColor: clientApp.brandColors.primaryColor || '#2597a4',
                     radioCheckedDotColor: clientApp.brandColors.primaryColor || '#2597a4',
-                    optionsBackgroundColor: clientApp.brandColors.primaryColor || '#fcfcfc',
-                    optionsHoverColor: clientApp.brandColors.primaryHoverColor || '#f7f9fc',
-                    progressBarBackgroundColor: clientApp.brandColors.primaryColor || '#f0f0f5',
-                    percentageLabelColor: clientApp.brandColors.primaryColor || '#ffffff',
+                    optionsBackgroundColor: clientApp.brandColors.optionsBackgroundColor || '#fcfcfc',
+                    optionsHoverColor: clientApp.brandColors.optionsHoverColor || '#f7f9fc',
+                    progressBarBackgroundColor: clientApp.brandColors.progressBarBackgroundColor || '#f0f0f5',
+                    percentageLabelColor: clientApp.brandColors.percentageLabelColor || '#ffffff',
                     
                     // Dark mode setting from client preferences
                     darkMode: clientApp.brandColors.darkModePreference === true,

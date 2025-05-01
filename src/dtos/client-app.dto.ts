@@ -1,5 +1,5 @@
 // src/dtos/client-app.dto.ts
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsArray, IsEmail, IsNumber, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsArray, IsEmail, IsNumber, Min, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -119,4 +119,33 @@ export class ClientAppBrandColorsDto {
     @IsHexColor()
     @IsOptional()
     textColor?: string;
+
+    @ApiPropertyOptional({ description: 'Options background color', default: '#fcfcfc' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    optionsBackgroundColor?: string;
+
+    @ApiPropertyOptional({ description: 'Options hover color', default: '#f7f9fc' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    optionsHoverColor?: string;
+
+    @ApiPropertyOptional({ description: 'Progress bar background color', default: '#f0f0f5' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    progressBarBackgroundColor?: string;
+
+    @ApiPropertyOptional({ description: 'Percentage label color', default: '#ffffff' })
+    @IsString()
+    @IsHexColor()
+    @IsOptional()
+    percentageLabelColor?: string;
+
+    @ApiPropertyOptional({ description: 'Dark mode preference', default: false })
+    @IsBoolean()
+    @IsOptional()
+    darkModePreference?: boolean;
   }

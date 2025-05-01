@@ -22,6 +22,18 @@ export class ClientAppBrandColors {
     @Prop({ default: '#0a0a0a' })
     textColor: string;
 
+    @Prop({ default: '#fcfcfc' })
+    optionsBackgroundColor: string;
+    
+    @Prop({ default: '#f7f9fc' })
+    optionsHoverColor: string;
+
+    @Prop({ default: '#f0f0f5' })
+    progressBarBackgroundColor: string;
+
+    @Prop({ default: '#ffffff' })
+    percentageLabelColor: string;
+
     @Prop({ default: false })
     darkModePreference: boolean;
 }
