@@ -33,7 +33,9 @@ export class PollOptionDto {
   customHighlight?: string;
 }
 
+// All possible style overrides a client can have
 export class ClientStyleOverrideDto {
+  // Light mode colors
   @ApiPropertyOptional({ description: 'Highlight color override for this client' })
   @IsString()
   @IsHexColor()
@@ -52,17 +54,17 @@ export class ClientStyleOverrideDto {
   @IsOptional()
   voteButtonHoverColor?: string;
 
-  @ApiPropertyOptional({ description: 'Icon color override for this client' })
+  @ApiPropertyOptional({ description: 'Options background color override for this client' })
   @IsString()
   @IsHexColor()
   @IsOptional()
-  iconColor?: string;
+  optionsBackgroundColor?: string;
 
-  @ApiPropertyOptional({ description: 'Icon hover color override for this client' })
+  @ApiPropertyOptional({ description: 'Options hover color override for this client' })
   @IsString()
   @IsHexColor()
   @IsOptional()
-  iconHoverColor?: string;
+  optionsHoverColor?: string;
 
   @ApiPropertyOptional({ description: 'Results link color override for this client' })
   @IsString()
@@ -76,6 +78,36 @@ export class ClientStyleOverrideDto {
   @IsOptional()
   resultsLinkHoverColor?: string;
 
+  @ApiPropertyOptional({ description: 'Progress bar background color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  progressBarBackgroundColor?: string;
+
+  @ApiPropertyOptional({ description: 'Percentage label color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  percentageLabelColor?: string;
+
+  @ApiPropertyOptional({ description: 'Icon color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  iconColor?: string;
+
+  @ApiPropertyOptional({ description: 'Icon hover color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  iconHoverColor?: string;
+
+  @ApiPropertyOptional({ description: 'Radio border color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  radioBorderColor?: string;
+
   @ApiPropertyOptional({ description: 'Radio checked border color override for this client' })
   @IsString()
   @IsHexColor()
@@ -87,6 +119,90 @@ export class ClientStyleOverrideDto {
   @IsHexColor()
   @IsOptional()
   radioCheckedDotColor?: string;
+
+  // Dark mode overrides
+  @ApiPropertyOptional({ description: 'Enable dark mode override for this client' })
+  @IsBoolean()
+  @IsOptional()
+  darkMode?: boolean;
+
+  @ApiPropertyOptional({ description: 'Dark mode background color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeBackground?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode text color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeTextColor?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode option background color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeOptionBackground?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode option hover color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeOptionHover?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode link color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeLinkColor?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode link hover color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeLinkHoverColor?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode progress bar background override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeProgressBackground?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode percentage label color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModePercentageLabelColor?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode icon color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeIconColor?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode icon hover color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeIconHoverColor?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode radio border color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeRadioBorder?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode radio checked border color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeRadioCheckedBorder?: string;
+
+  @ApiPropertyOptional({ description: 'Dark mode radio checked dot color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  darkModeRadioCheckedDot?: string;
 }
 
 export class CreatePollDto {
@@ -168,6 +284,7 @@ export class CreatePollDto {
   @IsOptional()
   wordpressId?: number;
 
+  // All style properties
   @ApiPropertyOptional({ description: 'Vote button color', default: '#0a0a0a' })
   @IsString()
   @IsHexColor()
@@ -338,67 +455,20 @@ export class CreatePollDto {
   allowMultipleVotes?: boolean = false;
 }
 
-export class PollVoteDto {
-  @ApiProperty({ description: 'Option ID to vote for' })
-  @IsNumber()
-  @IsNotEmpty()
-  optionIndex: number;
-}
-
-export class ListPollsQueryDto {
-  @ApiPropertyOptional({ description: 'Search term for poll title', required: false })
-  @IsString()
-  @IsOptional()
-  search?: string;
-
-  @ApiPropertyOptional({ description: 'Page number', default: 1, minimum: 1 })
-  @IsNumber()
-  @IsOptional()
-  @Type(() => Number)
-  page?: number = 1;
-
-  @ApiPropertyOptional({ description: 'Results per page', default: 10, minimum: 1 })
-  @IsNumber()
-  @IsOptional()
-  @Type(() => Number)
-  limit?: number = 10;
-
-  @ApiPropertyOptional({ description: 'Sort field', default: 'createdAt' })
-  @IsString()
-  @IsOptional()
-  sortBy?: string = 'createdAt';
-
-  @ApiPropertyOptional({ description: 'Sort direction', enum: ['asc', 'desc'], default: 'desc' })
-  @IsEnum(['asc', 'desc'])
-  @IsOptional()
-  sortOrder?: 'asc' | 'desc' = 'desc';
-
-  @ApiPropertyOptional({ description: 'Include polls shared between multiple clients', default: true })
+// For multi-client poll creation with more control
+export class CreateMultiClientPollDto extends CreatePollDto {
+  @ApiProperty({ description: 'Make this poll available to multiple clients' })
   @IsBoolean()
-  @IsOptional()
-  includeMultiClient?: boolean = true;
-}
+  isMultiClient: boolean = true;
 
-// New DTO for adding a client to a poll
-export class AddClientToPollDto {
-  @ApiProperty({ description: 'Client ID to add to poll' })
-  @IsMongoId()
-  @IsNotEmpty()
-  clientId: string;
-  
-  @ApiPropertyOptional({ description: 'Style overrides for this client' })
-  @ValidateNested()
-  @Type(() => ClientStyleOverrideDto)
-  @IsOptional()
-  styleOverrides?: ClientStyleOverrideDto;
-}
+  @ApiProperty({ description: 'Additional client IDs for multi-client poll', type: [String] })
+  @IsArray()
+  @IsMongoId({ each: true })
+  additionalClientIds: string[];
 
-// New DTO for removing a client from a poll
-export class RemoveClientFromPollDto {
-  @ApiProperty({ description: 'Client ID to remove from poll' })
-  @IsMongoId()
-  @IsNotEmpty()
-  clientId: string;
+  @ApiProperty({ description: 'Client-specific style overrides' })
+  @IsObject()
+  clientStyleOverrides: Record<string, ClientStyleOverrideDto>;
 }
 
 export class UpdatePollDto {
@@ -475,6 +545,7 @@ export class UpdatePollDto {
   @IsOptional()
   clientStyleOverrides?: Record<string, ClientStyleOverrideDto>;
 
+  // All other style properties - same as in CreatePollDto but all optional
   @ApiPropertyOptional({ description: 'Vote button color' })
   @IsString()
   @IsHexColor()
@@ -620,7 +691,6 @@ export class UpdatePollDto {
   @IsOptional()
   darkModeIconHoverColor?: string;
   
-  // Dark mode radio button styling
   @ApiPropertyOptional({ description: 'Dark mode radio border color (unchecked)' })
   @IsString()
   @IsHexColor()
@@ -638,4 +708,80 @@ export class UpdatePollDto {
   @IsHexColor()
   @IsOptional()
   darkModeRadioCheckedDot?: string;
+}
+
+export class PollVoteDto {
+  @ApiProperty({ description: 'Option ID to vote for' })
+  @IsNumber()
+  @IsNotEmpty()
+  optionIndex: number;
+}
+
+export class ListPollsQueryDto {
+  @ApiPropertyOptional({ description: 'Search term for poll title', required: false })
+  @IsString()
+  @IsOptional()
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Page number', default: 1, minimum: 1 })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ description: 'Results per page', default: 10, minimum: 1 })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  limit?: number = 10;
+
+  @ApiPropertyOptional({ description: 'Sort field', default: 'createdAt' })
+  @IsString()
+  @IsOptional()
+  sortBy?: string = 'createdAt';
+
+  @ApiPropertyOptional({ description: 'Sort direction', enum: ['asc', 'desc'], default: 'desc' })
+  @IsEnum(['asc', 'desc'])
+  @IsOptional()
+  sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @ApiPropertyOptional({ description: 'Include polls shared between multiple clients', default: true })
+  @IsBoolean()
+  @IsOptional()
+  includeMultiClient?: boolean = true;
+}
+
+// DTO for adding a client to a poll
+export class AddClientToPollDto {
+  @ApiProperty({ description: 'Client ID to add to poll' })
+  @IsMongoId()
+  @IsNotEmpty()
+  clientId: string;
+  
+  @ApiPropertyOptional({ description: 'Style overrides for this client' })
+  @ValidateNested()
+  @Type(() => ClientStyleOverrideDto)
+  @IsOptional()
+  styleOverrides?: ClientStyleOverrideDto;
+}
+
+// DTO for removing a client from a poll
+export class RemoveClientFromPollDto {
+  @ApiProperty({ description: 'Client ID to remove from poll' })
+  @IsMongoId()
+  @IsNotEmpty()
+  clientId: string;
+}
+
+// Get the client-specific styling for a poll
+export class ClientSpecificPollDto {
+  @ApiProperty({ description: 'Poll ID' })
+  @IsMongoId()
+  @IsNotEmpty()
+  pollId: string;
+
+  @ApiProperty({ description: 'Client ID' })
+  @IsMongoId()
+  @IsNotEmpty()
+  clientId: string;
 }
