@@ -14,12 +14,15 @@ import {
 } from '../dtos/poll.dto';
 import { ClientService } from './client.service';
 import { ClientAppService } from './client-app.service';
+import { Inject, forwardRef } from '@nestjs/common';
 
 @Injectable()
 export class PollService {
     constructor(
         @InjectModel(Poll.name) private readonly pollModel: Model<Poll>,
+        @Inject(forwardRef(() => ClientService))
         private readonly clientService: ClientService,
+        @Inject(forwardRef(() => ClientAppService))
         private readonly clientAppService: ClientAppService,
     ) {}
 
