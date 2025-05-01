@@ -245,4 +245,14 @@ export class ClientService {
 
         return appClientMap;
     }
+
+    async clientExists(id: string): Promise<boolean> {
+        if (!id) {
+            return false;
+        }
+        
+        // Check if a client with this ID exists
+        const count = await this.clientModel.countDocuments({ _id: id });
+        return count > 0;
+    }
 }
