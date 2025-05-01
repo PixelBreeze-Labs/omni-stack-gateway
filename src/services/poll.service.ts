@@ -80,7 +80,7 @@ export class PollService {
                     createPollDto.highlightColor = clientApp.brandColors.primaryColor || '#2597a4';
                 }
                 if (!createPollDto.voteButtonColor) {
-                    createPollDto.voteButtonColor = clientApp.brandColors.secondaryColor || '#0a0a0a';
+                    createPollDto.voteButtonColor = clientApp.brandColors.primaryColor || '#0a0a0a';
                 }
                 if (!createPollDto.voteButtonHoverColor) {
                     createPollDto.voteButtonHoverColor = clientApp.brandColors.primaryHoverColor || '#1d7a84';
@@ -193,6 +193,10 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                     resultsLinkHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
                     radioCheckedBorderColor: clientApp.brandColors.primaryColor || '#2597a4',
                     radioCheckedDotColor: clientApp.brandColors.primaryColor || '#2597a4',
+                    optionsBackgroundColor: clientApp.brandColors.primaryColor || '#fcfcfc',
+                    optionsHoverColor: clientApp.brandColors.primaryHoverColor || '#f7f9fc',
+                    progressBarBackgroundColor: clientApp.brandColors.primaryColor || '#f0f0f5',
+                    percentageLabelColor: clientApp.brandColors.primaryColor || '#ffffff',
                     
                     // Dark mode setting from client preferences
                     darkMode: clientApp.brandColors.darkModePreference === true,
