@@ -228,14 +228,18 @@ export class PollController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: 'Delete a poll' })
     @ApiParam({ name: 'id', description: 'Poll ID' })
+    @ApiQuery({ name: 'clientId', description: 'Client ID (optional)', required: false })
     @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'The poll has been successfully deleted' })
     @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Poll not found' })
     @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Not authorized to delete this poll' })
     async remove(
         @Param('id') id: string,
+        @Query('clientId') queryClientId: string,
         @Req() req: Request & { client: any }
     ): Promise<void> {
-        await this.pollService.delete(id, req.client.id);
+        // Use the clientId from query parameter if provided, otherwise use the authenticated client's ID
+        const clientId = queryClientId || req.client.id;
+        await this.pollService.delete(id, clientId);
     }
 
     @Post(':id/vote')
