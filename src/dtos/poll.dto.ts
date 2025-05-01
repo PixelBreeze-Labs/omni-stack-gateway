@@ -42,6 +42,12 @@ export class ClientStyleOverrideDto {
   @IsOptional()
   highlightColor?: string;
 
+  @ApiPropertyOptional({ description: 'Option highlight color override for this client' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  optionHighlightColor?: string;
+
   @ApiPropertyOptional({ description: 'Vote button color override for this client' })
   @IsString()
   @IsHexColor()

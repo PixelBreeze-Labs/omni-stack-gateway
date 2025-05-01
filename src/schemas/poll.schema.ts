@@ -28,6 +28,9 @@ export class ClientStyleOverride {
   highlightColor?: string;
 
   @Prop()
+  optionHighlightColor?: string;
+
+  @Prop()
   voteButtonColor?: string;
 
   @Prop()

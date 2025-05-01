@@ -432,6 +432,17 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
             Object.entries(overrides).forEach(([key, value]) => {
                 pollObj[key] = value;
             });
+            
+            // If there's a optionHighlightColor override, apply it to each option's customHighlight
+            if (overrides.optionHighlightColor && pollObj.options && Array.isArray(pollObj.options)) {
+                pollObj.options = pollObj.options.map(option => {
+                    // Only override if no specific customHighlight is set for this option
+                    if (!option.customHighlight) {
+                        option.customHighlight = overrides.optionHighlightColor;
+                    }
+                    return option;
+                });
+            }
         }
         
         return pollObj;
@@ -913,6 +924,7 @@ async addClient(id: string, requestingClientId: string, addClientDto: AddClientT
             clientStyleOverrides = {
                 // Light mode colors
                 highlightColor: clientApp.brandColors.primaryColor || '#2597a4',
+                optionHighlightColor: clientApp.brandColors.primaryColor || '#d0d5dd',
                 voteButtonColor: clientApp.brandColors.secondaryColor || '#0a0a0a',
                 voteButtonHoverColor: clientApp.brandColors.primaryHoverColor || '#1d7a84',
                 iconColor: clientApp.brandColors.secondaryColor || '#d0d5dd',
