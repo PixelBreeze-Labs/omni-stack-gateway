@@ -255,3 +255,37 @@ export const PollSchema = SchemaFactory.createForClass(Poll);
 // Add index for efficient multi-client queries
 PollSchema.index({ clientIds: 1 });
 PollSchema.index({ clientId: 1 });
+
+// Add this to your PollSchema definition
+PollSchema.set('toJSON', {
+  virtuals: true,
+  getters: true,
+  transform: function(doc: any, ret: any) {
+      // Use explicit any typing to bypass TypeScript errors
+      const docAny = doc as any;
+      if (docAny.clientStyleOverrides instanceof Map) {
+          ret.clientStyleOverrides = {};
+          for (const [key, value] of docAny.clientStyleOverrides.entries()) {
+              ret.clientStyleOverrides[key] = value;
+          }
+      }
+      return ret;
+  }
+});
+
+// Also add toObject transform for consistency
+PollSchema.set('toObject', {
+  virtuals: true,
+  getters: true,
+  transform: function(doc: any, ret: any) {
+      // Use explicit any typing to bypass TypeScript errors
+      const docAny = doc as any;
+      if (docAny.clientStyleOverrides instanceof Map) {
+          ret.clientStyleOverrides = {};
+          for (const [key, value] of docAny.clientStyleOverrides.entries()) {
+              ret.clientStyleOverrides[key] = value;
+          }
+      }
+      return ret;
+  }
+});

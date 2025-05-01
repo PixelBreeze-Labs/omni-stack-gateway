@@ -404,17 +404,26 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
             _id: id,
             clientIds: clientId 
         }).exec();
-    
+        
         if (!poll) {
             throw new NotFoundException(`Poll with ID ${id} not found`);
         }
-    
-        // Always convert to plain object first
-        const pollObj = poll.toObject();
         
-        // Apply client-specific style overrides if they exist
-        const clientOverrides = poll.clientStyleOverrides?.get(clientId);
+        // Convert to object with all mongoose options enabled
+        const pollObj = poll.toObject({ 
+            virtuals: true,
+            getters: true
+        });
         
+        // Access the clientStyleOverrides directly from the document
+        let clientOverrides = null;
+        
+        // Try to get client overrides using get method if it's a Map
+        if (poll.clientStyleOverrides && typeof poll.clientStyleOverrides.get === 'function') {
+            clientOverrides = poll.clientStyleOverrides.get(clientId);
+        }
+        
+        // Apply overrides if they exist
         if (clientOverrides) {
             // Apply each override to the poll object
             for (const [key, value] of Object.entries(clientOverrides)) {
@@ -423,8 +432,7 @@ async createMultiClientPoll(createMultiClientPollDto: CreateMultiClientPollDto):
                 }
             }
         }
-    
-        // Always return the plain object with any overrides applied
+        
         return pollObj;
     }
 
