@@ -21,6 +21,9 @@ export class ClientAppBrandColors {
 
     @Prop({ default: '#0a0a0a' })
     textColor: string;
+
+    @Prop({ default: false })
+    darkModePreference: boolean;
 }
 
 export const ClientAppBrandColorsSchema = SchemaFactory.createForClass(ClientAppBrandColors);
