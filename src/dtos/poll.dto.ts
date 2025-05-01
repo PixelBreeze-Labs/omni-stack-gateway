@@ -570,6 +570,12 @@ export class UpdatePollDto {
   @IsOptional()
   voteButtonHoverColor?: string;
 
+  @ApiPropertyOptional({ description: 'Default option highlight color for poll results', default: '#2597a4' })
+  @IsString()
+  @IsHexColor()
+  @IsOptional()
+  optionHighlightColor?: string = '#2597a4';
+
   @ApiPropertyOptional({ description: 'Options background color' })
   @IsString()
   @IsHexColor()
