@@ -1,6 +1,6 @@
 // src/controllers/auto-assignment.controller.ts
 import { Controller, Get, Post, Body, Param, Query, Put } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { AutoAssignmentAgentService } from '../services/auto-assignment-agent.service';
 import { TaskAssignment, TaskStatus } from '../schemas/task-assignment.schema';
 
@@ -58,4 +58,34 @@ export class AutoAssignmentController {
     await this.autoAssignmentService.findOptimalAssignee(task);
     return { success: true, message: 'Auto-assignment process triggered' };
     }
+
+    @Put('tasks/:taskId/approve')
+  @ApiOperation({ summary: 'Approve a pending task assignment' })
+  @ApiParam({ name: 'taskId', description: 'Task ID' })
+ 
+  async approveTaskAssignment(
+    @Param('taskId') taskId: string
+  ): Promise<TaskAssignment> {
+    return this.autoAssignmentService.approveAssignment(taskId);
+  }
+
+  @Put('tasks/:taskId/reject')
+  @ApiOperation({ summary: 'Reject a pending task assignment' })
+  @ApiParam({ name: 'taskId', description: 'Task ID' })
+  @ApiBody({ description: 'Rejection reason' })
+  async rejectTaskAssignment(
+    @Param('taskId') taskId: string,
+    @Body() body: { reason: string }
+  ): Promise<TaskAssignment> {
+    return this.autoAssignmentService.rejectAssignment(taskId, body.reason);
+  }
+
+  @Get('tasks/pending-approval/:businessId')
+@ApiOperation({ summary: 'Get all tasks pending approval for a business' })
+@ApiParam({ name: 'businessId', description: 'Business ID' })
+async getPendingApprovalTasks(
+  @Param('businessId') businessId: string
+): Promise<TaskAssignment[]> {
+  return this.autoAssignmentService.getPendingApprovalTasks(businessId);
+}
 }
