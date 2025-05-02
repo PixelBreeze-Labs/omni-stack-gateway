@@ -112,6 +112,21 @@ export class BusinessController {
         );
     }
 
+    @Patch(':id/delete')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Soft delete a business' })
+    @ApiResponse({ status: 200, description: 'Business deleted successfully' })
+    async softDeleteBusiness(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string
+    ) {
+        return this.businessService.softDeleteBusiness(
+            req.client.id,
+            businessId
+        );
+    }
+
     @Patch(':id/deactivate')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()

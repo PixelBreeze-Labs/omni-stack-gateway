@@ -117,6 +117,13 @@ export class Business extends Document {
 
     @Prop()
     vatNumber?: string;
+
+    // Soft delete fields
+    @Prop({ default: false })
+    isDeleted: boolean;
+
+    @Prop({ type: Date })
+    deletedAt?: Date;
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);
