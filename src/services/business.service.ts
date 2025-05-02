@@ -403,8 +403,8 @@ export class BusinessService {
             }
 
             // Add active filter if specifically requested
-            if (isActive) {
-                filter.isActive = true;
+            if (isActive !== undefined) {
+                filter.isActive = isActive;
             }
 
             if (isTestAccount !== undefined) {
