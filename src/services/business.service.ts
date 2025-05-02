@@ -1056,4 +1056,48 @@ export class BusinessService {
             throw error;
         }
     }
+
+    // Add this method to BusinessService
+    async softDeleteBusiness(clientId: string, businessId: string) {
+        try {
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId,
+                isDeleted: false // Only non-deleted businesses can be soft deleted
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Soft delete the business
+            const updatedBusiness = await this.businessModel.findByIdAndUpdate(
+                businessId,
+                { 
+                    $set: { 
+                        isDeleted: true,
+                        deletedAt: new Date(),
+                        isActive: false // Also mark as inactive
+                    } 
+                },
+                { new: true }
+            );
+
+            // Optional: Also deactivate associated users
+            await this.userModel.updateMany(
+                { _id: { $in: business.userIds } },
+                { $set: { isActive: false } }
+            );
+            
+            return {
+                success: true,
+                business: updatedBusiness,
+                message: 'Business deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error soft deleting business: ${error.message}`);
+            throw error;
+        }
+    }
 }
