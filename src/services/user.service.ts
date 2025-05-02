@@ -665,13 +665,15 @@ export class UserService {
     async getStaffUsers(clientId: string, params: StaffUserParams): Promise<StaffUserResponse> {
         const { page = 1, limit = 10, search, sort = '-createdAt' } = params;
         const skip = (page - 1) * limit;
-
+    
         // Build the query to find users with registrationSource = STAFFLUENT
+        // Add isDeleted: { $ne: true } to exclude soft-deleted users
         const query: any = {
             client_ids: clientId,
-            registrationSource: RegistrationSource.STAFFLUENT
+            registrationSource: RegistrationSource.STAFFLUENT,
+            isDeleted: { $ne: true } // Add this line to exclude soft-deleted users
         };
-
+    
         // Add search condition if provided
         if (search) {
             query.$or = [
@@ -680,13 +682,13 @@ export class UserService {
                 { email: { $regex: search, $options: 'i' } }
             ];
         }
-
+    
         // Count total users matching criteria
         const total = await this.userModel.countDocuments(query);
-
+    
         // Calculate total pages
         const pages = Math.ceil(total / limit);
-
+    
         // Fetch users with pagination and sorting
         const users = await this.userModel
             .find(query)
@@ -694,21 +696,23 @@ export class UserService {
             .skip(skip)
             .limit(limit)
             .exec();
-
+    
         // For each user, find their associated businesses and app clients
         const items = await Promise.all(
             users.map(async (user) => {
                 // Get businesses where user is admin or staff
+                // Also exclude soft-deleted businesses
                 const businesses = await this.businessModel
                     .find({
                         clientId,
+                        isDeleted: { $ne: true }, // Exclude soft-deleted businesses
                         $or: [
                             { adminUserId: user._id },
                             { userIds: user._id }
                         ]
                     })
                     .exec();
-
+    
                 // Find all app clients associated with this user
                 const appClients = await this.appClientModel
                     .find({
@@ -716,20 +720,20 @@ export class UserService {
                     })
                     .populate('businessId', 'name email') // Populate the business details
                     .exec();
-
+    
                 // Add app client info to user metadata
                 if (appClients && appClients.length > 0) {
                     if (!user.metadata) {
                         user.metadata = new Map();
                     }
-
+    
                     // Add all connections to metadata
                     appClients.forEach((appClient, index) => {
                         // Store each app client's info
                         user.metadata.set(`appClient_${index}_id`, appClient._id.toString());
                         user.metadata.set(`appClient_${index}_name`, appClient.name);
                         user.metadata.set(`appClient_${index}_type`, appClient.type);
-
+    
                         // If this app client has a business connection, add that too
                         if (appClient.businessId) {
                             const business = appClient.businessId as any; // Using any to handle populated fields
@@ -740,11 +744,11 @@ export class UserService {
                             }
                         }
                     });
-
+    
                     // Store the count of app clients
                     user.metadata.set('appClientCount', appClients.length.toString());
                 }
-
+    
                 return {
                     user,
                     businesses,
@@ -752,37 +756,41 @@ export class UserService {
                 };
             })
         );
-
+    
         return {
             items,
             total,
             pages
         };
     }
-
     async getStaffAdminUsers(
         clientId: string,
         params: StaffUserParams
     ): Promise<StaffUserResponse> {
         const { page = 1, limit = 10, search, sort = '-createdAt' } = params;
         const skip = (page - 1) * limit;
-
-        // First, find all businesses where the clientId matches
+    
+        // First, find all businesses where the clientId matches and they are not soft-deleted
         const businesses = await this.businessModel
-            .find({ clientId })
+            .find({ 
+                clientId,
+                isDeleted: { $ne: true } // Exclude soft-deleted businesses
+            })
             .select('adminUserId')
             .exec();
-
+    
         // Extract all admin user IDs
         const adminUserIds = businesses.map(business => business.adminUserId);
-
+    
         // Build the query to find admin users with registrationSource = STAFFLUENT
+        // and exclude soft-deleted users
         const query: any = {
             _id: { $in: adminUserIds },
             client_ids: clientId,
-            registrationSource: RegistrationSource.STAFFLUENT
+            registrationSource: RegistrationSource.STAFFLUENT,
+            isDeleted: { $ne: true } // Exclude soft-deleted users
         };
-
+    
         // Add search condition if provided
         if (search) {
             query.$or = [
@@ -791,13 +799,13 @@ export class UserService {
                 { email: { $regex: search, $options: 'i' } }
             ];
         }
-
+    
         // Count total users matching criteria
         const total = await this.userModel.countDocuments(query);
-
+    
         // Calculate total pages
         const pages = Math.ceil(total / limit);
-
+    
         // Fetch users with pagination and sorting
         const users = await this.userModel
             .find(query)
@@ -805,24 +813,26 @@ export class UserService {
             .skip(skip)
             .limit(limit)
             .exec();
-
+    
         // For each admin user, find the businesses they administer
+        // that aren't soft-deleted
         const items = await Promise.all(
             users.map(async (user) => {
                 const adminBusinesses = await this.businessModel
                     .find({
                         clientId,
-                        adminUserId: user._id
+                        adminUserId: user._id,
+                        isDeleted: { $ne: true } // Exclude soft-deleted businesses
                     })
                     .exec();
-
+    
                 return {
                     user,
                     businesses: adminBusinesses
                 };
             })
         );
-
+    
         return {
             items,
             total,
@@ -1464,5 +1474,43 @@ export class UserService {
         }
 
         return user;
+    }
+
+    /**
+     * Soft delete a user
+     * @param userId The ID of the user to soft delete
+     * @returns Object indicating success and the updated user
+     */
+    async softDeleteUser(userId: string): Promise<{ success: boolean; message: string }> {
+        try {
+            // Verify user exists
+            const user = await this.userModel.findById(userId);
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Soft delete the user
+            const updatedUser = await this.userModel.findByIdAndUpdate(
+                userId,
+                { 
+                    $set: { 
+                        isDeleted: true,
+                        deletedAt: new Date(),
+                        isActive: false // Also mark as inactive
+                    } 
+                },
+                { new: true }
+            );
+            
+            this.logger.log(`Soft deleted user: ${userId}`);
+            
+            return {
+                success: true,
+                message: 'User deleted successfully'
+            };
+        } catch (error) {
+            this.logger.error(`Error soft deleting user: ${error.message}`);
+            throw error;
+        }
     }
 }

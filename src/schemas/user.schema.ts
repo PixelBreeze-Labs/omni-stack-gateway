@@ -83,6 +83,13 @@ export class User extends Document {
     @Prop({ type: Object, default: {} })
     clientTiers: Record<string, string>;
 
+    // Soft delete fields
+    @Prop({ default: false })
+    isDeleted: boolean;
+
+    @Prop({ type: Date })
+    deletedAt?: Date;
+
     // Referral System
     @Prop({ type: String, sparse: true })
     referralCode?: string;
@@ -129,3 +136,4 @@ export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.index({ email: 1 });
 UserSchema.index({ referralCode: 1 });
 UserSchema.index({ client_ids: 1 });
+UserSchema.index({ isDeleted: 1 });
