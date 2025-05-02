@@ -3,7 +3,7 @@ import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/co
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AgentConfiguration } from '../schemas/agent-configuration.schema';
-import { Business } from '../schemas/business.schema';
+import { AgentFeatureFlag, Business } from '../schemas/business.schema';
 import { SubscriptionStatus } from '../schemas/business.schema';
 
 @Injectable()
@@ -53,19 +53,16 @@ export class AgentPermissionService {
     return agentConfig.isEnabled;
   }
 
-  /**
-   * Check if a feature is included in the business subscription
-   */
-  private checkFeatureInSubscription(business: Business, feature: string): boolean {
-    // This would be implemented based on your subscription model
-    // For example, checking a features array in subscriptionDetails
-    
-    if (!business.subscriptionDetails?.metadata?.features) {
+ /**
+ * Check if a feature is included in the business subscription
+ */
+private checkFeatureInSubscription(business: Business, feature: string): boolean {
+    // Check the includedFeatures array we added directly to the Business schema
+    if (!business.includedFeatures || business.includedFeatures.length === 0) {
       return false;
     }
     
-    const features = business.subscriptionDetails.metadata.features;
-    return features.includes(feature);
+    return business.includedFeatures.includes(feature as AgentFeatureFlag);
   }
 
   /**
@@ -184,7 +181,8 @@ export class AgentPermissionService {
           notificationSettings: {
             emailNotifications: true,
             managerEmails: [],
-            notifyOnAssignment: false
+            notifyOnAssignment: false,
+            notifyOnRejection: false
           }
         };
       

@@ -283,7 +283,7 @@ export class AutoAssignmentAgentService {
         
         return {
           staffProfile: staff,
-          userId: staff.userId._id, // Now populated
+          userId: staff.userId,
           metrics: {
             skillMatch: skillMatchScore,
             availabilityScore,
