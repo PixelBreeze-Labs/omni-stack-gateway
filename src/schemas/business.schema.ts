@@ -3,6 +3,14 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Currency } from '../enums/currency.enum';
 
+export enum AgentFeatureFlag {
+    AUTO_ASSIGNMENT_AGENT = 'auto_assignment_agent',
+    COMPLIANCE_MONITORING_AGENT = 'compliance_monitoring_agent',
+    REPORT_GENERATION_AGENT = 'report_generation_agent',
+    CLIENT_COMMUNICATION_AGENT = 'client_communication_agent',
+    RESOURCE_REQUEST_AGENT = 'resource_request_agent'
+  }
+
 export enum BusinessType {
     // Companies
     CORPORATION = 'corporation',
@@ -104,6 +112,10 @@ export class Business extends Document {
         amount: number;
         currency: Currency;
     };
+
+
+    @Prop({ type: [String], enum: Object.values(AgentFeatureFlag), default: [] })
+    includedFeatures: AgentFeatureFlag[];
 
     @Prop({ default: true })
     isActive: boolean;
