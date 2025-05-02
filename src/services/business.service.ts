@@ -373,6 +373,7 @@ export class BusinessService {
             isTestAccount?: boolean;
             isActive?: boolean;
             sort?: string;
+            includeDeleted?: boolean; // New option to include deleted businesses if needed
         } = {}
     ) {
         try {
@@ -384,41 +385,43 @@ export class BusinessService {
                 isTrialing = false,
                 isTestAccount,
                 isActive,
-                sort = 'createdAt_desc'
+                sort = 'createdAt_desc',
+                includeDeleted = false // Default to excluding deleted businesses
             } = options;
-
+    
             const skip = (page - 1) * limit;
-
+    
             // Build the filter
             const filter: any = { clientId };
-
-            // Add status filter if provided
+    
+            // Exclude soft-deleted businesses by default
+            if (!includeDeleted) {
+                filter.isDeleted = { $ne: true };
+            }
+    
+            // Rest of the filter logic remains the same
             if (status) {
                 filter.subscriptionStatus = status;
             }
-
-            // Add trialing filter if specifically requested
+    
             if (isTrialing) {
                 filter.subscriptionStatus = 'trialing';
             }
-
-            // Add active filter if specifically requested
+    
             if (isActive !== undefined) {
                 filter.isActive = isActive;
             }
-
+    
             if (isTestAccount !== undefined) {
                 filter['metadata.isTestAccount'] = isTestAccount ? 'true' : 'false';
             }
-
-            // Add search filter if provided
+    
             if (search) {
                 filter.$or = [
                     { name: new RegExp(search, 'i') },
                     { email: new RegExp(search, 'i') }
                 ];
             }
-
             // Get total count
             const total = await this.businessModel.countDocuments(filter);
             const totalPages = Math.ceil(total / limit);
@@ -511,35 +514,36 @@ export class BusinessService {
      */
     private async getBusinessMetrics(clientId: string) {
         try {
-            // Total businesses
-            const totalBusinesses = await this.businessModel.countDocuments({ clientId });
+            const baseFilter = { clientId, isDeleted: { $ne: true } };
 
-            // Active businesses
+            // Total businesses (excluding deleted)
+            const totalBusinesses = await this.businessModel.countDocuments(baseFilter);
+
+            // Active businesses (excluding deleted)
             const activeBusinesses = await this.businessModel.countDocuments({
-                clientId,
+                ...baseFilter,
                 subscriptionStatus: 'active'
             });
 
-            // Trial businesses
             const trialBusinesses = await this.businessModel.countDocuments({
-                clientId,
+                ...baseFilter,
                 subscriptionStatus: 'trialing'
             });
 
-            // Businesses by status
+            // Businesses by status (excluding deleted)
             const businessesByStatus = {
                 active: activeBusinesses,
                 trialing: trialBusinesses,
                 pastDue: await this.businessModel.countDocuments({
-                    clientId,
+                    ...baseFilter,
                     subscriptionStatus: 'past_due'
                 }),
                 canceled: await this.businessModel.countDocuments({
-                    clientId,
+                    ...baseFilter,
                     subscriptionStatus: 'canceled'
                 }),
                 incomplete: await this.businessModel.countDocuments({
-                    clientId,
+                    ...baseFilter,
                     subscriptionStatus: 'incomplete'
                 })
             };
@@ -557,13 +561,11 @@ export class BusinessService {
                 createdAt: { $gte: thirtyDaysAgo }
             });
 
-            // New businesses in previous 30 days (30-60 days ago)
             const newBusinessesPrevious30Days = await this.businessModel.countDocuments({
                 clientId,
                 createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }
             });
 
-            // Calculate percentage change
             let newBusinessesPercentage = 0;
             if (newBusinessesPrevious30Days > 0) {
                 newBusinessesPercentage = ((newBusinessesLast30Days - newBusinessesPrevious30Days) / newBusinessesPrevious30Days) * 100;
