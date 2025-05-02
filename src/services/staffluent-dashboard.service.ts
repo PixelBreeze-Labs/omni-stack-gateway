@@ -14,39 +14,52 @@ export class StaffluentDashboardService {
     ) {}
 
     async getDashboardSummary(clientId: string) {
-        // Get total counts
-        const totalBusinesses = await this.businessModel.countDocuments({ clientId });
-        const totalUsers = await this.userModel.countDocuments({ client_ids: clientId });
+        // Base filter to exclude soft-deleted businesses
+        const baseBusinessFilter = { 
+            clientId, 
+            isDeleted: { $ne: true } 
+        };
+
+        // Get total counts (excluding soft-deleted businesses)
+        const totalBusinesses = await this.businessModel.countDocuments(baseBusinessFilter);
+        
+        // User filter to exclude soft-deleted users
+        const baseUserFilter = { 
+            client_ids: clientId,
+            isDeleted: { $ne: true }
+        };
+        
+        const totalUsers = await this.userModel.countDocuments(baseUserFilter);
 
         // Get active subscriptions count
         const activeSubscriptions = await this.businessModel.countDocuments({
-            clientId,
+            ...baseBusinessFilter,
             subscriptionStatus: 'active'
         });
 
         // Get trial subscriptions count
         const trialSubscriptions = await this.businessModel.countDocuments({
-            clientId,
+            ...baseBusinessFilter,
             subscriptionStatus: 'trialing'
         });
 
         // Get businesses with past due subscriptions
         const pastDueSubscriptions = await this.businessModel.countDocuments({
-            clientId,
+            ...baseBusinessFilter,
             subscriptionStatus: 'past_due'
         });
 
         // Get recently added businesses (last 30 days)
         const thirtyDaysAgo = subMonths(new Date(), 1);
         const newBusinesses = await this.businessModel.countDocuments({
-            clientId,
+            ...baseBusinessFilter,
             createdAt: { $gte: thirtyDaysAgo }
         });
 
         // Calculate growth percentage
         const previousMonthDate = subMonths(thirtyDaysAgo, 1);
         const previousMonthBusinesses = await this.businessModel.countDocuments({
-            clientId,
+            ...baseBusinessFilter,
             createdAt: { $gte: previousMonthDate, $lt: thirtyDaysAgo }
         });
 
@@ -54,15 +67,19 @@ export class StaffluentDashboardService {
         const businessGrowth = this.calculateGrowthPercentage(newBusinesses, previousMonthBusinesses);
 
         // Get recent businesses
-        const recentBusinesses = await this.businessModel.find({ clientId })
+        const recentBusinesses = await this.businessModel.find(baseBusinessFilter)
             .sort({ createdAt: -1 })
             .limit(5)
-            .populate('adminUserId', 'name surname email')
+            .populate({
+                path: 'adminUserId',
+                select: 'name surname email',
+                match: { isDeleted: { $ne: true } } // Only populate non-deleted users
+            })
             .select('name email type isActive subscriptionStatus createdAt');
 
         // Get MRR
         const businessesWithSubscription = await this.businessModel.find({
-            clientId,
+            ...baseBusinessFilter,
             subscriptionStatus: 'active',
             'subscriptionDetails.amount': { $exists: true }
         });
@@ -80,19 +97,19 @@ export class StaffluentDashboardService {
 
         // Get new users (last 30 days)
         const newUsers = await this.userModel.countDocuments({
-            client_ids: clientId,
+            ...baseUserFilter,
             createdAt: { $gte: thirtyDaysAgo }
         });
 
         const previousMonthUsers = await this.userModel.countDocuments({
-            client_ids: clientId,
+            ...baseUserFilter,
             createdAt: { $gte: previousMonthDate, $lt: thirtyDaysAgo }
         });
 
         const userGrowth = this.calculateGrowthPercentage(newUsers, previousMonthUsers);
 
         // Get recent users
-        const recentUsers = await this.userModel.find({ client_ids: clientId })
+        const recentUsers = await this.userModel.find(baseUserFilter)
             .sort({ createdAt: -1 })
             .limit(5)
             .select('name surname email registrationSource createdAt');
@@ -144,6 +161,12 @@ export class StaffluentDashboardService {
         const months = 6; // Last 6 months
         const labels = [];
         const data = [];
+        
+        // Base filter to exclude soft-deleted businesses
+        const baseFilter = { 
+            clientId, 
+            isDeleted: { $ne: true } 
+        };
 
         for (let i = months - 1; i >= 0; i--) {
             const date = subMonths(new Date(), i);
@@ -154,7 +177,7 @@ export class StaffluentDashboardService {
             labels.push(monthLabel);
 
             const count = await this.businessModel.countDocuments({
-                clientId,
+                ...baseFilter,
                 createdAt: { $gte: monthStart, $lte: monthEnd }
             });
 
@@ -168,6 +191,12 @@ export class StaffluentDashboardService {
         const months = 6; // Last 6 months
         const labels = [];
         const data = [];
+        
+        // Base filter to exclude soft-deleted users
+        const baseFilter = { 
+            client_ids: clientId,
+            isDeleted: { $ne: true }
+        };
 
         for (let i = months - 1; i >= 0; i--) {
             const date = subMonths(new Date(), i);
@@ -178,7 +207,7 @@ export class StaffluentDashboardService {
             labels.push(monthLabel);
 
             const count = await this.userModel.countDocuments({
-                client_ids: clientId,
+                ...baseFilter,
                 createdAt: { $gte: monthStart, $lte: monthEnd }
             });
 
@@ -189,29 +218,35 @@ export class StaffluentDashboardService {
     }
 
     private async getSubscriptionStatusDistribution(clientId: string) {
+        // Base filter to exclude soft-deleted businesses
+        const baseFilter = { 
+            clientId, 
+            isDeleted: { $ne: true } 
+        };
+        
         // Direct count approach instead of aggregation
         const activeCount = await this.businessModel.countDocuments({
-            clientId,
+            ...baseFilter,
             subscriptionStatus: 'active'
         });
 
         const trialingCount = await this.businessModel.countDocuments({
-            clientId,
+            ...baseFilter,
             subscriptionStatus: 'trialing'
         });
 
         const pastDueCount = await this.businessModel.countDocuments({
-            clientId,
+            ...baseFilter,
             subscriptionStatus: 'past_due'
         });
 
         const canceledCount = await this.businessModel.countDocuments({
-            clientId,
+            ...baseFilter,
             subscriptionStatus: 'canceled'
         });
 
         const incompleteCount = await this.businessModel.countDocuments({
-            clientId,
+            ...baseFilter,
             subscriptionStatus: 'incomplete'
         });
 
