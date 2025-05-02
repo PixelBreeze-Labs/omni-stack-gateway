@@ -368,6 +368,7 @@ export class BusinessService {
             page?: number;
             limit?: number;
             search?: string;
+            status?: string;
             isTrialing?: boolean;
             isTestAccount?: boolean;
             isActive?: boolean;
@@ -379,6 +380,7 @@ export class BusinessService {
                 page = 1,
                 limit = 10,
                 search = '',
+                status,
                 isTrialing = false,
                 isTestAccount,
                 isActive,
@@ -390,7 +392,11 @@ export class BusinessService {
             // Build the filter
             const filter: any = { clientId };
 
-        
+            // Add status filter if provided
+            if (status) {
+                filter.subscriptionStatus = status;
+            }
+
             // Add trialing filter if specifically requested
             if (isTrialing) {
                 filter.subscriptionStatus = 'trialing';
