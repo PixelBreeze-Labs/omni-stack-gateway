@@ -348,6 +348,7 @@ export class AdminSubscriptionService {
                 userId: adminUser._id,
                 email: businessEmail,
                 password: temporaryPassword, // Return the generated password
+                fullName,
                 subscription: {
                     id: stripeSubscription.id,
                     status: stripeSubscription.status
