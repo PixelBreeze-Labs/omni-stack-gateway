@@ -71,6 +71,7 @@ export class BusinessController {
         @Query('status') status?: string,
         @Query('isTrialing') isTrialing?: boolean,
         @Query('isTestAccount') isTestAccount?: boolean,
+        @Query('isActive') isActive?: boolean,
         @Query('sort') sort?: string
     ) {
         return this.businessService.getBusinesses(
@@ -82,6 +83,7 @@ export class BusinessController {
                 status,
                 isTrialing,
                 isTestAccount,
+                isActive,
                 sort
             }
         );
