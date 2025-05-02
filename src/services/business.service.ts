@@ -1065,8 +1065,7 @@ export class BusinessService {
             // Verify business exists and belongs to this client
             const business = await this.businessModel.findOne({
                 _id: businessId,
-                clientId,
-                isDeleted: false // Only non-deleted businesses can be soft deleted
+                clientId
             });
 
             if (!business) {
