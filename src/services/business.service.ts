@@ -412,10 +412,38 @@ export class BusinessService {
                 filter.isActive = isActive;
             }
     
+           // Updated filter logic for isTestAccount
             if (isTestAccount !== undefined) {
-                filter['metadata.isTestAccount'] = isTestAccount ? 'true' : 'false';
+                if (isTestAccount) {
+                    // If we want to include only test accounts
+                    filter['metadata.isTestAccount'] = 'true';
+                } else {
+                    // If we want to exclude test accounts, we need to handle the case where metadata doesn't exist
+                    filter.$or = [
+                        { 'metadata.isTestAccount': { $ne: 'true' } },
+                        { 'metadata.isTestAccount': { $exists: false } },
+                        { metadata: { $exists: false } }
+                    ];
+                    
+                    // If we already have $or conditions from the search filter, we need to combine them
+                    if (search) {
+                        const searchConditions = [
+                            { name: new RegExp(search, 'i') },
+                            { email: new RegExp(search, 'i') }
+                        ];
+                        
+                        // Use $and to combine the existing $or conditions with the new ones
+                        filter.$and = [
+                            { $or: filter.$or },
+                            { $or: searchConditions }
+                        ];
+                        
+                        // Remove the original $or since we've combined it with the search conditions
+                        delete filter.$or;
+                    }
+                }
             }
-    
+                
             if (search) {
                 filter.$or = [
                     { name: new RegExp(search, 'i') },
