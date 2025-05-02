@@ -71,6 +71,28 @@ export class UserController {
         return this.userService.delete(id);
     }
 
+    @Patch(':id/soft-delete')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Soft delete a user' })
+    @ApiResponse({ status: 200, description: 'User deleted successfully' })
+    async softDeleteUser(
+        @Param('id') userId: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        // Verify that the user belongs to the authenticated client
+        const user = await this.userService.findById(userId);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        if (!user.client_ids.includes(req.client.id)) {
+            throw new UnauthorizedException('User does not belong to this client');
+        }
+
+        return this.userService.softDeleteUser(userId);
+    }
+
     @Post(':venueShortCode/register')
     @ApiOperation({ summary: 'Register new user' })
     @ApiResponse({ status: 201, description: 'User registered successfully' })

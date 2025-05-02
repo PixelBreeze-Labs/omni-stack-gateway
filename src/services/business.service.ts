@@ -1087,7 +1087,6 @@ export class BusinessService {
         }
     }
 
-    // Add this method to BusinessService
     async softDeleteBusiness(clientId: string, businessId: string) {
         try {
             // Verify business exists and belongs to this client
@@ -1095,11 +1094,11 @@ export class BusinessService {
                 _id: businessId,
                 clientId
             });
-
+    
             if (!business) {
                 throw new NotFoundException('Business not found');
             }
-
+    
             // Soft delete the business
             const updatedBusiness = await this.businessModel.findByIdAndUpdate(
                 businessId,
@@ -1112,17 +1111,35 @@ export class BusinessService {
                 },
                 { new: true }
             );
-
-            // Optional: Also deactivate associated users
-            await this.userModel.updateMany(
-                { _id: { $in: business.userIds } },
-                { $set: { isActive: false } }
-            );
+    
+            // Also soft delete all associated users (admin and staff)
+            // Get all user IDs associated with this business
+            const userIds = [...(business.userIds || [])];
+            
+            // Add the admin user if not already included
+            if (business.adminUserId && !userIds.includes(business.adminUserId)) {
+                userIds.push(business.adminUserId);
+            }
+    
+            // Soft delete each user
+            if (userIds.length > 0) {
+                await this.userModel.updateMany(
+                    { _id: { $in: userIds } },
+                    { 
+                        $set: { 
+                            isDeleted: true, 
+                            deletedAt: new Date(),
+                            isActive: false 
+                        } 
+                    }
+                );
+                this.logger.log(`Soft deleted ${userIds.length} users associated with business ${businessId}`);
+            }
             
             return {
                 success: true,
                 business: updatedBusiness,
-                message: 'Business deleted successfully'
+                message: 'Business and associated users deleted successfully'
             };
         } catch (error) {
             this.logger.error(`Error soft deleting business: ${error.message}`);
