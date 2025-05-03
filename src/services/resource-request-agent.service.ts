@@ -501,7 +501,6 @@ export class ResourceRequestAgentService {
     );
   }
 
-  // src/services/resource-request-agent.service.ts (continued)
   /**
    * Send inventory alert email
    */
@@ -1353,7 +1352,6 @@ export class ResourceRequestAgentService {
       .sort({ date: -1 });
   }
 
-  // src/services/resource-request-agent.service.ts (continued)
   /**
    * Get resource forecasts for a business with optional filters
    */

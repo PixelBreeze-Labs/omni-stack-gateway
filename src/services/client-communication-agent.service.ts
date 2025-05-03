@@ -595,7 +595,6 @@ export class ClientCommunicationAgentService {
     }
   }
 
-  // src/services/client-communication-agent.service.ts (continued)
   /**
    * Send auto-response using a template
    */
