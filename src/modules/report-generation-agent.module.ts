@@ -1,4 +1,3 @@
-// src/modules/report-generation-agent.module.ts
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -11,11 +10,12 @@ import { GeneratedReport, GeneratedReportSchema } from '../schemas/generated-rep
 import { User, UserSchema } from '../schemas/user.schema';
 import { Business, BusinessSchema } from '../schemas/business.schema';
 import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-configuration.schema';
-import { EmailService } from '../services/email.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    ConfigModule, // Add this to get access to ConfigService needed by EmailService
     MongooseModule.forFeature([
       { name: ReportTemplate.name, schema: ReportTemplateSchema },
       { name: GeneratedReport.name, schema: GeneratedReportSchema },
@@ -26,10 +26,12 @@ import { EmailService } from '../services/email.service';
   ],
   controllers: [
     ReportTemplateController,
-    GeneratedReportController,
-    EmailService
+    GeneratedReportController
   ],
-  providers: [ReportGenerationAgentService, AgentPermissionService],
+  providers: [
+    ReportGenerationAgentService, 
+    AgentPermissionService
+  ],
   exports: [ReportGenerationAgentService]
 })
 export class ReportGenerationAgentModule {}
