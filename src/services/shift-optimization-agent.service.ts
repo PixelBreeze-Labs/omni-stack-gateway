@@ -30,14 +30,6 @@ import {
 } from 'date-fns';
 
 
-// Define the confidence level for forecasts
-export enum ForecastConfidence {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
-  VERY_HIGH = 'very_high'
-}
-
 @Injectable()
 export class ShiftOptimizationAgentService {
   private readonly logger = new Logger(ShiftOptimizationAgentService.name);
