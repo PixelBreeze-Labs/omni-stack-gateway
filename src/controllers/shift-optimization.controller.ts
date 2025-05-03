@@ -1,6 +1,7 @@
 // src/controllers/shift-optimization.controller.ts
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
-import { ShiftOptimizationAgentService, OptimizationStrategy } from '../services/shift-optimization-agent.service';
+import { ShiftOptimizationAgentService } from '../services/shift-optimization-agent.service';
+import { OptimizationStrategy } from '../enums/optimization.enum';
 
 @Controller('shift-optimization')
 export class ShiftOptimizationController {

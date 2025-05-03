@@ -1,8 +1,7 @@
 // src/schemas/agent-configuration.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
-import { OptimizationStrategy } from '../services/shift-optimization-agent.service';
-import { RequestPriority } from '../schemas/resource-request.schema';
+import { OptimizationStrategy } from '../enums/optimization.enum';
 
 @Schema({ timestamps: true })
 export class AgentConfiguration extends Document {
