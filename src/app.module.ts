@@ -267,6 +267,7 @@ import { ComplianceMonitoringAgentModule } from './modules/compliance-monitoring
 import { ReportGenerationAgentModule } from './modules/report-generation-agent.module';
 import { ClientCommunicationAgentModule } from './modules/client-communication-agent.module';
 import { ResourceRequestAgentModule } from './modules/resource-request-agent.module';
+import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent.module';
 
 
 @Module({
@@ -368,7 +369,8 @@ import { ResourceRequestAgentModule } from './modules/resource-request-agent.mod
     ComplianceMonitoringAgentModule,
     ReportGenerationAgentModule,
     ClientCommunicationAgentModule,
-    ResourceRequestAgentModule
+    ResourceRequestAgentModule,
+    ShiftOptimizationAgentModule  
   ],
   controllers: [
     GatewayController,
