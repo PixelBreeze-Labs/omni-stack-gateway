@@ -54,16 +54,65 @@ export class AgentPermissionService {
     return agentConfig.isEnabled;
   }
 
- /**
- * Check if a feature is included in the business subscription
- */
-private checkFeatureInSubscription(business: Business, feature: string): boolean {
-    // Check the includedFeatures array we added directly to the Business schema
-    if (!business.includedFeatures || business.includedFeatures.length === 0) {
-      return false;
+  /**
+   * Check if a feature is included in the business subscription
+   */
+  private checkFeatureInSubscription(business: Business, feature: string): boolean {
+    // First check if the business is on a trial - trials get all features
+    if (business.subscriptionStatus === SubscriptionStatus.TRIALING) {
+        // For agent features, check against the TIER_FEATURES['trialing'] list
+        if (feature.startsWith('agent_')) {
+            // Import your TIER_FEATURES from constants
+            const { TIER_FEATURES } = require('../constants/features.constants');
+            return TIER_FEATURES['trialing'].includes(feature);
+        }
+        return true; // For simplicity, trials get everything
     }
     
-    return business.includedFeatures.includes(feature as AgentFeatureFlag);
+    // Then check the explicit includedFeatures array
+    if (business.includedFeatures && business.includedFeatures.length > 0) {
+        return business.includedFeatures.includes(feature as AgentFeatureFlag);
+    }
+    
+    // If no explicit features and not trialing, check against tier features
+    if (business.subscriptionDetails?.planId) {
+        const tier = this.getSubscriptionTier(business);
+        if (tier) {
+            const { TIER_FEATURES } = require('../constants/features.constants');
+            return TIER_FEATURES[tier].includes(feature);
+        }
+    }
+    
+    return false;
+  }
+
+  // Add this helper method
+  private getSubscriptionTier(business: Business): string | null {
+    // If business is in trial, use trialing tier
+    if (business.subscriptionStatus === 'trialing') {
+        return 'trialing';
+    }
+
+    // If business subscription is not active, return null
+    if (business.subscriptionStatus !== 'active') {
+        return null;
+    }
+
+    // Get the tier from subscription details
+    const planId = business.subscriptionDetails?.planId;
+    if (!planId) {
+        return 'basic'; // Default to basic if no plan ID
+    }
+
+    // Extract tier from plan ID
+    const tierFromPlanId = planId.includes('basic') ? 'basic' :
+        planId.includes('professional') ? 'professional' :
+            planId.includes('enterprise') ? 'enterprise' : 'basic';
+
+    // Check metadata for tier info as fallback
+    const tierFromMetadata = business.metadata?.get('subscriptionTier') || null;
+
+    return tierFromPlanId || tierFromMetadata || 'basic';
   }
 
   /**
@@ -256,6 +305,40 @@ private checkFeatureInSubscription(business: Business, feature: string): boolean
   async listBusinessAgentConfigurations(businessId: string): Promise<AgentConfiguration[]> {
     return this.agentConfigModel.find({ businessId });
   }
+
+  /**
+ * Get available agent types for a business based on subscription
+ */
+async getAvailableAgents(businessId: string): Promise<string[]> {
+  const business = await this.businessModel.findById(businessId);
+  
+  if (!business) {
+    throw new NotFoundException('Business not found');
+  }
+  
+  // Only active subscribers can use agents
+  if (business.subscriptionStatus !== SubscriptionStatus.ACTIVE && 
+      business.subscriptionStatus !== SubscriptionStatus.TRIALING) {
+    return [];
+  }
+  
+  // Get the business's subscription tier
+  const tier = this.getSubscriptionTier(business);
+  
+  // Map tier to available agent types
+  switch(tier) {
+    case 'basic':
+      return ['auto-assignment'];
+    case 'professional':
+      return ['auto-assignment', 'compliance-monitoring', 'client-communication'];
+    case 'enterprise':
+    case 'trialing':
+      return ['auto-assignment', 'compliance-monitoring', 'client-communication', 
+              'report-generation', 'resource-request', 'shift-optimization'];
+    default:
+      return [];
+  }
+}
 
   /**
    * List all businesses with a specific agent enabled
