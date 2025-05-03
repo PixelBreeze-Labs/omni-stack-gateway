@@ -15,6 +15,7 @@ import { User, UserSchema } from '../schemas/user.schema';
 import { Business, BusinessSchema } from '../schemas/business.schema';
 import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-configuration.schema';
 import { ConfigModule } from '@nestjs/config';
+import { EmailService } from '../services/email.service';
 
 @Module({
   imports: [
@@ -35,7 +36,7 @@ import { ConfigModule } from '@nestjs/config';
     TopicClassifierController,
     ClientCommunicationConfigController
   ],
-  providers: [ClientCommunicationAgentService, AgentPermissionService],
+  providers: [ClientCommunicationAgentService, AgentPermissionService, EmailService],
   exports: [ClientCommunicationAgentService]
 })
 export class ClientCommunicationAgentModule {}
