@@ -22,7 +22,16 @@ export class AgentConfigController {
     @Param('businessId') businessId: string,
     @Req() req: Request & { client: Client }
   ) {
-    return this.agentPermissionService.listBusinessAgentConfigurations(businessId);
+    // Get existing configurations
+    const configurations = await this.agentPermissionService.listBusinessAgentConfigurations(businessId);
+    
+    // Get available agent types
+    const availableAgents = await this.agentPermissionService.getAvailableAgents(businessId);
+    
+    return {
+      configurations,
+      availableAgents
+    };
   }
 
   @Get('business/:businessId/agent/:agentType')
