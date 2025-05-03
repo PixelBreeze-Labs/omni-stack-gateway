@@ -699,7 +699,6 @@ export class ReportGenerationAgentService {
     return template;
   }
 
-  // src/services/report-generation-agent.service.ts (continued)
   /**
    * Generate a report on demand
    */

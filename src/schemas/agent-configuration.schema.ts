@@ -58,6 +58,15 @@ export class AgentConfiguration extends Document {
 
   @Prop({ type: Number, default: 30 })
   certificationWarningDays: number;
+
+  @Prop({ type: Boolean, default: false })
+  autoResponseEnabled: boolean;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
+  defaultAssigneeId: string;
+
+  @Prop({ type: Boolean, default: false })
+  scheduledUpdatesEnabled: boolean;
 }
 
 export const AgentConfigurationSchema = SchemaFactory.createForClass(AgentConfiguration);

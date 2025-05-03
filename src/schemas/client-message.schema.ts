@@ -99,7 +99,7 @@ export class ClientMessage extends Document {
   statusHistory: {
     status: MessageStatus;
     timestamp: Date;
-    userId: string;
+    userId?: string;
     note: string;
   }[];
 
@@ -108,6 +108,9 @@ export class ClientMessage extends Document {
 
   @Prop({ type: Date })
   deletedAt: Date;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const ClientMessageSchema = SchemaFactory.createForClass(ClientMessage);

@@ -10,6 +10,7 @@ export enum TemplateType {
   WELCOME = 'welcome',
   FOLLOWUP = 'followup',
   REMINDER = 'reminder',
+  AUTO_TRIGGER = 'auto_trigger',
   CUSTOM = 'custom'
 }
 
