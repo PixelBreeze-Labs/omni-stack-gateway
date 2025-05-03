@@ -8,7 +8,8 @@ export enum AgentFeatureFlag {
     COMPLIANCE_MONITORING_AGENT = 'compliance_monitoring_agent',
     REPORT_GENERATION_AGENT = 'report_generation_agent',
     CLIENT_COMMUNICATION_AGENT = 'client_communication_agent',
-    RESOURCE_REQUEST_AGENT = 'resource_request_agent'
+    RESOURCE_REQUEST_AGENT = 'resource_request_agent',
+    SHIFT_OPTIMIZATION_AGENT = 'shift_optimization_agent'
   }
 
 export enum BusinessType {

@@ -4,7 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { StaffProfile } from '../schemas/staff-profile.schema';
-import { Task, TaskStatus } from '../schemas/task.schema';
+import { TaskAssignment } from '../schemas/task-assignment.schema';
 import { ShiftPattern } from '../schemas/shift-pattern.schema';
 import { ShiftOptimizationReport } from '../schemas/shift-optimization-report.schema';
 import { User } from '../schemas/user.schema';
@@ -51,7 +51,7 @@ export class ShiftOptimizationAgentService {
 
   constructor(
     @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
-    @InjectModel(Task.name) private taskModel: Model<Task>,
+    @InjectModel(TaskAssignment.name) private taskModel: Model<TaskAssignment>,
     @InjectModel(ShiftPattern.name) private shiftPatternModel: Model<ShiftPattern>,
     @InjectModel(ShiftOptimizationReport.name) private reportModel: Model<ShiftOptimizationReport>,
     @InjectModel(User.name) private userModel: Model<User>,

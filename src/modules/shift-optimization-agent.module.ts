@@ -6,7 +6,7 @@ import { ShiftOptimizationAgentService } from '../services/shift-optimization-ag
 import { AgentPermissionService } from '../services/agent-permission.service';
 import { ShiftOptimizationController } from '../controllers/shift-optimization.controller';
 import { StaffProfile, StaffProfileSchema } from '../schemas/staff-profile.schema';
-import { Task, TaskSchema } from '../schemas/task.schema';
+import { TaskAssignment, TaskAssignmentSchema } from '../schemas/task-assignment.schema';
 import { ShiftPattern, ShiftPatternSchema } from '../schemas/shift-pattern.schema';
 import { ShiftOptimizationReport, ShiftOptimizationReportSchema } from '../schemas/shift-optimization-report.schema';
 import { User, UserSchema } from '../schemas/user.schema';
@@ -19,7 +19,7 @@ import { EmailService } from '../services/email.service';
     ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: StaffProfile.name, schema: StaffProfileSchema },
-      { name: Task.name, schema: TaskSchema },
+      { name: TaskAssignment.name, schema: TaskAssignmentSchema },
       { name: ShiftPattern.name, schema: ShiftPatternSchema },
       { name: ShiftOptimizationReport.name, schema: ShiftOptimizationReportSchema },
       { name: User.name, schema: UserSchema },
