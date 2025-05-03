@@ -14,10 +14,12 @@ import { TopicClassifier, TopicClassifierSchema } from '../schemas/topic-classif
 import { User, UserSchema } from '../schemas/user.schema';
 import { Business, BusinessSchema } from '../schemas/business.schema';
 import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-configuration.schema';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    ConfigModule,
     MongooseModule.forFeature([
       { name: ClientMessage.name, schema: ClientMessageSchema },
       { name: CommunicationTemplate.name, schema: CommunicationTemplateSchema },

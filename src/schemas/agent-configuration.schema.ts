@@ -67,6 +67,34 @@ export class AgentConfiguration extends Document {
 
   @Prop({ type: Boolean, default: false })
   scheduledUpdatesEnabled: boolean;
+
+  // Add the missing properties that your service is using
+  @Prop({ type: Number, default: 24 })
+  inventoryCheckFrequency: number;
+
+  @Prop({ type: Number, default: 168 })
+  forecastFrequency: number;
+
+  @Prop({ default: false })
+  autoApprove: boolean;
+
+  @Prop({ type: [String], default: [] })
+  approverUserIds: string[];
+
+  @Prop({ type: [String], default: [] })
+  managerUserIds: string[];
+
+  @Prop({ type: Object, default: {} })
+  leadTimes: Record<RequestPriority, number>;
+
+  @Prop({ default: false })
+  enableAdvanceOrders: boolean;
+
+  @Prop({ type: Number, default: 30 })
+  advanceOrderDays: number;
+
+  @Prop({ type: Number, default: 0.7 })
+  minimumConfidence: number;
 }
 
 export const AgentConfigurationSchema = SchemaFactory.createForClass(AgentConfiguration);
