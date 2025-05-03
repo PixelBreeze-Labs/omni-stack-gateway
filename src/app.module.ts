@@ -264,6 +264,7 @@ import { CRMAIAssistantController } from './controllers/crm-ai-assistant.control
 import { CronJobHistory, CronJobHistorySchema } from './schemas/cron-job-history.schema';
 import { AutoAssignmentAgentModule } from './modules/auto-assignment-agent.module';
 import { ComplianceMonitoringAgentModule } from './modules/compliance-monitoring-agent.module';
+import { ReportGenerationAgentModule } from './modules/report-generation-agent.module';
 
 
 @Module({
@@ -362,7 +363,8 @@ import { ComplianceMonitoringAgentModule } from './modules/compliance-monitoring
       { name: CronJobHistory.name, schema: CronJobHistorySchema },
     ]),
     AutoAssignmentAgentModule,
-    ComplianceMonitoringAgentModule
+    ComplianceMonitoringAgentModule,
+    ReportGenerationAgentModule
   ],
   controllers: [
     GatewayController,
