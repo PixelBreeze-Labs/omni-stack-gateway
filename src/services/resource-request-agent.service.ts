@@ -18,7 +18,7 @@ import { format, addDays, subDays, startOfDay, endOfDay, startOfWeek, endOfWeek,
 @Injectable()
 export class ResourceRequestAgentService {
   private readonly logger = new Logger(ResourceRequestAgentService.name);
-  private businessCronJobs: Map<string, CronJob> = new Map();
+  private businessCronJobs: Map<string, CronJob[]> = new Map();
   private readonly SYSTEM_USER_ID = '000000000000000000000000'; // System user ID for automated actions
 
   constructor(
@@ -220,14 +220,14 @@ export class ResourceRequestAgentService {
           
           if (newItems.length > 0) {
             const newRequestItems = newItems.map(item => ({
-              resourceItemId: item._id,
-              name: item.name,
-              type: item.type,
-              quantity: this.calculateOptimalOrderQuantity(item),
-              unitCost: item.unitCost,
-              totalCost: item.unitCost * this.calculateOptimalOrderQuantity(item),
-              notes: 'Automatically added due to low inventory'
-            }));
+                resourceItemId: item._id.toString(), // Convert to string
+                name: item.name,
+                type: item.type,
+                quantity: this.calculateOptimalOrderQuantity(item),
+                unitCost: item.unitCost,
+                totalCost: item.unitCost * this.calculateOptimalOrderQuantity(item),
+                notes: 'Automatically added due to low inventory'
+              }));
             
             existingRequest.items.push(...newRequestItems);
             
@@ -1721,14 +1721,34 @@ export class ResourceRequestAgentService {
         healthy: resources.length - criticalItems.length - warningItems.length
       },
       totalValue,
-      recentRequests: recentRequests.map(r => ({
-        id: r._id,
-        requestNumber: r.requestNumber,
-        status: r.status,
-        itemCount: r.items.length,
-        requestedBy: r.requestedBy ? `${r.requestedBy.name} ${r.requestedBy.surname}` : 'System',
-        createdAt: r.createdAt
-      })),
+      // In the getResourceInventorySummary method
+      recentRequests: recentRequests.map(r => {
+        // Define a type for the populated requestedBy
+        interface UserDoc {
+          name: string;
+          surname: string;
+        }
+        
+        let requestedByText = 'System';
+        
+        // Check if requestedBy exists AND is an object
+        if (r.requestedBy && typeof r.requestedBy === 'object') {
+          // Use type assertion to tell TypeScript this is a UserDoc
+          const user = r.requestedBy as UserDoc;
+          if (user.name && user.surname) {
+            requestedByText = `${user.name} ${user.surname}`;
+          }
+        }
+        
+        return {
+          id: r._id,
+          requestNumber: r.requestNumber,
+          status: r.status,
+          itemCount: r.items.length,
+          requestedBy: requestedByText,
+          createdAt: (r as any).createdAt // Cast to any to bypass the createdAt TypeScript error
+        };
+      }),
       upcomingDeliveries: upcomingDeliveries.map(r => ({
         id: r._id,
         requestNumber: r.requestNumber,
