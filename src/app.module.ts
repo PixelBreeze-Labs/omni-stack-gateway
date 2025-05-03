@@ -266,6 +266,7 @@ import { AutoAssignmentAgentModule } from './modules/auto-assignment-agent.modul
 import { ComplianceMonitoringAgentModule } from './modules/compliance-monitoring-agent.module';
 import { ReportGenerationAgentModule } from './modules/report-generation-agent.module';
 import { ClientCommunicationAgentModule } from './modules/client-communication-agent.module';
+import { ResourceRequestAgentModule } from './modules/resource-request-agent.module';
 
 
 @Module({
@@ -366,7 +367,8 @@ import { ClientCommunicationAgentModule } from './modules/client-communication-a
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
     ReportGenerationAgentModule,
-    ClientCommunicationAgentModule
+    ClientCommunicationAgentModule,
+    ResourceRequestAgentModule
   ],
   controllers: [
     GatewayController,
