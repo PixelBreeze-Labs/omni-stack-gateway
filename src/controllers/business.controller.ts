@@ -112,6 +112,21 @@ export class BusinessController {
         );
     }
 
+    @Get(':id')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get business details by ID' })
+    @ApiResponse({ status: 200, description: 'Returns business details' })
+    async getBusinessDetails(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string
+    ) {
+        return this.businessService.getBusinessDetails(
+            req.client.id,
+            businessId
+        );
+    }
+
     @Patch(':id/delete')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()

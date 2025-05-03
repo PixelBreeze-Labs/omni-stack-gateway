@@ -1146,4 +1146,92 @@ export class BusinessService {
             throw error;
         }
     }
+
+
+    /**
+     * Get business details by ID
+     */
+    async getBusinessDetails(clientId: string, businessId: string) {
+        try {
+            // Find the business with the client's ID to ensure access control
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            })
+            .populate('address')
+            .populate({
+                path: 'adminUserId',
+                select: 'name surname email',
+                model: 'User'
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Format the response similar to the list endpoint
+            const adminUserData = business.adminUserId && typeof business.adminUserId !== 'string'
+                ? business.adminUserId as any  // Type assertion
+                : null;
+
+            const adminUser = adminUserData ? {
+                _id: adminUserData._id,
+                name: adminUserData.surname
+                    ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
+                    : (adminUserData.name || ''),
+                email: adminUserData.email
+            } : undefined;
+
+            // Extract the business object and restructure for the response
+            const { adminUserId, ...businessData } = business.toObject();
+
+            // Create the formatted business response
+            return {
+                ...businessData,
+                adminUser,
+                subscription: {
+                    tier: this.getSubscriptionTier(business),
+                    status: business.subscriptionStatus,
+                    endDate: business.subscriptionEndDate,
+                    details: business.subscriptionDetails
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error fetching business details: ${error.message}`);
+            throw error;
+        }
+    }
+
+    // Add this method to src/services/business.service.ts
+
+    /**
+     * Get subscription tier from business
+     */
+    private getSubscriptionTier(business: Business): string {
+        // If business is in trial, use trialing tier
+        if (business.subscriptionStatus === 'trialing') {
+            return 'trialing';
+        }
+
+        // If business subscription is not active, return null
+        if (business.subscriptionStatus !== 'active') {
+            return null;
+        }
+
+        // Get the tier from subscription details
+        const planId = business.subscriptionDetails?.planId;
+        if (!planId) {
+            return 'basic'; // Default to basic if no plan ID
+        }
+
+        // Extract tier from plan ID
+        const tierFromPlanId = planId.includes('basic') ? 'basic' :
+            planId.includes('professional') ? 'professional' :
+                planId.includes('enterprise') ? 'enterprise' : 'basic';
+
+        // Check metadata for tier info as fallback
+        const tierFromMetadata = business.metadata?.get('subscriptionTier') || null;
+
+        return tierFromPlanId || tierFromMetadata || 'basic';
+    }
 }
