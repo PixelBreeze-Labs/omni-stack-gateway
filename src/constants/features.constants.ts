@@ -194,6 +194,15 @@ export const STAFFLUENT_FEATURES = {
     PROGRESS_PHOTO_UPLOADS: 'progress_photo_uploads',
     INSPECTION_DOCUMENTATION: 'inspection_documentation',
     EQUIPMENT_STATUS_REPORTING: 'equipment_status_reporting',
+
+
+    // =========== AGENT FEATURES ===========
+    AGENT_AUTO_ASSIGNMENT: 'agent_auto_assignment',
+    AGENT_COMPLIANCE_MONITORING: 'agent_compliance_monitoring',
+    AGENT_REPORT_GENERATION: 'agent_report_generation',
+    AGENT_CLIENT_COMMUNICATION: 'agent_client_communication',
+    AGENT_RESOURCE_REQUEST: 'agent_resource_request',
+    AGENT_SHIFT_OPTIMIZATION: 'agent_shift_optimization',
 };
 
 // Define basic tier features
@@ -272,6 +281,9 @@ const BASIC_TIER_FEATURES = [
 
     // Documentation
     STAFFLUENT_FEATURES.PROGRESS_PHOTO_UPLOADS,
+
+    // Agent Features
+    STAFFLUENT_FEATURES.AGENT_AUTO_ASSIGNMENT,
 ];
 
 // Define professional tier additional features
@@ -422,6 +434,11 @@ const PROFESSIONAL_TIER_ADDITIONAL_FEATURES = [
     STAFFLUENT_FEATURES.PHOTO_VERIFICATION,
     STAFFLUENT_FEATURES.INSPECTION_DOCUMENTATION,
     STAFFLUENT_FEATURES.EQUIPMENT_STATUS_REPORTING,
+
+    // Agent Features
+    STAFFLUENT_FEATURES.AGENT_COMPLIANCE_MONITORING,
+    STAFFLUENT_FEATURES.AGENT_CLIENT_COMMUNICATION,
+
 ];
 
 // Define enterprise tier additional features
@@ -435,6 +452,11 @@ const ENTERPRISE_TIER_ADDITIONAL_FEATURES = [
     // Enhanced Integrations
     STAFFLUENT_FEATURES.UNLIMITED_INTEGRATIONS,
     STAFFLUENT_FEATURES.API_ACCESS,
+
+    // Agent Features
+    STAFFLUENT_FEATURES.AGENT_REPORT_GENERATION,
+    STAFFLUENT_FEATURES.AGENT_RESOURCE_REQUEST,
+    STAFFLUENT_FEATURES.AGENT_SHIFT_OPTIMIZATION,
 ];
 
 /**

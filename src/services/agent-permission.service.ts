@@ -5,6 +5,7 @@ import { Model } from 'mongoose';
 import { AgentConfiguration } from '../schemas/agent-configuration.schema';
 import { AgentFeatureFlag, Business } from '../schemas/business.schema';
 import { SubscriptionStatus } from '../schemas/business.schema';
+import { OptimizationStrategy } from 'src/enums/optimization.enum';
 
 @Injectable()
 export class AgentPermissionService {
@@ -150,9 +151,6 @@ private checkFeatureInSubscription(business: Business, feature: string): boolean
     return agentConfig.save();
   }
 
-  /**
-   * Get default configuration for an agent type
-   */
   private getDefaultConfiguration(agentType: string): Partial<AgentConfiguration> {
     switch (agentType) {
       case 'auto-assignment':
@@ -178,6 +176,8 @@ private checkFeatureInSubscription(business: Business, feature: string): boolean
       case 'compliance-monitoring':
         return {
           requireApproval: false,
+          monitoringFrequency: 24,
+          certificationWarningDays: 30,
           notificationSettings: {
             emailNotifications: true,
             managerEmails: [],
@@ -186,7 +186,48 @@ private checkFeatureInSubscription(business: Business, feature: string): boolean
           }
         };
       
-      // Default configurations for other agent types...
+      case 'report-generation':
+        return {
+          requireApproval: true,
+          notificationSettings: {
+            emailNotifications: true,
+            managerEmails: [],
+            notifyOnAssignment: true,
+            notifyOnRejection: false
+          }
+        };
+      
+      case 'client-communication':
+        return {
+          autoResponseEnabled: false,
+          scheduledUpdatesEnabled: false,
+          notificationSettings: {
+            emailNotifications: true,
+            managerEmails: [],
+            notifyOnAssignment: false,
+            notifyOnRejection: false
+          }
+        };
+      
+      case 'resource-request':
+        return {
+          inventoryCheckFrequency: 24,
+          forecastFrequency: 168,
+          autoApprove: false,
+          approverUserIds: [],
+          leadTimes: {},
+          enableAdvanceOrders: false,
+          advanceOrderDays: 30
+        };
+      
+      case 'shift-optimization':
+        return {
+          weeklyOptimizationCron: '0 1 * * 0', // Sunday at 1 AM
+          dailyForecastCron: '0 0 * * *', // Midnight daily
+          optimizationStrategy: OptimizationStrategy.WORKLOAD_BALANCED,
+          sendOptimizationNotifications: true,
+          sendForecastNotifications: true,
+        };
       
       default:
         return {};
