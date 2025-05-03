@@ -17,21 +17,21 @@ export class ComplianceCertificationController {
   }
 
   @Get('staff/:userId/business/:businessId')
-  @ApiOperation({ summary: 'Get certifications for a staff member' })
-  @ApiParam({ name: 'userId', description: 'User ID' })
-  @ApiParam({ name: 'businessId', description: 'Business ID' })
-  @ApiQuery({ name: 'includeExpired', required: false, type: Boolean })
-  async getStaffCertifications(
-    @Param('userId') userId: string,
-    @Param('businessId') businessId: string,
-    @Query('includeExpired') includeExpired?: boolean
-  ): Promise<StaffCertification[]> {
-    return this.complianceService.getStaffCertifications(
-      userId,
-      businessId,
-      includeExpired === 'true' || includeExpired === true
-    );
-  }
+@ApiOperation({ summary: 'Get certifications for a staff member' })
+@ApiParam({ name: 'userId', description: 'User ID' })
+@ApiParam({ name: 'businessId', description: 'Business ID' })
+@ApiQuery({ name: 'includeExpired', required: false, type: Boolean })
+async getStaffCertifications(
+  @Param('userId') userId: string,
+  @Param('businessId') businessId: string,
+  @Query('includeExpired') includeExpired?: string | boolean
+): Promise<StaffCertification[]> {
+  return this.complianceService.getStaffCertifications(
+    userId,
+    businessId,
+    includeExpired === true || includeExpired === 'true'
+  );
+}
 
   @Get(':id')
   @ApiOperation({ summary: 'Get certification by ID' })

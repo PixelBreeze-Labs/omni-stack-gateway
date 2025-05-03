@@ -17,18 +17,18 @@ export class ComplianceRuleController {
   }
 
   @Get('business/:businessId')
-  @ApiOperation({ summary: 'Get compliance rules for a business' })
-  @ApiParam({ name: 'businessId', description: 'Business ID' })
-  @ApiQuery({ name: 'includeInactive', required: false, type: Boolean })
-  async getBusinessRules(
-    @Param('businessId') businessId: string,
-    @Query('includeInactive') includeInactive?: boolean
-  ): Promise<ComplianceRule[]> {
-    return this.complianceService.getBusinessRules(
-      businessId,
-      includeInactive === 'true' || includeInactive === true
-    );
-  }
+@ApiOperation({ summary: 'Get compliance rules for a business' })
+@ApiParam({ name: 'businessId', description: 'Business ID' })
+@ApiQuery({ name: 'includeInactive', required: false, type: Boolean })
+async getBusinessRules(
+  @Param('businessId') businessId: string,
+  @Query('includeInactive') includeInactive?: string | boolean
+): Promise<ComplianceRule[]> {
+  return this.complianceService.getBusinessRules(
+    businessId,
+    includeInactive === true || includeInactive === 'true'
+  );
+}
 
   @Get(':id')
   @ApiOperation({ summary: 'Get compliance rule by ID' })

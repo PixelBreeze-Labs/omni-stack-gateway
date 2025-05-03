@@ -775,21 +775,21 @@ export class ComplianceMonitoringAgentService {
     // Get expiring certifications for the next 90 days
     const nextThreeMonths = addDays(new Date(), 90);
     const expiringCerts = await this.certificationModel.find({
-      businessId,
-      status: { $in: [CertificationStatus.ACTIVE, CertificationStatus.EXPIRING_SOON] },
-      expiryDate: { $lte: nextThreeMonths },
-      isDeleted: false
-    }).sort({ expiryDate: 1 }).limit(10)
-    .populate('userId', 'name surname');
+        businessId,
+        status: { $in: [CertificationStatus.ACTIVE, CertificationStatus.EXPIRING_SOON] },
+        expiryDate: { $lte: nextThreeMonths },
+        isDeleted: false
+      }).sort({ expiryDate: 1 }).limit(10)
+      .populate('userId', 'name surname')
     
     // Format the certification data
     const upcomingExpirations = expiringCerts.map(cert => ({
-      id: cert._id,
-      name: cert.name,
-      staffName: cert.userId ? `${cert.userId.name} ${cert.userId.surname}` : 'Unknown',
-      expiryDate: cert.expiryDate,
-      daysRemaining: differenceInDays(cert.expiryDate, new Date())
-    }));
+        id: cert._id,
+        name: cert.name,
+        staffName: cert.userId ? `${cert.userId['name']} ${cert.userId['surname']}` : 'Unknown',
+        expiryDate: cert.expiryDate,
+        daysRemaining: differenceInDays(cert.expiryDate, new Date())
+      }));
     
     // Convert aggregation results to simple objects
     const alertStatusCount = alertsByStatus.reduce((obj, item) => {
@@ -811,11 +811,11 @@ export class ComplianceMonitoringAgentService {
       alerts: {
         byStatus: alertStatusCount,
         bySeverity: alertSeverityCount,
-        total: Object.values(alertStatusCount).reduce((a, b) => a + b, 0)
-      },
+        total: Object.values(alertStatusCount).reduce((a: number, b: number) => a + b, 0)
+    },
       certifications: {
         byStatus: certStatusCount,
-        total: Object.values(certStatusCount).reduce((a, b) => a + b, 0),
+        total: Object.values(certStatusCount).reduce((a: number, b: number) => a + b, 0),
         upcomingExpirations
       }
     };

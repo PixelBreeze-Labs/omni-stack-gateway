@@ -4,6 +4,8 @@ import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ComplianceMonitoringAgentService } from '../services/compliance-monitoring-agent.service';
 import { ComplianceAlert, AlertStatus } from '../schemas/compliance-alert.schema';
 import { RuleSeverity } from '../schemas/compliance-rule.schema';
+// import user decorator
+import { User } from '../decorators/user.decorator';
 
 @ApiTags('Compliance Alerts')
 @Controller('compliance-alerts')
