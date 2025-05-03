@@ -3,16 +3,12 @@ import { Controller, Get, Post, Param, Query, Body, Res, UseGuards } from '@nest
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ReportGenerationAgentService } from '../services/report-generation-agent.service';
 import { ReportStatus } from '../schemas/generated-report.schema';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
-import { Roles } from '../decorators/roles.decorator';
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 
 @ApiTags('Generated Reports')
 @Controller('generated-reports')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class GeneratedReportController {
   constructor(private readonly reportService: ReportGenerationAgentService) {}
 
@@ -23,7 +19,6 @@ export class GeneratedReportController {
   @ApiQuery({ name: 'status', required: false, enum: ReportStatus })
   @ApiQuery({ name: 'startDate', required: false })
   @ApiQuery({ name: 'endDate', required: false })
-  @Roles('admin', 'business_admin', 'manager')
   async getBusinessReports(
     @Param('businessId') businessId: string,
     @Query('templateId') templateId?: string,
@@ -42,7 +37,6 @@ export class GeneratedReportController {
   @Get(':id')
   @ApiOperation({ summary: 'Get generated report by ID' })
   @ApiParam({ name: 'id', description: 'Report ID' })
-  @Roles('admin', 'business_admin', 'manager')
   async getReport(@Param('id') id: string) {
     return this.reportService.getGeneratedReportById(id);
   }
@@ -50,7 +44,6 @@ export class GeneratedReportController {
   @Get(':id/download')
   @ApiOperation({ summary: 'Download a generated report' })
   @ApiParam({ name: 'id', description: 'Report ID' })
-  @Roles('admin', 'business_admin', 'manager')
   async downloadReport(@Param('id') id: string, @Res() res: Response) {
     const { filePath, fileName, format } = await this.reportService.getReportFile(id);
     
@@ -84,7 +77,6 @@ export class GeneratedReportController {
   @Post(':id/send')
   @ApiOperation({ summary: 'Send a generated report to recipients' })
   @ApiParam({ name: 'id', description: 'Report ID' })
-  @Roles('admin', 'business_admin', 'manager')
   async sendReport(
     @Param('id') id: string,
     @Body() data: { recipientEmails: string[] }

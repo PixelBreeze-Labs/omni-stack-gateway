@@ -11,6 +11,7 @@ import { GeneratedReport, GeneratedReportSchema } from '../schemas/generated-rep
 import { User, UserSchema } from '../schemas/user.schema';
 import { Business, BusinessSchema } from '../schemas/business.schema';
 import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-configuration.schema';
+import { EmailService } from '../services/email.service';
 
 @Module({
   imports: [
@@ -25,7 +26,8 @@ import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-c
   ],
   controllers: [
     ReportTemplateController,
-    GeneratedReportController
+    GeneratedReportController,
+    EmailService
   ],
   providers: [ReportGenerationAgentService, AgentPermissionService],
   exports: [ReportGenerationAgentService]
