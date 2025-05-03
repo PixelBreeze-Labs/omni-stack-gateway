@@ -52,6 +52,12 @@ export class AgentConfiguration extends Document {
 
   @Prop({ type: MongooseSchema.Types.Mixed, default: {} })
   metadata: Record<string, any>;
+
+  @Prop({ type: Number, default: 24 })
+  monitoringFrequency: number;
+
+  @Prop({ type: Number, default: 30 })
+  certificationWarningDays: number;
 }
 
 export const AgentConfigurationSchema = SchemaFactory.createForClass(AgentConfiguration);
