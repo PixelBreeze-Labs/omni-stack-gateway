@@ -12,6 +12,8 @@ import { Business } from '../schemas/business.schema';
 import { AgentConfiguration } from '../schemas/agent-configuration.schema';
 import { AgentPermissionService } from './agent-permission.service';
 import { EmailService } from './email.service';
+import { OptimizationStrategy } from '../enums/optimization.enum';
+import { ForecastConfidence } from '../enums/optimization.enum';
 import { CronJob } from 'cron';
 import { 
   format, 
@@ -27,13 +29,6 @@ import {
   parseISO 
 } from 'date-fns';
 
-// Define optimization strategies 
-export enum OptimizationStrategy {
-  WORKLOAD_BALANCED = 'workload_balanced',
-  COST_EFFICIENT = 'cost_efficient',
-  SKILL_OPTIMIZED = 'skill_optimized',
-  RESPONSE_TIME = 'response_time'
-}
 
 // Define the confidence level for forecasts
 export enum ForecastConfidence {

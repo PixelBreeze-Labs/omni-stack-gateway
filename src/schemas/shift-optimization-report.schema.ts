@@ -1,7 +1,8 @@
 // src/schemas/shift-optimization-report.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
-import { OptimizationStrategy } from '../services/shift-optimization-agent.service';
+import { OptimizationStrategy } from '../enums/optimization.enum';
+
 
 @Schema({ timestamps: true })
 export class ShiftOptimizationReport extends Document {
