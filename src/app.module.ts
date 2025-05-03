@@ -265,6 +265,7 @@ import { CronJobHistory, CronJobHistorySchema } from './schemas/cron-job-history
 import { AutoAssignmentAgentModule } from './modules/auto-assignment-agent.module';
 import { ComplianceMonitoringAgentModule } from './modules/compliance-monitoring-agent.module';
 import { ReportGenerationAgentModule } from './modules/report-generation-agent.module';
+import { ClientCommunicationAgentModule } from './modules/client-communication-agent.module';
 
 
 @Module({
@@ -364,7 +365,8 @@ import { ReportGenerationAgentModule } from './modules/report-generation-agent.m
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
-    ReportGenerationAgentModule
+    ReportGenerationAgentModule,
+    ClientCommunicationAgentModule
   ],
   controllers: [
     GatewayController,
