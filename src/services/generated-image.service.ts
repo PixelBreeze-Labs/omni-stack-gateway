@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';  // Import Types from mongoose
 import { GeneratedImage } from '../schemas/generated-image.schema';
-import { CreateGeneratedImageDto, ListGeneratedImagesDto, UpdateGeneratedImageDto } from '../dtos/generated-image.dto';
-import { LogService } from './log.service';
+import { CreateGeneratedImageDto, ListGeneratedImagesDto } from '../dtos/generated-image.dto';
+import { LogService } from '../services/log.service';
 import { LogType } from '../schemas/log.schema';
 
 @Injectable()
@@ -159,35 +159,51 @@ export class GeneratedImageService {
     }
 
     async getImageStats(clientId: string) {
-        // Get total images
-        const totalImages = await this.imageModel.countDocuments({ clientId });
-        
-        // Get images by entity
-        const entityStats = await this.imageModel.aggregate([
-            { $match: { clientId } },
-            { $group: { _id: '$entity', count: { $sum: 1 } } }
-        ]);
-        
-        // Get images by template type
-        const templateStats = await this.imageModel.aggregate([
-            { $match: { clientId } },
-            { $group: { _id: '$templateType', count: { $sum: 1 } } }
-        ]);
-        
-        // Get download rate
-        const downloadedImages = await this.imageModel.countDocuments({ 
-            clientId, 
-            downloadTime: { $exists: true, $ne: null } 
-        });
-        
-        return {
-            total: totalImages,
-            downloadRate: totalImages ? (downloadedImages / totalImages) * 100 : 0,
-            byEntity: entityStats,
-            byTemplate: templateStats
-        };
+        try {
+            // Get total images
+            const totalImages = await this.imageModel.countDocuments({ clientId });
+            
+            // Get images by entity
+            const entityStats = await this.imageModel.aggregate([
+                { $match: { clientId } },
+                { $group: { _id: '$entity', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }  // Use -1 instead of numerical value
+            ]);
+            
+            // Get images by template type
+            const templateStats = await this.imageModel.aggregate([
+                { $match: { clientId } },
+                { $group: { _id: '$templateType', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }  // Use -1 instead of numerical value
+            ]);
+            
+            // Get download rate
+            const downloadedImages = await this.imageModel.countDocuments({ 
+                clientId, 
+                downloadTime: { $exists: true, $ne: null } 
+            });
+            
+            // Log the results for debugging
+            console.log({
+                clientId,
+                totalImages,
+                downloadedImages,
+                entityStats: JSON.stringify(entityStats),
+                templateStats: JSON.stringify(templateStats)
+            });
+            
+            return {
+                total: totalImages,
+                downloadRate: totalImages ? (downloadedImages / totalImages) * 100 : 0,
+                byEntity: entityStats,
+                byTemplate: templateStats
+            };
+        } catch (error) {
+            console.error('Error in getImageStats:', error);
+            throw error;
+        }
     }
-
+    
     async findByTemplateType(templateType: string, clientId: string, page = 1, limit = 20) {
         const skip = (page - 1) * limit;
         
