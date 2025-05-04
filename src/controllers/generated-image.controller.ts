@@ -40,39 +40,6 @@ export class GeneratedImageController {
         });
     }
 
-    @ApiOperation({ summary: 'Get generated image by id' })
-    @ApiParam({ name: 'id', description: 'Generated Image ID' })
-    @ApiResponse({ status: 200, description: 'Return generated image' })
-    @Get(':id')
-    async findOne(
-        @Param('id') id: string,
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.imageService.findOne(id, req.client.id);
-    }
-
-    @ApiOperation({ summary: 'Update image download time' })
-    @ApiParam({ name: 'id', description: 'Generated Image ID' })
-    @ApiResponse({ status: 200, description: 'Download time updated successfully' })
-    @Put(':id/download')
-    async updateDownloadTime(
-        @Param('id') id: string,
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.imageService.updateDownloadTime(id, req.client.id);
-    }
-
-    @ApiOperation({ summary: 'Delete generated image' })
-    @ApiParam({ name: 'id', description: 'Generated Image ID' })
-    @ApiResponse({ status: 200, description: 'Image deleted successfully' })
-    @Delete(':id')
-    async remove(
-        @Param('id') id: string,
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.imageService.remove(id, req.client.id);
-    }
-
     @ApiOperation({ summary: 'Get image generation statistics' })
     @ApiResponse({ status: 200, description: 'Return image statistics' })
     @Get('stats')
@@ -108,5 +75,38 @@ export class GeneratedImageController {
         @Req() req: Request & { client: Client }
     ) {
         return this.imageService.getTemplateStats(templateType, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get generated image by id' })
+    @ApiParam({ name: 'id', description: 'Generated Image ID' })
+    @ApiResponse({ status: 200, description: 'Return generated image' })
+    @Get(':id')
+    async findOne(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.imageService.findOne(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Update image download time' })
+    @ApiParam({ name: 'id', description: 'Generated Image ID' })
+    @ApiResponse({ status: 200, description: 'Download time updated successfully' })
+    @Put(':id/download')
+    async updateDownloadTime(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.imageService.updateDownloadTime(id, req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Delete generated image' })
+    @ApiParam({ name: 'id', description: 'Generated Image ID' })
+    @ApiResponse({ status: 200, description: 'Image deleted successfully' })
+    @Delete(':id')
+    async remove(
+        @Param('id') id: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.imageService.remove(id, req.client.id);
     }
 }
