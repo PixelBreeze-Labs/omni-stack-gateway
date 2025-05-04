@@ -163,19 +163,55 @@ export class GeneratedImageService {
             // Get total images
             const totalImages = await this.imageModel.countDocuments({ clientId });
             
-            // Get images by entity
-            const entityStats = await this.imageModel.aggregate([
+            // Try standard aggregation query for entity stats
+            let entityStats = await this.imageModel.aggregate([
                 { $match: { clientId } },
                 { $group: { _id: '$entity', count: { $sum: 1 } } },
-                { $sort: { count: -1 } }  // Use -1 instead of numerical value
+                { $sort: { count: -1 } }
             ]);
             
-            // Get images by template type
-            const templateStats = await this.imageModel.aggregate([
+            // If entityStats is empty despite having documents, use a fallback approach
+            if (entityStats.length === 0 && totalImages > 0) {
+                console.log('Using fallback for entity stats');
+                // Find all distinct entities first
+                const distinctEntities = await this.imageModel.distinct('entity', { clientId });
+                console.log('Distinct entities:', distinctEntities);
+                
+                // Create stats manually for each entity
+                entityStats = await Promise.all(
+                    distinctEntities.map(async (entity) => {
+                        const count = await this.imageModel.countDocuments({ 
+                            clientId, 
+                            entity 
+                        });
+                        return { _id: entity, count };
+                    })
+                );
+            }
+            
+            // Do the same for template types
+            let templateStats = await this.imageModel.aggregate([
                 { $match: { clientId } },
                 { $group: { _id: '$templateType', count: { $sum: 1 } } },
-                { $sort: { count: -1 } }  // Use -1 instead of numerical value
+                { $sort: { count: -1 } }
             ]);
+            
+            // Fallback approach for template stats if needed
+            if (templateStats.length === 0 && totalImages > 0) {
+                console.log('Using fallback for template stats');
+                const distinctTemplates = await this.imageModel.distinct('templateType', { clientId });
+                console.log('Distinct templates:', distinctTemplates);
+                
+                templateStats = await Promise.all(
+                    distinctTemplates.map(async (templateType) => {
+                        const count = await this.imageModel.countDocuments({ 
+                            clientId, 
+                            templateType 
+                        });
+                        return { _id: templateType, count };
+                    })
+                );
+            }
             
             // Get download rate
             const downloadedImages = await this.imageModel.countDocuments({ 
@@ -203,7 +239,7 @@ export class GeneratedImageService {
             throw error;
         }
     }
-    
+
     async findByTemplateType(templateType: string, clientId: string, page = 1, limit = 20) {
         const skip = (page - 1) * limit;
         
@@ -231,30 +267,71 @@ export class GeneratedImageService {
     }
 
     async getTemplateStats(templateType: string, clientId: string) {
-        // Get total images for this template
-        const totalTemplateImages = await this.imageModel.countDocuments({ 
-            clientId, 
-            templateType 
-        });
-        
-        // Get download rate for this template
-        const downloadedTemplateImages = await this.imageModel.countDocuments({ 
-            clientId, 
-            templateType,
-            downloadTime: { $exists: true, $ne: null } 
-        });
-        
-        // Get entity distribution for this template
-        const entityStats = await this.imageModel.aggregate([
-            { $match: { clientId, templateType } },
-            { $group: { _id: '$entity', count: { $sum: 1 } } }
-        ]);
-        
-        return {
-            total: totalTemplateImages,
-            downloadRate: totalTemplateImages ? (downloadedTemplateImages / totalTemplateImages) * 100 : 0,
-            byEntity: entityStats
-        };
+        try {
+            // Get total images for this template
+            const totalTemplateImages = await this.imageModel.countDocuments({ 
+                clientId, 
+                templateType 
+            });
+            
+            // Get download rate for this template
+            const downloadedTemplateImages = await this.imageModel.countDocuments({ 
+                clientId, 
+                templateType,
+                downloadTime: { $exists: true, $ne: null } 
+            });
+            
+            // Try standard aggregation for entity stats
+            let entityStats = await this.imageModel.aggregate([
+                { $match: { clientId, templateType } },
+                { $group: { _id: '$entity', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]);
+            
+            // If entityStats is empty despite having documents, use a fallback approach
+            if (entityStats.length === 0 && totalTemplateImages > 0) {
+                console.log('Using fallback for entity stats in template stats');
+                // Find all distinct entities for this template
+                const distinctEntities = await this.imageModel.distinct('entity', { 
+                    clientId, 
+                    templateType 
+                });
+                console.log('Distinct entities for template:', distinctEntities);
+                
+                // Create stats manually for each entity
+                entityStats = await Promise.all(
+                    distinctEntities.map(async (entity) => {
+                        const count = await this.imageModel.countDocuments({ 
+                            clientId, 
+                            templateType,
+                            entity 
+                        });
+                        return { _id: entity, count };
+                    })
+                );
+            }
+            
+            console.log('Template stats results:', {
+                templateType,
+                clientId,
+                totalTemplateImages,
+                downloadedTemplateImages,
+                entityStats: JSON.stringify(entityStats)
+            });
+            
+            return {
+                total: totalTemplateImages,
+                downloadRate: totalTemplateImages ? (downloadedTemplateImages / totalTemplateImages) * 100 : 0,
+                byEntity: entityStats
+            };
+        } catch (error) {
+            console.error(`Error in getTemplateStats for ${templateType}:`, error);
+            return {
+                total: 0,
+                downloadRate: 0,
+                byEntity: []
+            };
+        }
     }
 
 }
