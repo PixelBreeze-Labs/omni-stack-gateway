@@ -187,4 +187,58 @@ export class GeneratedImageService {
             byTemplate: templateStats
         };
     }
+
+    async findByTemplateType(templateType: string, clientId: string, page = 1, limit = 20) {
+        const skip = (page - 1) * limit;
+        
+        // Build filters
+        const filters = { clientId, templateType };
+        
+        // Get total count for pagination
+        const total = await this.imageModel.countDocuments(filters);
+        const totalPages = Math.ceil(total / limit);
+        
+        // Get paginated images
+        const images = await this.imageModel
+            .find(filters)
+            .sort({ generationTime: -1 })
+            .skip(skip)
+            .limit(limit);
+        
+        return {
+            items: images,
+            total,
+            pages: totalPages,
+            page,
+            limit
+        };
+    }
+
+    async getTemplateStats(templateType: string, clientId: string) {
+        // Get total images for this template
+        const totalTemplateImages = await this.imageModel.countDocuments({ 
+            clientId, 
+            templateType 
+        });
+        
+        // Get download rate for this template
+        const downloadedTemplateImages = await this.imageModel.countDocuments({ 
+            clientId, 
+            templateType,
+            downloadTime: { $exists: true, $ne: null } 
+        });
+        
+        // Get entity distribution for this template
+        const entityStats = await this.imageModel.aggregate([
+            { $match: { clientId, templateType } },
+            { $group: { _id: '$entity', count: { $sum: 1 } } }
+        ]);
+        
+        return {
+            total: totalTemplateImages,
+            downloadRate: totalTemplateImages ? (downloadedTemplateImages / totalTemplateImages) * 100 : 0,
+            byEntity: entityStats
+        };
+    }
+
 }

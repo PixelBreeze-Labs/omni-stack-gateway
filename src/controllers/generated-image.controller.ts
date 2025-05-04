@@ -40,6 +40,43 @@ export class GeneratedImageController {
         });
     }
 
+    @ApiOperation({ summary: 'Get image generation statistics' })
+    @ApiResponse({ status: 200, description: 'Return image statistics' })
+    @Get('stats')
+    async getStats(
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.imageService.getImageStats(req.client.id);
+    }
+
+    @ApiOperation({ summary: 'Get images by template type' })
+    @ApiParam({ name: 'templateType', description: 'Template Type' })
+    @ApiResponse({ status: 200, description: 'Return images for specified template' })
+    @Get('template/:templateType')
+    async findByTemplate(
+        @Param('templateType') templateType: string,
+        @Query() query: ListGeneratedImagesDto,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.imageService.findByTemplateType(
+            templateType, 
+            req.client.id, 
+            query.page, 
+            query.limit
+        );
+    }
+
+    @ApiOperation({ summary: 'Get statistics for a specific template' })
+    @ApiParam({ name: 'templateType', description: 'Template Type' })
+    @ApiResponse({ status: 200, description: 'Return statistics for specified template' })
+    @Get('template/:templateType/stats')
+    async getTemplateStats(
+        @Param('templateType') templateType: string,
+        @Req() req: Request & { client: Client }
+    ) {
+        return this.imageService.getTemplateStats(templateType, req.client.id);
+    }
+
     @ApiOperation({ summary: 'Get generated image by id' })
     @ApiParam({ name: 'id', description: 'Generated Image ID' })
     @ApiResponse({ status: 200, description: 'Return generated image' })
@@ -71,14 +108,5 @@ export class GeneratedImageController {
         @Req() req: Request & { client: Client }
     ) {
         return this.imageService.remove(id, req.client.id);
-    }
-
-    @ApiOperation({ summary: 'Get image generation statistics' })
-    @ApiResponse({ status: 200, description: 'Return image statistics' })
-    @Get('stats')
-    async getStats(
-        @Req() req: Request & { client: Client }
-    ) {
-        return this.imageService.getImageStats(req.client.id);
     }
 }
