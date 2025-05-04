@@ -248,7 +248,15 @@ import { DetectionResult, DetectionResultSchema } from './schemas/detection-resu
 import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-summary.schema';
 import {TwilioVerificationService} from "./services/twilio-verification.service";
 
+// Log
+import { LogService } from './services/log.service';
+import { LogController } from './controllers/log.controller';
+import { Log, LogSchema } from './schemas/log.schema';
 
+// Generated Images
+import { GeneratedImageService } from './services/generated-image.service';
+import { GeneratedImageController } from './controllers/generated-image.controller';
+import { GeneratedImage, GeneratedImageSchema } from './schemas/generated-image.schema';
 
 import { PollController } from './controllers/poll.controller';
 import { PollPublicController } from './controllers/poll-public.controller';
@@ -364,6 +372,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
       { name: VerificationPhone.name, schema: VerificationPhoneSchema },
       { name: Poll.name, schema: PollSchema },
       { name: CronJobHistory.name, schema: CronJobHistorySchema },
+      { name: Log.name, schema: LogSchema },
+      { name: GeneratedImage.name, schema: GeneratedImageSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -449,7 +459,9 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     VerificationController,
     PollController,
     PollPublicController,
-    CRMAIAssistantController
+    CRMAIAssistantController,
+    LogController,
+    GeneratedImageController
   ],
   providers: [
     SnapfoodService,
@@ -538,7 +550,9 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     PollService,
     OrderCronService,
     CRMAIAssistantService,
-    CRMService
+    CRMService,
+    LogService,
+    GeneratedImageService
   ],
 })
 export class AppModule implements NestModule {
