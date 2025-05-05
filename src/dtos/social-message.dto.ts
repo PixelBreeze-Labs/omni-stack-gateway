@@ -32,9 +32,9 @@ export class CreateSocialMessageDto {
   @IsOptional()
   forwardedFromId?: string;
 
-  @ApiPropertyOptional()  // Changed to optional
+  @ApiPropertyOptional()
   @IsString()
-  @IsOptional()  // Added IsOptional
+  @IsOptional()
   clientId?: string;
 
   @ApiPropertyOptional({ type: Object })

@@ -15,7 +15,7 @@ import {
 import {ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiBearerAuth, ApiBody} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express'; // Import FileInterceptor
 
-import { Response } from 'express';  // Add this import
+import { Response } from 'express';
 import { SnapfoodService } from '../services/snapfood.service';
 import {
     CustomerListResponse,
