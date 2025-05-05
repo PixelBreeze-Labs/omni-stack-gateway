@@ -22,7 +22,7 @@ export class VerificationPhone {
     status: string; // 'sent', 'verified', 'expired', 'failed'
 
     @Prop({ required: true })
-    code: string;
+    code: number;
 
     @Prop()
     verifiedAt?: Date;

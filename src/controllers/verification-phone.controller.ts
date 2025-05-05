@@ -70,7 +70,7 @@ export class VerificationController {
             type: 'object',
             properties: {
                 phone: { type: 'string', example: '+355123456789' },
-                code: { type: 'string', example: '123456' }
+                code: { type: 'number', example: '123456' }
             },
             required: ['phone', 'code']
         }
@@ -78,7 +78,7 @@ export class VerificationController {
     @ApiResponse({ status: 200, description: 'Code verification result' })
     @ApiResponse({ status: 400, description: 'Bad request' })
     @Post('verify-code')
-    async verifyCode(@Body() data: { phone: string; code: string }) {
+    async verifyCode(@Body() data: { phone: string; code: number }) {
         if (!data.phone || !data.code) {
             throw new HttpException('Phone number and verification code are required', HttpStatus.BAD_REQUEST);
         }
