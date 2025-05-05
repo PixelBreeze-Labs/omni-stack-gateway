@@ -21,6 +21,9 @@ export class VerificationPhone {
     @Prop({ default: 'sent' })
     status: string; // 'sent', 'verified', 'expired', 'failed'
 
+    @Prop({ required: true })
+    code: string;
+
     @Prop()
     verifiedAt?: Date;
 
