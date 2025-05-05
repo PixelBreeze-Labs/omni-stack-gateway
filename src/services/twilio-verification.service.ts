@@ -51,7 +51,7 @@ export class TwilioVerificationService {
             }
             
             // Generate a random 6-digit code
-            const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+            const verificationCode = Math.floor(100000 + Math.random() * 900000);
             
             // Send the SMS via Messaging Service
             const message = await this.client.messages.create({
@@ -90,7 +90,7 @@ export class TwilioVerificationService {
         }
     }
 
-    async verifyCode(phoneNumber: string, code: string): Promise<{ success: boolean; valid: boolean; error?: string }> {
+    async verifyCode(phoneNumber: string, code: number): Promise<{ success: boolean; valid: boolean; error?: string }> {
         try {
             // Ensure proper E.164 format
             let formattedPhone = phoneNumber;
