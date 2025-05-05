@@ -43,27 +43,35 @@ export class TwilioVerificationService {
                     status: 'expired'
                 }
             );
-
-            // Send verification via Twilio
-            const verification = await this.client.verify.v2
-                .services(this.verifyServiceSid)
-                .verifications.create({
-                    to: phoneNumber,
-                    channel: 'sms',
-                    locale: phoneNumber.startsWith('+1') ? 'en' : 'sq' // Set locale based on phone number
-                });
-
-            this.logger.log(`Sent verification code to ${phoneNumber} for user ${snapfoodUserId}`);
-
+            
+            // Ensure proper E.164 format
+            let formattedPhone = phoneNumber;
+            if (!phoneNumber.startsWith('+')) {
+                formattedPhone = `+${phoneNumber}`;
+            }
+            
+            // Generate a random 6-digit code
+            const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+            
+            // Send the SMS via Messaging Service
+            const message = await this.client.messages.create({
+                body: `Your SnapFood verification code is: ${verificationCode}`,
+                messagingServiceSid: this.verifyServiceSid,
+                to: formattedPhone
+            });
+            
+            this.logger.log(`Sent verification code ${verificationCode} to ${formattedPhone} for user ${snapfoodUserId}`);
+            
             // Store verification in database
             const expiresAt = new Date();
             expiresAt.setMinutes(expiresAt.getMinutes() + this.verificationExpiryMinutes);
 
             await this.verificationPhoneModel.create({
-                phoneNumber,
+                phoneNumber: formattedPhone,
                 snapfoodUserId,
                 omniStackUserId,
-                messageId: verification.sid,
+                messageId: message.sid,
+                code: verificationCode,
                 status: 'sent',
                 expiresAt,
                 attempts: 0
@@ -71,7 +79,7 @@ export class TwilioVerificationService {
 
             return {
                 success: true,
-                messageId: verification.sid
+                messageId: message.sid
             };
         } catch (error) {
             this.logger.error(`Failed to send verification code to ${phoneNumber}:`, error);
@@ -84,9 +92,15 @@ export class TwilioVerificationService {
 
     async verifyCode(phoneNumber: string, code: string): Promise<{ success: boolean; valid: boolean; error?: string }> {
         try {
+            // Ensure proper E.164 format
+            let formattedPhone = phoneNumber;
+            if (!phoneNumber.startsWith('+')) {
+                formattedPhone = `+${phoneNumber}`;
+            }
+            
             // Find the most recent verification for this phone number
             const verification = await this.verificationPhoneModel
-                .findOne({ phoneNumber, status: 'sent' })
+                .findOne({ phoneNumber: formattedPhone, status: 'sent' })
                 .sort({ createdAt: -1 })
                 .exec();
 
@@ -112,12 +126,7 @@ export class TwilioVerificationService {
             verification.attempts += 1;
             await verification.updateOne({ attempts: verification.attempts });
 
-            // Verify via Twilio
-            const verificationCheck = await this.client.verify.v2
-                .services(this.verifyServiceSid)
-                .verificationChecks.create({ to: phoneNumber, code });
-
-            const isValid = verificationCheck.status === 'approved';
+            const isValid = verification.code === code;
 
             // Update verification status
             if (isValid) {
