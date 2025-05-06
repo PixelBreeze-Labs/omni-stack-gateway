@@ -10,7 +10,7 @@ export enum AgentFeatureFlag {
     CLIENT_COMMUNICATION_AGENT = 'client_communication_agent',
     RESOURCE_REQUEST_AGENT = 'resource_request_agent',
     SHIFT_OPTIMIZATION_AGENT = 'shift_optimization_agent'
-  }
+}
 
 export enum BusinessType {
     // Companies
@@ -114,9 +114,18 @@ export class Business extends Document {
         currency: Currency;
     };
 
-
     @Prop({ type: [String], enum: Object.values(AgentFeatureFlag), default: [] })
     includedFeatures: AgentFeatureFlag[];
+
+    // Employee capability flags
+    @Prop({ type: Boolean, default: true })
+    allow_clockinout: boolean;
+
+    @Prop({ type: Boolean, default: true })
+    has_app_access: boolean;
+
+    @Prop({ type: Boolean, default: true })
+    allow_checkin: boolean;
 
     @Prop({ default: true })
     isActive: boolean;
