@@ -127,6 +127,42 @@ export class BusinessController {
         );
     }
 
+    @Patch(':id')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update business details' })
+    @ApiResponse({ status: 200, description: 'Business updated successfully' })
+    async updateBusiness(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Body() updateData: {
+        name?: string;
+        email?: string;
+        phone?: string;
+        type?: string;
+        address?: {
+            street?: string;
+            cityId?: string;
+            stateId?: string;
+            zip?: string;
+            countryId?: string;
+        };
+        taxId?: string;
+        vatNumber?: string;
+        currency?: string;
+        allow_clockinout?: boolean;
+        has_app_access?: boolean;
+        allow_checkin?: boolean;
+        metadata?: Record<string, any>;
+    }
+        ) {
+        return this.businessService.updateBusiness(
+            req.client.id,
+            businessId,
+            updateData
+        );
+    }
+
     @Patch(':id/delete')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()

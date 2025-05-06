@@ -1162,6 +1162,182 @@ export class BusinessService {
 
 
     /**
+     * Update business details
+     */
+    async updateBusiness(
+        clientId: string,
+        businessId: string,
+        updateData: {
+            name?: string;
+            email?: string;
+            phone?: string;
+            type?: string;
+            address?: {
+                street?: string;
+                cityId?: string;
+                stateId?: string;
+                zip?: string;
+                countryId?: string;
+            };
+            taxId?: string;
+            vatNumber?: string;
+            currency?: string;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating business ${businessId} for client ${clientId}`);
+
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Prepare update fields
+            const updateFields: any = {};
+            const {
+                name,
+                email,
+                phone,
+                type,
+                taxId,
+                vatNumber,
+                currency,
+                allow_clockinout,
+                has_app_access,
+                allow_checkin,
+                metadata,
+                address
+            } = updateData;
+
+            // Set basic fields if provided
+            if (name) updateFields.name = name;
+            if (email) updateFields.email = email;
+            if (phone) updateFields.phone = phone;
+            if (type) updateFields.type = type;
+            if (taxId) updateFields.taxId = taxId;
+            if (vatNumber) updateFields.vatNumber = vatNumber;
+            if (currency) updateFields.currency = currency;
+            
+            // Set capability flags if provided
+            if (allow_clockinout !== undefined) updateFields.allow_clockinout = allow_clockinout;
+            if (has_app_access !== undefined) updateFields.has_app_access = has_app_access;
+            if (allow_checkin !== undefined) updateFields.allow_checkin = allow_checkin;
+
+            // Handle metadata updates if provided
+            if (metadata && Object.keys(metadata).length > 0) {
+                // Get existing metadata
+                const existingMetadata = business.metadata || new Map();
+                
+                // Merge new metadata with existing
+                Object.entries(metadata).forEach(([key, value]) => {
+                    existingMetadata.set(key, value);
+                });
+                
+                updateFields.metadata = existingMetadata;
+            }
+
+            // Update the business
+            if (Object.keys(updateFields).length > 0) {
+                await this.businessModel.updateOne(
+                    { _id: businessId },
+                    { $set: updateFields }
+                );
+                this.logger.log(`Updated basic fields for business ${businessId}`);
+            }
+
+            // Handle address separately if provided
+            if (address && Object.values(address).some(val => val !== undefined)) {
+                // Check if address exists
+                let addressId = business.addressId;
+
+                // Prepare address data with proper ID fields
+                const addressData = {
+                    ...(address.street !== undefined && { addressLine1: address.street }),
+                    ...(address.cityId !== undefined && { cityId: address.cityId }),
+                    ...(address.stateId !== undefined && { stateId: address.stateId }),
+                    ...(address.countryId !== undefined && { countryId: address.countryId }),
+                    ...(address.zip !== undefined && { zip: address.zip }),
+                };
+
+                if (addressId) {
+                    // Update existing address
+                    await this.addressModel.updateOne(
+                        { _id: addressId },
+                        { $set: addressData }
+                    );
+                    this.logger.log(`Updated address for business: ${businessId}`);
+                } else {
+                    // Create new address
+                    const newAddress = await this.addressModel.create({
+                        ...addressData,
+                        businessId,
+                        clientId
+                    });
+
+                    // Link address to business
+                    await this.businessModel.updateOne(
+                        { _id: businessId },
+                        { $set: { addressId: newAddress._id } }
+                    );
+                    this.logger.log(`Created new address for business: ${businessId}`);
+                }
+            }
+
+            // Get updated business
+            const updatedBusiness = await this.businessModel.findById(businessId)
+                .populate('address')
+                .populate({
+                    path: 'adminUserId',
+                    select: 'name surname email',
+                    model: 'User'
+                });
+
+            // Format the response similar to getBusinessDetails
+            const adminUserData = updatedBusiness.adminUserId && typeof updatedBusiness.adminUserId !== 'string'
+                ? updatedBusiness.adminUserId as any
+                : null;
+
+            const adminUser = adminUserData ? {
+                _id: adminUserData._id,
+                name: adminUserData.surname
+                    ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
+                    : (adminUserData.name || ''),
+                email: adminUserData.email
+            } : undefined;
+
+            // Extract the business object and restructure for the response
+            const { adminUserId, ...businessData } = updatedBusiness.toObject();
+
+            return {
+                success: true,
+                message: 'Business updated successfully',
+                business: {
+                    ...businessData,
+                    adminUser,
+                    subscription: {
+                        tier: this.getSubscriptionTier(updatedBusiness),
+                        status: updatedBusiness.subscriptionStatus,
+                        endDate: updatedBusiness.subscriptionEndDate,
+                        details: updatedBusiness.subscriptionDetails
+                    }
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error updating business: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Get business details by ID
      */
     async getBusinessDetails(clientId: string, businessId: string) {
