@@ -1338,6 +1338,87 @@ export class BusinessService {
     }
 
     /**
+     * Update employee capabilities
+     */
+    async updateEmployeeCapabilities(
+        clientId: string,
+        employeeId: string,
+        updateData: {
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating capabilities for employee ${employeeId}`);
+
+            // Verify employee exists and belongs to this client
+            const employee = await this.employeeModel.findOne({
+                _id: employeeId,
+                clientId
+            });
+
+            if (!employee) {
+                throw new NotFoundException('Employee not found');
+            }
+
+            // Prepare update fields - only include fields that were provided
+            const updateFields: any = {};
+            
+            if (updateData.allow_clockinout !== undefined) {
+                updateFields.allow_clockinout = updateData.allow_clockinout;
+            }
+            
+            if (updateData.has_app_access !== undefined) {
+                updateFields.has_app_access = updateData.has_app_access;
+            }
+            
+            if (updateData.allow_checkin !== undefined) {
+                updateFields.allow_checkin = updateData.allow_checkin;
+            }
+
+            // If no fields were provided, return early
+            if (Object.keys(updateFields).length === 0) {
+                return {
+                    success: false,
+                    message: 'No capability changes provided',
+                    employee
+                };
+            }
+
+            // Update the employee
+            const updatedEmployee = await this.employeeModel.findByIdAndUpdate(
+                employeeId,
+                { $set: updateFields },
+                { new: true }
+            );
+
+            // Get business info for context
+            const business = await this.businessModel.findById(employee.businessId);
+            
+            return {
+                success: true,
+                message: 'Employee capabilities updated successfully',
+                employee: updatedEmployee,
+                capabilities: {
+                    allow_clockinout: updatedEmployee.allow_clockinout !== null 
+                        ? updatedEmployee.allow_clockinout 
+                        : (business?.allow_clockinout || false),
+                    has_app_access: updatedEmployee.has_app_access !== null 
+                        ? updatedEmployee.has_app_access 
+                        : (business?.has_app_access || false),
+                    allow_checkin: updatedEmployee.allow_checkin !== null 
+                        ? updatedEmployee.allow_checkin 
+                        : (business?.allow_checkin || false)
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error updating employee capabilities: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Get business details by ID
      */
     async getBusinessDetails(clientId: string, businessId: string) {
