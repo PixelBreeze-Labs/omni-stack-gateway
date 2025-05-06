@@ -11,53 +11,10 @@ import {ClientType} from "../schemas/app-client.schema";
 export class BusinessController {
     constructor(private businessService: BusinessService) {}
 
-    @Post(':id/subscribe')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Update business details and create subscription' })
-    @ApiResponse({ status: 201, description: 'Checkout session created successfully' })
-    async updateBusinessAndSubscribe(
-        @Req() req: Request & { client: Client },
-        @Param('id') businessId: string,
-        @Body() subscriptionData: {
-            businessDetails?: {
-                businessType?: string;
-                phone?: string;
-                address?: {
-                    street?: string;
-                    cityId?: string;  // Changed from city
-                    stateId?: string; // Changed from state
-                    zip?: string;
-                    countryId?: string; // Changed from country
-                };
-                taxId?: string;
-                vatNumber?: string;
-            };
-            subscription: {
-                planId: string;
-                interval: 'month' | 'year';
-            };
-        }
-    ) {
-        return this.businessService.updateBusinessAndSubscribe(
-            req.client.id,
-            businessId,
-            subscriptionData
-        );
-    }
-
-    @Get('subscription/finalize')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Finalize subscription after successful payment' })
-    @ApiResponse({ status: 200, description: 'Subscription finalized successfully' })
-    async finalizeSubscription(
-        @Req() req: Request & { client: Client },
-        @Query('session_id') sessionId: string
-    ) {
-        return this.businessService.finalizeSubscription(req.client.id, sessionId);
-    }
-
+    //============================
+    // Generic business list endpoints (no params)
+    //============================
+    
     @Get()
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()
@@ -112,6 +69,155 @@ export class BusinessController {
         );
     }
 
+    @Get('subscription/finalize')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Finalize subscription after successful payment' })
+    @ApiResponse({ status: 200, description: 'Subscription finalized successfully' })
+    async finalizeSubscription(
+        @Req() req: Request & { client: Client },
+        @Query('session_id') sessionId: string
+    ) {
+        return this.businessService.finalizeSubscription(req.client.id, sessionId);
+    }
+    
+    //============================
+    // Employee-specific endpoints
+    //============================
+    
+    // Having employee endpoints before business ID endpoints prevents "employee" from being matched as a business ID
+    
+    @Post('employee')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create a new employee for a business' })
+    @ApiResponse({ status: 201, description: 'Employee created successfully' })
+    async createEmployee(
+        @Req() req: Request & { client: Client },
+        @Body() data: {
+            name: string;
+            surname: string;
+            email: string;
+            adminUserId: string;
+            createAccount?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+        }
+    ) {
+        return this.businessService.createEmployee(
+            req.client.id,
+            data
+        );
+    }
+    
+    @Patch('employee/:id')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update employee details' })
+    @ApiResponse({ status: 200, description: 'Employee updated successfully' })
+    async updateEmployee(
+        @Req() req: Request & { client: Client },
+        @Param('id') employeeId: string,
+        @Body() updateData: {
+            name?: string;
+            email?: string;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.updateEmployee(
+            req.client.id,
+            employeeId,
+            updateData
+        );
+    }
+
+    @Patch('employee/:id/capabilities')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update employee capabilities' })
+    @ApiResponse({ status: 200, description: 'Employee capabilities updated successfully' })
+    async updateEmployeeCapabilities(
+        @Req() req: Request & { client: Client },
+        @Param('id') employeeId: string,
+        @Body() updateData: {
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+        }
+    ) {
+        return this.businessService.updateEmployeeCapabilities(
+            req.client.id,
+            employeeId,
+            updateData
+        );
+    }
+
+    //============================
+    // App client endpoints
+    //============================
+    
+    @Post('app-client')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create a new app client for a business' })
+    @ApiResponse({ status: 201, description: 'App client created successfully' })
+    async createAppClient(
+        @Req() req: Request & { client: Client },
+        @Body() data: {
+            name: string;
+            adminUserId: string;
+            type?: ClientType;
+            contact_person?: string;
+            email?: string;
+            phone?: string;
+            notes?: string;
+            createAccount?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.createAppClient(
+            req.client.id,
+            data
+        );
+    }
+    
+    @Post('simple-app-client')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create a simple app client without user account' })
+    @ApiResponse({ status: 201, description: 'App client created successfully' })
+    async createSimpleAppClient(
+        @Req() req: Request & { client: Client },
+        @Body() data: {
+            name: string;
+            adminUserId: string;
+            type?: ClientType;
+            contact_person?: string;
+            email?: string;
+            phone?: string;
+            notes?: string;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.createSimpleAppClient(
+            req.client.id,
+            data
+        );
+    }
+
+    //============================
+    // Business-specific endpoints (with ID)
+    //============================
+    
     @Get(':id')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()
@@ -126,7 +232,100 @@ export class BusinessController {
             businessId
         );
     }
+    
+    @Post(':id/subscribe')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update business details and create subscription' })
+    @ApiResponse({ status: 201, description: 'Checkout session created successfully' })
+    async updateBusinessAndSubscribe(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Body() subscriptionData: {
+            businessDetails?: {
+                businessType?: string;
+                phone?: string;
+                address?: {
+                    street?: string;
+                    cityId?: string;  // Changed from city
+                    stateId?: string; // Changed from state
+                    zip?: string;
+                    countryId?: string; // Changed from country
+                };
+                taxId?: string;
+                vatNumber?: string;
+            };
+            subscription: {
+                planId: string;
+                interval: 'month' | 'year';
+            };
+        }
+    ) {
+        return this.businessService.updateBusinessAndSubscribe(
+            req.client.id,
+            businessId,
+            subscriptionData
+        );
+    }
+    
+    @Patch(':id')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update business details' })
+    @ApiResponse({ status: 200, description: 'Business updated successfully' })
+    async updateBusiness(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Body() updateData: {
+            name?: string;
+            email?: string;
+            phone?: string;
+            type?: string;
+            address?: {
+                street?: string;
+                cityId?: string;
+                stateId?: string;
+                zip?: string;
+                countryId?: string;
+            };
+            taxId?: string;
+            vatNumber?: string;
+            currency?: string;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.updateBusiness(
+            req.client.id,
+            businessId,
+            updateData
+        );
+    }
 
+    @Patch(':id/capabilities')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update business capabilities and optionally apply to all employees' })
+    @ApiResponse({ status: 200, description: 'Business capabilities updated successfully' })
+    async updateBusinessCapabilities(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Body() updateData: {
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            applyToAllEmployees?: boolean; // Whether to apply these capabilities to all employees
+        }
+    ) {
+        return this.businessService.updateBusinessCapabilities(
+            req.client.id,
+            businessId,
+            updateData
+        );
+    }
+    
     @Patch(':id/delete')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()
@@ -188,80 +387,6 @@ export class BusinessController {
             req.client.id,
             businessId,
             data.isTestAccount
-        );
-    }
-
-    @Post('app-client')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Create a new app client for a business' })
-    @ApiResponse({ status: 201, description: 'App client created successfully' })
-    async createAppClient(
-        @Req() req: Request & { client: Client },
-        @Body() data: {
-            name: string;
-            adminUserId: string;
-            type?: ClientType;
-            contact_person?: string;
-            email?: string;
-            phone?: string;
-            notes?: string;
-            createAccount?: boolean;
-            external_ids?: Record<string, any>;
-            metadata?: Record<string, any>;
-        }
-    ) {
-        return this.businessService.createAppClient(
-            req.client.id,
-            data
-        );
-    }
-
-    @Post('employee')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Create a new employee for a business' })
-    @ApiResponse({ status: 201, description: 'Employee created successfully' })
-    async createEmployee(
-        @Req() req: Request & { client: Client },
-        @Body() data: {
-            name: string;
-            surname: string;
-            email: string;
-            adminUserId: string;
-            createAccount?: boolean;
-            external_ids?: Record<string, any>;
-            metadata?: Record<string, any>;
-        }
-    ) {
-        return this.businessService.createEmployee(
-            req.client.id,
-            data
-        );
-    }
-
-    @Post('simple-app-client')
-    @UseGuards(ClientAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Create a simple app client without user account' })
-    @ApiResponse({ status: 201, description: 'App client created successfully' })
-    async createSimpleAppClient(
-        @Req() req: Request & { client: Client },
-        @Body() data: {
-            name: string;
-            adminUserId: string;
-            type?: ClientType;
-            contact_person?: string;
-            email?: string;
-            phone?: string;
-            notes?: string;
-            external_ids?: Record<string, any>;
-            metadata?: Record<string, any>;
-        }
-    ) {
-        return this.businessService.createSimpleAppClient(
-            req.client.id,
-            data
         );
     }
 }

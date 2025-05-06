@@ -857,6 +857,9 @@ export class BusinessService {
             password?: string; // Password provided from PHP side
             external_ids?: Record<string, any>;
             metadata?: Record<string, any>;
+            allow_clockinout?: boolean; // Employee-specific clock in/out capability
+            has_app_access?: boolean; // Employee-specific app access capability
+            allow_checkin?: boolean; // Employee-specific check in capability
         }
     ) {
         try {
@@ -928,7 +931,17 @@ export class BusinessService {
                 email: data.email,
                 user_id: userId, // Link to the created user if exists
                 external_ids: data.external_ids || {},
-                metadata: data.metadata || {}
+                metadata: data.metadata || {},
+                // Set capability flags (providing explicit values or use business defaults)
+                allow_clockinout: data.allow_clockinout !== undefined 
+                    ? data.allow_clockinout 
+                    : business.allow_clockinout,
+                has_app_access: data.has_app_access !== undefined 
+                    ? data.has_app_access 
+                    : business.has_app_access,
+                allow_checkin: data.allow_checkin !== undefined 
+                    ? data.allow_checkin 
+                    : business.allow_checkin
             });
 
             // Step 5: Update the business's employee list
@@ -1147,6 +1160,499 @@ export class BusinessService {
         }
     }
 
+
+    /**
+     * Update business details
+     */
+    async updateBusiness(
+        clientId: string,
+        businessId: string,
+        updateData: {
+            name?: string;
+            email?: string;
+            phone?: string;
+            type?: string;
+            address?: {
+                street?: string;
+                cityId?: string;
+                stateId?: string;
+                zip?: string;
+                countryId?: string;
+            };
+            taxId?: string;
+            vatNumber?: string;
+            currency?: string;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating business ${businessId} for client ${clientId}`);
+
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Prepare update fields
+            const updateFields: any = {};
+            const {
+                name,
+                email,
+                phone,
+                type,
+                taxId,
+                vatNumber,
+                currency,
+                allow_clockinout,
+                has_app_access,
+                allow_checkin,
+                metadata,
+                address
+            } = updateData;
+
+            // Set basic fields if provided
+            if (name) updateFields.name = name;
+            if (email) updateFields.email = email;
+            if (phone) updateFields.phone = phone;
+            if (type) updateFields.type = type;
+            if (taxId) updateFields.taxId = taxId;
+            if (vatNumber) updateFields.vatNumber = vatNumber;
+            if (currency) updateFields.currency = currency;
+            
+            // Set capability flags if provided
+            if (allow_clockinout !== undefined) updateFields.allow_clockinout = allow_clockinout;
+            if (has_app_access !== undefined) updateFields.has_app_access = has_app_access;
+            if (allow_checkin !== undefined) updateFields.allow_checkin = allow_checkin;
+
+            // Handle metadata updates if provided
+            if (metadata && Object.keys(metadata).length > 0) {
+                // Get existing metadata
+                const existingMetadata = business.metadata || new Map();
+                
+                // Merge new metadata with existing
+                Object.entries(metadata).forEach(([key, value]) => {
+                    existingMetadata.set(key, value);
+                });
+                
+                updateFields.metadata = existingMetadata;
+            }
+
+            // Update the business
+            if (Object.keys(updateFields).length > 0) {
+                await this.businessModel.updateOne(
+                    { _id: businessId },
+                    { $set: updateFields }
+                );
+                this.logger.log(`Updated basic fields for business ${businessId}`);
+            }
+
+            // Handle address separately if provided
+            if (address && Object.values(address).some(val => val !== undefined)) {
+                // Check if address exists
+                let addressId = business.addressId;
+
+                // Prepare address data with proper ID fields
+                const addressData = {
+                    ...(address.street !== undefined && { addressLine1: address.street }),
+                    ...(address.cityId !== undefined && { cityId: address.cityId }),
+                    ...(address.stateId !== undefined && { stateId: address.stateId }),
+                    ...(address.countryId !== undefined && { countryId: address.countryId }),
+                    ...(address.zip !== undefined && { zip: address.zip }),
+                };
+
+                if (addressId) {
+                    // Update existing address
+                    await this.addressModel.updateOne(
+                        { _id: addressId },
+                        { $set: addressData }
+                    );
+                    this.logger.log(`Updated address for business: ${businessId}`);
+                } else {
+                    // Create new address
+                    const newAddress = await this.addressModel.create({
+                        ...addressData,
+                        businessId,
+                        clientId
+                    });
+
+                    // Link address to business
+                    await this.businessModel.updateOne(
+                        { _id: businessId },
+                        { $set: { addressId: newAddress._id } }
+                    );
+                    this.logger.log(`Created new address for business: ${businessId}`);
+                }
+            }
+
+            // Get updated business
+            const updatedBusiness = await this.businessModel.findById(businessId)
+                .populate('address')
+                .populate({
+                    path: 'adminUserId',
+                    select: 'name surname email',
+                    model: 'User'
+                });
+
+            // Format the response similar to getBusinessDetails
+            const adminUserData = updatedBusiness.adminUserId && typeof updatedBusiness.adminUserId !== 'string'
+                ? updatedBusiness.adminUserId as any
+                : null;
+
+            const adminUser = adminUserData ? {
+                _id: adminUserData._id,
+                name: adminUserData.surname
+                    ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
+                    : (adminUserData.name || ''),
+                email: adminUserData.email
+            } : undefined;
+
+            // Extract the business object and restructure for the response
+            const { adminUserId, ...businessData } = updatedBusiness.toObject();
+
+            return {
+                success: true,
+                message: 'Business updated successfully',
+                business: {
+                    ...businessData,
+                    adminUser,
+                    subscription: {
+                        tier: this.getSubscriptionTier(updatedBusiness),
+                        status: updatedBusiness.subscriptionStatus,
+                        endDate: updatedBusiness.subscriptionEndDate,
+                        details: updatedBusiness.subscriptionDetails
+                    }
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error updating business: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Update business capabilities and optionally apply to all employees
+     */
+    async updateBusinessCapabilities(
+        clientId: string,
+        businessId: string,
+        updateData: {
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            applyToAllEmployees?: boolean;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating capabilities for business ${businessId}`);
+
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Prepare update fields
+            const updateFields: any = {};
+            
+            // Set capability flags if provided
+            if (updateData.allow_clockinout !== undefined) updateFields.allow_clockinout = updateData.allow_clockinout;
+            if (updateData.has_app_access !== undefined) updateFields.has_app_access = updateData.has_app_access;
+            if (updateData.allow_checkin !== undefined) updateFields.allow_checkin = updateData.allow_checkin;
+
+            // If no capability fields were provided, return early
+            if (Object.keys(updateFields).length === 0) {
+                return {
+                    success: false,
+                    message: 'No capability changes provided',
+                    business
+                };
+            }
+
+            // Update the business
+            const updatedBusiness = await this.businessModel.findByIdAndUpdate(
+                businessId,
+                { $set: updateFields },
+                { new: true }
+            );
+
+            // If applyToAllEmployees is true, update all employees of this business
+            let updatedEmployeesCount = 0;
+            if (updateData.applyToAllEmployees) {
+                // Find all employees for this business
+                const employees = await this.employeeModel.find({ businessId });
+                
+                if (employees.length > 0) {
+                    // Prepare employee update fields
+                    const employeeUpdateFields: any = {};
+                    
+                    // Only include fields that were provided for the business
+                    if (updateData.allow_clockinout !== undefined) {
+                        employeeUpdateFields.allow_clockinout = updateData.allow_clockinout;
+                    }
+                    
+                    if (updateData.has_app_access !== undefined) {
+                        employeeUpdateFields.has_app_access = updateData.has_app_access;
+                    }
+                    
+                    if (updateData.allow_checkin !== undefined) {
+                        employeeUpdateFields.allow_checkin = updateData.allow_checkin;
+                    }
+
+                    // Update all employees
+                    const updateResult = await this.employeeModel.updateMany(
+                        { businessId },
+                        { $set: employeeUpdateFields }
+                    );
+                    
+                    updatedEmployeesCount = updateResult.modifiedCount;
+                    this.logger.log(`Updated capabilities for ${updatedEmployeesCount} employees of business ${businessId}`);
+                }
+            }
+            
+            return {
+                success: true,
+                message: 'Business capabilities updated successfully' + 
+                    (updatedEmployeesCount > 0 ? ` and applied to ${updatedEmployeesCount} employees` : ''),
+                business: updatedBusiness,
+                updatedEmployeesCount
+            };
+        } catch (error) {
+            this.logger.error(`Error updating business capabilities: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Update employee details
+     */
+    async updateEmployee(
+        clientId: string,
+        employeeId: string,
+        updateData: {
+            name?: string;
+            email?: string;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating employee ${employeeId} for client ${clientId}`);
+
+            // Verify employee exists and belongs to this client
+            const employee = await this.employeeModel.findOne({
+                _id: employeeId,
+                clientId
+            });
+
+            if (!employee) {
+                throw new NotFoundException('Employee not found');
+            }
+
+            // If email is being updated, check if it's already in use
+            if (updateData.email && updateData.email !== employee.email) {
+                const existingEmployee = await this.employeeModel.findOne({
+                    email: updateData.email,
+                    clientId,
+                    _id: { $ne: employeeId } // Exclude current employee
+                });
+
+                if (existingEmployee) {
+                    throw new BadRequestException('Email already in use by another employee');
+                }
+
+                // If employee has a user account, update that email as well
+                if (employee.user_id) {
+                    const user = await this.userModel.findById(employee.user_id);
+                    if (user) {
+                        // Check if email is used by another user
+                        const existingUser = await this.userModel.findOne({
+                            email: updateData.email,
+                            _id: { $ne: employee.user_id }
+                        });
+
+                        if (existingUser) {
+                            throw new BadRequestException('Email already in use by another user');
+                        }
+
+                        // Update user email
+                        await this.userModel.updateOne(
+                            { _id: employee.user_id },
+                            { $set: { email: updateData.email } }
+                        );
+                        this.logger.log(`Updated email for associated user account: ${employee.user_id}`);
+                    }
+                }
+            }
+
+            // Prepare update fields
+            const updateFields: any = {};
+            
+            // Set basic fields if provided
+            if (updateData.name !== undefined) updateFields.name = updateData.name;
+            if (updateData.email !== undefined) updateFields.email = updateData.email;
+            
+            // Set capability flags if provided
+            if (updateData.allow_clockinout !== undefined) updateFields.allow_clockinout = updateData.allow_clockinout;
+            if (updateData.has_app_access !== undefined) updateFields.has_app_access = updateData.has_app_access;
+            if (updateData.allow_checkin !== undefined) updateFields.allow_checkin = updateData.allow_checkin;
+
+            // Handle external_ids updates if provided
+            if (updateData.external_ids) {
+                updateFields.external_ids = {
+                    ...employee.external_ids,
+                    ...updateData.external_ids
+                };
+            }
+
+            // Handle metadata updates if provided
+            if (updateData.metadata && Object.keys(updateData.metadata).length > 0) {
+                // Get existing metadata
+                const existingMetadata = employee.metadata || new Map();
+                
+                // Merge new metadata with existing
+                Object.entries(updateData.metadata).forEach(([key, value]) => {
+                    existingMetadata.set(key, value);
+                });
+                
+                updateFields.metadata = existingMetadata;
+            }
+
+            // If no fields were provided, return early
+            if (Object.keys(updateFields).length === 0) {
+                return {
+                    success: false,
+                    message: 'No update data provided',
+                    employee
+                };
+            }
+
+            // Update the employee
+            const updatedEmployee = await this.employeeModel.findByIdAndUpdate(
+                employeeId,
+                { $set: updateFields },
+                { new: true }
+            );
+
+            // Get business info for context
+            const business = await this.businessModel.findById(employee.businessId);
+            
+            return {
+                success: true,
+                message: 'Employee updated successfully',
+                employee: updatedEmployee,
+                capabilities: {
+                    allow_clockinout: updatedEmployee.allow_clockinout !== null 
+                        ? updatedEmployee.allow_clockinout 
+                        : (business?.allow_clockinout || false),
+                    has_app_access: updatedEmployee.has_app_access !== null 
+                        ? updatedEmployee.has_app_access 
+                        : (business?.has_app_access || false),
+                    allow_checkin: updatedEmployee.allow_checkin !== null 
+                        ? updatedEmployee.allow_checkin 
+                        : (business?.allow_checkin || false)
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error updating employee: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Update employee capabilities
+     */
+    async updateEmployeeCapabilities(
+        clientId: string,
+        employeeId: string,
+        updateData: {
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating capabilities for employee ${employeeId}`);
+
+            // Verify employee exists and belongs to this client
+            const employee = await this.employeeModel.findOne({
+                _id: employeeId,
+                clientId
+            });
+
+            if (!employee) {
+                throw new NotFoundException('Employee not found');
+            }
+
+            // Prepare update fields - only include fields that were provided
+            const updateFields: any = {};
+            
+            if (updateData.allow_clockinout !== undefined) {
+                updateFields.allow_clockinout = updateData.allow_clockinout;
+            }
+            
+            if (updateData.has_app_access !== undefined) {
+                updateFields.has_app_access = updateData.has_app_access;
+            }
+            
+            if (updateData.allow_checkin !== undefined) {
+                updateFields.allow_checkin = updateData.allow_checkin;
+            }
+
+            // If no fields were provided, return early
+            if (Object.keys(updateFields).length === 0) {
+                return {
+                    success: false,
+                    message: 'No capability changes provided',
+                    employee
+                };
+            }
+
+            // Update the employee
+            const updatedEmployee = await this.employeeModel.findByIdAndUpdate(
+                employeeId,
+                { $set: updateFields },
+                { new: true }
+            );
+
+            // Get business info for context
+            const business = await this.businessModel.findById(employee.businessId);
+            
+            return {
+                success: true,
+                message: 'Employee capabilities updated successfully',
+                employee: updatedEmployee,
+                capabilities: {
+                    allow_clockinout: updatedEmployee.allow_clockinout !== null 
+                        ? updatedEmployee.allow_clockinout 
+                        : (business?.allow_clockinout || false),
+                    has_app_access: updatedEmployee.has_app_access !== null 
+                        ? updatedEmployee.has_app_access 
+                        : (business?.has_app_access || false),
+                    allow_checkin: updatedEmployee.allow_checkin !== null 
+                        ? updatedEmployee.allow_checkin 
+                        : (business?.allow_checkin || false)
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error updating employee capabilities: ${error.message}`);
+            throw error;
+        }
+    }
 
     /**
      * Get business details by ID
