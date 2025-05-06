@@ -101,7 +101,7 @@ export class VerificationController {
 
         return {
             success: true,
-            valid: result.valid
+            valid: result.valid === true
         };
     }
 
