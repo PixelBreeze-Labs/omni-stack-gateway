@@ -249,6 +249,28 @@ export class BusinessController {
         );
     }
 
+    @Patch(':id/capabilities')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update business capabilities and optionally apply to all employees' })
+    @ApiResponse({ status: 200, description: 'Business capabilities updated successfully' })
+    async updateBusinessCapabilities(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Body() updateData: {
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            applyToAllEmployees?: boolean; // Whether to apply these capabilities to all employees
+        }
+    ) {
+        return this.businessService.updateBusinessCapabilities(
+            req.client.id,
+            businessId,
+            updateData
+        );
+    }
+
     @Patch('employee/:id')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()

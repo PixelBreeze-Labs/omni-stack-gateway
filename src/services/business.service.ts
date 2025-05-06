@@ -1337,6 +1337,102 @@ export class BusinessService {
         }
     }
 
+    /**
+     * Update business capabilities and optionally apply to all employees
+     */
+    async updateBusinessCapabilities(
+        clientId: string,
+        businessId: string,
+        updateData: {
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            applyToAllEmployees?: boolean;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating capabilities for business ${businessId}`);
+
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Prepare update fields
+            const updateFields: any = {};
+            
+            // Set capability flags if provided
+            if (updateData.allow_clockinout !== undefined) updateFields.allow_clockinout = updateData.allow_clockinout;
+            if (updateData.has_app_access !== undefined) updateFields.has_app_access = updateData.has_app_access;
+            if (updateData.allow_checkin !== undefined) updateFields.allow_checkin = updateData.allow_checkin;
+
+            // If no capability fields were provided, return early
+            if (Object.keys(updateFields).length === 0) {
+                return {
+                    success: false,
+                    message: 'No capability changes provided',
+                    business
+                };
+            }
+
+            // Update the business
+            const updatedBusiness = await this.businessModel.findByIdAndUpdate(
+                businessId,
+                { $set: updateFields },
+                { new: true }
+            );
+
+            // If applyToAllEmployees is true, update all employees of this business
+            let updatedEmployeesCount = 0;
+            if (updateData.applyToAllEmployees) {
+                // Find all employees for this business
+                const employees = await this.employeeModel.find({ businessId });
+                
+                if (employees.length > 0) {
+                    // Prepare employee update fields
+                    const employeeUpdateFields: any = {};
+                    
+                    // Only include fields that were provided for the business
+                    if (updateData.allow_clockinout !== undefined) {
+                        employeeUpdateFields.allow_clockinout = updateData.allow_clockinout;
+                    }
+                    
+                    if (updateData.has_app_access !== undefined) {
+                        employeeUpdateFields.has_app_access = updateData.has_app_access;
+                    }
+                    
+                    if (updateData.allow_checkin !== undefined) {
+                        employeeUpdateFields.allow_checkin = updateData.allow_checkin;
+                    }
+
+                    // Update all employees
+                    const updateResult = await this.employeeModel.updateMany(
+                        { businessId },
+                        { $set: employeeUpdateFields }
+                    );
+                    
+                    updatedEmployeesCount = updateResult.modifiedCount;
+                    this.logger.log(`Updated capabilities for ${updatedEmployeesCount} employees of business ${businessId}`);
+                }
+            }
+            
+            return {
+                success: true,
+                message: 'Business capabilities updated successfully' + 
+                    (updatedEmployeesCount > 0 ? ` and applied to ${updatedEmployeesCount} employees` : ''),
+                business: updatedBusiness,
+                updatedEmployeesCount
+            };
+        } catch (error) {
+            this.logger.error(`Error updating business capabilities: ${error.message}`);
+            throw error;
+        }
+    }
 
     /**
      * Update employee details
