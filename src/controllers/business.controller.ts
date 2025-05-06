@@ -249,6 +249,31 @@ export class BusinessController {
         );
     }
 
+    @Patch('employee/:id')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update employee details' })
+    @ApiResponse({ status: 200, description: 'Employee updated successfully' })
+    async updateEmployee(
+        @Req() req: Request & { client: Client },
+        @Param('id') employeeId: string,
+        @Body() updateData: {
+            name?: string;
+            email?: string;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        return this.businessService.updateEmployee(
+            req.client.id,
+            employeeId,
+            updateData
+        );
+    }
+
     @Post('app-client')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()

@@ -1337,6 +1337,146 @@ export class BusinessService {
         }
     }
 
+
+    /**
+     * Update employee details
+     */
+    async updateEmployee(
+        clientId: string,
+        employeeId: string,
+        updateData: {
+            name?: string;
+            email?: string;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
+            external_ids?: Record<string, any>;
+            metadata?: Record<string, any>;
+        }
+    ) {
+        try {
+            this.logger.log(`Updating employee ${employeeId} for client ${clientId}`);
+
+            // Verify employee exists and belongs to this client
+            const employee = await this.employeeModel.findOne({
+                _id: employeeId,
+                clientId
+            });
+
+            if (!employee) {
+                throw new NotFoundException('Employee not found');
+            }
+
+            // If email is being updated, check if it's already in use
+            if (updateData.email && updateData.email !== employee.email) {
+                const existingEmployee = await this.employeeModel.findOne({
+                    email: updateData.email,
+                    clientId,
+                    _id: { $ne: employeeId } // Exclude current employee
+                });
+
+                if (existingEmployee) {
+                    throw new BadRequestException('Email already in use by another employee');
+                }
+
+                // If employee has a user account, update that email as well
+                if (employee.user_id) {
+                    const user = await this.userModel.findById(employee.user_id);
+                    if (user) {
+                        // Check if email is used by another user
+                        const existingUser = await this.userModel.findOne({
+                            email: updateData.email,
+                            _id: { $ne: employee.user_id }
+                        });
+
+                        if (existingUser) {
+                            throw new BadRequestException('Email already in use by another user');
+                        }
+
+                        // Update user email
+                        await this.userModel.updateOne(
+                            { _id: employee.user_id },
+                            { $set: { email: updateData.email } }
+                        );
+                        this.logger.log(`Updated email for associated user account: ${employee.user_id}`);
+                    }
+                }
+            }
+
+            // Prepare update fields
+            const updateFields: any = {};
+            
+            // Set basic fields if provided
+            if (updateData.name !== undefined) updateFields.name = updateData.name;
+            if (updateData.email !== undefined) updateFields.email = updateData.email;
+            
+            // Set capability flags if provided
+            if (updateData.allow_clockinout !== undefined) updateFields.allow_clockinout = updateData.allow_clockinout;
+            if (updateData.has_app_access !== undefined) updateFields.has_app_access = updateData.has_app_access;
+            if (updateData.allow_checkin !== undefined) updateFields.allow_checkin = updateData.allow_checkin;
+
+            // Handle external_ids updates if provided
+            if (updateData.external_ids) {
+                updateFields.external_ids = {
+                    ...employee.external_ids,
+                    ...updateData.external_ids
+                };
+            }
+
+            // Handle metadata updates if provided
+            if (updateData.metadata && Object.keys(updateData.metadata).length > 0) {
+                // Get existing metadata
+                const existingMetadata = employee.metadata || new Map();
+                
+                // Merge new metadata with existing
+                Object.entries(updateData.metadata).forEach(([key, value]) => {
+                    existingMetadata.set(key, value);
+                });
+                
+                updateFields.metadata = existingMetadata;
+            }
+
+            // If no fields were provided, return early
+            if (Object.keys(updateFields).length === 0) {
+                return {
+                    success: false,
+                    message: 'No update data provided',
+                    employee
+                };
+            }
+
+            // Update the employee
+            const updatedEmployee = await this.employeeModel.findByIdAndUpdate(
+                employeeId,
+                { $set: updateFields },
+                { new: true }
+            );
+
+            // Get business info for context
+            const business = await this.businessModel.findById(employee.businessId);
+            
+            return {
+                success: true,
+                message: 'Employee updated successfully',
+                employee: updatedEmployee,
+                capabilities: {
+                    allow_clockinout: updatedEmployee.allow_clockinout !== null 
+                        ? updatedEmployee.allow_clockinout 
+                        : (business?.allow_clockinout || false),
+                    has_app_access: updatedEmployee.has_app_access !== null 
+                        ? updatedEmployee.has_app_access 
+                        : (business?.has_app_access || false),
+                    allow_checkin: updatedEmployee.allow_checkin !== null 
+                        ? updatedEmployee.allow_checkin 
+                        : (business?.allow_checkin || false)
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error updating employee: ${error.message}`);
+            throw error;
+        }
+    }
+
     /**
      * Update employee capabilities
      */
