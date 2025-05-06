@@ -27,6 +27,27 @@ export class Employee extends Document {
     user_id?: string;
 
     /**
+     * Whether this employee is allowed to clock in/out. 
+     * If not specified, will inherit from business settings.
+     */
+    @Prop({ type: Boolean, default: null })
+    allow_clockinout?: boolean;
+
+    /**
+     * Whether this employee has access to the mobile app.
+     * If not specified, will inherit from business settings.
+     */
+    @Prop({ type: Boolean, default: null })
+    has_app_access?: boolean;
+
+    /**
+     * Whether this employee is allowed to check in.
+     * If not specified, will inherit from business settings.
+     */
+    @Prop({ type: Boolean, default: null })
+    allow_checkin?: boolean;
+
+    /**
      * external_ids: A JSON object to store various external IDs.
      * Example:
      * {
