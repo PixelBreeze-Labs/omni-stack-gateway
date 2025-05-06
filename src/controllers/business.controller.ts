@@ -389,4 +389,29 @@ export class BusinessController {
             data.isTestAccount
         );
     }
+
+    @Get(':id/employees')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get employees for a business' })
+    @ApiResponse({ status: 200, description: 'Returns a list of employees for the business' })
+    async getBusinessEmployees(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('search') search?: string,
+        @Query('sort') sort?: string
+    ) {
+        return this.businessService.getBusinessEmployees(
+            req.client.id,
+            businessId,
+            {
+                page,
+                limit,
+                search,
+                sort
+            }
+        );
+    }
 }

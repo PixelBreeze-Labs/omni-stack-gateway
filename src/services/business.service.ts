@@ -1740,4 +1740,109 @@ export class BusinessService {
 
         return tierFromPlanId || tierFromMetadata || 'basic';
     }
+
+   /**
+     * Get employees for a business
+     */
+    async getBusinessEmployees(
+        clientId: string,
+        businessId: string,
+        params: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        sort?: string;
+        } = {}
+    ) {
+        try {
+        const {
+            page = 1,
+            limit = 10,
+            search = '',
+            sort = 'name_asc'
+        } = params;
+    
+        const skip = (page - 1) * limit;
+    
+        // Build the filter for employees
+        const employeeFilter: any = {
+            clientId,
+            businessId,
+            isDeleted: { $ne: true }
+        };
+    
+        // Add search filter if provided
+        if (search) {
+            employeeFilter.$or = [
+            { name: new RegExp(search, 'i') },
+            { email: new RegExp(search, 'i') }
+            ];
+        }
+    
+        // Get the business to ensure it exists and belongs to the client
+        const business = await this.businessModel.findOne({
+            _id: businessId,
+            clientId,
+            isDeleted: { $ne: true }
+        });
+    
+        if (!business) {
+            throw new NotFoundException('Business not found');
+        }
+    
+        // Get total count of employees
+        const totalEmployees = await this.employeeModel.countDocuments(employeeFilter);
+        
+        // Handle sorting
+        const [sortField, sortDirection] = (sort || 'name_asc').split('_');
+        const sortOptions = {};
+        sortOptions[sortField || 'name'] = sortDirection === 'desc' ? -1 : 1;
+    
+        // Get employees with pagination
+        const employees = await this.employeeModel
+            .find(employeeFilter)
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(limit);
+    
+        // For each employee, find if they have a user account
+        const items = await Promise.all(
+            employees.map(async (employee) => {
+            let user = null;
+            
+            // If the employee has a user_id, fetch the user data
+            if (employee.user_id) {
+                user = await this.userModel.findOne({
+                _id: employee.user_id,
+                isDeleted: { $ne: true }
+                });
+            }
+    
+            return {
+                ...employee.toObject(),
+                user
+            };
+            })
+        );
+    
+        // Get business capabilities to use as defaults
+        const businessCapabilities = {
+            allow_clockinout: business.allow_clockinout !== false,
+            has_app_access: business.has_app_access !== false,
+            allow_checkin: business.allow_checkin !== false
+        };
+    
+        return {
+            items,
+            total: totalEmployees,
+            pages: Math.ceil(totalEmployees / limit),
+            page,
+            limit,
+            businessCapabilities
+        };
+        } catch (error) {
+        this.logger.error(`Error fetching employees for business ${businessId}: ${error.message}`);
+        throw error;
+        }
+    }
 }
