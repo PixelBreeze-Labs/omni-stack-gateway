@@ -232,6 +232,9 @@ export class BusinessController {
             createAccount?: boolean;
             external_ids?: Record<string, any>;
             metadata?: Record<string, any>;
+            allow_clockinout?: boolean;
+            has_app_access?: boolean;
+            allow_checkin?: boolean;
         }
     ) {
         return this.businessService.createEmployee(
