@@ -352,7 +352,7 @@ export class AuthService {
         }
     }
 
-    /**
+   /**
      * Login for mobile staff users
      */
     async staffluentMobileLogin(loginDto: {
@@ -423,15 +423,31 @@ export class AuthService {
                 employee.metadata?.get('role') ||
                 'business_staff';
 
-            // TODO: w don't need, subscription, tierFeatures, tierLimits for mobile
             // Get features filtered by role
             const featuresInfo = await this.getBusinessFeaturesForLogin(
                 business._id.toString(),
                 role
             );
 
+            // Determine employee capabilities with business defaults as fallback
+            const allow_clockinout = employee.allow_clockinout !== null 
+                ? employee.allow_clockinout 
+                : (business.allow_clockinout || false);
+
+            const has_app_access = employee.has_app_access !== null 
+                ? employee.has_app_access 
+                : (business.has_app_access || false);
+
+            const allow_checkin = employee.allow_checkin !== null 
+                ? employee.allow_checkin 
+                : (business.allow_checkin || false);
+
+            // If app access is denied, throw an error
+            if (!has_app_access) {
+                throw new UnauthorizedException('You do not have access to the mobile application');
+            }
+
             // Return mobile auth data augmented with our business info and features
-            // but without sidebar links
             return {
                 ...mobileAuthData, // Include all PHP response data
                 osUserId: user._id.toString(),
@@ -448,10 +464,10 @@ export class AuthService {
                     email: employee.email,
                     external_ids: employee.external_ids
                 },
-                // TODO: should be part employee model
-                allow_clockinout: true,
-                // TODO: should be set when creating th user based on password true, but read by employee model
-                has_app_access: true,
+                // Set these based on business and employee settings
+                allow_clockinout,
+                has_app_access,
+                allow_checkin,
                 account_type: role,
                 ...featuresInfo
             };
