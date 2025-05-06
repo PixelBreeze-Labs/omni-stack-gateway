@@ -857,6 +857,9 @@ export class BusinessService {
             password?: string; // Password provided from PHP side
             external_ids?: Record<string, any>;
             metadata?: Record<string, any>;
+            allow_clockinout?: boolean; // Employee-specific clock in/out capability
+            has_app_access?: boolean; // Employee-specific app access capability
+            allow_checkin?: boolean; // Employee-specific check in capability
         }
     ) {
         try {
@@ -928,7 +931,17 @@ export class BusinessService {
                 email: data.email,
                 user_id: userId, // Link to the created user if exists
                 external_ids: data.external_ids || {},
-                metadata: data.metadata || {}
+                metadata: data.metadata || {},
+                // Set capability flags (providing explicit values or use business defaults)
+                allow_clockinout: data.allow_clockinout !== undefined 
+                    ? data.allow_clockinout 
+                    : business.allow_clockinout,
+                has_app_access: data.has_app_access !== undefined 
+                    ? data.has_app_access 
+                    : business.has_app_access,
+                allow_checkin: data.allow_checkin !== undefined 
+                    ? data.allow_checkin 
+                    : business.allow_checkin
             });
 
             // Step 5: Update the business's employee list
