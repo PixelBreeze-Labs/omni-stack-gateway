@@ -248,7 +248,7 @@ export class BusinessController {
                         street: address.addressLine1,
                         city: (address as any).city?.name || '',
                         state: (address as any).state?.name || '',
-                        zip: address.postcode || '',
+                        postcode: address.postcode || '',
                         country: (address as any).country?.name || ''
                     };
                     
@@ -320,7 +320,7 @@ export class BusinessController {
                 street?: string;
                 cityId?: string;
                 stateId?: string;
-                zip?: string;
+                postcode?: string;
                 countryId?: string;
             };
             taxId?: string;
