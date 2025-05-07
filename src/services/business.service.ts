@@ -115,7 +115,7 @@ export class BusinessService {
                 if (businessDetails.address && Object.values(businessDetails.address).some(val => val)) {
                     // Check if address exists
                     let addressId = business.addressId;
-
+                
                     // Prepare address data with proper ID fields
                     const addressData = {
                         addressLine1: businessDetails.address.street || '',
@@ -123,23 +123,29 @@ export class BusinessService {
                         stateId: businessDetails.address.stateId || null,
                         countryId: businessDetails.address.countryId || null,
                         postcode: businessDetails.address.postcode || '',
+                        businessId,
+                        clientId
                     };
-
+                
                     if (addressId) {
-                        // Update existing address
+                        // Update existing address - make sure to explicitly include postcode
                         await this.addressModel.updateOne(
                             { _id: addressId },
-                            { $set: addressData }
+                            { 
+                                $set: {
+                                    addressLine1: addressData.addressLine1,
+                                    cityId: addressData.cityId,
+                                    stateId: addressData.stateId,
+                                    countryId: addressData.countryId,
+                                    postcode: addressData.postcode
+                                } 
+                            }
                         );
                         this.logger.log(`Updated address for business: ${businessId}`);
                     } else {
                         // Create new address
-                        const newAddress = await this.addressModel.create({
-                            ...addressData,
-                            businessId,
-                            clientId
-                        });
-
+                        const newAddress = await this.addressModel.create(addressData);
+                
                         // Link address to business
                         await this.businessModel.updateOne(
                             { _id: businessId },
@@ -1261,90 +1267,76 @@ async updateBusiness(
             // Check if address exists
             let addressId = business.addressId;
         
-            // Prepare address data with proper ID fields
-            const addressData: any = {};
+            // Handle the different field names that might come from the frontend
+            const postcodeValue = address.postcode !== undefined ? address.postcode : '';
             
-            // Map the input fields to schema fields
+            // Prepare address data with proper fields
+            const addressData: any = {
+                businessId,
+                clientId
+            };
+            
+            // Always set these fields explicitly
             if (address.street !== undefined) addressData.addressLine1 = address.street;
+            addressData.postcode = postcodeValue; // Always set postcode, even if empty
             
-            // For cityId, stateId, and countryId, we need to handle them 
-            // differently if they're string names rather than valid MongoDB ObjectIds
-            
-            // Only add IDs if they look like valid MongoDB ObjectIds
+            // IDs need special handling
             const isValidObjectId = (id: string) => /^[0-9a-fA-F]{24}$/.test(id);
             
             if (address.cityId && isValidObjectId(address.cityId)) {
                 addressData.cityId = address.cityId;
-            } else if (address.city) {
-                // Log that we received a city name instead of an ID
-                this.logger.warn(`City name or invalid ID provided: ${address.cityId || address.city}`);
-                // You might want to add logic here to lookup or create the city
             }
             
             if (address.stateId && isValidObjectId(address.stateId)) {
                 addressData.stateId = address.stateId;
-            } else if (address.state) {
-                this.logger.warn(`State name or invalid ID provided: ${address.stateId || address.state}`);
             }
             
             if (address.countryId && isValidObjectId(address.countryId)) {
                 addressData.countryId = address.countryId;
-            } else if (address.country) {
-                this.logger.warn(`Country name or invalid ID provided: ${address.countryId || address.country}`);
             }
             
-            // Handle zip/postcode
-            if (address.postcode !== undefined) addressData.postcode = address.postcode;
-        
-            // Check if the required address data is available
-            const hasRequiredAddressData = addressData.addressLine1 && 
-                                          (addressData.cityId || addressData.stateId || addressData.countryId);
-            
-            // Process address update/creation only if we have essential data
-            if (hasRequiredAddressData) {
-                if (addressId) {
-                    // Update existing address, only setting the fields we have
-                    const updateFields = {};
-                    Object.keys(addressData).forEach(key => {
-                        if (addressData[key] !== undefined) {
-                            updateFields[key] = addressData[key];
-                        }
-                    });
-                    
-                    await this.addressModel.updateOne(
-                        { _id: addressId },
-                        { $set: updateFields }
-                    );
-                    this.logger.log(`Updated address for business: ${businessId}`);
-                } else {
-                    try {
-                        // Create a basic address record with what we have
-                        const newAddress = await this.addressModel.create({
-                            addressLine1: addressData.addressLine1 || address.street || '',
-                            postcode: addressData.postcode || '',
-                            // Set other fields only if we have them
-                            ...(addressData.cityId ? { cityId: addressData.cityId } : {}),
-                            ...(addressData.stateId ? { stateId: addressData.stateId } : {}),
-                            ...(addressData.countryId ? { countryId: addressData.countryId } : {}),
-                            businessId,
-                            clientId
-                        });
-        
-                        // Link address to business
-                        await this.businessModel.updateOne(
-                            { _id: businessId },
-                            { $set: { addressId: newAddress._id } }
-                        );
-                        this.logger.log(`Created new address for business: ${businessId}`);
-                    } catch (error) {
-                        this.logger.error(`Error creating address: ${error.message}`);
-                        // Continue with business update even if address creation fails
+            if (addressId) {
+                // Update existing address - explicitly set each field
+                const updateFields = {};
+                Object.keys(addressData).forEach(key => {
+                    if (addressData[key] !== undefined && key !== 'businessId' && key !== 'clientId') {
+                        updateFields[key] = addressData[key];
                     }
-                }
+                });
+                
+                // Make sure postcode is always included in the update
+                updateFields['postcode'] = postcodeValue;
+                
+                await this.addressModel.updateOne(
+                    { _id: addressId },
+                    { $set: updateFields }
+                );
+                this.logger.log(`Updated address for business: ${businessId}`);
             } else {
-                this.logger.warn(`Insufficient address data provided for business: ${businessId}`);
+                try {
+                    // Create a complete new address record
+                    const newAddress = await this.addressModel.create({
+                        addressLine1: addressData.addressLine1 || '',
+                        postcode: postcodeValue,
+                        cityId: addressData.cityId || null,
+                        stateId: addressData.stateId || null,
+                        countryId: addressData.countryId || null,
+                        businessId,
+                        clientId
+                    });
+        
+                    // Link address to business
+                    await this.businessModel.updateOne(
+                        { _id: businessId },
+                        { $set: { addressId: newAddress._id } }
+                    );
+                    this.logger.log(`Created new address for business: ${businessId}`);
+                } catch (error) {
+                    this.logger.error(`Error creating address: ${error.message}`);
+                }
             }
         }
+        
 
         // Get updated business with populated fields - using lean() to get plain objects
         const updatedBusiness = await this.businessModel.findById(businessId)
