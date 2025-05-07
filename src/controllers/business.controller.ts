@@ -6,13 +6,14 @@ import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
 import {ClientType} from "../schemas/app-client.schema";
 import { Address } from '../schemas/address.schema';
+import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
 @ApiTags('Businesses')
 @Controller('businesses')
 export class BusinessController {
     constructor(private businessService: BusinessService,
-                private addressModel: Model<Address>) {}
+                @InjectModel(Address.name) private addressModel: Model<Address>) {}
 
     //============================
     // Generic business list endpoints (no params)
