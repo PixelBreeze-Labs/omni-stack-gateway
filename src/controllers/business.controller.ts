@@ -5,11 +5,15 @@ import { BusinessService } from '../services/business.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
 import {ClientType} from "../schemas/app-client.schema";
+import { Address } from '../schemas/address.schema';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 
 @ApiTags('Businesses')
 @Controller('businesses')
 export class BusinessController {
-    constructor(private businessService: BusinessService) {}
+    constructor(private businessService: BusinessService,
+                @InjectModel(Address.name) private addressModel: Model<Address>) {}
 
     //============================
     // Generic business list endpoints (no params)
@@ -221,16 +225,47 @@ export class BusinessController {
     @Get(':id')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get business details by ID' })
+    @ApiOperation({ summary: 'Get business details' })
     @ApiResponse({ status: 200, description: 'Returns business details' })
     async getBusinessDetails(
         @Req() req: Request & { client: Client },
         @Param('id') businessId: string
     ) {
-        return this.businessService.getBusinessDetails(
-            req.client.id,
-            businessId
-        );
+        const result = await this.businessService.getBusinessDetails(req.client.id, businessId);
+    
+        // If the business has an address ID, populate it
+        if (result.addressId) {
+            try {
+                const address = await this.addressModel.findById(result.addressId)
+                    .populate('city')
+                    .populate('state')
+                    .populate('country')
+                    .lean();  // Convert to plain object
+                    
+                if (address) {
+                    // Use the populated fields directly with type assertions
+                    const addressData = {
+                        street: address.addressLine1,
+                        city: (address as any).city?.name || '',
+                        state: (address as any).state?.name || '',
+                        zip: address.postcode || '',
+                        country: (address as any).country?.name || ''
+                    };
+                    
+                    // Create a plain object from the result
+                    const plainResult = { ...result };
+                    return {
+                        ...plainResult,
+                        address: addressData,
+                    };
+                }
+            } catch (error) {
+                console.error('Error fetching address:', error);
+                // Continue and return the business without address
+            }
+        }
+        
+        return result;
     }
     
     @Post(':id/subscribe')
