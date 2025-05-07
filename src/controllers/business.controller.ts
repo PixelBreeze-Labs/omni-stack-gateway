@@ -284,7 +284,7 @@ export class BusinessController {
                     street?: string;
                     cityId?: string;  // Changed from city
                     stateId?: string; // Changed from state
-                    zip?: string;
+                    postcode?: string;
                     countryId?: string; // Changed from country
                 };
                 taxId?: string;
