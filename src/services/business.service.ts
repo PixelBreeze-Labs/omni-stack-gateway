@@ -1294,7 +1294,7 @@ async updateBusiness(
             }
             
             // Handle zip/postcode
-            if (address.zip !== undefined) addressData.postcode = address.zip;
+            if (address.postcode !== undefined) addressData.postcode = address.postcode;
         
             // Check if the required address data is available
             const hasRequiredAddressData = addressData.addressLine1 && 
@@ -1321,7 +1321,7 @@ async updateBusiness(
                         // Create a basic address record with what we have
                         const newAddress = await this.addressModel.create({
                             addressLine1: addressData.addressLine1 || address.street || '',
-                            postcode: addressData.postcode || address.zip || '',
+                            postcode: addressData.postcode || '',
                             // Set other fields only if we have them
                             ...(addressData.cityId ? { cityId: addressData.cityId } : {}),
                             ...(addressData.stateId ? { stateId: addressData.stateId } : {}),
