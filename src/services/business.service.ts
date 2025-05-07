@@ -122,7 +122,7 @@ export class BusinessService {
                         cityId: businessDetails.address.cityId || null,
                         stateId: businessDetails.address.stateId || null,
                         countryId: businessDetails.address.countryId || null,
-                        zip: businessDetails.address.zip || '',
+                        postcode: businessDetails.address.zip || '',
                     };
 
                     if (addressId) {
@@ -1178,7 +1178,7 @@ async updateBusiness(
             cityId?: string;
             state?: string;
             stateId?: string;
-            zip?: string;
+            postcode?: string;
             country?: string;
             countryId?: string;
         };
@@ -1383,7 +1383,7 @@ async updateBusiness(
                 street: addressData.addressLine1,
                 city: addressData.city?.name || '',
                 state: addressData.state?.name || '',
-                zip: addressData.postcode || '',
+                postcode: addressData.postcode || '',
                 country: addressData.country?.name || ''
             };
         }
