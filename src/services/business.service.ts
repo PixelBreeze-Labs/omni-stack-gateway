@@ -70,7 +70,7 @@ export class BusinessService {
                     street?: string;
                     cityId?: string;  // Changed from city
                     stateId?: string; // Changed from state
-                    zip?: string;
+                    postcode?: string;
                     countryId?: string; // Changed from country
                 };
                 taxId?: string;
@@ -122,7 +122,7 @@ export class BusinessService {
                         cityId: businessDetails.address.cityId || null,
                         stateId: businessDetails.address.stateId || null,
                         countryId: businessDetails.address.countryId || null,
-                        postcode: businessDetails.address.zip || '',
+                        postcode: businessDetails.address.postcode || '',
                     };
 
                     if (addressId) {
