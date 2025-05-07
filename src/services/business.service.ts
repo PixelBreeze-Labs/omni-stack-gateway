@@ -1161,113 +1161,142 @@ export class BusinessService {
     }
 
 
-    /**
-     * Update business details
-     */
-    async updateBusiness(
-        clientId: string,
-        businessId: string,
-        updateData: {
-            name?: string;
-            email?: string;
-            phone?: string;
-            type?: string;
-            address?: {
-                street?: string;
-                cityId?: string;
-                stateId?: string;
-                zip?: string;
-                countryId?: string;
-            };
-            taxId?: string;
-            vatNumber?: string;
-            currency?: string;
-            allow_clockinout?: boolean;
-            has_app_access?: boolean;
-            allow_checkin?: boolean;
-            metadata?: Record<string, any>;
+   /**
+ * Update business details
+ */
+async updateBusiness(
+    clientId: string,
+    businessId: string,
+    updateData: {
+        name?: string;
+        email?: string;
+        phone?: string;
+        type?: string;
+        address?: {
+            street?: string;
+            city?: string;
+            cityId?: string;
+            state?: string;
+            stateId?: string;
+            zip?: string;
+            country?: string;
+            countryId?: string;
+        };
+        taxId?: string;
+        vatNumber?: string;
+        currency?: string;
+        allow_clockinout?: boolean;
+        has_app_access?: boolean;
+        allow_checkin?: boolean;
+        metadata?: Record<string, any>;
+    }
+) {
+    try {
+        this.logger.log(`Updating business ${businessId} for client ${clientId}`);
+
+        // Verify business exists and belongs to this client
+        const business = await this.businessModel.findOne({
+            _id: businessId,
+            clientId
+        });
+
+        if (!business) {
+            throw new NotFoundException('Business not found');
         }
-    ) {
-        try {
-            this.logger.log(`Updating business ${businessId} for client ${clientId}`);
 
-            // Verify business exists and belongs to this client
-            const business = await this.businessModel.findOne({
-                _id: businessId,
-                clientId
-            });
+        // Prepare update fields
+        const updateFields: any = {};
+        const {
+            name,
+            email,
+            phone,
+            type,
+            taxId,
+            vatNumber,
+            currency,
+            allow_clockinout,
+            has_app_access,
+            allow_checkin,
+            metadata,
+            address
+        } = updateData;
 
-            if (!business) {
-                throw new NotFoundException('Business not found');
-            }
+        // Set basic fields if provided
+        if (name) updateFields.name = name;
+        if (email) updateFields.email = email;
+        if (phone) updateFields.phone = phone;
+        if (type) updateFields.type = type;
+        if (taxId) updateFields.taxId = taxId;
+        if (vatNumber) updateFields.vatNumber = vatNumber;
+        if (currency) updateFields.currency = currency;
+        
+        // Set capability flags if provided
+        if (allow_clockinout !== undefined) updateFields.allow_clockinout = allow_clockinout;
+        if (has_app_access !== undefined) updateFields.has_app_access = has_app_access;
+        if (allow_checkin !== undefined) updateFields.allow_checkin = allow_checkin;
 
-            // Prepare update fields
-            const updateFields: any = {};
-            const {
-                name,
-                email,
-                phone,
-                type,
-                taxId,
-                vatNumber,
-                currency,
-                allow_clockinout,
-                has_app_access,
-                allow_checkin,
-                metadata,
-                address
-            } = updateData;
-
-            // Set basic fields if provided
-            if (name) updateFields.name = name;
-            if (email) updateFields.email = email;
-            if (phone) updateFields.phone = phone;
-            if (type) updateFields.type = type;
-            if (taxId) updateFields.taxId = taxId;
-            if (vatNumber) updateFields.vatNumber = vatNumber;
-            if (currency) updateFields.currency = currency;
+        // Handle metadata updates if provided
+        if (metadata && Object.keys(metadata).length > 0) {
+            // Get existing metadata
+            const existingMetadata = business.metadata || new Map();
             
-            // Set capability flags if provided
-            if (allow_clockinout !== undefined) updateFields.allow_clockinout = allow_clockinout;
-            if (has_app_access !== undefined) updateFields.has_app_access = has_app_access;
-            if (allow_checkin !== undefined) updateFields.allow_checkin = allow_checkin;
+            // Merge new metadata with existing
+            Object.entries(metadata).forEach(([key, value]) => {
+                existingMetadata.set(key, value);
+            });
+            
+            updateFields.metadata = existingMetadata;
+        }
 
-            // Handle metadata updates if provided
-            if (metadata && Object.keys(metadata).length > 0) {
-                // Get existing metadata
-                const existingMetadata = business.metadata || new Map();
-                
-                // Merge new metadata with existing
-                Object.entries(metadata).forEach(([key, value]) => {
-                    existingMetadata.set(key, value);
-                });
-                
-                updateFields.metadata = existingMetadata;
+        // Update the business
+        if (Object.keys(updateFields).length > 0) {
+            await this.businessModel.updateOne(
+                { _id: businessId },
+                { $set: updateFields }
+            );
+            this.logger.log(`Updated basic fields for business ${businessId}`);
+        }
+
+        // Handle address separately if provided
+        if (address && Object.values(address).some(val => val !== undefined)) {
+            // Check if address exists
+            let addressId = business.addressId;
+
+            // Prepare address data with proper ID fields
+            const addressData: any = {};
+            
+            // Map the input fields to schema fields
+            if (address.street !== undefined) addressData.addressLine1 = address.street;
+            
+            // Handle city - prefer cityId if provided, otherwise try to find city by name
+            if (address.cityId) {
+                addressData.cityId = address.cityId;
+            } else if (address.city) {
+                this.logger.warn(`City name provided instead of cityId: ${address.city}`);
+                // In production, you might do:
+                // const city = await this.cityModel.findOne({ name: address.city });
+                // if (city) addressData.cityId = city._id;
             }
-
-            // Update the business
-            if (Object.keys(updateFields).length > 0) {
-                await this.businessModel.updateOne(
-                    { _id: businessId },
-                    { $set: updateFields }
-                );
-                this.logger.log(`Updated basic fields for business ${businessId}`);
+            
+            // Handle state - prefer stateId if provided
+            if (address.stateId) {
+                addressData.stateId = address.stateId;
+            } else if (address.state) {
+                this.logger.warn(`State name provided instead of stateId: ${address.state}`);
             }
+            
+            // Handle country - prefer countryId if provided
+            if (address.countryId) {
+                addressData.countryId = address.countryId;
+            } else if (address.country) {
+                this.logger.warn(`Country name provided instead of countryId: ${address.country}`);
+            }
+            
+            // Handle zip/postcode
+            if (address.zip !== undefined) addressData.postcode = address.zip;
 
-            // Handle address separately if provided
-            if (address && Object.values(address).some(val => val !== undefined)) {
-                // Check if address exists
-                let addressId = business.addressId;
-
-                // Prepare address data with proper ID fields
-                const addressData = {
-                    ...(address.street !== undefined && { addressLine1: address.street }),
-                    ...(address.cityId !== undefined && { cityId: address.cityId }),
-                    ...(address.stateId !== undefined && { stateId: address.stateId }),
-                    ...(address.countryId !== undefined && { countryId: address.countryId }),
-                    ...(address.zip !== undefined && { zip: address.zip }),
-                };
-
+            // Only proceed if we have valid address data
+            if (Object.keys(addressData).length > 0) {
                 if (addressId) {
                     // Update existing address
                     await this.addressModel.updateOne(
@@ -1276,66 +1305,93 @@ export class BusinessService {
                     );
                     this.logger.log(`Updated address for business: ${businessId}`);
                 } else {
-                    // Create new address
-                    const newAddress = await this.addressModel.create({
-                        ...addressData,
-                        businessId,
-                        clientId
-                    });
+                    // For new addresses, ensure we have required fields
+                    const requiredFields = ['cityId', 'stateId', 'countryId'];
+                    const missingFields = requiredFields.filter(field => !addressData[field]);
+                    
+                    if (missingFields.length > 0) {
+                        this.logger.warn(`Cannot create address: missing required fields ${missingFields.join(', ')}`);
+                    } else {
+                        // Create new address
+                        const newAddress = await this.addressModel.create({
+                            ...addressData,
+                            businessId,
+                            clientId
+                        });
 
-                    // Link address to business
-                    await this.businessModel.updateOne(
-                        { _id: businessId },
-                        { $set: { addressId: newAddress._id } }
-                    );
-                    this.logger.log(`Created new address for business: ${businessId}`);
-                }
-            }
-
-            // Get updated business
-            const updatedBusiness = await this.businessModel.findById(businessId)
-                .populate('address')
-                .populate({
-                    path: 'adminUserId',
-                    select: 'name surname email',
-                    model: 'User'
-                });
-
-            // Format the response similar to getBusinessDetails
-            const adminUserData = updatedBusiness.adminUserId && typeof updatedBusiness.adminUserId !== 'string'
-                ? updatedBusiness.adminUserId as any
-                : null;
-
-            const adminUser = adminUserData ? {
-                _id: adminUserData._id,
-                name: adminUserData.surname
-                    ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
-                    : (adminUserData.name || ''),
-                email: adminUserData.email
-            } : undefined;
-
-            // Extract the business object and restructure for the response
-            const { adminUserId, ...businessData } = updatedBusiness.toObject();
-
-            return {
-                success: true,
-                message: 'Business updated successfully',
-                business: {
-                    ...businessData,
-                    adminUser,
-                    subscription: {
-                        tier: this.getSubscriptionTier(updatedBusiness),
-                        status: updatedBusiness.subscriptionStatus,
-                        endDate: updatedBusiness.subscriptionEndDate,
-                        details: updatedBusiness.subscriptionDetails
+                        // Link address to business
+                        await this.businessModel.updateOne(
+                            { _id: businessId },
+                            { $set: { addressId: newAddress._id } }
+                        );
+                        this.logger.log(`Created new address for business: ${businessId}`);
                     }
                 }
-            };
-        } catch (error) {
-            this.logger.error(`Error updating business: ${error.message}`);
-            throw error;
+            }
         }
+
+        // Get updated business with populated fields - using lean() to get plain objects
+        const updatedBusiness = await this.businessModel.findById(businessId)
+            .populate({
+                path: 'addressId',
+                populate: ['city', 'state', 'country']
+            })
+            .populate({
+                path: 'adminUserId',
+                select: 'name surname email',
+                model: 'User'
+            })
+            .lean();  // Convert to plain JavaScript object
+
+        // Format the response
+        const adminUserData = updatedBusiness.adminUserId && typeof updatedBusiness.adminUserId !== 'string'
+            ? updatedBusiness.adminUserId as any
+            : null;
+
+        const adminUser = adminUserData ? {
+            _id: adminUserData._id,
+            name: adminUserData.surname
+                ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
+                : (adminUserData.name || ''),
+            email: adminUserData.email
+        } : undefined;
+
+        // Extract business data and restructure for response
+        const { adminUserId, ...businessData } = updatedBusiness;
+
+        // Format address for response if it exists
+        let formattedAddress = undefined;
+        const addressData = updatedBusiness.addressId as any;
+        if (addressData) {
+            formattedAddress = {
+                street: addressData.addressLine1,
+                city: addressData.city?.name || '',
+                state: addressData.state?.name || '',
+                zip: addressData.postcode || '',
+                country: addressData.country?.name || ''
+            };
+        }
+
+        return {
+            success: true,
+            message: 'Business updated successfully',
+            business: {
+                ...businessData,
+                address: formattedAddress,
+                adminUser,
+                subscription: {
+                    tier: this.getSubscriptionTier(updatedBusiness as any),
+                    status: updatedBusiness.subscriptionStatus,
+                    endDate: updatedBusiness.subscriptionEndDate,
+                    details: updatedBusiness.subscriptionDetails
+                }
+            }
+        };
+    } catch (error) {
+        this.logger.error(`Error updating business: ${error.message}`);
+        throw error;
     }
+}
 
     /**
      * Update business capabilities and optionally apply to all employees
