@@ -19,8 +19,8 @@ export class Address extends Document {
     @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Country', required: true })
     countryId: string;
 
-    @Prop()
-    postcode?: string;
+    @Prop({ required: true })
+    postcode: string;
 
     @Prop({ type: Number })
     latitude?: number;
