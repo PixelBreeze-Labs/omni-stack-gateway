@@ -21,7 +21,7 @@ export class GeneratedImage extends Document {
     @Prop()
     subtitle?: string;
 
-    @Prop({ required: true, enum: ['iconstyle', 'gazetareforma', 'other'] })
+    @Prop({ required: true, enum: ['iconstyle', 'reforma', 'other'] })
     entity: string;
 
     @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
