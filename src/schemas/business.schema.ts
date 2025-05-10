@@ -12,6 +12,12 @@ export enum AgentFeatureFlag {
     SHIFT_OPTIMIZATION_AGENT = 'shift_optimization_agent'
 }
 
+export enum BusinessOperationType {
+    FIELD_SERVICE = 'field_service',
+    IN_HOUSE = 'in_house',
+    HYBRID = 'hybrid'
+}
+
 export enum BusinessType {
     // Companies
     CORPORATION = 'corporation',
@@ -113,6 +119,9 @@ export class Business extends Document {
         amount: number;
         currency: Currency;
     };
+
+    @Prop({ type: String, enum: BusinessOperationType, default: BusinessOperationType.HYBRID })
+    operationType: BusinessOperationType;
 
     @Prop({ type: [String], enum: Object.values(AgentFeatureFlag), default: [] })
     includedFeatures: AgentFeatureFlag[];

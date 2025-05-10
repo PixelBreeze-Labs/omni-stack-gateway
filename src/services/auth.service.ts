@@ -341,6 +341,7 @@ export class AuthService {
                 auth_response: staffConnectionData,
                 account_type: role,
                 sidebarLinks,
+                operationType: business.operationType,
                 ...featuresInfo
             };
         } catch (error) {

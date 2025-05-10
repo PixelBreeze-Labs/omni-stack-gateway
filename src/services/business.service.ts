@@ -1178,6 +1178,7 @@ async updateBusiness(
         email?: string;
         phone?: string;
         type?: string;
+        operationType?: string;
         address?: {
             street?: string;
             city?: string;
@@ -1218,6 +1219,7 @@ async updateBusiness(
             phone,
             type,
             taxId,
+            operationType,
             vatNumber,
             currency,
             allow_clockinout,
@@ -1233,6 +1235,7 @@ async updateBusiness(
         if (phone) updateFields.phone = phone;
         if (type) updateFields.type = type;
         if (taxId) updateFields.taxId = taxId;
+        if (operationType) updateFields.operationType = operationType;
         if (vatNumber) updateFields.vatNumber = vatNumber;
         if (currency) updateFields.currency = currency;
         
