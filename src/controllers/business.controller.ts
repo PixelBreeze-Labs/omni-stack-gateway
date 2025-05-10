@@ -323,6 +323,7 @@ export class BusinessController {
                 postcode?: string;
                 countryId?: string;
             };
+            operationType?: string;
             taxId?: string;
             vatNumber?: string;
             currency?: string;
