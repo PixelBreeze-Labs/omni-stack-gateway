@@ -77,6 +77,8 @@ import { AiModel, AiModelSchema } from './schemas/ai-model.schema';
 import { SocialChat, SocialChatSchema } from './schemas/social-chat.schema';
 import { SocialMessage, SocialMessageSchema } from './schemas/social-message.schema';
 import { VerificationPhone, VerificationPhoneSchema } from './schemas/verification-phone.schema';
+import { TaskAssignment, TaskAssignmentSchema } from './schemas/task-assignment.schema';
+import { StaffProfile, StaffProfileSchema } from './schemas/staff-profile.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -144,6 +146,7 @@ import { SocialMessageController } from './controllers/social-message.controller
 import { SnapfoodieController } from './controllers/snapfoodie.controller';
 import { VerificationController } from './controllers/verification-phone.controller';
 import { BusinessAgentConfigController } from './controllers/business-agent-config.controller';
+import { StaffluentIntegrationController } from './controllers/staffluent-integration.controller';
 
 
 
@@ -229,6 +232,8 @@ import { CoreNotificationService } from './services/core-notification.service';
 import { SocialChatService } from './services/social-chat.service';
 import { SnapfoodieService } from './services/snapfoodie.service';
 import { OneSignalService } from './services/onesignal.service';
+import { StaffluentTaskService } from './services/staffluent-task.service';
+import { StaffluentEmployeeService } from './services/staffluent-employee.service';
 
 
 // Others
@@ -375,6 +380,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
       { name: CronJobHistory.name, schema: CronJobHistorySchema },
       { name: Log.name, schema: LogSchema },
       { name: GeneratedImage.name, schema: GeneratedImageSchema },
+      { name: TaskAssignment.name, schema: TaskAssignmentSchema },
+      { name: StaffProfile.name, schema: StaffProfileSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -463,7 +470,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     CRMAIAssistantController,
     LogController,
     GeneratedImageController,
-    BusinessAgentConfigController
+    BusinessAgentConfigController,
+    StaffluentIntegrationController,
   ],
   providers: [
     SnapfoodService,
@@ -554,7 +562,9 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     CRMAIAssistantService,
     CRMService,
     LogService,
-    GeneratedImageService
+    GeneratedImageService,
+    StaffluentTaskService,
+    StaffluentEmployeeService,
   ],
 })
 export class AppModule implements NestModule {

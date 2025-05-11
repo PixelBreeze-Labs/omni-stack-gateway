@@ -24,9 +24,9 @@ export class StaffluentEmployeeService {
   /**
    * Sync employees from Staffluent to NestJS for a specific business
    */
-  async syncEmployeesFromStaffluent(businessId: string): Promise<number> {
+  async syncEmployeesFromVenueBoost(businessId: string): Promise<number> {
     try {
-      this.logger.log(`Syncing employees from Staffluent for business: ${businessId}`);
+      this.logger.log(`Syncing employees from VenueBoost for business: ${businessId}`);
       
       // Find the business in our system
       const business = await this.businessModel.findById(businessId);
@@ -105,7 +105,7 @@ export class StaffluentEmployeeService {
       this.logger.log(`Successfully synced ${syncCount} employees for business ${businessId}`);
       return syncCount;
     } catch (error) {
-      this.logger.error(`Error syncing employees from Staffluent: ${error.message}`, error.stack);
+      this.logger.error(`Error syncing employees from VenueBoost: ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -189,14 +189,14 @@ export class StaffluentEmployeeService {
   }
   
   /**
-   * Scheduled job to sync employees from Staffluent for all businesses
+   * Scheduled job to sync employees from VenueBoost for all businesses
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async scheduledEmployeeSync() {
     try {
       this.logger.log('Starting scheduled employee sync for all businesses');
       
-      // Find all businesses with Staffluent connection
+      // Find all businesses with VenueBoost connection
       const businesses = await this.businessModel.find({
         'externalIds.staffluentId': { $exists: true, $ne: null }
       });
@@ -204,7 +204,7 @@ export class StaffluentEmployeeService {
       let totalSynced = 0;
       for (const business of businesses) {
         try {
-          const count = await this.syncEmployeesFromStaffluent(business.id);
+          const count = await this.syncEmployeesFromVenueBoost(business.id);
           totalSynced += count;
         } catch (error) {
           this.logger.error(`Error syncing employees for business ${business.id}: ${error.message}`);

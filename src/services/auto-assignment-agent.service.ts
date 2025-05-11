@@ -599,7 +599,7 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
     }).populate('assignedUserId', 'name surname email');
   }
 
-  async findOptimalAssigneeForStaffluentTask(taskId: string): Promise<boolean> {
+  async findOptimalAssigneeForVenueBoostTask(taskId: string): Promise<boolean> {
     try {
       // Get the task from our system
       const task = await this.taskModel.findById(taskId);
@@ -760,9 +760,9 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
   }
 
     /**
-   * Approve a pending assignment and sync to Staffluent
+   * Approve a pending assignment and sync to VenueBoost
    */
-    async approveStaffluentAssignment(taskId: string): Promise<TaskAssignment> {
+    async approveVenueBoostAssignment(taskId: string): Promise<TaskAssignment> {
       const task = await this.taskModel.findById(taskId);
       
       if (!task) {
@@ -793,7 +793,7 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
         { $inc: { currentWorkload: 1 } }
       );
       
-      // Sync assignment to Staffluent if external IDs exist
+      // Sync assignment to VenueBoost if external IDs exist
       if (task.externalIds?.venueBoostTaskId) {
         const staffProfile = await this.staffProfileModel.findOne({ userId });
         if (staffProfile?.externalIds?.venueBoostStaffId) {
