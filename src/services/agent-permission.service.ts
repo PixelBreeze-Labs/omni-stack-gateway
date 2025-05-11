@@ -6,6 +6,7 @@ import { AgentConfiguration } from '../schemas/agent-configuration.schema';
 import { AgentFeatureFlag, Business } from '../schemas/business.schema';
 import { SubscriptionStatus } from '../schemas/business.schema';
 import { OptimizationStrategy } from 'src/enums/optimization.enum';
+import { STAFFLUENT_FEATURES, TIER_FEATURES } from 'src/constants/features.constants';
 
 @Injectable()
 export class AgentPermissionService {
@@ -60,27 +61,31 @@ export class AgentPermissionService {
   private checkFeatureInSubscription(business: Business, feature: string): boolean {
     // First check if the business is on a trial - trials get all features
     if (business.subscriptionStatus === SubscriptionStatus.TRIALING) {
-        // For agent features, check against the TIER_FEATURES['trialing'] list
-        if (feature.startsWith('agent_')) {
-            // Import your TIER_FEATURES from constants
-            const { TIER_FEATURES } = require('../constants/features.constants');
-            return TIER_FEATURES['trialing'].includes(feature);
-        }
-        return true; // For simplicity, trials get everything
+      // For agent features, check against the TIER_FEATURES['trialing'] list
+      if (feature.startsWith('agent_')) {
+        // Convert agent_feature to AGENT_FEATURE format to match constants
+        const featureKey = feature.toUpperCase();
+        
+        // Import TIER_FEATURES only once at the top level instead of requiring it repeatedly
+        return TIER_FEATURES['trialing'].includes(STAFFLUENT_FEATURES[featureKey]);
+      }
+      return true; // For simplicity, trials get everything
     }
     
     // Then check the explicit includedFeatures array
     if (business.includedFeatures && business.includedFeatures.length > 0) {
-        return business.includedFeatures.includes(feature as AgentFeatureFlag);
+      return business.includedFeatures.includes(feature as AgentFeatureFlag);
     }
     
     // If no explicit features and not trialing, check against tier features
     if (business.subscriptionDetails?.planId) {
-        const tier = this.getSubscriptionTier(business);
-        if (tier) {
-            const { TIER_FEATURES } = require('../constants/features.constants');
-            return TIER_FEATURES[tier].includes(feature);
-        }
+      const tier = this.getSubscriptionTier(business);
+      if (tier) {
+        // Convert agent_feature to AGENT_FEATURE format to match constants
+        const featureKey = feature.startsWith('agent_') ? feature.toUpperCase() : feature;
+        
+        return TIER_FEATURES[tier].includes(STAFFLUENT_FEATURES[featureKey] || feature);
+      }
     }
     
     return false;
