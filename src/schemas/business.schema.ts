@@ -94,6 +94,9 @@ export class Business extends Document {
     @Prop({ type: String, enum: Currency, default: Currency.USD })
     currency: Currency;
 
+    @Prop({ type: String, default: '' })
+    apiKey: string;
+
     // Stripe Related Fields
     @Prop()
     stripeCustomerId?: string;

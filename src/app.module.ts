@@ -143,6 +143,7 @@ import { SocialChatController } from './controllers/social-chat.controller';
 import { SocialMessageController } from './controllers/social-message.controller';
 import { SnapfoodieController } from './controllers/snapfoodie.controller';
 import { VerificationController } from './controllers/verification-phone.controller';
+import { BusinessAgentConfigController } from './controllers/business-agent-config.controller';
 
 
 
@@ -461,7 +462,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     PollPublicController,
     CRMAIAssistantController,
     LogController,
-    GeneratedImageController
+    GeneratedImageController,
+    BusinessAgentConfigController
   ],
   providers: [
     SnapfoodService,

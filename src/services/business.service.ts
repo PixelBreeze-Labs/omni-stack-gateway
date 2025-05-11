@@ -1912,4 +1912,19 @@ async updateBusiness(
         throw error;
         }
     }
+
+    /**
+     * Find a business by ID and API key
+     * @param businessId Business ID
+     * @param apiKey Business API key
+     * @returns Business if found, null otherwise
+     */
+    async findByIdAndApiKey(businessId: string, apiKey: string): Promise<Business | null> {
+        return this.businessModel.findOne({
+        _id: businessId,
+        apiKey: apiKey,
+        isActive: true,
+        isDeleted: { $ne: true }
+        });
+    }
 }
