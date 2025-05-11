@@ -71,8 +71,11 @@ export class BusinessAgentConfigController {
       // Verify API key is valid for this business
       await this.validateBusinessApiKey(businessId, apiKey);
       
+      // convert agent type from - to _
+      const agentTypeUpper = agentType.replace(/-/g, '_');
+      
       // Check if business has access to this agent type
-      const hasAccess = await this.agentPermissionService.hasAgentAccess(businessId, agentType);
+      const hasAccess = await this.agentPermissionService.hasAgentAccess(businessId, agentTypeUpper);
       if (!hasAccess) {
         return {
           success: false,
@@ -116,8 +119,11 @@ export class BusinessAgentConfigController {
       // Verify API key is valid for this business
       await this.validateBusinessApiKey(businessId, apiKey);
       
+      // convert agent type from - to _
+      const agentTypeUpper = agentType.replace(/-/g, '_');
+      
       // Check if business has access to this agent type
-      const hasAccess = await this.agentPermissionService.hasAgentAccess(businessId, agentType);
+      const hasAccess = await this.agentPermissionService.hasAgentAccess(businessId, agentTypeUpper);
       if (!hasAccess) {
         return {
           success: false,
@@ -179,8 +185,11 @@ export class BusinessAgentConfigController {
       // Verify API key is valid for this business
       const business = await this.validateBusinessApiKey(businessId, apiKey);
       
+      // convert agent type from - to _
+      const agentTypeUpper = agentType.replace(/-/g, '_');
+      
       // Check if business has access to this agent type
-      const hasAccess = await this.agentPermissionService.hasAgentAccess(businessId, agentType);
+      const hasAccess = await this.agentPermissionService.hasAgentAccess(businessId, agentTypeUpper);
       if (!hasAccess) {
         return {
           success: false,
@@ -227,6 +236,18 @@ export class BusinessAgentConfigController {
     try {
       // Verify API key is valid for this business
       await this.validateBusinessApiKey(businessId, apiKey);
+      
+      // convert agent type from - to _
+      const agentTypeUpper = agentType.replace(/-/g, '_');
+
+      // Check if business has access to this agent type
+      const hasAccess = await this.agentPermissionService.hasAgentAccess(businessId, agentTypeUpper);
+      if (!hasAccess) {
+        return {
+          success: false,
+          message: 'This agent is not available for your subscription tier.'
+        };
+      }
       
       const config = await this.agentPermissionService.disableAgent(businessId, agentType);
       
