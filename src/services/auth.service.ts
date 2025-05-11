@@ -17,6 +17,7 @@ import { TIER_FEATURES, TIER_LIMITS, STAFFLUENT_FEATURES } from '../constants/fe
 import { AppClient } from "../schemas/app-client.schema";
 import { Employee } from "../schemas/employee.schema";
 import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
+import { generateBusinessApiKey } from 'src/utils/business-api-key.utils';
 
 @Injectable()
 export class AuthService {
@@ -217,6 +218,12 @@ export class AuthService {
                 role: 'business_admin'
             });
 
+            // Generate or retrieve business API key
+            if (!business.apiKey) {
+                // Generate a new API key if not exists
+                business.apiKey = generateBusinessApiKey();
+                await business.save();
+            }
             return {
                 status: 'success',
                 message: 'Authentication successful',
@@ -224,6 +231,7 @@ export class AuthService {
                 userId: user._id.toString(),
                 has_changed_password: user.metadata?.get('has_changed_password') === 'true',
                 businessId: business._id.toString(),
+                apiKey: business.apiKey,
                 business: {
                     name: business.name,
                     email: business.email,
