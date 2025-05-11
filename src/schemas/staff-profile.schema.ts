@@ -59,6 +59,12 @@ export class StaffProfile extends Document {
     }
   };
 
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  externalIds: {
+    venueBoostStaffId?: string;
+    [key: string]: string;
+  };
+
   @Prop({ type: Number, default: 0 })
   taskCompletionRate: number;
 
@@ -70,6 +76,8 @@ export class StaffProfile extends Document {
 
   @Prop({ type: MongooseSchema.Types.Mixed })
   metadata: Record<string, any>;
+
+  
 }
 
 export const StaffProfileSchema = SchemaFactory.createForClass(StaffProfile);

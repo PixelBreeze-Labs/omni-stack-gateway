@@ -1470,4 +1470,96 @@ export class VenueBoostService {
             throw error;
         }
     }
+
+        /**
+     * Get tasks from Staffluent for a business
+     */
+    async getTasks(venueId: string) {
+        try {
+        const response$ = this.httpService.get(`${this.baseUrl}/tasks-os`, {
+            params: {
+            venue_id: venueId
+            },
+            headers: {
+            'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+            }
+        });
+        
+        const response = await lastValueFrom(response$);
+        return response.data;
+        } catch (error) {
+        this.logger.error(`Failed to fetch tasks from Staffluent: ${error.message}`, error.stack);
+        throw error;
+        }
+    }
+    
+    /**
+     * Get employees from Staffluent for a business
+     */
+    async getEmployees(venueId: string) {
+        try {
+        const response$ = this.httpService.get(`${this.baseUrl}/employees-os`, {
+            params: {
+            venue_id: venueId
+            },
+            headers: {
+            'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+            }
+        });
+        
+        const response = await lastValueFrom(response$);
+        return response.data;
+        } catch (error) {
+        this.logger.error(`Failed to fetch employees from Staffluent: ${error.message}`, error.stack);
+        throw error;
+        }
+    }
+    
+    /**
+     * Assign a task to an employee in Staffluent
+     */
+    async assignTask(taskId: string, employeeId: string) {
+        try {
+        const response$ = this.httpService.post(
+            `${this.baseUrl}/tasks-os/${taskId}/assign`,
+            { employee_id: employeeId },
+            {
+            headers: {
+                'Content-Type': 'application/json',
+                'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+            }
+            }
+        );
+        
+        const response = await lastValueFrom(response$);
+        return response.data;
+        } catch (error) {
+        this.logger.error(`Failed to assign task in Staffluent: ${error.message}`, error.stack);
+        throw error;
+        }
+    }
+    
+    /**
+     * Update a task's external ID in Staffluent
+     */
+    async updateTaskExternalId(taskId: string, omnistackId: string) {
+        try {
+        const response$ = this.httpService.post(
+            `${this.baseUrl}/tasks-os/${taskId}/external-id`,
+            { omnistack_id: omnistackId },
+            {
+            headers: {
+                'Content-Type': 'application/json',
+                'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+            }
+            }
+        );
+        
+        const response = await lastValueFrom(response$);
+        return response.data;
+        } catch (error) {
+        this.logger.error(`Failed to update task external ID in Staffluent: ${error.message}`, error.stack);
+        throw error;
+        }
+    }
 }

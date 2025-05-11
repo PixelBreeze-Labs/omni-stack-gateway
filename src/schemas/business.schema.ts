@@ -158,6 +158,12 @@ export class Business extends Document {
 
     @Prop({ type: Date })
     deletedAt?: Date;
+
+    @Prop({ type: MongooseSchema.Types.Mixed })
+    externalIds?: {
+        venueBoostId?: string;
+        [key: string]: string;
+    };
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);
