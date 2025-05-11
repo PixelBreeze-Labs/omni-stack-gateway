@@ -37,6 +37,12 @@ export class TaskAssignment extends Document {
   @Prop({ type: [MongooseSchema.Types.ObjectId], ref: 'User' })
   potentialAssignees: string[];
 
+  @Prop({ type: Object, default: {} })
+  externalIds: {
+      venueBoostTaskId?: string;
+      [key: string]: string;
+  };
+
   @Prop({ 
     type: String, 
     enum: TaskStatus, 

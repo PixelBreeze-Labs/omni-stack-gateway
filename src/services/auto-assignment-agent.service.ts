@@ -11,6 +11,7 @@ import { AgentConfiguration } from '../schemas/agent-configuration.schema';
 import { AgentPermissionService } from './agent-permission.service';
 import * as geolib from 'geolib';
 import { CronJob } from 'cron';
+import { StaffluentTaskService } from './staffluent-task.service';
 
 @Injectable()
 export class AutoAssignmentAgentService {
@@ -24,6 +25,7 @@ export class AutoAssignmentAgentService {
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(AgentConfiguration.name) private agentConfigModel: Model<AgentConfiguration>,
     private readonly agentPermissionService: AgentPermissionService,
+    private readonly staffluentTaskService: StaffluentTaskService,
     private readonly schedulerRegistry: SchedulerRegistry
   ) {
     // Initialize custom cron jobs for businesses
@@ -596,4 +598,209 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
       isDeleted: false
     }).populate('assignedUserId', 'name surname email');
   }
+
+  async findOptimalAssigneeForStaffluentTask(taskId: string): Promise<boolean> {
+    try {
+      // Get the task from our system
+      const task = await this.taskModel.findById(taskId);
+      if (!task) {
+        throw new Error(`Task ${taskId} not found`);
+      }
+      
+      // Get the business from our system
+      const business = await this.businessModel.findById(task.businessId);
+      if (!business) {
+        throw new Error(`Business ${task.businessId} not found`);
+      }
+      
+      // Check if agent is enabled for this business
+      const hasAccess = await this.agentPermissionService.hasAgentAccess(
+        business.id.toString(), 
+        'auto-assignment'
+      );
+      
+      if (!hasAccess) {
+        this.logger.warn(`Auto-assignment agent not enabled for business ${business.id}`);
+        return false;
+      }
+      
+      // Get agent configuration
+      const agentConfig = await this.agentConfigModel.findOne({
+        businessId: business.id.toString(),
+        agentType: 'auto-assignment'
+      });
+      
+      // Find all staff profiles for this business
+      const staffProfiles = await this.staffProfileModel.find({
+        businessId: business.id.toString()
+      }).populate('userId');
+      
+      if (staffProfiles.length === 0) {
+        this.logger.warn(`No staff profiles found for business ${business.id}`);
+        return false;
+      }
+      
+      // Extract task requirements
+      const requiredSkills = task.metadata?.requiredSkills || [];
+      
+      // Prioritize skills if specified in configuration
+      const prioritizedSkills = agentConfig.skillPriorities && agentConfig.skillPriorities.length > 0 ? 
+        agentConfig.skillPriorities.filter(skill => requiredSkills.includes(skill)) : 
+        requiredSkills;
+      
+      // Calculate scores for each potential assignee
+      const scoredAssignees = await Promise.all(
+        staffProfiles.map(async staff => {
+          // Check max workload if configured
+          if (agentConfig.respectMaxWorkload && 
+              staff.currentWorkload >= agentConfig.maxTasksPerStaff) {
+            return {
+              staffProfile: staff,
+              userId: staff.userId?.toString(),
+              metrics: {
+                skillMatch: 0,
+                availabilityScore: 0,
+                proximityScore: 0,
+                workloadBalance: 0,
+                finalScore: 0
+              }
+            };
+          }
+          
+          // Skill match score (0-100)
+          const skillMatchScore = this.calculateSkillMatch(staff, prioritizedSkills);
+          
+          // Availability score (0-100)
+          const availabilityScore = this.calculateAvailability(staff);
+          
+          // Workload balance score (0-100)
+          const workloadScore = this.calculateWorkloadBalance(staff, agentConfig.maxTasksPerStaff);
+          
+          // Calculate final score (weighted average)
+          const finalScore = 
+            (skillMatchScore * agentConfig.weights.skillMatch) + 
+            (availabilityScore * agentConfig.weights.availability) + 
+            (workloadScore * agentConfig.weights.workload);
+          
+          return {
+            staffProfile: staff,
+            userId: staff.userId?.toString(),
+            metrics: {
+              skillMatch: skillMatchScore,
+              availabilityScore,
+              proximityScore: 100, // Default since we don't have location for Staffluent tasks
+              workloadBalance: workloadScore,
+              finalScore
+            }
+          };
+        })
+      );
+      
+      // Sort by final score (descending)
+      scoredAssignees.sort((a, b) => b.metrics.finalScore - a.metrics.finalScore);
+      
+      // Select top candidate
+      if (scoredAssignees.length > 0 && scoredAssignees[0].metrics.finalScore > 0) {
+        const bestMatch = scoredAssignees[0];
+        
+        // Update task with assignment or proposed assignment based on approval config
+        const updateData: Partial<TaskAssignment> = {
+          potentialAssignees: scoredAssignees.map(a => a.userId).filter(Boolean),
+          assignmentMetrics: bestMatch.metrics
+        };
+        
+        if (agentConfig.requireApproval) {
+          // Mark for approval
+          updateData.metadata = {
+            ...task.metadata,
+            pendingAssignment: {
+              userId: bestMatch.userId,
+              requires_approval: true,
+              proposed_at: new Date()
+            }
+          };
+          
+          // Send notification if configured
+          if (agentConfig.notificationSettings?.emailNotifications && 
+              agentConfig.notificationSettings?.notifyOnAssignment) {
+            await this.sendAssignmentNotification(task, bestMatch, agentConfig);
+          }
+        } else {
+          // Direct assignment
+          updateData.assignedUserId = bestMatch.userId;
+          updateData.status = TaskStatus.ASSIGNED;
+          updateData.assignedAt = new Date();
+          
+          // Update staff workload
+          await this.staffProfileModel.findByIdAndUpdate(bestMatch.staffProfile._id, {
+            $inc: { currentWorkload: 1 }
+          });
+          
+          // Push assignment to Staffluent
+          if (task.externalIds?.venueBoostTaskId && bestMatch.staffProfile.externalIds?.venueBoostStaffId) {
+            await this.staffluentTaskService.pushTaskAssignment(
+              task.externalIds.venueBoostTaskId, 
+              bestMatch.staffProfile.externalIds.venueBoostStaffId
+            );
+          }
+        }
+        
+        await this.taskModel.findByIdAndUpdate(task._id, updateData);
+        
+        this.logger.log(`Task ${task._id} ${agentConfig.requireApproval ? 'proposed for' : 'assigned to'} user ${bestMatch.userId} with score ${bestMatch.metrics.finalScore}`);
+        return true;
+      } else {
+        this.logger.warn(`No suitable assignee found for task ${task._id}`);
+        return false;
+      }
+    } catch (error) {
+      this.logger.error(`Error finding optimal assignee for task ${taskId}: ${error.message}`, error.stack);
+      return false;
+    }
+  }
+
+    /**
+   * Approve a pending assignment and sync to Staffluent
+   */
+    async approveStaffluentAssignment(taskId: string): Promise<TaskAssignment> {
+      const task = await this.taskModel.findById(taskId);
+      
+      if (!task) {
+        throw new Error('Task not found');
+      }
+      
+      if (!task.metadata?.pendingAssignment) {
+        throw new Error('No pending assignment found for this task');
+      }
+      
+      const userId = task.metadata.pendingAssignment.userId;
+      
+      // Update task with assignment
+      const updatedTask = await this.taskModel.findByIdAndUpdate(
+        taskId,
+        {
+          assignedUserId: userId,
+          status: TaskStatus.ASSIGNED,
+          assignedAt: new Date(),
+          $unset: { 'metadata.pendingAssignment': 1 }
+        },
+        { new: true }
+      );
+      
+      // Update staff workload
+      await this.staffProfileModel.findOneAndUpdate(
+        { userId },
+        { $inc: { currentWorkload: 1 } }
+      );
+      
+      // Sync assignment to Staffluent if external IDs exist
+      if (task.externalIds?.venueBoostTaskId) {
+        const staffProfile = await this.staffProfileModel.findOne({ userId });
+        if (staffProfile?.externalIds?.venueBoostStaffId) {
+          await this.staffluentTaskService.pushTaskAssignment(taskId, userId);
+        }
+      }
+      
+      return updatedTask;
+    }
 }
