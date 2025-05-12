@@ -9,7 +9,6 @@ import { ClientService } from '../services/client.service';
 import { ClientApiKeyService } from '../services/client-api-key.service';
 import { ReportsService } from '../services/reports.service';
 import { PollService } from '../services/poll.service';
-import { AutoAssignmentController } from '../controllers/auto-assignment.controller';
 import { StaffluentIntegrationController } from '../controllers/staffluent-integration.controller';
 import { AgentConfigController } from '../controllers/agent-config.controller';
 import { TaskAssignment, TaskAssignmentSchema } from '../schemas/task-assignment.schema';
@@ -51,7 +50,7 @@ import { CronJobHistory, CronJobHistorySchema } from '../schemas/cron-job-histor
       { name: CronJobHistory.name, schema: CronJobHistorySchema }
     ])
   ],
-  controllers: [AutoAssignmentController, AgentConfigController, StaffluentIntegrationController],
+  controllers: [AgentConfigController, StaffluentIntegrationController],
   providers: [
     AutoAssignmentAgentService, 
     AgentPermissionService, 
