@@ -168,7 +168,7 @@ export class StaffluentSuperadminController {
                 if (!businessStats[id]) {
                     businessStats[id] = {
                         businessId: id,
-                        businessName: businessMap[id] || 'Unknown',
+                        businessName: businessMap[id] || 'All Businesses',
                         total: 0,
                         successful: 0,
                         failed: 0
@@ -307,7 +307,7 @@ export class StaffluentSuperadminController {
             for (const id of ids) {
                 if (!businessMap[id] && businessIds.includes(id)) {
                     const business = await this.businessModel.findById(id);
-                    businessMap[id] = business ? business.name : 'Unknown';
+                    businessMap[id] = business ? business.name : 'All Businesses';
                 }
             }
         }
