@@ -8,6 +8,7 @@ import { Business } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
 import { VenueBoostService } from './venueboost.service';
 import { TaskAssignment, TaskStatus } from 'src/schemas/task-assignment.schema';
+import { CronJobHistory } from 'src/schemas/cron-job-history.schema';
 
 @Injectable()
 export class StaffluentEmployeeService {
@@ -18,6 +19,7 @@ export class StaffluentEmployeeService {
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(TaskAssignment.name) private taskAssignmentModel: Model<TaskAssignment>,
+    @InjectModel(CronJobHistory.name) private cronJobHistoryModel: Model<CronJobHistory>,
     private readonly venueBoostService: VenueBoostService,
   ) {}
 
@@ -25,9 +27,18 @@ export class StaffluentEmployeeService {
    * Sync employees from Staffluent to NestJS for a specific business
    */
   async syncEmployeesFromVenueBoost(businessId: string): Promise<number> {
+    const startTime = new Date();
+    this.logger.log(`[SYNC START] Syncing employees from VenueBoost for business: ${businessId}`);
+    
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'syncEmployeesFromVenueBoost',
+      startTime,
+      status: 'started',
+      businessId
+    });
+    
     try {
-      this.logger.log(`Syncing employees from VenueBoost for business: ${businessId}`);
-      
       // Find the business in our system
       const business = await this.businessModel.findById(businessId);
       if (!business || !business.externalIds?.venueBoostId) {
@@ -37,7 +48,13 @@ export class StaffluentEmployeeService {
       // Get employees from VenueBoost API
       const venueBoostEmployees = await this.venueBoostService.getEmployees(business.externalIds.venueBoostId);
       
-      let syncCount = 0;
+      const syncSummary = {
+        added: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0
+      };
+      
       for (const phpEmployee of venueBoostEmployees) {
         // Check if employee already exists in our system
         let staffProfile = await this.staffProfileModel.findOne({
@@ -77,6 +94,7 @@ export class StaffluentEmployeeService {
               custom_role: phpEmployee.custom_role
             }
           });
+          syncSummary.updated++;
         } else {
           // Create new staff profile
           staffProfile = await this.staffProfileModel.create({
@@ -97,15 +115,46 @@ export class StaffluentEmployeeService {
               lastSyncedAt: new Date()
             }
           });
+          syncSummary.added++;
         }
-        
-        syncCount++;
       }
       
-      this.logger.log(`Successfully synced ${syncCount} employees for business ${businessId}`);
-      return syncCount;
+      const totalSynced = syncSummary.added + syncSummary.updated;
+      
+      // Update the job record on completion
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'completed',
+        syncSummary,
+        targetCount: venueBoostEmployees.length,
+        processedCount: totalSynced,
+        details: { 
+          businessId,
+          employeeCount: venueBoostEmployees.length,
+          added: syncSummary.added,
+          updated: syncSummary.updated
+        }
+      });
+      
+      this.logger.log(`[SYNC COMPLETE] Successfully synced ${totalSynced} employees for business ${businessId}`);
+      return totalSynced;
     } catch (error) {
-      this.logger.error(`Error syncing employees from VenueBoost: ${error.message}`, error.stack);
+      // Update the job record on failure
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      this.logger.error(`[SYNC FAILED] Error syncing employees from VenueBoost: ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -191,30 +240,90 @@ export class StaffluentEmployeeService {
   /**
    * Scheduled job to sync employees from VenueBoost for all businesses
    */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_4_HOURS)
   async scheduledEmployeeSync() {
+    const startTime = new Date();
+    this.logger.log(`[CRON START] Employee sync job started at ${startTime.toISOString()}`);
+    
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'scheduledEmployeeSync',
+      startTime,
+      status: 'started'
+    });
+    
     try {
-      this.logger.log('Starting scheduled employee sync for all businesses');
-      
       // Find all businesses with VenueBoost connection
       const businesses = await this.businessModel.find({
         'externalIds.staffluentId': { $exists: true, $ne: null }
       });
       
-      let totalSynced = 0;
+      const syncSummary = {
+        added: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0
+      };
+      
+      const businessResults = [];
+      
       for (const business of businesses) {
         try {
           const count = await this.syncEmployeesFromVenueBoost(business.id);
-          totalSynced += count;
+          
+          businessResults.push({
+            businessId: business.id,
+            businessName: business.name,
+            employeesSynced: count,
+            success: true
+          });
         } catch (error) {
           this.logger.error(`Error syncing employees for business ${business.id}: ${error.message}`);
-          // Continue with next business even if one fails
+          
+          businessResults.push({
+            businessId: business.id,
+            businessName: business.name,
+            error: error.message,
+            success: false
+          });
+          
+          syncSummary.failed++;
         }
       }
       
-      this.logger.log(`Completed employee sync, updated ${totalSynced} employees across ${businesses.length} businesses`);
+      // Update the job record on completion
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'completed',
+        businessIds: businesses.map(b => b.id),
+        targetCount: businesses.length,
+        processedCount: businesses.length - syncSummary.failed,
+        failedCount: syncSummary.failed,
+        syncSummary,
+        details: { 
+          businessResults,
+          totalBusinesses: businesses.length
+        }
+      });
+      
+      this.logger.log(`[CRON COMPLETE] Employee sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses`);
     } catch (error) {
-      this.logger.error(`Error in scheduled employee sync: ${error.message}`, error.stack);
+      // Update the job record on failure
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      this.logger.error(`[CRON FAILED] Error in employee sync job: ${error.message}`, error.stack);
     }
   }
 }

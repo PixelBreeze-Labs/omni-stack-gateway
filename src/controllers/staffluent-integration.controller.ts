@@ -23,18 +23,20 @@ export class StaffluentIntegrationController {
 
   ) {}
 
+  // Cronjob
   @Post('tasks/sync/:businessId')
-  @ApiOperation({ summary: 'Sync tasks from Staffluent for a business' })
+  @ApiOperation({ summary: 'Sync tasks from VenueBoost for a business' })
   async syncTasks(@Param('businessId') businessId: string) {
-    const count = await this.staffluentTaskService.syncTasksFromStaffluent(businessId);
+    const count = await this.staffluentTaskService.syncTasksFromVenueBoost(businessId);
     return {
       success: true,
       message: `Successfully synced ${count} tasks for business ${businessId}`
     };
   }
 
+  // Cronjob
   @Post('employees/sync/:businessId')
-  @ApiOperation({ summary: 'Sync employees from Staffluent for a business' })
+  @ApiOperation({ summary: 'Sync employees from VenueBoost for a business' })
   async syncEmployees(@Param('businessId') businessId: string) {
     const count = await this.staffluentEmployeeService.syncEmployeesFromVenueBoost(businessId);
     return {
@@ -43,6 +45,7 @@ export class StaffluentIntegrationController {
     };
   }
 
+  // Auto Assignment Agent
   @Post('tasks/:taskId/assign')
   @ApiOperation({ summary: 'Find optimal assignee for a VenueBoost task' })
   async findOptimalAssignee(@Param('taskId') taskId: string) {
@@ -55,6 +58,7 @@ export class StaffluentIntegrationController {
     };
   }
 
+  // Auto Assignment Agent
   @Post('tasks/:taskId/approve-assignment')
   @ApiOperation({ summary: 'Approve pending assignment for a VenueBoost task' })
   async approveAssignment(@Param('taskId') taskId: string) {
@@ -64,25 +68,8 @@ export class StaffluentIntegrationController {
       message: 'Successfully approved assignment'
     };
   }
-
-  @Put('tasks/:taskId/external-id')
-  @ApiOperation({ summary: 'Update external ID for a task' })
-  async updateTaskExternalId(
-    @Param('taskId') taskId: string,
-    @Body() body: { staffluentId: string }
-  ) {
-    const result = await this.staffluentTaskService.updateTaskExternalId(
-      taskId,
-      body.staffluentId
-    );
-    return {
-      success: result,
-      message: result 
-        ? 'Successfully updated task external ID' 
-        : 'Failed to update task external ID'
-    };
-  }
   
+  // Auto Assignment Agent
   @Post('tasks/assign-batch')
   @ApiOperation({ summary: 'Find optimal assignees for all unassigned tasks' })
   async assignAllUnassignedTasks(@Body() body: { businessId: string }) {
@@ -109,32 +96,13 @@ export class StaffluentIntegrationController {
     };
   }
   
-  @Get('pending-assignments/:businessId')
-  @ApiOperation({ summary: 'Get all tasks with pending assignments for a business' })
-  async getPendingAssignments(@Param('businessId') businessId: string) {
-    const tasks = await this.taskAssignmentModel.find({
-      businessId,
-      'metadata.pendingAssignment': { $exists: true }
-    }).populate('assignedUserId');
-    
-    return {
-      success: true,
-      count: tasks.length,
-      tasks: tasks.map(task => ({
-        id: task._id,
-        title: task.title,
-        pendingAssignment: task.metadata.pendingAssignment,
-        externalIds: task.externalIds
-      }))
-    };
-  }
-  
+  // Cronjob
   @Post('webhook/task-created')
-  @ApiOperation({ summary: 'Webhook endpoint for task creation in Staffluent' })
+  @ApiOperation({ summary: 'Webhook endpoint for task creation in VenueBoost' })
   async taskCreatedWebhook(@Body() body: { taskId: string, businessId: string }) {
     try {
-      // Sync the specific task from Staffluent
-      await this.staffluentTaskService.syncTasksFromStaffluent(body.businessId);
+      // Sync the specific task from VenueBoost
+      await this.staffluentTaskService.syncTasksFromVenueBoost(body.businessId);
       
       return {
         success: true,
@@ -148,12 +116,13 @@ export class StaffluentIntegrationController {
     }
   }
   
+  // Cronjob
   @Post('webhook/task-updated')
-  @ApiOperation({ summary: 'Webhook endpoint for task updates in Staffluent' })
+  @ApiOperation({ summary: 'Webhook endpoint for task updates in VenueBoost' })
   async taskUpdatedWebhook(@Body() body: { taskId: string, businessId: string }) {
     try {
-      // Sync the specific task from Staffluent
-      await this.staffluentTaskService.syncTasksFromStaffluent(body.businessId);
+      // Sync the specific task from VenueBoost
+      await this.staffluentTaskService.syncTasksFromVenueBoost(body.businessId);
       
       return {
         success: true,
@@ -167,6 +136,7 @@ export class StaffluentIntegrationController {
     }
   }
   
+  // Cronjob
   @Post('webhook/employee-updated')
   @ApiOperation({ summary: 'Webhook endpoint for employee updates in VenueBoost' })
   async employeeUpdatedWebhook(@Body() body: { employeeId: string, businessId: string }) {

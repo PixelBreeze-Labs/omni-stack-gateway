@@ -8,6 +8,7 @@ import { StaffProfile, SkillLevel } from '../schemas/staff-profile.schema';
 import { User } from '../schemas/user.schema';
 import { Business } from '../schemas/business.schema';
 import { AgentConfiguration } from '../schemas/agent-configuration.schema';
+import { CronJobHistory } from '../schemas/cron-job-history.schema';
 import { AgentPermissionService } from './agent-permission.service';
 import * as geolib from 'geolib';
 import { CronJob } from 'cron';
@@ -24,6 +25,7 @@ export class AutoAssignmentAgentService {
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(AgentConfiguration.name) private agentConfigModel: Model<AgentConfiguration>,
+    @InjectModel(CronJobHistory.name) private cronJobHistoryModel: Model<CronJobHistory>,
     private readonly agentPermissionService: AgentPermissionService,
     private readonly staffluentTaskService: StaffluentTaskService,
     private readonly schedulerRegistry: SchedulerRegistry
@@ -82,8 +84,54 @@ export class AutoAssignmentAgentService {
     const cronExpression = `*/${frequencyMinutes} * * * *`; // Run every X minutes
 
     // Create and register new cron job
-    const job = new CronJob(cronExpression, () => {
-      this.processBusinessUnassignedTasks(businessId);
+    const job = new CronJob(cronExpression, async () => {
+      const startTime = new Date();
+      
+      // Create a record for this job execution
+      const jobRecord = await this.cronJobHistoryModel.create({
+        jobName: `businessAutoAssign-${businessId}`,
+        startTime,
+        status: 'started',
+        businessId
+      });
+      
+      try {
+        const result = await this.processBusinessUnassignedTasks(businessId);
+        
+        // Update job record on success
+        const endTime = new Date();
+        const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+        
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime,
+          duration,
+          status: 'completed',
+          targetCount: result.totalTasks,
+          processedCount: result.assignedCount,
+          details: {
+            businessId,
+            frequency: frequencyMinutes,
+            totalTasks: result.totalTasks,
+            assignedCount: result.assignedCount,
+            taskIds: result.taskIds
+          }
+        });
+        
+        this.logger.log(`[CRON COMPLETE] Business auto-assignment for ${businessId} completed, processed ${result.totalTasks} tasks, assigned ${result.assignedCount} tasks`);
+      } catch (error) {
+        // Update job record on failure
+        const endTime = new Date();
+        const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+        
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime,
+          duration,
+          status: 'failed',
+          error: error.message
+        });
+        
+        this.logger.error(`[CRON FAILED] Error in business cron job for ${businessId}: ${error.message}`, error.stack);
+      }
     });
 
     this.schedulerRegistry.addCronJob(jobName, job);
@@ -131,24 +179,93 @@ export class AutoAssignmentAgentService {
    */
   @Cron(CronExpression.EVERY_30_MINUTES)
   async processUnassignedTasks() {
-    this.logger.log('Running global unassigned tasks check...');
+    const startTime = new Date();
+    this.logger.log(`[CRON START] Global unassigned tasks check started at ${startTime.toISOString()}`);
     
-    // Find all active businesses with auto-assignment enabled
-    const enabledBusinessIds = await this.agentConfigModel.find({
-      agentType: 'auto-assignment',
-      isEnabled: true
-    }).distinct('businessId');
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'processUnassignedTasks',
+      startTime,
+      status: 'started'
+    });
     
-    // Process each business
-    for (const businessId of enabledBusinessIds) {
-      await this.processBusinessUnassignedTasks(businessId);
+    try {
+      // Find all active businesses with auto-assignment enabled
+      const enabledBusinessIds = await this.agentConfigModel.find({
+        agentType: 'auto-assignment',
+        isEnabled: true
+      }).distinct('businessId');
+      
+      let totalProcessed = 0;
+      let totalAssigned = 0;
+      const businessResults = [];
+      let failedBusinesses = 0;
+      
+      // Process each business
+      for (const businessId of enabledBusinessIds) {
+        try {
+          const result = await this.processBusinessUnassignedTasks(businessId);
+          businessResults.push({
+            businessId,
+            totalTasks: result.totalTasks,
+            assignedCount: result.assignedCount,
+            success: true
+          });
+          
+          totalProcessed += result.totalTasks;
+          totalAssigned += result.assignedCount;
+        } catch (error) {
+          this.logger.error(`Error processing tasks for business ${businessId}: ${error.message}`);
+          businessResults.push({
+            businessId,
+            error: error.message,
+            success: false
+          });
+          failedBusinesses++;
+        }
+      }
+      
+      // Update the job record on completion
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'completed',
+        businessIds: enabledBusinessIds,
+        targetCount: enabledBusinessIds.length,
+        processedCount: enabledBusinessIds.length - failedBusinesses,
+        failedCount: failedBusinesses,
+        details: { 
+          businessResults,
+          totalBusinesses: enabledBusinessIds.length,
+          totalTasksProcessed: totalProcessed,
+          totalTasksAssigned: totalAssigned
+        }
+      });
+      
+      this.logger.log(`[CRON COMPLETE] Global unassigned tasks check completed at ${endTime.toISOString()}, duration: ${duration}s, processed: ${totalProcessed} tasks, assigned: ${totalAssigned} tasks`);
+    } catch (error) {
+      // Update the job record on failure
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      this.logger.error(`[CRON FAILED] Error in global unassigned tasks check: ${error.message}`, error.stack);
     }
   }
 
   /**
    * Process unassigned tasks for a specific business
    */
-  async processBusinessUnassignedTasks(businessId: string) {
+  async processBusinessUnassignedTasks(businessId: string): Promise<{ totalTasks: number, assignedCount: number, taskIds: string[] }> {
     this.logger.log(`Processing unassigned tasks for business ${businessId}...`);
     
     // Check if agent is enabled for this business
@@ -156,7 +273,7 @@ export class AutoAssignmentAgentService {
     
     if (!hasAccess) {
       this.logger.warn(`Auto-assignment agent not enabled for business ${businessId}`);
-      return;
+      return { totalTasks: 0, assignedCount: 0, taskIds: [] };
     }
     
     // Get agent configuration
@@ -174,9 +291,26 @@ export class AutoAssignmentAgentService {
     
     this.logger.log(`Found ${unassignedTasks.length} unassigned tasks for business ${businessId}`);
     
+    let assignedCount = 0;
+    const taskIds = unassignedTasks.map(task => task._id.toString());
+    
     for (const task of unassignedTasks) {
-      await this.findOptimalAssignee(task, agentConfig);
+      try {
+        const beforeStatus = task.status;
+        await this.findOptimalAssignee(task, agentConfig);
+        
+        // Check if task was assigned or marked for approval
+        const updatedTask = await this.taskModel.findById(task._id);
+        const wasProcessed = updatedTask.status !== beforeStatus || 
+                            updatedTask.metadata?.pendingAssignment !== undefined;
+        
+        if (wasProcessed) assignedCount++;
+      } catch (error) {
+        this.logger.error(`Error processing task ${task._id}: ${error.message}`);
+      }
     }
+    
+    return { totalTasks: unassignedTasks.length, assignedCount, taskIds };
   }
 
   /**
@@ -589,9 +723,9 @@ export class AutoAssignmentAgentService {
   }
 
   /**
- * Get all tasks pending approval for a business
- */
-async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
+   * Get all tasks pending approval for a business
+   */
+  async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
     return this.taskModel.find({
       businessId,
       'metadata.pendingAssignment': { $exists: true },
@@ -599,7 +733,21 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
     }).populate('assignedUserId', 'name surname email');
   }
 
+  /**
+   * Find optimal assignee for a VenueBoost task with history tracking
+   */
   async findOptimalAssigneeForVenueBoostTask(taskId: string): Promise<boolean> {
+    const startTime = new Date();
+    this.logger.log(`[TASK ASSIGN] Finding optimal assignee for VenueBoost task ${taskId}`);
+    
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'findOptimalAssigneeForVenueBoostTask',
+      startTime,
+      status: 'started',
+      details: { taskId }
+    });
+    
     try {
       // Get the task from our system
       const task = await this.taskModel.findById(taskId);
@@ -621,6 +769,24 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
       
       if (!hasAccess) {
         this.logger.warn(`Auto-assignment agent not enabled for business ${business.id}`);
+        
+        // Update the job record when agent not enabled
+        const endTime = new Date();
+        const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+        
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime,
+          duration,
+          status: 'completed',
+          businessId: business.id.toString(),
+          details: { 
+            taskId,
+            businessId: business.id.toString(),
+            agentEnabled: false,
+            result: false
+          }
+        });
+        
         return false;
       }
       
@@ -637,6 +803,24 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
       
       if (staffProfiles.length === 0) {
         this.logger.warn(`No staff profiles found for business ${business.id}`);
+        
+        // Update the job record when no staff profiles
+        const endTime = new Date();
+        const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+        
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime,
+          duration,
+          status: 'completed',
+          businessId: business.id.toString(),
+          details: { 
+            taskId,
+            businessId: business.id.toString(),
+            noStaffProfiles: true,
+            result: false
+          }
+        });
+        
         return false;
       }
       
@@ -747,29 +931,104 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
         
         await this.taskModel.findByIdAndUpdate(task._id, updateData);
         
+        // Update the job record on success
+        const endTime = new Date();
+        const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+        
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime,
+          duration,
+          status: 'completed',
+          businessId: business.id.toString(),
+          details: { 
+            taskId,
+            businessId: business.id.toString(),
+            assigneeId: bestMatch.userId,
+            requiresApproval: agentConfig.requireApproval,
+            assignmentScore: bestMatch.metrics.finalScore,
+            skillMatchScore: bestMatch.metrics.skillMatch,
+            workloadScore: bestMatch.metrics.workloadBalance,
+            availabilityScore: bestMatch.metrics.availabilityScore
+          }
+        });
+        
         this.logger.log(`Task ${task._id} ${agentConfig.requireApproval ? 'proposed for' : 'assigned to'} user ${bestMatch.userId} with score ${bestMatch.metrics.finalScore}`);
         return true;
       } else {
+        // Update the job record when no suitable assignee found
+        const endTime = new Date();
+        const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+        
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime,
+          duration,
+          status: 'completed',
+          businessId: business.id.toString(),
+          details: { 
+            taskId,
+            businessId: business.id.toString(),
+            noSuitableAssignee: true,
+            candidatesCount: scoredAssignees.length,
+            result: false
+          }
+        });
+        
         this.logger.warn(`No suitable assignee found for task ${task._id}`);
         return false;
       }
     } catch (error) {
+      // Update the job record on failure
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
       this.logger.error(`Error finding optimal assignee for task ${taskId}: ${error.message}`, error.stack);
       return false;
     }
   }
 
-    /**
-   * Approve a pending assignment and sync to VenueBoost
+  /**
+   * Approve a pending assignment and sync to VenueBoost with history tracking
    */
-    async approveVenueBoostAssignment(taskId: string): Promise<TaskAssignment> {
+  async approveVenueBoostAssignment(taskId: string): Promise<TaskAssignment> {
+    const startTime = new Date();
+    
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'approveVenueBoostAssignment',
+      startTime,
+      status: 'started',
+      details: { taskId }
+    });
+    
+    try {
       const task = await this.taskModel.findById(taskId);
       
       if (!task) {
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime: new Date(),
+          duration: (new Date().getTime() - startTime.getTime()) / 1000,
+          status: 'failed',
+          error: 'Task not found'
+        });
+        
         throw new Error('Task not found');
       }
       
       if (!task.metadata?.pendingAssignment) {
+        await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+          endTime: new Date(),
+          duration: (new Date().getTime() - startTime.getTime()) / 1000,
+          status: 'failed',
+          error: 'No pending assignment found'
+        });
+        
         throw new Error('No pending assignment found for this task');
       }
       
@@ -793,14 +1052,53 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
         { $inc: { currentWorkload: 1 } }
       );
       
+      let syncedToVenueBoost = false;
+      let staffProfileId = null;
+      
       // Sync assignment to VenueBoost if external IDs exist
       if (task.externalIds?.venueBoostTaskId) {
         const staffProfile = await this.staffProfileModel.findOne({ userId });
+        staffProfileId = staffProfile?._id;
+        
         if (staffProfile?.externalIds?.venueBoostStaffId) {
           await this.staffluentTaskService.pushTaskAssignment(taskId, userId);
+          syncedToVenueBoost = true;
         }
       }
       
+      // Update the job record on success
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'completed',
+        businessId: task.businessId,
+        details: { 
+          taskId,
+          assignedUserId: userId,
+          staffProfileId,
+          syncedToVenueBoost,
+          previousStatus: TaskStatus.UNASSIGNED,
+          newStatus: TaskStatus.ASSIGNED
+        }
+      });
+      
       return updatedTask;
+    } catch (error) {
+      // Update the job record on failure if not already updated
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      throw error;
     }
+  }
 }
