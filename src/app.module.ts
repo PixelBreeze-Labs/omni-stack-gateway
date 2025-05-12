@@ -148,6 +148,7 @@ import { VerificationController } from './controllers/verification-phone.control
 import { BusinessAgentConfigController } from './controllers/business-agent-config.controller';
 import { StaffluentIntegrationController } from './controllers/staffluent-integration.controller';
 import { BusinessTaskAssignmentController } from './controllers/business-task-assignment.controller';
+import { StaffluentSuperadminController } from './controllers/staffluent-superadmin.controller';
 
 
 // Service imports
@@ -473,6 +474,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     BusinessAgentConfigController,
     StaffluentIntegrationController,
     BusinessTaskAssignmentController,
+    StaffluentSuperadminController,
   ],
   providers: [
     SnapfoodService,
