@@ -7,6 +7,7 @@ import { TaskAssignment, TaskStatus } from '../schemas/task-assignment.schema';
 import { StaffProfile } from '../schemas/staff-profile.schema';
 import { Business } from '../schemas/business.schema';
 import { VenueBoostService } from './venueboost.service';
+import { CronJobHistory } from '../schemas/cron-job-history.schema';
 
 @Injectable()
 export class StaffluentTaskService {
@@ -16,16 +17,26 @@ export class StaffluentTaskService {
     @InjectModel(TaskAssignment.name) private taskModel: Model<TaskAssignment>,
     @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(CronJobHistory.name) private cronJobHistoryModel: Model<CronJobHistory>,
     private readonly venueBoostService: VenueBoostService,
   ) {}
 
-  /**
+   /**
    * Sync tasks from VenueBoost to NestJS for a specific business
    */
-  async syncTasksFromVenueBoost(businessId: string): Promise<number> {
+   async syncTasksFromVenueBoost(businessId: string): Promise<number> {
+    const startTime = new Date();
+    this.logger.log(`[SYNC START] Syncing tasks from VenueBoost for business: ${businessId}`);
+    
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'syncTasksFromVenueBoost',
+      startTime,
+      status: 'started',
+      businessId
+    });
+    
     try {
-      this.logger.log(`Syncing tasks from VenueBoost for business: ${businessId}`);
-      
       // Find the business in our system
       const business = await this.businessModel.findById(businessId);
       if (!business || !business.externalIds?.venueBoostId) {
@@ -35,7 +46,13 @@ export class StaffluentTaskService {
       // Get tasks from VenueBoost API
       const venueBoostTasks = await this.venueBoostService.getTasks(business.externalIds.venueBoostId);
       
-      let syncCount = 0;
+      const syncSummary = {
+        added: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0
+      };
+      
       for (const phpTask of venueBoostTasks.tasks) {
         // Map PHP task status to MongoDB TaskStatus
         const status = this.mapPhpStatusToMongoStatus(phpTask.status);
@@ -60,6 +77,7 @@ export class StaffluentTaskService {
               lastSyncedAt: new Date()
             }
           });
+          syncSummary.updated++;
         } else {
           // Create new task
           task = await this.taskModel.create({
@@ -78,6 +96,7 @@ export class StaffluentTaskService {
               lastSyncedAt: new Date()
             }
           });
+          syncSummary.added++;
         }
         
         // If task is already assigned in VenueBoost, update assignment in our system
@@ -94,22 +113,63 @@ export class StaffluentTaskService {
             });
           }
         }
-        
-        syncCount++;
       }
       
-      this.logger.log(`Successfully synced ${syncCount} tasks for business ${businessId}`);
-      return syncCount;
+      const totalSynced = syncSummary.added + syncSummary.updated;
+      
+      // Update the job record on completion
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'completed',
+        syncSummary,
+        targetCount: venueBoostTasks.tasks.length,
+        processedCount: totalSynced,
+        details: { 
+          businessId,
+          taskCount: venueBoostTasks.tasks.length,
+          added: syncSummary.added,
+          updated: syncSummary.updated
+        }
+      });
+      
+      this.logger.log(`[SYNC COMPLETE] Successfully synced ${totalSynced} tasks for business ${businessId}`);
+      return totalSynced;
     } catch (error) {
-      this.logger.error(`Error syncing tasks from VenueBoost: ${error.message}`, error.stack);
+      // Update the job record on failure
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      this.logger.error(`[SYNC FAILED] Error syncing tasks from VenueBoost: ${error.message}`, error.stack);
       throw error;
     }
   }
+  
   
   /**
    * Push task assignment from NestJS to Staffluent
    */
   async pushTaskAssignment(taskId: string, assigneeId: string): Promise<boolean> {
+    const startTime = new Date();
+    
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'pushTaskAssignment',
+      startTime,
+      status: 'started',
+      details: { taskId, assigneeId }
+    });
+    
     try {
       // Find the task in our system
       const task = await this.taskModel.findById(taskId);
@@ -137,27 +197,39 @@ export class StaffluentTaskService {
         'metadata.assignmentSyncedToStaffluent': true
       });
       
+      // Update the job record on success
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'completed',
+        businessId: task.businessId,
+        details: {
+          taskId,
+          assigneeId,
+          venueBoostTaskId: task.externalIds.venueBoostTaskId,
+          venueBoostStaffId: staffProfile.externalIds.venueBoostStaffId,
+          taskTitle: task.title,
+          successful: true
+        }
+      });
+      
       return true;
     } catch (error) {
-      this.logger.error(`Error pushing task assignment to Staffluent: ${error.message}`, error.stack);
-      return false;
-    }
-  }
-  
-  /**
-   * Update external ID mapping for a task
-   */
-  async updateTaskExternalId(taskId: string, venueBoostTaskId: string): Promise<boolean> {
-    try {
-      const task = await this.taskModel.findByIdAndUpdate(
-        taskId,
-        { 'externalIds.venueBoostTaskId': venueBoostTaskId },
-        { new: true }
-      );
+      // Update the job record on failure
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
       
-      return !!task;
-    } catch (error) {
-      this.logger.error(`Error updating task external ID: ${error.message}`, error.stack);
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      this.logger.error(`Error pushing task assignment to Staffluent: ${error.message}`, error.stack);
       return false;
     }
   }
@@ -202,33 +274,93 @@ export class StaffluentTaskService {
     }
   }
   
-  /**
+   /**
    * Scheduled job to sync tasks from Staffluent for all businesses
    */
-  @Cron(CronExpression.EVERY_HOUR)
-  async scheduledTaskSync() {
-    try {
-      this.logger.log('Starting scheduled task sync for all businesses');
-      
-      // Find all businesses with Staffluent connection
-      const businesses = await this.businessModel.find({
-        'externalIds.staffluentId': { $exists: true, $ne: null }
-      });
-      
-      let totalSynced = 0;
-      for (const business of businesses) {
-        try {
-          const count = await this.syncTasksFromVenueBoost(business.id);
-          totalSynced += count;
-        } catch (error) {
-          this.logger.error(`Error syncing tasks for business ${business.id}: ${error.message}`);
-          // Continue with next business even if one fails
-        }
-      }
-      
-      this.logger.log(`Completed task sync, updated ${totalSynced} tasks across ${businesses.length} businesses`);
-    } catch (error) {
-      this.logger.error(`Error in scheduled task sync: ${error.message}`, error.stack);
-    }
-  }
+   @Cron(CronExpression.EVERY_HOUR)
+   async scheduledTaskSync() {
+     const startTime = new Date();
+     this.logger.log(`[CRON START] Task sync job started at ${startTime.toISOString()}`);
+     
+     // Create a record for this job execution
+     const jobRecord = await this.cronJobHistoryModel.create({
+       jobName: 'scheduledTaskSync',
+       startTime,
+       status: 'started'
+     });
+     
+     try {
+       // Find all businesses with Staffluent connection
+       const businesses = await this.businessModel.find({
+         'externalIds.staffluentId': { $exists: true, $ne: null }
+       });
+       
+       const syncSummary = {
+         added: 0,
+         updated: 0,
+         skipped: 0,
+         failed: 0
+       };
+       
+       const businessResults = [];
+       
+       for (const business of businesses) {
+         try {
+           const count = await this.syncTasksFromVenueBoost(business.id);
+           
+           businessResults.push({
+             businessId: business.id,
+             businessName: business.name,
+             tasksSynced: count,
+             success: true
+           });
+         } catch (error) {
+           this.logger.error(`Error syncing tasks for business ${business.id}: ${error.message}`);
+           
+           businessResults.push({
+             businessId: business.id,
+             businessName: business.name,
+             error: error.message,
+             success: false
+           });
+           
+           syncSummary.failed++;
+         }
+       }
+       
+       // Update the job record on completion
+       const endTime = new Date();
+       const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+       
+       await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+         endTime,
+         duration,
+         status: 'completed',
+         businessIds: businesses.map(b => b.id),
+         targetCount: businesses.length,
+         processedCount: businesses.length - syncSummary.failed,
+         failedCount: syncSummary.failed,
+         syncSummary,
+         details: { 
+           businessResults,
+           totalBusinesses: businesses.length
+         }
+       });
+       
+       this.logger.log(`[CRON COMPLETE] Task sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses`);
+     } catch (error) {
+       // Update the job record on failure
+       const endTime = new Date();
+       const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+       
+       await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+         endTime,
+         duration,
+         status: 'failed',
+         error: error.message
+       });
+       
+       this.logger.error(`[CRON FAILED] Error in task sync job: ${error.message}`, error.stack);
+     }
+   }
 }

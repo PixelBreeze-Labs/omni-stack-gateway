@@ -68,25 +68,6 @@ export class StaffluentIntegrationController {
       message: 'Successfully approved assignment'
     };
   }
-
-  // not sure where or how this is used
-  @Put('tasks/:taskId/external-id')
-  @ApiOperation({ summary: 'Update external ID for a task' })
-  async updateTaskExternalId(
-    @Param('taskId') taskId: string,
-    @Body() body: { staffluentId: string }
-  ) {
-    const result = await this.staffluentTaskService.updateTaskExternalId(
-      taskId,
-      body.staffluentId
-    );
-    return {
-      success: result,
-      message: result 
-        ? 'Successfully updated task external ID' 
-        : 'Failed to update task external ID'
-    };
-  }
   
   // Auto Assignment Agent
   @Post('tasks/assign-batch')
@@ -112,27 +93,6 @@ export class StaffluentIntegrationController {
       message: `Successfully processed ${successCount} out of ${tasks.length} unassigned tasks`,
       total: tasks.length,
       assigned: successCount
-    };
-  }
-  
-  // not sure where or how this is used
-  @Get('pending-assignments/:businessId')
-  @ApiOperation({ summary: 'Get all tasks with pending assignments for a business' })
-  async getPendingAssignments(@Param('businessId') businessId: string) {
-    const tasks = await this.taskAssignmentModel.find({
-      businessId,
-      'metadata.pendingAssignment': { $exists: true }
-    }).populate('assignedUserId');
-    
-    return {
-      success: true,
-      count: tasks.length,
-      tasks: tasks.map(task => ({
-        id: task._id,
-        title: task.title,
-        pendingAssignment: task.metadata.pendingAssignment,
-        externalIds: task.externalIds
-      }))
     };
   }
   
