@@ -28,8 +28,8 @@ import { ClientAppService } from '../services/client-app.service';
 import { StaffluentTaskService } from '../services/staffluent-task.service';
 import { StaffluentEmployeeService } from '../services/staffluent-employee.service';
 import { VenueBoostService } from '../services/venueboost.service';
-import { Store, StoreSchema } from '../schemas/store.schema'; // Add Store schema
-import { CronJobHistory, CronJobHistorySchema } from '../schemas/cron-job-history.schema'; // Import CronJobHistory schema
+import { Store, StoreSchema } from '../schemas/store.schema';
+import { CronJobHistory, CronJobHistorySchema } from '../schemas/cron-job-history.schema';
 
 @Module({
   imports: [

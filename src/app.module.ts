@@ -79,6 +79,7 @@ import { SocialMessage, SocialMessageSchema } from './schemas/social-message.sch
 import { VerificationPhone, VerificationPhoneSchema } from './schemas/verification-phone.schema';
 import { TaskAssignment, TaskAssignmentSchema } from './schemas/task-assignment.schema';
 import { StaffProfile, StaffProfileSchema } from './schemas/staff-profile.schema';
+import { AgentConfiguration, AgentConfigurationSchema } from './schemas/agent-configuration.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -383,6 +384,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
       { name: GeneratedImage.name, schema: GeneratedImageSchema },
       { name: TaskAssignment.name, schema: TaskAssignmentSchema },
       { name: StaffProfile.name, schema: StaffProfileSchema },
+      { name: AgentConfiguration.name, schema: AgentConfigurationSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
