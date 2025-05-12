@@ -1016,4 +1016,156 @@ async rejectAssignment(taskId: string, reason: string): Promise<TaskAssignment> 
       throw error;
     }
   }
+
+  // Add helper methods to fetch metrics and history
+ async getAutoAssignmentMetrics(businessId: string, period: string): Promise<any> {
+  // Calculate date range based on period
+  const endDate = new Date();
+  let startDate = new Date();
+  
+  if (period === '7d') {
+    startDate.setDate(startDate.getDate() - 7);
+  } else if (period === '30d') {
+    startDate.setDate(startDate.getDate() - 30);
+  } else if (period === '90d') {
+    startDate.setDate(startDate.getDate() - 90);
+  }
+  
+  // Query CronJobHistory for metrics
+  const cronJobsHistory = await this.cronJobHistoryModel.find({
+    businessId,
+    jobName: {
+      $in: [
+        'findOptimalAssigneeForVenueBoostTask',
+        'businessAutoAssign',
+        'processBusinessUnassignedTasks',
+        'manuallyTriggeredAutoAssign',
+        'manuallyApproveAssignment'
+      ]
+    },
+    startTime: { $gte: startDate, $lte: endDate },
+    status: 'completed'
+  });
+  
+  // Count tasks that were assigned
+  const totalAssignments = cronJobsHistory.length;
+  
+  // Calculate success rate
+  const successfulAssignments = cronJobsHistory.filter(job => 
+    job.details && (job.details.success === true || job.details.assignedCount > 0)
+  ).length;
+  
+  const successRate = totalAssignments > 0 
+    ? Math.round((successfulAssignments / totalAssignments) * 100) 
+    : 0;
+  
+  return {
+    assignmentsThisMonth: totalAssignments,
+    successRate: `${successRate}%`
+  };
+}
+
+async getAutoAssignmentHistory(
+  businessId: string, 
+  page: number, 
+  limit: number,
+  period: string
+): Promise<any> {
+  // Calculate date range based on period
+  const endDate = new Date();
+  let startDate = new Date();
+  
+  if (period === '7d') {
+    startDate.setDate(startDate.getDate() - 7);
+  } else if (period === '30d') {
+    startDate.setDate(startDate.getDate() - 30);
+  } else if (period === '90d') {
+    startDate.setDate(startDate.getDate() - 90);
+  }
+  
+  // Get total count
+  const total = await this.cronJobHistoryModel.countDocuments({
+    businessId,
+    jobName: {
+      $in: [
+        'findOptimalAssigneeForVenueBoostTask',
+        'businessAutoAssign',
+        'processBusinessUnassignedTasks',
+        'manuallyTriggeredAutoAssign',
+        'manuallyApproveAssignment',
+        'manuallyRejectAssignment'
+      ]
+    },
+    startTime: { $gte: startDate, $lte: endDate }
+  });
+  
+  // Get paginated items
+  const items = await this.cronJobHistoryModel.find({
+    businessId,
+    jobName: {
+      $in: [
+        'findOptimalAssigneeForVenueBoostTask',
+        'businessAutoAssign',
+        'processBusinessUnassignedTasks',
+        'manuallyTriggeredAutoAssign',
+        'manuallyApproveAssignment',
+        'manuallyRejectAssignment'
+      ]
+    },
+    startTime: { $gte: startDate, $lte: endDate }
+  })
+  .sort({ startTime: -1 })
+  .skip((page - 1) * limit)
+  .limit(limit);
+  
+  // Format history items
+  const formattedItems = items.map(item => {
+    let actionType = '';
+    let description = '';
+    
+    switch(item.jobName) {
+      case 'findOptimalAssigneeForVenueBoostTask':
+        actionType = 'Assignment';
+        description = `Auto-assigned a task${item.details?.taskId ? ` (ID: ${item.details.taskId})` : ''}`;
+        break;
+      case 'businessAutoAssign':
+        actionType = 'Batch Assignment';
+        description = `Processed ${item.details?.totalTasks || 0} tasks, assigned ${item.details?.assignedCount || 0}`;
+        break;
+      case 'processBusinessUnassignedTasks':
+        actionType = 'Scheduled Assignment';
+        description = `Processed ${item.details?.tasksProcessed || 0} tasks, assigned ${item.details?.tasksAssigned || 0}`;
+        break;
+      case 'manuallyTriggeredAutoAssign':
+        actionType = 'Manual Assignment';
+        description = `Manually triggered assignment for task${item.details?.taskId ? ` (ID: ${item.details.taskId})` : ''}`;
+        break;
+      case 'manuallyApproveAssignment':
+        actionType = 'Approval';
+        description = `Approved assignment for task${item.details?.taskId ? ` (ID: ${item.details.taskId})` : ''}`;
+        break;
+      case 'manuallyRejectAssignment':
+        actionType = 'Rejection';
+        description = `Rejected assignment for task${item.details?.taskId ? ` (ID: ${item.details.taskId})` : ''}`;
+        break;
+    }
+    
+    return {
+      id: item._id,
+      timestamp: item.startTime,
+      status: item.status,
+      actionType,
+      description,
+      duration: item.duration ? `${item.duration.toFixed(2)}s` : 'N/A',
+      details: item.details || {}
+    };
+  });
+  
+  return {
+    total,
+    page,
+    limit,
+    items: formattedItems
+  };
+}
 }
