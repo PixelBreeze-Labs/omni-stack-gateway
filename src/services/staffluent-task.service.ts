@@ -20,11 +20,11 @@ export class StaffluentTaskService {
   ) {}
 
   /**
-   * Sync tasks from Staffluent to NestJS for a specific business
+   * Sync tasks from VenueBoost to NestJS for a specific business
    */
-  async syncTasksFromStaffluent(businessId: string): Promise<number> {
+  async syncTasksFromVenueBoost(businessId: string): Promise<number> {
     try {
-      this.logger.log(`Syncing tasks from Staffluent for business: ${businessId}`);
+      this.logger.log(`Syncing tasks from VenueBoost for business: ${businessId}`);
       
       // Find the business in our system
       const business = await this.businessModel.findById(businessId);
@@ -32,7 +32,7 @@ export class StaffluentTaskService {
         throw new Error(`Business ${businessId} not found or not connected to VenueBoost`);
       }
 
-      // Get tasks from Staffluent API
+      // Get tasks from VenueBoost API
       const venueBoostTasks = await this.venueBoostService.getTasks(business.externalIds.venueBoostId);
       
       let syncCount = 0;
@@ -80,7 +80,7 @@ export class StaffluentTaskService {
           });
         }
         
-        // If task is already assigned in Staffluent, update assignment in our system
+        // If task is already assigned in VenueBoost, update assignment in our system
         if (phpTask.assignee && phpTask.assignee.id) {
           const staffProfile = await this.staffProfileModel.findOne({
             'externalIds.venueBoostStaffId': String(phpTask.assignee.id)
@@ -101,7 +101,7 @@ export class StaffluentTaskService {
       this.logger.log(`Successfully synced ${syncCount} tasks for business ${businessId}`);
       return syncCount;
     } catch (error) {
-      this.logger.error(`Error syncing tasks from Staffluent: ${error.message}`, error.stack);
+      this.logger.error(`Error syncing tasks from VenueBoost: ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -218,7 +218,7 @@ export class StaffluentTaskService {
       let totalSynced = 0;
       for (const business of businesses) {
         try {
-          const count = await this.syncTasksFromStaffluent(business.id);
+          const count = await this.syncTasksFromVenueBoost(business.id);
           totalSynced += count;
         } catch (error) {
           this.logger.error(`Error syncing tasks for business ${business.id}: ${error.message}`);
