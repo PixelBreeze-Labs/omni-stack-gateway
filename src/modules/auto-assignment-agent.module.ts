@@ -30,6 +30,7 @@ import { StaffluentTaskService } from '../services/staffluent-task.service';
 import { StaffluentEmployeeService } from '../services/staffluent-employee.service';
 import { VenueBoostService } from '../services/venueboost.service';
 import { Store, StoreSchema } from '../schemas/store.schema'; // Add Store schema
+import { CronJobHistory, CronJobHistorySchema } from '../schemas/cron-job-history.schema'; // Import CronJobHistory schema
 
 @Module({
   imports: [
@@ -46,7 +47,8 @@ import { Store, StoreSchema } from '../schemas/store.schema'; // Add Store schem
       { name: Poll.name, schema: PollSchema },
       { name: ClientApp.name, schema: ClientAppSchema },
       { name: Report.name, schema: ReportSchema },
-      { name: Store.name, schema: StoreSchema } // Add Store schema here
+      { name: Store.name, schema: StoreSchema },
+      { name: CronJobHistory.name, schema: CronJobHistorySchema }
     ])
   ],
   controllers: [AutoAssignmentController, AgentConfigController, StaffluentIntegrationController],
