@@ -256,6 +256,76 @@ export class AutoAssignmentAgentService {
   }
 
   /**
+   * Approve a pending assignment
+   */
+  async approveAssignment(taskId: string): Promise<TaskAssignment> {
+    const task = await this.taskModel.findById(taskId);
+    
+    if (!task) {
+      throw new Error('Task not found');
+    }
+    
+    if (!task.metadata?.pendingAssignment) {
+      throw new Error('No pending assignment found for this task');
+    }
+    
+    const userId = task.metadata.pendingAssignment.userId;
+    
+    // Update task with assignment
+    const updatedTask = await this.taskModel.findByIdAndUpdate(
+      taskId,
+      {
+        assignedUserId: userId,
+        status: TaskStatus.ASSIGNED,
+        assignedAt: new Date(),
+        $unset: { 'metadata.pendingAssignment': 1 }
+      },
+      { new: true }
+    );
+    
+    // Update staff workload
+    await this.staffProfileModel.findOneAndUpdate(
+      { userId },
+      { $inc: { currentWorkload: 1 } }
+    );
+    
+    return updatedTask;
+  }
+
+  /**
+ * Reject a pending assignment
+ */
+async rejectAssignment(taskId: string, reason: string): Promise<TaskAssignment> {
+  const task = await this.taskModel.findById(taskId);
+  
+  if (!task) {
+    throw new Error('Task not found');
+  }
+  
+  if (!task.metadata?.pendingAssignment) {
+    throw new Error('No pending assignment found for this task');
+  }
+  
+  // Update task to remove pending assignment
+  const updatedTask = await this.taskModel.findByIdAndUpdate(
+    taskId,
+    {
+      $unset: { 'metadata.pendingAssignment': 1 },
+      $push: { 
+        'metadata.rejectedAssignments': {
+          userId: task.metadata.pendingAssignment.userId,
+          rejectedAt: new Date(),
+          reason
+        }
+      }
+    },
+    { new: true }
+  );
+  
+  return updatedTask;
+}
+
+  /**
    * Process unassigned tasks for a specific business
    */
   async processBusinessUnassignedTasks(businessId: string): Promise<{ totalTasks: number, assignedCount: number, taskIds: string[] }> {
