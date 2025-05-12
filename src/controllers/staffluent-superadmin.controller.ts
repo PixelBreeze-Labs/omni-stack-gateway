@@ -8,6 +8,7 @@ import { CronJobHistory } from '../schemas/cron-job-history.schema';
 import { AgentFeatureFlag, Business } from '../schemas/business.schema';
 import { TaskAssignment, TaskStatus } from '../schemas/task-assignment.schema';
 import { StaffProfile } from '../schemas/staff-profile.schema';
+import { AgentConfiguration } from '../schemas/agent-configuration.schema';
 
 @ApiTags('Staffluent Superadmin Dashboard')
 @ApiBearerAuth()
@@ -18,7 +19,8 @@ export class StaffluentSuperadminController {
         @InjectModel(CronJobHistory.name) private cronJobHistoryModel: Model<CronJobHistory>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
         @InjectModel(TaskAssignment.name) private taskAssignmentModel: Model<TaskAssignment>,
-        @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>
+        @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
+        @InjectModel(AgentConfiguration.name) private agentConfigModel: Model<AgentConfiguration>
     ) {}
 
     @ApiOperation({ summary: 'Get cron job history statistics for client businesses' })
@@ -403,7 +405,12 @@ export class StaffluentSuperadminController {
             const businessTasks = tasks.filter(task => task.businessId === business.id);
             
             // Check if auto-assignment is enabled for this business
-            const hasAutoAssign = business.includedFeatures?.includes(AgentFeatureFlag.AUTO_ASSIGNMENT_AGENT) || false;
+            const agentConfig = await this.agentConfigModel.findOne({
+                businessId: business.id,
+                agentType: 'auto-assignment'
+              });
+              
+            const isAutoAssignEnabled = agentConfig?.isEnabled || false;            
             
             stats.businessStats.push({
                 businessId: business.id,
@@ -415,7 +422,7 @@ export class StaffluentSuperadminController {
                 completed: businessTasks.filter(task => task.status === TaskStatus.COMPLETED).length,
                 canceled: businessTasks.filter(task => task.status === TaskStatus.CANCELLED).length,
                 pendingApproval: businessTasks.filter(task => task.metadata?.pendingAssignment).length,
-                autoAssignEnabled: hasAutoAssign
+                autoAssignEnabled: isAutoAssignEnabled
             });
         }
         
@@ -609,13 +616,17 @@ export class StaffluentSuperadminController {
         });
         
         // Calculate overall statistics
-        const businessesWithAutoAssign = businesses.filter(
-            b => b.includedFeatures?.includes(AgentFeatureFlag.AUTO_ASSIGNMENT_AGENT)
-        );
+        const agentConfigs = await this.agentConfigModel.find({
+            businessId: { $in: businessIds },
+            agentType: 'auto-assignment',
+            isEnabled: true
+        });
+        const enabledBusinessIds = agentConfigs.map(config => config.businessId);
+        const businessesWithAutoAssign = enabledBusinessIds.length;
         
         const stats = {
             totalBusinesses: businesses.length,
-            businessesWithAutoAssign: businessesWithAutoAssign.length,
+            businessesWithAutoAssign,
             totalAutoAssignments: autoAssignJobs.length,
             successful: autoAssignJobs.filter(job => job.status === 'completed').length,
             failed: autoAssignJobs.filter(job => job.status === 'failed').length,
@@ -626,7 +637,11 @@ export class StaffluentSuperadminController {
         // Calculate per-business statistics
         for (const business of businesses) {
             // Check if auto-assignment is enabled
-            const isEnabled = business.includedFeatures?.includes(AgentFeatureFlag.AUTO_ASSIGNMENT_AGENT) || false;
+            const agentConfig = await this.agentConfigModel.findOne({
+                businessId: business.id,
+                agentType: 'auto-assignment'
+            });
+            const isEnabled = agentConfig?.isEnabled || false;
             
             // Get jobs for this business
             const businessJobs = autoAssignJobs.filter(job => {
