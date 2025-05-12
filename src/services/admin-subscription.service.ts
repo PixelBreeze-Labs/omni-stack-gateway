@@ -202,7 +202,7 @@ export class AdminSubscriptionService {
                 });
 
                 if (venueBoostIds) {
-                    // Update user with VenueBoost IDs
+                    // Update user with VenueBoost user ID
                     await this.userModel.findByIdAndUpdate(
                         adminUser._id,
                         {
@@ -211,7 +211,18 @@ export class AdminSubscriptionService {
                             }
                         }
                     );
-                    this.logger.log(`Updated user with VenueBoost IDs`);
+                    
+                    // Update business with VenueBoost venue ID
+                    await this.businessModel.findByIdAndUpdate(
+                        business._id,
+                        {
+                            $set: {
+                                'externalIds.venueBoostId': venueBoostIds.venueId
+                            }
+                        }
+                    );
+                    
+                    this.logger.log(`Updated user and business with VenueBoost IDs`);
                 }
             } catch (error) {
                 // Log the error but continue - VenueBoost integration is not critical
