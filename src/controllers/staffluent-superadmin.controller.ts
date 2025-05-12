@@ -324,7 +324,7 @@ export class StaffluentSuperadminController {
                 duration: job.duration,
                 status: job.status,
                 businessId,
-                businessName: businessMap[businessId] || 'Unknown',
+                businessName: businessMap[businessId] || 'All Businesses',
                 details: job.details || {},
                 error: job.error
             };
