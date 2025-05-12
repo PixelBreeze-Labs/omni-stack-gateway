@@ -5,6 +5,7 @@ import { AgentPermissionService } from '../services/agent-permission.service';
 import { AutoAssignmentAgentService } from '../services/auto-assignment-agent.service';
 import { BusinessService } from '../services/business.service';
 import { AgentConfiguration } from '../schemas/agent-configuration.schema';
+import { Query } from '@nestjs/common';
 
 @ApiTags('Business Agent Configuration')
 @Controller('business-agent-config')
@@ -285,4 +286,97 @@ export class BusinessAgentConfigController {
     
     return business;
   }
+
+  @Get(':businessId/agent/:agentType/metrics')
+  @ApiOperation({ summary: 'Get metrics for a specific agent' })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiParam({ name: 'agentType', description: 'Agent type (e.g., auto-assignment, compliance-monitoring)' })
+  @ApiResponse({ status: 200, description: 'Returns the agent metrics' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  async getAgentMetrics(
+    @Param('businessId') businessId: string,
+    @Param('agentType') agentType: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Query('period') period: string = '30d' // Default to last 30 days
+  ) {
+    try {
+      // Verify API key is valid for this business
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      // Get agent metrics based on agent type and period
+      let metrics;
+      
+      switch(agentType) {
+        case 'auto-assignment':
+          metrics = await this.autoAssignmentService.getAutoAssignmentMetrics(businessId, period);
+          break;
+        // Add cases for other agent types
+        default:
+          metrics = { message: 'Metrics not available for this agent type' };
+      }
+      
+      return {
+        success: true,
+        metrics
+      };
+    } catch (error) {
+      this.logger.error(`Error getting agent metrics: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      } else {
+        throw new InternalServerErrorException('Failed to get agent metrics');
+      }
+    }
+  }
+
+  @Get(':businessId/agent/:agentType/history')
+  @ApiOperation({ summary: 'Get activity history for a specific agent' })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiParam({ name: 'agentType', description: 'Agent type (e.g., auto-assignment, compliance-monitoring)' })
+  @ApiResponse({ status: 200, description: 'Returns the agent activity history' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  async getAgentHistory(
+    @Param('businessId') businessId: string,
+    @Param('agentType') agentType: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('period') period: string = '30d'
+  ) {
+    try {
+      // Verify API key is valid for this business
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      // Get agent history based on agent type
+      let history;
+      
+      switch(agentType) {
+        case 'auto-assignment':
+          history = await this.autoAssignmentService.getAutoAssignmentHistory(businessId, page, limit, period);
+          break;
+        // Add cases for other agent types
+        default:
+          history = { 
+            total: 0,
+            page,
+            limit,
+            items: [],
+            message: 'History not available for this agent type'
+          };
+      }
+      
+      return {
+        success: true,
+        history
+      };
+    } catch (error) {
+      this.logger.error(`Error getting agent history: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      } else {
+        throw new InternalServerErrorException('Failed to get agent history');
+      }
+    }
+  }
+
 }
