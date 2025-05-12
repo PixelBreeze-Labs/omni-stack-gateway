@@ -147,7 +147,7 @@ import { SnapfoodieController } from './controllers/snapfoodie.controller';
 import { VerificationController } from './controllers/verification-phone.controller';
 import { BusinessAgentConfigController } from './controllers/business-agent-config.controller';
 import { StaffluentIntegrationController } from './controllers/staffluent-integration.controller';
-
+import { BusinessTaskAssignmentController } from './controllers/business-task-assignment.controller';
 
 
 // Service imports
@@ -234,7 +234,7 @@ import { SnapfoodieService } from './services/snapfoodie.service';
 import { OneSignalService } from './services/onesignal.service';
 import { StaffluentTaskService } from './services/staffluent-task.service';
 import { StaffluentEmployeeService } from './services/staffluent-employee.service';
-
+import { BusinessTaskAssignmentService } from './services/business-task-assignment.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -472,6 +472,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     GeneratedImageController,
     BusinessAgentConfigController,
     StaffluentIntegrationController,
+    BusinessTaskAssignmentController,
   ],
   providers: [
     SnapfoodService,
@@ -565,6 +566,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     GeneratedImageService,
     StaffluentTaskService,
     StaffluentEmployeeService,
+    BusinessTaskAssignmentService,
   ],
 })
 export class AppModule implements NestModule {
