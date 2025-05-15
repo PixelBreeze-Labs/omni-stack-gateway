@@ -170,4 +170,68 @@ export class BusinessChatbotController {
       }
     }
   }
+
+  @Get(':businessId/health')
+  @ApiOperation({ summary: 'Check chatbot service health' })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiResponse({ status: 200, description: 'Chatbot service is healthy' })
+  async checkHealth(
+    @Param('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ status: string; timestamp: string }> {
+    try {
+      // Verify API key is valid for this business
+      await this.chatbotService.validateBusinessApiKey(businessId, apiKey);
+      
+      return {
+        status: 'ok',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      this.logger.error(`Health check failed: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      } else {
+        throw new InternalServerErrorException('Health check failed');
+      }
+    }
+  }
+
+  @Get(':businessId/knowledge')
+  @ApiOperation({ summary: 'Get knowledge base categories' })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiResponse({ status: 200, description: 'Returns knowledge base categories' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  async getKnowledgeBase(
+    @Param('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ categories: string[]; success: boolean }> {
+    try {
+      // Verify API key is valid for this business
+      await this.chatbotService.validateBusinessApiKey(businessId, apiKey);
+      
+      // Return available knowledge categories
+      return {
+        categories: [
+          'projects',
+          'tasks',
+          'time_tracking',
+          'teams',
+          'clients',
+          'reports',
+          'equipment',
+          'quality_control',
+          'field_service'
+        ],
+        success: true
+      };
+    } catch (error) {
+      this.logger.error(`Error getting knowledge base: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      } else {
+        throw new InternalServerErrorException('Failed to get knowledge base');
+      }
+    }
+  }
 }
