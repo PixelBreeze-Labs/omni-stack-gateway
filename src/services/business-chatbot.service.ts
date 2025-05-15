@@ -317,8 +317,9 @@ export class BusinessChatbotService {
     const normalizedMessage = message.toLowerCase().trim();
     
     // Personalization variables
-    const businessName = business?.name || 'Staffluent';
+    const businessName = business?.name || 'your business';
     const userName = user ? `${user.name || 'there'}` : 'there';
+    const platformName = 'Staffluent';
     
     // Extract key terms for better matching
     const keyTerms = this.extractKeyTerms(normalizedMessage);
@@ -331,7 +332,7 @@ export class BusinessChatbotService {
       {
         keywords: ['hello', 'hi', 'hey', 'greetings', 'howdy'],
         response: {
-          text: `Hello ${userName}! I'm the ${businessName} assistant. How can I help you today?`,
+          text: `Hello ${userName}! I'm the ${platformName} assistant for ${businessName}. How can I help you today?`,
           suggestions: [
             { id: 'projects', text: 'Tell me about projects' },
             { id: 'tasks', text: 'Task management' },
@@ -343,7 +344,7 @@ export class BusinessChatbotService {
       {
         keywords: ['project', 'projects'],
         response: {
-          text: `${businessName} offers comprehensive project management. You can create projects, assign teams, track progress, and manage tasks.`,
+          text: `${platformName} provides ${businessName} with comprehensive project management tools. You can create projects, assign teams, track progress, and manage tasks.`,
           suggestions: [
             { id: 'create_project', text: 'Create a new project' },
             { id: 'view_projects', text: 'View my projects' },
@@ -354,7 +355,7 @@ export class BusinessChatbotService {
       {
         keywords: ['task', 'tasks', 'todo', 'assignment', 'assign'],
         response: {
-          text: `Tasks in ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
+          text: `With ${platformName}, tasks for ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
           suggestions: [
             { id: 'create_task', text: 'Create a task' },
             { id: 'assign_task', text: 'Assign tasks' },
@@ -365,7 +366,7 @@ export class BusinessChatbotService {
       {
         keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
         response: {
-          text: `${businessName}'s time tracking system lets you clock in/out, manage breaks, and review timesheets.`,
+          text: `${platformName}'s time tracking system lets ${businessName} employees clock in/out, manage breaks, and review timesheets.`,
           suggestions: [
             { id: 'time_clock', text: 'Clock in/out' },
             { id: 'breaks', text: 'Manage breaks' },
@@ -376,7 +377,7 @@ export class BusinessChatbotService {
       {
         keywords: ['team', 'staff', 'employee', 'member', 'personnel'],
         response: {
-          text: `You can organize staff into departments and teams, assign leaders, and monitor performance.`,
+          text: `Using ${platformName}, ${businessName} can organize staff into departments and teams, assign leaders, and monitor performance.`,
           suggestions: [
             { id: 'view_team', text: 'View my team' },
             { id: 'add_member', text: 'Add team member' },
@@ -387,7 +388,7 @@ export class BusinessChatbotService {
       {
         keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats', 'dashboard'],
         response: {
-          text: `${businessName} provides detailed analytics on productivity, project progress, task completion, and more.`,
+          text: `${platformName} provides ${businessName} with detailed analytics on productivity, project progress, task completion, and more.`,
           suggestions: [
             { id: 'performance_reports', text: 'Performance reports' },
             { id: 'time_reports', text: 'Time & attendance reports' },
@@ -398,7 +399,7 @@ export class BusinessChatbotService {
       {
         keywords: ['field', 'service', 'field service', 'location', 'site', 'remote'],
         response: {
-          text: `Field service features help you manage operations outside the office, including location tracking and service scheduling.`,
+          text: `${platformName}'s field service features help ${businessName} manage operations outside the office, including location tracking and service scheduling.`,
           suggestions: [
             { id: 'field_locations', text: 'Field locations' },
             { id: 'service_schedule', text: 'Service scheduling' },
@@ -409,7 +410,7 @@ export class BusinessChatbotService {
       {
         keywords: ['client', 'customer', 'account', 'portal'],
         response: {
-          text: `${businessName} helps you manage client relationships, track communications, and handle client requests.`,
+          text: `${platformName} helps ${businessName} manage client relationships, track communications, and handle client requests.`,
           suggestions: [
             { id: 'add_client', text: 'Add a client' },
             { id: 'client_portal', text: 'Client portal features' },
@@ -420,7 +421,7 @@ export class BusinessChatbotService {
       {
         keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
         response: {
-          text: `I can help with managing projects, tracking time, organizing teams, and more. What do you need help with?`,
+          text: `I can help with how ${businessName} can use ${platformName} for managing projects, tracking time, organizing teams, and more. What do you need help with?`,
           suggestions: [
             { id: 'projects_help', text: 'Projects help' },
             { id: 'tasks_help', text: 'Tasks help' },
@@ -432,7 +433,7 @@ export class BusinessChatbotService {
       {
         keywords: ['auto', 'assign', 'automatic', 'assignment', 'auto-assign'],
         response: {
-          text: `${businessName} has auto-assignment capabilities that can automatically assign tasks to the most suitable team members based on skills, workload, and availability.`,
+          text: `${platformName} provides ${businessName} with auto-assignment capabilities that can automatically assign tasks to the most suitable team members based on skills, workload, and availability.`,
           suggestions: [
             { id: 'auto_assign_setup', text: 'Set up auto-assignment' },
             { id: 'auto_assign_trigger', text: 'Trigger auto-assignment' },
@@ -443,7 +444,7 @@ export class BusinessChatbotService {
       {
         keywords: ['quality', 'inspection', 'compliance', 'safety', 'audit'],
         response: {
-          text: `${businessName}'s quality control features help you conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
+          text: `${platformName}'s quality control features help ${businessName} conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
           suggestions: [
             { id: 'create_inspection', text: 'Create inspection' },
             { id: 'compliance_report', text: 'Compliance report' },
@@ -454,7 +455,7 @@ export class BusinessChatbotService {
       {
         keywords: ['equipment', 'asset', 'tool', 'inventory', 'maintenance'],
         response: {
-          text: `${businessName} includes equipment management for tracking assets, scheduling maintenance, and monitoring usage.`,
+          text: `${platformName} includes equipment management tools for ${businessName} to track assets, schedule maintenance, and monitor usage.`,
           suggestions: [
             { id: 'track_equipment', text: 'Track equipment' },
             { id: 'maintenance_schedule', text: 'Maintenance schedule' },
@@ -466,7 +467,7 @@ export class BusinessChatbotService {
 
     // Check for context-specific responses based on current view
     if (context?.currentView) {
-      const viewResponses = this.getViewSpecificResponses(context.currentView, business?.operationType, userName);
+      const viewResponses = this.getViewSpecificResponses(context.currentView, business?.operationType, userName, businessName);
       // Only return view response for greeting or help requests
       if (viewResponses && (normalizedMessage.includes('hello') || normalizedMessage.includes('hi') || 
           normalizedMessage.includes('help') || normalizedMessage.length < 5)) {
@@ -499,7 +500,7 @@ export class BusinessChatbotService {
     }
 
     // See if this is asking about something specific like "how to create a project"
-    const specificResponses = this.checkForSpecificQuestions(normalizedMessage);
+    const specificResponses = this.checkForSpecificQuestions(normalizedMessage, businessName);
     if (specificResponses) {
       return specificResponses;
     }
@@ -533,84 +534,84 @@ export class BusinessChatbotService {
   }
 
   /**
-   * Check for specific how-to questions
-   */
-  private checkForSpecificQuestions(message: string): { text: string; suggestions?: { id: string; text: string }[] } | null {
-    const howToCreate = /how\s+(?:do\s+i|to|can\s+i)\s+create\s+(?:a|an)?\s+(\w+)/i;
-    const howToManage = /how\s+(?:do\s+i|to|can\s+i)\s+manage\s+(?:a|an)?\s+(\w+)/i;
-    const howToTrack = /how\s+(?:do\s+i|to|can\s+i)\s+track\s+(?:a|an)?\s+(\w+)/i;
-    
-    let match;
-    
-    if ((match = howToCreate.exec(message)) !== null) {
-      const item = match[1].toLowerCase();
-      if (item === 'project' || item === 'projects') {
-        return {
-          text: "To create a new project, go to the Projects section and click the 'Create Project' button. You'll need to fill in project details such as name, description, start and end dates, and assign team members.",
-          suggestions: [
-            { id: 'project_template', text: 'Use project template' },
-            { id: 'project_settings', text: 'Project settings' }
-          ]
-        };
-      } else if (item === 'task' || item === 'tasks') {
-        return {
-          text: "To create a task, navigate to the Tasks section and click 'New Task'. You can set a name, description, due date, priority level, and assign it to team members.",
-          suggestions: [
-            { id: 'task_priority', text: 'Set task priority' },
-            { id: 'task_assignment', text: 'Task assignment' }
-          ]
-        };
-      } else if (item === 'team' || item === 'teams') {
-        return {
-          text: "To create a new team, go to the Team Management section and select 'Create Team'. You'll need to provide a team name, select a department, and add team members.",
-          suggestions: [
-            { id: 'team_structure', text: 'Team structure' },
-            { id: 'team_roles', text: 'Define team roles' }
-          ]
-        };
-      }
-    } else if ((match = howToManage.exec(message)) !== null) {
-      const item = match[1].toLowerCase();
-      if (item === 'project' || item === 'projects') {
-        return {
-          text: "To manage projects, use the Projects dashboard where you can track progress, update status, manage tasks, assign team members, and monitor timelines.",
-          suggestions: [
-            { id: 'project_progress', text: 'Update project progress' },
-            { id: 'project_team', text: 'Manage project team' }
-          ]
-        };
-      } else if (item === 'team' || item === 'teams') {
-        return {
-          text: "Team management is done through the Teams section. Here you can organize team members, assign roles, monitor performance, and handle scheduling.",
-          suggestions: [
-            { id: 'team_schedule', text: 'Team scheduling' },
-            { id: 'team_performance', text: 'Performance tracking' }
-          ]
-        };
-      }
-    } else if ((match = howToTrack.exec(message)) !== null) {
-      const item = match[1].toLowerCase();
-      if (item === 'time' || item === 'hours') {
-        return {
-          text: "Time tracking can be done using the Time & Attendance module. You can clock in/out, log breaks, and record time spent on specific tasks or projects.",
-          suggestions: [
-            { id: 'time_reports', text: 'Time reports' },
-            { id: 'timesheet', text: 'View timesheets' }
-          ]
-        };
-      } else if (item === 'progress' || item === 'status') {
-        return {
-          text: "You can track progress in the Projects section by updating completion percentages, milestone achievements, and task statuses. Reports provide visual representations of progress.",
-          suggestions: [
-            { id: 'progress_report', text: 'Progress reports' },
-            { id: 'milestone_tracking', text: 'Milestone tracking' }
-          ]
-        };
-      }
+ * Check for specific how-to questions
+ */
+private checkForSpecificQuestions(message: string, businessName: string = 'your business'): { text: string; suggestions?: { id: string; text: string }[] } | null {
+  const howToCreate = /how\s+(?:do\s+i|to|can\s+i)\s+create\s+(?:a|an)?\s+(\w+)/i;
+  const howToManage = /how\s+(?:do\s+i|to|can\s+i)\s+manage\s+(?:a|an)?\s+(\w+)/i;
+  const howToTrack = /how\s+(?:do\s+i|to|can\s+i)\s+track\s+(?:a|an)?\s+(\w+)/i;
+  
+  let match;
+  
+  if ((match = howToCreate.exec(message)) !== null) {
+    const item = match[1].toLowerCase();
+    if (item === 'project' || item === 'projects') {
+      return {
+        text: `To create a new project for ${businessName}, go to the Projects section in Staffluent and click the 'Create Project' button. You'll need to fill in project details such as name, description, start and end dates, and assign team members.`,
+        suggestions: [
+          { id: 'project_template', text: 'Use project template' },
+          { id: 'project_settings', text: 'Project settings' }
+        ]
+      };
+    } else if (item === 'task' || item === 'tasks') {
+      return {
+        text: `To create a task for ${businessName}, navigate to the Tasks section in Staffluent and click 'New Task'. You can set a name, description, due date, priority level, and assign it to team members.`,
+        suggestions: [
+          { id: 'task_priority', text: 'Set task priority' },
+          { id: 'task_assignment', text: 'Task assignment' }
+        ]
+      };
+    } else if (item === 'team' || item === 'teams') {
+      return {
+        text: `To create a new team for ${businessName}, go to the Team Management section in Staffluent and select 'Create Team'. You'll need to provide a team name, select a department, and add team members.`,
+        suggestions: [
+          { id: 'team_structure', text: 'Team structure' },
+          { id: 'team_roles', text: 'Define team roles' }
+        ]
+      };
     }
-    
-    return null;
+  } else if ((match = howToManage.exec(message)) !== null) {
+    const item = match[1].toLowerCase();
+    if (item === 'project' || item === 'projects') {
+      return {
+        text: `To manage ${businessName} projects in Staffluent, use the Projects dashboard where you can track progress, update status, manage tasks, assign team members, and monitor timelines.`,
+        suggestions: [
+          { id: 'project_progress', text: 'Update project progress' },
+          { id: 'project_team', text: 'Manage project team' }
+        ]
+      };
+    } else if (item === 'team' || item === 'teams') {
+      return {
+        text: `Team management for ${businessName} is done through the Teams section in Staffluent. Here you can organize team members, assign roles, monitor performance, and handle scheduling.`,
+        suggestions: [
+          { id: 'team_schedule', text: 'Team scheduling' },
+          { id: 'team_performance', text: 'Performance tracking' }
+        ]
+      };
+    }
+  } else if ((match = howToTrack.exec(message)) !== null) {
+    const item = match[1].toLowerCase();
+    if (item === 'time' || item === 'hours') {
+      return {
+        text: `Time tracking for ${businessName} can be done using the Staffluent Time & Attendance module. You can clock in/out, log breaks, and record time spent on specific tasks or projects.`,
+        suggestions: [
+          { id: 'time_reports', text: 'Time reports' },
+          { id: 'timesheet', text: 'View timesheets' }
+        ]
+      };
+    } else if (item === 'progress' || item === 'status') {
+      return {
+        text: `You can track ${businessName} progress in the Staffluent Projects section by updating completion percentages, milestone achievements, and task statuses. Reports provide visual representations of progress.`,
+        suggestions: [
+          { id: 'progress_report', text: 'Progress reports' },
+          { id: 'milestone_tracking', text: 'Milestone tracking' }
+        ]
+      };
+    }
   }
+  
+  return null;
+}
 
   /**
    * Extract key terms from message for better matching
@@ -673,106 +674,108 @@ export class BusinessChatbotService {
   }
 
   /**
-   * Get responses specific to the current view
-   */
-  private getViewSpecificResponses(
-    currentView: string, 
-    businessType: string = 'hybrid',
-    userName: string = 'there'
-  ): { text: string; suggestions?: { id: string; text: string }[] } | null {
-    // Response suggestions based on current view
-    const viewResponses = {
-      'dashboard': {
-        text: `Hello ${userName}! You're currently on the Dashboard. Here you can see key metrics and an overview of your business activities.`,
-        suggestions: [
-          { id: 'dashboard_metrics', text: 'Explain dashboard metrics' },
-          { id: 'performance_overview', text: 'Performance overview' }
-        ]
-      },
-      'projects': {
-        text: `You're in the Projects section. Here you can manage all your projects and their details.`,
-        suggestions: [
-          { id: 'create_project', text: 'Create a new project' },
-          { id: 'project_status', text: 'Update project status' }
-        ]
-      },
-      'tasks': {
-        text: `You're in the Tasks section. Here you can create, assign, and track tasks across your team.`,
-        suggestions: [
-          { id: 'create_task', text: 'Create a new task' },
-          { id: 'assign_task', text: 'Assign a task' }
-        ]
-      },
-      'team': {
-        text: `You're in the Team section. Here you can manage your team members and their assignments.`,
-        suggestions: [
-          { id: 'add_member', text: 'Add team member' },
-          { id: 'team_schedule', text: 'Team scheduling' }
-        ]
-      },
-      'time': {
-        text: `You're in the Time Tracking section. Here you can manage attendance and timesheets.`,
-        suggestions: [
-          { id: 'time_entry', text: 'Enter time' },
-          { id: 'view_timesheets', text: 'View timesheets' }
-        ]
-      },
-      'field': {
-        text: `You're in the Field Operations section. Here you can manage field services and remote teams.`,
-        suggestions: [
-          { id: 'field_map', text: 'View field map' },
-          { id: 'field_staff', text: 'Field staff' }
-        ]
-      },
-      'clients': {
-        text: `You're in the Client Management section. Here you can manage client accounts and relationships.`,
-        suggestions: [
-          { id: 'add_client', text: 'Add new client' },
-          { id: 'client_invoices', text: 'Client invoices' }
-        ]
-      },
-      'autoAssignment': {
-        text: `You're in the Auto Assignment section. Here you can configure how tasks are automatically assigned to team members.`,
-        suggestions: [
-          { id: 'configure_weights', text: 'Configure assignment weights' },
-          { id: 'pending_approvals', text: 'View pending approvals' },
-          { id: 'assignment_history', text: 'View assignment history' }
-        ]
-      },
-      'equipment': {
-        text: `You're in the Equipment Management section. Here you can track assets, schedule maintenance, and manage equipment assignments.`,
-        suggestions: [
-          { id: 'add_equipment', text: 'Add equipment' },
-          { id: 'maintenance', text: 'Schedule maintenance' },
-          { id: 'equipment_logs', text: 'Equipment logs' }
-        ]
-      },
-      'quality': {
-        text: `You're in the Quality Control section. Here you can manage inspections, compliance, and safety protocols.`,
-        suggestions: [
-          { id: 'create_inspection', text: 'Create inspection' },
-          { id: 'compliance_report', text: 'Compliance report' },
-          { id: 'safety_checklist', text: 'Safety checklists' }
-        ]
-      },
-      'reports': {
-        text: `You're in the Reports section. Here you can generate and view analytics on various aspects of your business.`,
-        suggestions: [
-          { id: 'performance_report', text: 'Performance reports' },
-          { id: 'time_report', text: 'Time reports' },
-          { id: 'export_data', text: 'Export data' }
-        ]
-      }
-    };
-
-    // Add or filter suggestions based on business type
-    if (businessType === 'field_service' && viewResponses[currentView]) {
-      // Add field service specific suggestions
-      if (currentView === 'dashboard') {
-        viewResponses[currentView].suggestions.push({ id: 'field_metrics', text: 'Field service metrics' });
-      }
+   /**
+ * Get responses specific to the current view
+ */
+private getViewSpecificResponses(
+  currentView: string, 
+  businessType: string = 'hybrid',
+  userName: string = 'there',
+  businessName: string = 'your business'
+): { text: string; suggestions?: { id: string; text: string }[] } | null {
+  // Response suggestions based on current view, clarifying Staffluent platform vs client business
+  const viewResponses = {
+    'dashboard': {
+      text: `Hello ${userName}! You're currently on the Staffluent Dashboard for ${businessName}. Here you can see key metrics and an overview of your business activities.`,
+      suggestions: [
+        { id: 'dashboard_metrics', text: 'Explain dashboard metrics' },
+        { id: 'performance_overview', text: 'Performance overview' }
+      ]
+    },
+    'projects': {
+      text: `You're in the Projects section of Staffluent. Here you can manage all ${businessName} projects and their details.`,
+      suggestions: [
+        { id: 'create_project', text: 'Create a new project' },
+        { id: 'project_status', text: 'Update project status' }
+      ]
+    },
+    'tasks': {
+      text: `You're in the Tasks section of Staffluent. Here you can create, assign, and track tasks across your ${businessName} team.`,
+      suggestions: [
+        { id: 'create_task', text: 'Create a new task' },
+        { id: 'assign_task', text: 'Assign a task' }
+      ]
+    },
+    'team': {
+      text: `You're in the Team section of Staffluent. Here you can manage ${businessName} team members and their assignments.`,
+      suggestions: [
+        { id: 'add_member', text: 'Add team member' },
+        { id: 'team_schedule', text: 'Team scheduling' }
+      ]
+    },
+    'time': {
+      text: `You're in the Time Tracking section of Staffluent. Here you can manage ${businessName} attendance and timesheets.`,
+      suggestions: [
+        { id: 'time_entry', text: 'Enter time' },
+        { id: 'view_timesheets', text: 'View timesheets' }
+      ]
+    },
+    'field': {
+      text: `You're in the Field Operations section of Staffluent. Here you can manage ${businessName} field services and remote teams.`,
+      suggestions: [
+        { id: 'field_map', text: 'View field map' },
+        { id: 'field_staff', text: 'Field staff' }
+      ]
+    },
+    'clients': {
+      text: `You're in the Client Management section of Staffluent. Here you can manage ${businessName} client accounts and relationships.`,
+      suggestions: [
+        { id: 'add_client', text: 'Add new client' },
+        { id: 'client_invoices', text: 'Client invoices' }
+      ]
+    },
+    'autoAssignment': {
+      text: `You're in the Auto Assignment section of Staffluent. Here you can configure how tasks are automatically assigned to ${businessName} team members.`,
+      suggestions: [
+        { id: 'configure_weights', text: 'Configure assignment weights' },
+        { id: 'pending_approvals', text: 'View pending approvals' },
+        { id: 'assignment_history', text: 'View assignment history' }
+      ]
+    },
+    'equipment': {
+      text: `You're in the Equipment Management section of Staffluent. Here you can track ${businessName} assets, schedule maintenance, and manage equipment assignments.`,
+      suggestions: [
+        { id: 'add_equipment', text: 'Add equipment' },
+        { id: 'maintenance', text: 'Schedule maintenance' },
+        { id: 'equipment_logs', text: 'Equipment logs' }
+      ]
+    },
+    'quality': {
+      text: `You're in the Quality Control section of Staffluent. Here you can manage ${businessName} inspections, compliance, and safety protocols.`,
+      suggestions: [
+        { id: 'create_inspection', text: 'Create inspection' },
+        { id: 'compliance_report', text: 'Compliance report' },
+        { id: 'safety_checklist', text: 'Safety checklists' }
+      ]
+    },
+    'reports': {
+      text: `You're in the Reports section of Staffluent. Here you can generate and view analytics on various aspects of ${businessName}.`,
+      suggestions: [
+        { id: 'performance_report', text: 'Performance reports' },
+        { id: 'time_report', text: 'Time reports' },
+        { id: 'export_data', text: 'Export data' }
+      ]
     }
+  };
 
-    return viewResponses[currentView] || null;
+  // Add or filter suggestions based on business type
+  if (businessType === 'field_service' && viewResponses[currentView]) {
+    // Add field service specific suggestions
+    if (currentView === 'dashboard') {
+      viewResponses[currentView].suggestions.push({ id: 'field_metrics', text: 'Field service metrics' });
+    }
   }
+
+  return viewResponses[currentView] || null;
+}
 }
