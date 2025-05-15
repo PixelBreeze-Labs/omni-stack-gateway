@@ -360,6 +360,28 @@ private async generateResponse(
   
   // IMPORTANT: Get the clientId from the business object
   const clientId = business?.clientId;
+
+  // NEW: Check if this is a closure message ("That's all for now", etc.)
+  if (this.isClosureMessage(normalizedMessage)) {
+    const closureResponse = this.getClosureResponse(
+      userName,
+      businessName,
+      platformName
+    );
+    
+    return {
+      text: closureResponse.text,
+      suggestions: closureResponse.suggestions,
+      responseSource: 'closure',
+      knowledgeUsed: false,
+      metadata: {
+        responseSource: 'closure',
+        knowledgeUsed: false,
+        shouldShowFeedback: false
+      }
+    };
+  }
+  
   
   // Handle casual conversation first
   if (isConversational) {
@@ -1043,7 +1065,7 @@ private async getNlpResponse(
 
   
   /**
- * NEW METHOD: Determine if this is a casual conversational query
+ * Determine if this is a casual conversational query
  */
 private isConversationalQuery(message: string): boolean {
   const conversationalPatterns = [
@@ -1065,7 +1087,42 @@ private isConversationalQuery(message: string): boolean {
 }
 
 /**
- * NEW METHOD: Get response for casual conversation
+ * Enhanced method: Check if this is a closure or goodbye message
+ */
+private isClosureMessage(message: string): boolean {
+  const closurePatterns = [
+    /^(that('s| is) all( for now)?)/i,
+    /^(no( thanks)?)/i,
+    /^(nothing( else)?( for now)?)/i,
+    /^(i('m| am) good( for now)?)/i,
+    /^(no more( questions)?)/i,
+    /^(bye|goodbye|see you( later)?)/i,
+    /^(thanks?,? that('s| is| will be) (all|it|everything|helpful))/i,
+    /^(ok|okay|got it)$/i
+  ];
+  
+  return closurePatterns.some(pattern => pattern.test(message));
+}
+
+/**
+ * Get response for a closure message
+ */
+private getClosureResponse(
+  userName: string,
+  businessName: string,
+  platformName: string
+): { text: string; suggestions: { id: string; text: string }[] } {
+  return {
+    text: `I'm glad I could help, ${userName}! Feel free to reach out anytime you have questions about ${platformName}. Have a great day!`,
+    suggestions: [
+      { id: 'new_question', text: 'I have another question' },
+      { id: 'feedback', text: 'Provide feedback' }
+    ]
+  };
+}
+
+/**
+ * Get response for casual conversation
  */
 private getConversationalResponse(
   message: string,
@@ -1658,7 +1715,7 @@ private calculateRelevanceScore(terms: string[], keywords: string[]): number {
 }
 
 /**
- * NEW METHOD: Check if two terms are fuzzy matches (handles plurals, common verb forms, etc.)
+ * Check if two terms are fuzzy matches (handles plurals, common verb forms, etc.)
  */
 private isFuzzyMatch(term1: string, term2: string): boolean {
   // Handle simple plurals
