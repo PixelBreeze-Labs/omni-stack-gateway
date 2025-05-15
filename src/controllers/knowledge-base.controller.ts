@@ -1,9 +1,10 @@
 // src/controllers/knowledge-base.controller.ts
-import { Controller, Get, Post, Body, Param, Query, Delete, Put, Headers, UseGuards, UnauthorizedException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post,Req, Body, Param, Query, Delete, Put, Headers, UseGuards, UnauthorizedException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { KnowledgeBaseService } from '../services/knowledge-base.service';
 import { BusinessService } from '../services/business.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
+import { Client } from '../schemas/client.schema';
 
 @ApiTags('Knowledge Base')
 @ApiBearerAuth()
@@ -39,11 +40,13 @@ export class KnowledgeBaseController {
   @ApiResponse({ status: 201, description: 'Document created successfully' })
   async createDocument(
     @Body() documentData: any,
+    @Req() req: Request & { client: Client }
   ) {
     try {
       return this.knowledgeBaseService.createDocument({
         ...documentData,
-        createdBy: 'Staffluent Superadmin'
+        createdBy: 'Staffluent Superadmin',
+        clientId: req.client.id
       });
     } catch (error) {
       this.logger.error(`Error creating knowledge document: ${error.message}`, error.stack);
@@ -56,6 +59,7 @@ export class KnowledgeBaseController {
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiResponse({ status: 200, description: 'Document updated successfully' })
   async updateDocument(
+    @Req() req: Request & { client: Client },
     @Param('id') id: string,
     @Body() updates: any
   ) {
@@ -72,7 +76,8 @@ export class KnowledgeBaseController {
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiResponse({ status: 200, description: 'Document deleted successfully' })
   async deleteDocument(
-    @Param('id') id: string
+    @Param('id') id: string,
+    @Req() req: Request & { client: Client }
   ) {
     try {
       const success = await this.knowledgeBaseService.deleteDocument(id);
@@ -92,6 +97,7 @@ export class KnowledgeBaseController {
   @ApiQuery({ name: 'limit', required: false, description: 'Limit results' })
   @ApiResponse({ status: 200, description: 'Returns matching documents' })
   async searchDocuments(
+    @Req() req: Request & { client: Client },
     @Query('query') query: string = '',
     @Query('businessType') businessType: string = 'default',
     @Query('features') featuresStr: string = '',
@@ -126,6 +132,7 @@ export class KnowledgeBaseController {
   @ApiQuery({ name: 'businessType', required: false, description: 'Business type filter' })
   @ApiResponse({ status: 200, description: 'Returns unrecognized queries' })
   async getUnrecognizedQueries(
+    @Req() req: Request & { client: Client },
     @Query('limit') limit: number = 20,
     @Query('page') page: number = 1,
     @Query('businessType') businessType: string
