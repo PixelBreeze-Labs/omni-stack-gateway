@@ -311,8 +311,8 @@ export class BusinessChatbotService {
   }
 
   /**
- * Generate response using knowledge base and NLP
- * Improved version with better conversation handling
+ * Modified generateResponse function in BusinessChatbotService
+ * to pass clientId to the knowledge base service
  */
 private async generateResponse(
   message: string, 
@@ -350,7 +350,6 @@ private async generateResponse(
   const isConversational = this.isConversationalQuery(normalizedMessage);
   
   // Determine if we should show feedback for this message
-  // Simple approach: show feedback every X messages
   const FEEDBACK_FREQUENCY = 5; // Show feedback every 5 messages
   
   // Get message count from context
@@ -359,7 +358,10 @@ private async generateResponse(
   // Determine if we should show feedback for this response
   let shouldShowFeedback = (messageCount % FEEDBACK_FREQUENCY === 0);
   
-  // MAJOR IMPROVEMENT: Handle casual conversation first
+  // IMPORTANT: Get the clientId from the business object
+  const clientId = business?.clientId;
+  
+  // Handle casual conversation first
   if (isConversational) {
     const conversationResponse = this.getConversationalResponse(
       normalizedMessage,
@@ -378,7 +380,7 @@ private async generateResponse(
           conversationalResponse: true,
           responseSource: 'conversation',
           knowledgeUsed: false,
-          shouldShowFeedback: false // Generally don't need feedback for casual conversation
+          shouldShowFeedback: false
         }
       };
     }
@@ -389,7 +391,8 @@ private async generateResponse(
     normalizedMessage,
     { 
       category: context.currentView || 'general',
-      limit: 1
+      limit: 1,
+      clientId
     }
   );
   
@@ -421,8 +424,9 @@ private async generateResponse(
   const relevantDocs = await this.knowledgeBaseService.searchDocuments(
     normalizedMessage,
     {
+      clientId, // Pass clientId to filter results
       businessType: business?.operationType || 'default',
-      features: business?.enabledFeatures || [],
+      features: business?.includedFeatures || [],
       currentView: context.currentView,
       limit: 2
     }
@@ -481,6 +485,8 @@ private async generateResponse(
     const unrecognizedQuery = await this.knowledgeBaseService.logUnrecognizedQuery(
       message,
       {
+        clientId, // Pass clientId to associate with the client
+        businessId: business?._id?.toString(), // Also pass businessId as a fallback
         businessType: business?.operationType || 'default',
         userId: user?._id?.toString(),
         sessionId: context.sessionId,
@@ -518,6 +524,7 @@ private async generateResponse(
     }
   };
 }
+
 
   /**
  * Get response using the NLP system

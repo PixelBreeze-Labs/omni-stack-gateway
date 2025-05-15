@@ -5,6 +5,7 @@ import { KnowledgeDocument } from '../schemas/knowledge-document.schema';
 import { UnrecognizedQuery } from '../schemas/unrecognized-query.schema';
 import { QueryResponsePair } from '../schemas/query-response-pair.schema';
 import * as natural from 'natural';
+import { Business } from '../schemas/business.schema';
 
 @Injectable()
 export class KnowledgeBaseService {
@@ -15,7 +16,8 @@ export class KnowledgeBaseService {
   constructor(
     @InjectModel(KnowledgeDocument.name) private knowledgeDocumentModel: Model<KnowledgeDocument>,
     @InjectModel(UnrecognizedQuery.name) private unrecognizedQueryModel: Model<UnrecognizedQuery>,
-    @InjectModel(QueryResponsePair.name) private queryResponsePairModel: Model<QueryResponsePair>
+    @InjectModel(QueryResponsePair.name) private queryResponsePairModel: Model<QueryResponsePair>,
+    @InjectModel(Business.name) private businessModel: Model<Business>
   ) {
     this.tokenizer = new natural.WordTokenizer();
     this.stemmer = natural.PorterStemmer;
@@ -277,9 +279,10 @@ export class KnowledgeBaseService {
     options: {
       category?: string;
       limit?: number;
+      clientId?: string;
     } = {}
   ): Promise<QueryResponsePair[]> {
-    const { category, limit = 3 } = options;
+    const { category, limit = 3, clientId } = options;
     
     // Extract keywords from the query
     const queryKeywords = this.extractKeywords(query);
@@ -317,19 +320,37 @@ export class KnowledgeBaseService {
   }
   
   /**
- * Log an unrecognized query
+ * Log an unrecognized query with businessId or clientId support
  */
 async logUnrecognizedQuery(
     message: string,
     options: {
       clientId?: string;
+      businessId?: string;
       businessType?: string;
       userId?: string;
       sessionId?: string;
       context?: Record<string, any>;
     } = {}
   ): Promise<UnrecognizedQuery> {
-    const { clientId, businessType, userId, sessionId, context } = options;
+    const { clientId: directClientId, businessId, businessType, userId, sessionId, context } = options;
+    
+    // Determine clientId from businessId if not directly provided
+    let clientId = directClientId;
+    
+    if (!clientId && businessId) {
+      try {
+        // Look up the business to get its clientId
+        const business = await this.businessModel.findById(businessId).select('clientId').lean();
+        if (business) {
+          clientId = business.clientId;
+          this.logger.debug(`Retrieved clientId ${clientId} from businessId ${businessId}`);
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to retrieve clientId from businessId ${businessId}: ${error.message}`);
+        // Continue with null clientId
+      }
+    }
     
     // Check if similar query exists
     const existingQuery = await this.unrecognizedQueryModel.findOne({
@@ -339,7 +360,6 @@ async logUnrecognizedQuery(
     
     if (existingQuery) {
       // Update frequency and context
-      // Use findByIdAndUpdate instead of updateOne to return the updated document
       return this.unrecognizedQueryModel.findByIdAndUpdate(
         existingQuery._id,
         { 
@@ -353,7 +373,7 @@ async logUnrecognizedQuery(
     // Create new unrecognized query with clientId
     const newQuery = new this.unrecognizedQueryModel({
       message,
-      clientId, // Add client ID if provided
+      clientId, // Add client ID if provided or retrieved
       businessType,
       userId,
       sessionId,
@@ -362,7 +382,7 @@ async logUnrecognizedQuery(
     });
     
     return newQuery.save();
-  }
+  }  
   
   /**
    * Respond to an unrecognized query with client ID check
