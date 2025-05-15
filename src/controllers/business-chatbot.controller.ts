@@ -1,8 +1,8 @@
 // src/controllers/business-chatbot.controller.ts
-import { Controller, Get, Post, Put, Body, Param, Query, Delete, Headers, UnauthorizedException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Delete, Headers, UnauthorizedException, Logger, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { BusinessChatbotService, ChatResponse, HistoryResponse, ClearHistoryResponse, SessionsResponse } from '../services/business-chatbot.service';
-import { KnowledgeBaseService } from '../services/knowledge-base.service';
+import { KnowledgeBaseService } from '../services/knowledge-base.service';  
 
 @ApiTags('Business Chatbot')
 @Controller('business-chatbot')
@@ -260,4 +260,80 @@ export class BusinessChatbotController {
       throw new InternalServerErrorException('Failed to update response success');
     }
   }
+
+  @Put(':businessId/feedback')
+@ApiOperation({ summary: 'Submit feedback for any response' })
+@ApiParam({ name: 'businessId', description: 'Business ID' })
+@ApiBody({ 
+  description: 'Feedback data',
+  schema: {
+    type: 'object',
+    properties: {
+      sourceId: { type: 'string', description: 'ID of the source (query-response, knowledge doc, etc.)' },
+      sourceType: { type: 'string', description: 'Type of the source (query-response, knowledge-doc, message)' },
+      wasHelpful: { type: 'boolean', description: 'Was the response helpful' },
+      messageId: { type: 'string', description: 'ID of the message being rated' },
+      sessionId: { type: 'string', description: 'ID of the chat session' },
+      feedbackText: { type: 'string', description: 'Optional feedback text' }
+    },
+    required: ['wasHelpful', 'messageId']
+  }
+})
+@ApiResponse({ status: 200, description: 'Feedback recorded successfully' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+async submitFeedback(
+  @Param('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Body() data: {
+    sourceId?: string;
+    sourceType?: 'query-response' | 'knowledge-doc' | 'message' | string;
+    wasHelpful: boolean;
+    messageId: string;
+    sessionId?: string;
+    feedbackText?: string;
+  }
+): Promise<{ success: boolean }> {
+  try {
+    // Verify API key is valid for this business
+    const business = await this.chatbotService.validateBusinessApiKey(businessId, apiKey);
+    
+    // Record the feedback based on source type
+    if (data.sourceId && data.sourceType === 'query-response') {
+      try {
+        // Try to update the query-response pair
+        await this.knowledgeBaseService.updateResponseSuccess(
+          data.sourceId, 
+          data.wasHelpful
+        );
+      } catch (error) {
+        // If not found, log it but don't fail the request
+        if (error instanceof NotFoundException) {
+          this.logger.warn(`Query-response pair with ID ${data.sourceId} not found. Recording feedback only.`);
+        } else {
+          throw error;
+        }
+      }
+    }
+    
+    // Always record the feedback in the message metadata
+    if (data.messageId) {
+      await this.chatbotService.recordMessageFeedback(
+        businessId,
+        business.clientId,
+        data.messageId,
+        data.wasHelpful,
+        data.feedbackText || null
+      );
+    }
+    
+    return { success: true };
+  } catch (error) {
+    this.logger.error(`Error recording feedback: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException) {
+      throw error;
+    } else {
+      throw new InternalServerErrorException('Failed to record feedback');
+    }
+  }
+}
 }
