@@ -80,6 +80,7 @@ import { VerificationPhone, VerificationPhoneSchema } from './schemas/verificati
 import { TaskAssignment, TaskAssignmentSchema } from './schemas/task-assignment.schema';
 import { StaffProfile, StaffProfileSchema } from './schemas/staff-profile.schema';
 import { AgentConfiguration, AgentConfigurationSchema } from './schemas/agent-configuration.schema';
+import { ChatbotMessage, ChatbotMessageSchema } from './schemas/chatbot-message.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -150,6 +151,7 @@ import { BusinessAgentConfigController } from './controllers/business-agent-conf
 import { StaffluentIntegrationController } from './controllers/staffluent-integration.controller';
 import { BusinessTaskAssignmentController } from './controllers/business-task-assignment.controller';
 import { StaffluentSuperadminController } from './controllers/staffluent-superadmin.controller';
+import { BusinessChatbotController } from './controllers/business-chatbot.controller';
 
 
 // Service imports
@@ -237,6 +239,7 @@ import { OneSignalService } from './services/onesignal.service';
 import { StaffluentTaskService } from './services/staffluent-task.service';
 import { StaffluentEmployeeService } from './services/staffluent-employee.service';
 import { BusinessTaskAssignmentService } from './services/business-task-assignment.service';
+import { BusinessChatbotService } from './services/business-chatbot.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -385,6 +388,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
       { name: TaskAssignment.name, schema: TaskAssignmentSchema },
       { name: StaffProfile.name, schema: StaffProfileSchema },
       { name: AgentConfiguration.name, schema: AgentConfigurationSchema },
+      { name: ChatbotMessage.name, schema: ChatbotMessageSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -477,6 +481,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     StaffluentIntegrationController,
     BusinessTaskAssignmentController,
     StaffluentSuperadminController,
+    BusinessChatbotController,
   ],
   providers: [
     SnapfoodService,
@@ -571,6 +576,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     StaffluentTaskService,
     StaffluentEmployeeService,
     BusinessTaskAssignmentService,
+    BusinessChatbotService,
   ],
 })
 export class AppModule implements NestModule {

@@ -8,16 +8,39 @@ import { BusinessService } from './business.service';
 import { Business } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
 
-interface ChatResponse {
-  text: string;
-  suggestions?: { id: string; text: string }[];
-  sessionId?: string;
-  success: boolean;
-}
+// Export interfaces for TypeScript
+export interface ChatResponse {
+    text: string;
+    suggestions?: { id: string; text: string }[];
+    sessionId?: string;
+    success: boolean;
+  }
+  
+  export interface HistoryResponse {
+    messages: ChatbotMessage[];
+    total: number;
+    page: number;
+    limit: number;
+    success: boolean;
+  }
+  
+  export interface ClearHistoryResponse {
+    success: boolean;
+    deletedCount: number;
+  }
+  
+  export interface SessionsResponse {
+    sessions: any[];
+    total: number;
+    page: number;
+    limit: number;
+    success: boolean;
+  }
+  
 
 @Injectable()
-export class ChatbotService {
-  private readonly logger = new Logger(ChatbotService.name);
+export class BusinessChatbotService {
+  private readonly logger = new Logger(BusinessChatbotService.name);
 
   constructor(
     @InjectModel(ChatbotMessage.name) private chatbotMessageModel: Model<ChatbotMessage>,
