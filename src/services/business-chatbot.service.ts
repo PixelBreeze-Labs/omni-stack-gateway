@@ -311,118 +311,155 @@ export class BusinessChatbotService {
   }
 
   /**
-   * Generate response using knowledge base and NLP
-   */
-  private async generateResponse(
-    message: string, 
-    context: Record<string, any>,
-    business: any,
-    user: any
-  ): Promise<{ 
-    text: string; 
-    suggestions?: { id: string; text: string }[];
+ * Generate response using knowledge base and NLP
+ */
+private async generateResponse(
+  message: string, 
+  context: Record<string, any>,
+  business: any,
+  user: any
+): Promise<{ 
+  text: string; 
+  suggestions?: { id: string; text: string }[];
+  knowledgeUsed?: boolean;
+  responseSource?: string;
+  metadata?: {
+    sourceId?: string;
     knowledgeUsed?: boolean;
     responseSource?: string;
-  }> {
-    const normalizedMessage = message.toLowerCase().trim();
-    const platformName = 'Staffluent';
-    
-    // Personalization variables
-    const businessName = business?.name || 'your business';
-    const userName = user ? `${user.name || 'there'}` : 'there';
-    
-    // Extract key terms for better matching
-    const keyTerms = this.extractKeyTerms(normalizedMessage);
-    
-    // Check if this is a follow-up question
-    const isFollowup = this.isFollowupQuestion(context);
-    
-    // 1. Try to find a matching query-response pair from our learning database
-    const matchingPairs = await this.knowledgeBaseService.searchQueryResponses(
-      normalizedMessage,
-      { 
-        category: context.currentView || 'general',
-        limit: 1
-      }
-    );
-    
-    if (matchingPairs.length > 0) {
-      const pair = matchingPairs[0];
-      // Replace placeholders in the response
-      let response = pair.response
-        .replace(/{businessName}/g, businessName)
-        .replace(/{userName}/g, userName)
-        .replace(/{platformName}/g, platformName);
-      
-      return {
-        text: response,
-        responseSource: 'learned',
-        knowledgeUsed: true
-      };
+    [key: string]: any;
+  };
+}> {
+  const normalizedMessage = message.toLowerCase().trim();
+  const platformName = 'Staffluent';
+  
+  // Personalization variables
+  const businessName = business?.name || 'your business';
+  const userName = user ? `${user.name || 'there'}` : 'there';
+  
+  // Extract key terms for better matching
+  const keyTerms = this.extractKeyTerms(normalizedMessage);
+  
+  // Check if this is a follow-up question
+  const isFollowup = this.isFollowupQuestion(context);
+  
+  // 1. Try to find a matching query-response pair from our learning database
+  const matchingPairs = await this.knowledgeBaseService.searchQueryResponses(
+    normalizedMessage,
+    { 
+      category: context.currentView || 'general',
+      limit: 1
     }
+  );
+  
+  if (matchingPairs.length > 0) {
+    const pair = matchingPairs[0];
+    // Replace placeholders in the response
+    let response = pair.response
+      .replace(/{businessName}/g, businessName)
+      .replace(/{userName}/g, userName)
+      .replace(/{platformName}/g, platformName);
     
-    // 2. Try to find relevant knowledge documents
-    const relevantDocs = await this.knowledgeBaseService.searchDocuments(
-      normalizedMessage,
-      {
-        businessType: business?.operationType || 'default',
-        features: business?.enabledFeatures || [],
-        currentView: context.currentView,
-        limit: 2
+    return {
+      text: response,
+      responseSource: 'learned',
+      knowledgeUsed: true,
+      metadata: {
+        sourceId: pair._id.toString(), // Include the pair ID as sourceId
+        knowledgeUsed: true,
+        responseSource: 'learned'
       }
-    );
-    
-    if (relevantDocs.length > 0) {
-      // Use the most relevant document
-      const doc = relevantDocs[0];
-      
-      // Process content to create a conversational response
-      let response = this.formatKnowledgeResponse(
-        doc.content, 
-        businessName,
-        userName,
-        platformName
-      );
-      
-      return {
-        text: response,
-        suggestions: this.getSuggestionsFromDocument(doc),
-        responseSource: 'knowledge',
-        knowledgeUsed: true
-      };
+    };
+  }
+  
+  // 2. Try to find relevant knowledge documents
+  const relevantDocs = await this.knowledgeBaseService.searchDocuments(
+    normalizedMessage,
+    {
+      businessType: business?.operationType || 'default',
+      features: business?.enabledFeatures || [],
+      currentView: context.currentView,
+      limit: 2
     }
+  );
+  
+  if (relevantDocs.length > 0) {
+    // Use the most relevant document
+    const doc = relevantDocs[0];
     
-    // 3. Fall back to predefined NLP responses
-    const nlpResponse = await this.getNlpResponse(
-      normalizedMessage,
-      keyTerms, 
-      isFollowup,
-      context, 
-      business, 
+    // Process content to create a conversational response
+    let response = this.formatKnowledgeResponse(
+      doc.content, 
       businessName,
       userName,
       platformName
     );
     
-    // 4. If no good NLP response, log this as an unrecognized query
-    if (nlpResponse.confidence < 0.3) {
-      await this.knowledgeBaseService.logUnrecognizedQuery(
-        message,
-        {
-          businessType: business?.operationType || 'default',
-          userId: user?._id?.toString(),
-          sessionId: context.sessionId,
-          context
-        }
-      );
-    }
+    return {
+      text: response,
+      suggestions: this.getSuggestionsFromDocument(doc),
+      responseSource: 'knowledge',
+      knowledgeUsed: true,
+      metadata: {
+        sourceId: doc._id.toString(), // Include the document ID as sourceId
+        knowledgeUsed: true,
+        responseSource: 'knowledge',
+        documentTitle: doc.title || null,
+        documentCategories: doc.categories || []
+      }
+    };
+  }
+  
+  // 3. Fall back to predefined NLP responses
+  const nlpResponse = await this.getNlpResponse(
+    normalizedMessage,
+    keyTerms, 
+    isFollowup,
+    context, 
+    business, 
+    businessName,
+    userName,
+    platformName
+  );
+  
+  // 4. If no good NLP response, log this as an unrecognized query
+  if (nlpResponse.confidence < 0.3) {
+    const unrecognizedQuery = await this.knowledgeBaseService.logUnrecognizedQuery(
+      message,
+      {
+        businessType: business?.operationType || 'default',
+        userId: user?._id?.toString(),
+        sessionId: context.sessionId,
+        context
+      }
+    );
     
+    // Include the unrecognized query ID in metadata
     return {
       ...nlpResponse,
       responseSource: 'nlp',
-      knowledgeUsed: false
+      knowledgeUsed: false,
+      metadata: {
+        sourceId: unrecognizedQuery._id.toString(), // Include the unrecognized query ID
+        responseSource: 'nlp',
+        knowledgeUsed: false,
+        confidence: nlpResponse.confidence,
+        unrecognized: true
+      }
     };
   }
+  
+  return {
+    ...nlpResponse,
+    responseSource: 'nlp',
+    knowledgeUsed: false,
+    metadata: {
+      responseSource: 'nlp',
+      knowledgeUsed: false,
+      confidence: nlpResponse.confidence
+    }
+  };
+}
 
 
   /**
