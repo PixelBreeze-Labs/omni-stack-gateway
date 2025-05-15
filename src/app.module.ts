@@ -155,6 +155,7 @@ import { StaffluentIntegrationController } from './controllers/staffluent-integr
 import { BusinessTaskAssignmentController } from './controllers/business-task-assignment.controller';
 import { StaffluentSuperadminController } from './controllers/staffluent-superadmin.controller';
 import { BusinessChatbotController } from './controllers/business-chatbot.controller';
+import { KnowledgeBaseController } from './controllers/knowledge-base.controller';
 
 
 // Service imports
@@ -243,6 +244,7 @@ import { StaffluentTaskService } from './services/staffluent-task.service';
 import { StaffluentEmployeeService } from './services/staffluent-employee.service';
 import { BusinessTaskAssignmentService } from './services/business-task-assignment.service';
 import { BusinessChatbotService } from './services/business-chatbot.service';
+import { KnowledgeBaseService } from './services/knowledge-base.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -488,6 +490,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     BusinessTaskAssignmentController,
     StaffluentSuperadminController,
     BusinessChatbotController,
+    KnowledgeBaseController,
   ],
   providers: [
     SnapfoodService,
@@ -583,6 +586,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     StaffluentEmployeeService,
     BusinessTaskAssignmentService,
     BusinessChatbotService,
+    KnowledgeBaseService,
   ],
 })
 export class AppModule implements NestModule {
