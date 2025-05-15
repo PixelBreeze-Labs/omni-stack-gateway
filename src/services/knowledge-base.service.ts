@@ -1,11 +1,11 @@
-// src/services/knowledge-base.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { KnowledgeDocument } from '../schemas/knowledge-document.schema';
 import { UnrecognizedQuery } from '../schemas/unrecognized-query.schema';
 import { QueryResponsePair } from '../schemas/query-response-pair.schema';
 import * as natural from 'natural';
+import { Business } from '../schemas/business.schema';
 
 @Injectable()
 export class KnowledgeBaseService {
@@ -16,24 +16,26 @@ export class KnowledgeBaseService {
   constructor(
     @InjectModel(KnowledgeDocument.name) private knowledgeDocumentModel: Model<KnowledgeDocument>,
     @InjectModel(UnrecognizedQuery.name) private unrecognizedQueryModel: Model<UnrecognizedQuery>,
-    @InjectModel(QueryResponsePair.name) private queryResponsePairModel: Model<QueryResponsePair>
+    @InjectModel(QueryResponsePair.name) private queryResponsePairModel: Model<QueryResponsePair>,
+    @InjectModel(Business.name) private businessModel: Model<Business>
   ) {
     this.tokenizer = new natural.WordTokenizer();
     this.stemmer = natural.PorterStemmer;
   }
 
   /**
-   * Create a new knowledge document
+   * Create a new knowledge document with client ID
    */
   async createDocument(document: {
     title: string;
     content: string;
-    keywords: string[];
+    keywords?: string[];
     type: string;
     categories: string[];
     applicableBusinessTypes: string[];
     applicableFeatures: string[];
     createdBy: string;
+    clientId: string; // Add client ID
   }): Promise<KnowledgeDocument> {
     // Automatically extract keywords if not provided
     if (!document.keywords || document.keywords.length === 0) {
@@ -45,12 +47,19 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Update an existing knowledge document
+   * Update an existing knowledge document with client ID check
    */
   async updateDocument(
     id: string,
+    clientId: string,
     updates: Partial<KnowledgeDocument>
   ): Promise<KnowledgeDocument> {
+    // First verify the document belongs to the client
+    const existingDoc = await this.knowledgeDocumentModel.findOne({ _id: id, clientId });
+    if (!existingDoc) {
+      throw new NotFoundException(`Knowledge document with ID ${id} not found or does not belong to this client`);
+    }
+    
     // Re-extract keywords if content was updated
     if (updates.content && (!updates.keywords || updates.keywords.length === 0)) {
       updates.keywords = this.extractKeywords(updates.content);
@@ -62,27 +71,30 @@ export class KnowledgeBaseService {
       { new: true }
     ).exec();
 
-    if (!document) {
-      throw new NotFoundException(`Knowledge document with ID ${id} not found`);
-    }
-
     return document;
   }
 
   /**
-   * Delete a knowledge document
+   * Delete a knowledge document with client ID check
    */
-  async deleteDocument(id: string): Promise<boolean> {
+  async deleteDocument(id: string, clientId: string): Promise<boolean> {
+    // First verify the document belongs to the client
+    const existingDoc = await this.knowledgeDocumentModel.findOne({ _id: id, clientId });
+    if (!existingDoc) {
+      throw new NotFoundException(`Knowledge document with ID ${id} not found or does not belong to this client`);
+    }
+    
     const result = await this.knowledgeDocumentModel.findByIdAndDelete(id).exec();
     return !!result;
   }
 
   /**
-   * Search knowledge documents by query and context
+   * Search knowledge documents by query and context with client ID filter
    */
   async searchDocuments(
     query: string,
     options: {
+      clientId?: string;
       businessType?: string;
       features?: string[];
       categories?: string[];
@@ -91,6 +103,7 @@ export class KnowledgeBaseService {
     } = {}
   ): Promise<KnowledgeDocument[]> {
     const { 
+      clientId,
       businessType = 'default',
       features = [], 
       categories = [], 
@@ -115,7 +128,7 @@ export class KnowledgeBaseService {
       }
     }
     
-    // Build the query filter
+    // Build the query filter with client ID
     const filter: any = {
       active: true,
       $or: [
@@ -124,6 +137,11 @@ export class KnowledgeBaseService {
         { applicableBusinessTypes: { $size: 0 } } // Empty array means applicable to all
       ]
     };
+    
+    // Add client ID filter if provided
+    if (clientId) {
+      filter.clientId = clientId;
+    }
     
     // Add feature filter if we have enabled features
     if (features.length > 0) {
@@ -174,6 +192,86 @@ export class KnowledgeBaseService {
   }
   
   /**
+   * Get a single knowledge document by ID with client check
+   */
+  async findOne(id: string, clientId: string): Promise<KnowledgeDocument> {
+    const document = await this.knowledgeDocumentModel.findOne({ _id: id, clientId });
+    
+    if (!document) {
+      throw new NotFoundException(`Knowledge document with ID ${id} not found or does not belong to this client`);
+    }
+    
+    return document;
+  }
+  
+  /**
+   * Get all knowledge documents for a client with pagination
+   */
+  async findAll(options: {
+    clientId: string;
+    limit?: number;
+    page?: number;
+    search?: string;
+    categories?: string[];
+    type?: string;
+  }): Promise<{
+    items: KnowledgeDocument[];
+    total: number;
+    pages: number;
+    page: number;
+    limit: number;
+  }> {
+    const {
+      clientId,
+      limit = 10,
+      page = 1,
+      search,
+      categories = [],
+      type
+    } = options;
+    
+    const skip = (page - 1) * limit;
+    
+    // Build filter
+    const filter: any = { clientId, active: true };
+    
+    // Add search if provided
+    if (search) {
+      filter.$text = { $search: search };
+    }
+    
+    // Add categories filter if provided
+    if (categories.length > 0) {
+      filter.categories = { $in: categories };
+    }
+    
+    // Add type filter if provided
+    if (type) {
+      filter.type = type;
+    }
+    
+    // Get total count
+    const total = await this.knowledgeDocumentModel.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit);
+    
+    // Get documents
+    const documents = await this.knowledgeDocumentModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec();
+    
+    return {
+      items: documents,
+      total,
+      pages: totalPages,
+      page,
+      limit
+    };
+  }
+  
+  /**
    * Search query-response pairs for matches
    */
   async searchQueryResponses(
@@ -181,9 +279,10 @@ export class KnowledgeBaseService {
     options: {
       category?: string;
       limit?: number;
+      clientId?: string;
     } = {}
   ): Promise<QueryResponsePair[]> {
-    const { category, limit = 3 } = options;
+    const { category, limit = 3, clientId } = options;
     
     // Extract keywords from the query
     const queryKeywords = this.extractKeywords(query);
@@ -221,22 +320,42 @@ export class KnowledgeBaseService {
   }
   
   /**
-   * Log an unrecognized query
-   */
-  async logUnrecognizedQuery(
+ * Log an unrecognized query with businessId or clientId support
+ */
+async logUnrecognizedQuery(
     message: string,
     options: {
+      clientId?: string;
+      businessId?: string;
       businessType?: string;
       userId?: string;
       sessionId?: string;
       context?: Record<string, any>;
     } = {}
   ): Promise<UnrecognizedQuery> {
-    const { businessType, userId, sessionId, context } = options;
+    const { clientId: directClientId, businessId, businessType, userId, sessionId, context } = options;
+    
+    // Determine clientId from businessId if not directly provided
+    let clientId = directClientId;
+    
+    if (!clientId && businessId) {
+      try {
+        // Look up the business to get its clientId
+        const business = await this.businessModel.findById(businessId).select('clientId').lean();
+        if (business) {
+          clientId = business.clientId;
+          this.logger.debug(`Retrieved clientId ${clientId} from businessId ${businessId}`);
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to retrieve clientId from businessId ${businessId}: ${error.message}`);
+        // Continue with null clientId
+      }
+    }
     
     // Check if similar query exists
     const existingQuery = await this.unrecognizedQueryModel.findOne({
-      message: { $regex: new RegExp('^' + message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
+      message: { $regex: new RegExp('^' + message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') },
+      ...(clientId ? { clientId } : {})
     });
     
     if (existingQuery) {
@@ -245,15 +364,16 @@ export class KnowledgeBaseService {
         existingQuery._id,
         { 
           $inc: { frequency: 1 },
-          ...(context ? { context: { ...existingQuery.context, ...context } } : {})
+          ...(context ? { $set: { context: { ...existingQuery.context, ...context } } } : {})
         },
-        { new: true }
+        { new: true } // Return the updated document
       );
     }
     
-    // Create new unrecognized query
+    // Create new unrecognized query with clientId
     const newQuery = new this.unrecognizedQueryModel({
       message,
+      clientId, // Add client ID if provided or retrieved
       businessType,
       userId,
       sessionId,
@@ -262,22 +382,29 @@ export class KnowledgeBaseService {
     });
     
     return newQuery.save();
-  }
+  }  
   
   /**
-   * Respond to an unrecognized query
+   * Respond to an unrecognized query with client ID check
    */
   async respondToUnrecognizedQuery(
     id: string,
     response: string,
     adminId: string,
+    clientId: string,
     createKnowledgeDoc: boolean = false,
     knowledgeDocData?: Partial<KnowledgeDocument>
   ): Promise<UnrecognizedQuery> {
-    const query = await this.unrecognizedQueryModel.findById(id);
+    // Find the query and check client ID if provided
+    const findFilter: any = { _id: id };
+    if (clientId) {
+      findFilter.clientId = clientId;
+    }
+    
+    const query = await this.unrecognizedQueryModel.findOne(findFilter);
     
     if (!query) {
-      throw new NotFoundException(`Unrecognized query with ID ${id} not found`);
+      throw new NotFoundException(`Unrecognized query with ID ${id} not found or does not belong to this client`);
     }
     
     // Create knowledge document if requested
@@ -292,7 +419,8 @@ export class KnowledgeBaseService {
         categories: knowledgeDocData.categories || [],
         applicableBusinessTypes: knowledgeDocData.applicableBusinessTypes || [],
         applicableFeatures: knowledgeDocData.applicableFeatures || [],
-        createdBy: adminId
+        createdBy: adminId,
+        clientId: clientId // Include client ID
       });
       
       knowledgeDocId = knowledgeDoc._id;
@@ -303,7 +431,8 @@ export class KnowledgeBaseService {
       query: query.message,
       response,
       category: query.context?.currentView || 'general',
-      keywords: this.extractKeywords(query.message)
+      keywords: this.extractKeywords(query.message),
+      clientId // Include client ID
     });
     
     // Update the unrecognized query
@@ -322,13 +451,14 @@ export class KnowledgeBaseService {
   }
   
   /**
-   * Create a query-response pair for learning
+   * Create a query-response pair for learning with client ID
    */
   async createQueryResponsePair(pair: {
     query: string;
     response: string;
     category?: string;
     keywords?: string[];
+    clientId?: string;
   }): Promise<QueryResponsePair> {
     // Extract keywords if not provided
     if (!pair.keywords || pair.keywords.length === 0) {
@@ -346,16 +476,23 @@ export class KnowledgeBaseService {
   }
   
   /**
-   * Update success rate for a response
+   * Update success rate for a response with client ID check
    */
   async updateResponseSuccess(
     id: string,
-    wasSuccessful: boolean
+    wasSuccessful: boolean,
+    clientId?: string
   ): Promise<QueryResponsePair> {
-    const pair = await this.queryResponsePairModel.findById(id);
+    // Find the pair and check client ID if provided
+    const findFilter: any = { _id: id };
+    if (clientId) {
+      findFilter.clientId = clientId;
+    }
+    
+    const pair = await this.queryResponsePairModel.findOne(findFilter);
     
     if (!pair) {
-      throw new NotFoundException(`Query-response pair with ID ${id} not found`);
+      throw new NotFoundException(`Query-response pair with ID ${id} not found or does not belong to this client`);
     }
     
     // Calculate new success rate
@@ -395,10 +532,11 @@ export class KnowledgeBaseService {
   }
   
   /**
-   * Get pending unrecognized queries
+   * Get pending unrecognized queries with client ID filter
    */
   async getPendingQueries(
     options: {
+      clientId?: string;
       limit?: number;
       page?: number;
       businessType?: string;
@@ -409,11 +547,15 @@ export class KnowledgeBaseService {
     page: number;
     limit: number;
   }> {
-    const { limit = 20, page = 1, businessType } = options;
+    const { clientId, limit = 20, page = 1, businessType } = options;
     const skip = (page - 1) * limit;
     
-    // Build filter
+    // Build filter with client ID
     const filter: any = { status: 'pending' };
+    
+    if (clientId) {
+      filter.clientId = clientId;
+    }
     
     if (businessType) {
       filter.businessType = businessType;

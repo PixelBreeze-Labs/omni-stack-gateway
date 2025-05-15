@@ -10,6 +10,9 @@ export class KnowledgeDocument extends Document {
   @Prop({ required: true, type: String })
   content: string;
 
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
+  clientId: string;
+
   @Prop({ type: [String], index: true })
   keywords: string[];
 
@@ -47,3 +50,4 @@ KnowledgeDocumentSchema.index({
 KnowledgeDocumentSchema.index({ applicableBusinessTypes: 1 });
 KnowledgeDocumentSchema.index({ applicableFeatures: 1 });
 KnowledgeDocumentSchema.index({ categories: 1 });
+KnowledgeDocumentSchema.index({ clientId: 1 });

@@ -1,9 +1,11 @@
-// src/schemas/query-response-pair.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class QueryResponsePair extends Document {
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: true })
+  clientId: string;
+
   @Prop({ required: true })
   query: string;
 
@@ -29,5 +31,8 @@ export class QueryResponsePair extends Document {
 export const QueryResponsePairSchema = SchemaFactory.createForClass(QueryResponsePair);
 
 // Add indexes
+QueryResponsePairSchema.index({ clientId: 1 });
 QueryResponsePairSchema.index({ active: 1 });
 QueryResponsePairSchema.index({ query: 'text', keywords: 'text' });
+QueryResponsePairSchema.index({ clientId: 1, category: 1 }); // For efficiently querying client's responses by category
+QueryResponsePairSchema.index({ clientId: 1, active: 1 }); // For efficiently querying client's active responses

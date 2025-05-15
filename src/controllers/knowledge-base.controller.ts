@@ -1,9 +1,9 @@
-// src/controllers/knowledge-base.controller.ts
-import { Controller, Get, Post, Body, Param, Query, Delete, Put, Headers, UseGuards, UnauthorizedException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Req, Body, Param, Query, Delete, Put, Headers, UseGuards, UnauthorizedException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { KnowledgeBaseService } from '../services/knowledge-base.service';
 import { BusinessService } from '../services/business.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
+import { Client } from '../schemas/client.schema';
 
 @ApiTags('Knowledge Base')
 @ApiBearerAuth()
@@ -39,11 +39,14 @@ export class KnowledgeBaseController {
   @ApiResponse({ status: 201, description: 'Document created successfully' })
   async createDocument(
     @Body() documentData: any,
+    @Req() req: Request & { client: Client }
   ) {
     try {
+      // Add clientId from authenticated request
       return this.knowledgeBaseService.createDocument({
         ...documentData,
-        createdBy: 'Staffluent Superadmin'
+        createdBy: 'Staffluent Superadmin', // Or get current user
+        clientId: req.client.id
       });
     } catch (error) {
       this.logger.error(`Error creating knowledge document: ${error.message}`, error.stack);
@@ -51,16 +54,71 @@ export class KnowledgeBaseController {
     }
   }
 
+  @Get('documents/:id')
+  @ApiOperation({ summary: 'Get knowledge document by ID' })
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiResponse({ status: 200, description: 'Returns document' })
+  @ApiResponse({ status: 404, description: 'Document not found' })
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: Request & { client: Client }
+  ) {
+    try {
+      // Include clientId check when fetching document
+      return this.knowledgeBaseService.findOne(id, req.client.id);
+    } catch (error) {
+      this.logger.error(`Error finding knowledge document: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to find knowledge document');
+    }
+  }
+
+  @Get('documents')
+  @ApiOperation({ summary: 'Get all knowledge documents' })
+  @ApiQuery({ name: 'search', required: false, description: 'Search query' })
+  @ApiQuery({ name: 'categories', required: false, description: 'Categories filter (comma-separated)' })
+  @ApiQuery({ name: 'type', required: false, description: 'Document type' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Limit results' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number' })
+  @ApiResponse({ status: 200, description: 'Returns all documents' })
+  async findAll(
+    @Req() req: Request & { client: Client },
+    @Query('search') search?: string,
+    @Query('categories') categoriesStr?: string,
+    @Query('type') type?: string,
+    @Query('limit') limit = 10,
+    @Query('page') page = 1
+  ) {
+    try {
+      const categories = categoriesStr ? categoriesStr.split(',') : [];
+      
+      // Pass clientId from authenticated request
+      return this.knowledgeBaseService.findAll({
+        clientId: req.client.id,
+        search,
+        categories,
+        type,
+        limit,
+        page
+      });
+    } catch (error) {
+      this.logger.error(`Error finding knowledge documents: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to find knowledge documents');
+    }
+  }
+
   @Put('documents/:id')
   @ApiOperation({ summary: 'Update a knowledge document' })
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiResponse({ status: 200, description: 'Document updated successfully' })
+  @ApiResponse({ status: 404, description: 'Document not found' })
   async updateDocument(
     @Param('id') id: string,
-    @Body() updates: any
+    @Body() updates: any,
+    @Req() req: Request & { client: Client }
   ) {
     try {
-      return this.knowledgeBaseService.updateDocument(id, updates);
+      // Pass clientId for ownership verification
+      return this.knowledgeBaseService.updateDocument(id, req.client.id, updates);
     } catch (error) {
       this.logger.error(`Error updating knowledge document: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to update knowledge document');
@@ -71,11 +129,14 @@ export class KnowledgeBaseController {
   @ApiOperation({ summary: 'Delete a knowledge document' })
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiResponse({ status: 200, description: 'Document deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Document not found' })
   async deleteDocument(
-    @Param('id') id: string
+    @Param('id') id: string,
+    @Req() req: Request & { client: Client }
   ) {
     try {
-      const success = await this.knowledgeBaseService.deleteDocument(id);
+      // Pass clientId for ownership verification
+      const success = await this.knowledgeBaseService.deleteDocument(id, req.client.id);
       return { success };
     } catch (error) {
       this.logger.error(`Error deleting knowledge document: ${error.message}`, error.stack);
@@ -83,7 +144,7 @@ export class KnowledgeBaseController {
     }
   }
 
-  @Get('documents')
+  @Get('search')
   @ApiOperation({ summary: 'Search knowledge documents' })
   @ApiQuery({ name: 'query', required: false, description: 'Search query' })
   @ApiQuery({ name: 'businessType', required: false, description: 'Business type filter' })
@@ -92,6 +153,7 @@ export class KnowledgeBaseController {
   @ApiQuery({ name: 'limit', required: false, description: 'Limit results' })
   @ApiResponse({ status: 200, description: 'Returns matching documents' })
   async searchDocuments(
+    @Req() req: Request & { client: Client },
     @Query('query') query: string = '',
     @Query('businessType') businessType: string = 'default',
     @Query('features') featuresStr: string = '',
@@ -102,9 +164,11 @@ export class KnowledgeBaseController {
       const features = featuresStr ? featuresStr.split(',') : [];
       const categories = categoriesStr ? categoriesStr.split(',') : [];
       
+      // Include clientId in search to restrict results to this client
       const documents = await this.knowledgeBaseService.searchDocuments(
         query,
         {
+          clientId: req.client.id, // Add clientId from authenticated request
           businessType,
           features,
           categories,
@@ -126,12 +190,15 @@ export class KnowledgeBaseController {
   @ApiQuery({ name: 'businessType', required: false, description: 'Business type filter' })
   @ApiResponse({ status: 200, description: 'Returns unrecognized queries' })
   async getUnrecognizedQueries(
+    @Req() req: Request & { client: Client },
     @Query('limit') limit: number = 20,
     @Query('page') page: number = 1,
     @Query('businessType') businessType: string
   ) {
     try {
+      // Include clientId to restrict results to this client
       return this.knowledgeBaseService.getPendingQueries({
+        clientId: req.client.id, // Add clientId from authenticated request
         limit,
         page,
         businessType
@@ -167,6 +234,7 @@ export class KnowledgeBaseController {
     }
   })
   @ApiResponse({ status: 200, description: 'Query responded successfully' })
+  @ApiResponse({ status: 404, description: 'Query not found' })
   async respondToQuery(
     @Param('id') id: string,
     @Body() data: {
@@ -174,12 +242,15 @@ export class KnowledgeBaseController {
       createKnowledgeDoc?: boolean;
       knowledgeDocData?: any;
     },
+    @Req() req: Request & { client: Client }
   ) {
     try {
+      // Pass clientId for ownership verification
       return this.knowledgeBaseService.respondToUnrecognizedQuery(
         id,
         data.response,
-        'Staffluent Superadmin',
+        'Staffluent Superadmin', // Or current user
+        req.client.id, // Add clientId from authenticated request
         data.createKnowledgeDoc || false,
         data.knowledgeDocData
       );
@@ -211,13 +282,51 @@ export class KnowledgeBaseController {
       response: string;
       category?: string;
       keywords?: string[];
-    }
+    },
+    @Req() req: Request & { client: Client }
   ) {
     try {
-      return this.knowledgeBaseService.createQueryResponsePair(pairData);
+      // Add clientId to pair data
+      return this.knowledgeBaseService.createQueryResponsePair({
+        ...pairData,
+        clientId: req.client.id // Add clientId from authenticated request
+      });
     } catch (error) {
       this.logger.error(`Error creating query-response pair: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to create query-response pair');
+    }
+  }
+
+  @Post('feedback/:id')
+  @ApiOperation({ summary: 'Provide feedback on a response' })
+  @ApiParam({ name: 'id', description: 'Response ID' })
+  @ApiBody({
+    description: 'Feedback data',
+    schema: {
+      type: 'object',
+      properties: {
+        wasHelpful: { type: 'boolean' }
+      },
+      required: ['wasHelpful']
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Feedback recorded successfully' })
+  @ApiResponse({ status: 404, description: 'Response not found' })
+  async provideFeedback(
+    @Param('id') id: string,
+    @Body() data: { wasHelpful: boolean },
+    @Req() req: Request & { client: Client }
+  ) {
+    try {
+      // Pass clientId for ownership verification
+      return this.knowledgeBaseService.updateResponseSuccess(
+        id,
+        data.wasHelpful,
+        req.client.id // Add clientId from authenticated request
+      );
+    } catch (error) {
+      this.logger.error(`Error recording feedback: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to record feedback');
     }
   }
 }
