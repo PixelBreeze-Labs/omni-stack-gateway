@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BusinessService } from './business.service';
 import { Business } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
+import { KnowledgeBaseService } from './knowledge-base.service';
 
 // Export interfaces for TypeScript
 export interface ChatResponse {
@@ -45,13 +46,14 @@ export class BusinessChatbotService {
     @InjectModel(ChatbotMessage.name) private chatbotMessageModel: Model<ChatbotMessage>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(User.name) private userModel: Model<User>,
-    private readonly businessService: BusinessService
+    private readonly businessService: BusinessService,  
+    private readonly knowledgeBaseService: KnowledgeBaseService
   ) {}
 
-  /**
+   /**
    * Process a message and return a response
    */
-  async processMessage(
+   async processMessage(
     businessId: string,
     clientId: string,
     userId: string | null,
@@ -119,6 +121,8 @@ export class BusinessChatbotService {
         sessionId,
         metadata: {
           context,
+          knowledgeUsed: response.knowledgeUsed || false,
+          responseSource: response.responseSource || 'nlp',
           timestamp: new Date()
         }
       });
@@ -138,6 +142,7 @@ export class BusinessChatbotService {
       };
     }
   }
+
 
   /**
    * Get conversation history for a business user
@@ -306,175 +311,292 @@ export class BusinessChatbotService {
   }
 
   /**
-   * Generate response using simple NLP
+   * Generate response using knowledge base and NLP
    */
   private async generateResponse(
     message: string, 
     context: Record<string, any>,
     business: any,
     user: any
-  ): Promise<{ text: string; suggestions?: { id: string; text: string }[] }> {
+  ): Promise<{ 
+    text: string; 
+    suggestions?: { id: string; text: string }[];
+    knowledgeUsed?: boolean;
+    responseSource?: string;
+  }> {
     const normalizedMessage = message.toLowerCase().trim();
+    const platformName = 'Staffluent';
     
     // Personalization variables
     const businessName = business?.name || 'your business';
     const userName = user ? `${user.name || 'there'}` : 'there';
-    const platformName = 'Staffluent';
     
     // Extract key terms for better matching
     const keyTerms = this.extractKeyTerms(normalizedMessage);
     
-    // Get conversational context
+    // Check if this is a follow-up question
     const isFollowup = this.isFollowupQuestion(context);
     
-    // Define response templates with context awareness
-    const responseRules = [
-      {
-        keywords: ['hello', 'hi', 'hey', 'greetings', 'howdy'],
-        response: {
-          text: `Hello ${userName}! I'm the ${platformName} assistant for ${businessName}. How can I help you today?`,
-          suggestions: [
-            { id: 'projects', text: 'Tell me about projects' },
-            { id: 'tasks', text: 'Task management' },
-            { id: 'timeTracking', text: 'Time tracking help' },
-            { id: 'teams', text: 'Team management' }
-          ]
-        }
-      },
-      {
-        keywords: ['project', 'projects'],
-        response: {
-          text: `${platformName} provides ${businessName} with comprehensive project management tools. You can create projects, assign teams, track progress, and manage tasks.`,
-          suggestions: [
-            { id: 'create_project', text: 'Create a new project' },
-            { id: 'view_projects', text: 'View my projects' },
-            { id: 'project_reports', text: 'Project reports' }
-          ]
-        }
-      },
-      {
-        keywords: ['task', 'tasks', 'todo', 'assignment', 'assign'],
-        response: {
-          text: `With ${platformName}, tasks for ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
-          suggestions: [
-            { id: 'create_task', text: 'Create a task' },
-            { id: 'assign_task', text: 'Assign tasks' },
-            { id: 'track_tasks', text: 'Track task completion' }
-          ]
-        }
-      },
-      {
-        keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
-        response: {
-          text: `${platformName}'s time tracking system lets ${businessName} employees clock in/out, manage breaks, and review timesheets.`,
-          suggestions: [
-            { id: 'time_clock', text: 'Clock in/out' },
-            { id: 'breaks', text: 'Manage breaks' },
-            { id: 'timesheets', text: 'View timesheets' }
-          ]
-        }
-      },
-      {
-        keywords: ['team', 'staff', 'employee', 'member', 'personnel'],
-        response: {
-          text: `Using ${platformName}, ${businessName} can organize staff into departments and teams, assign leaders, and monitor performance.`,
-          suggestions: [
-            { id: 'view_team', text: 'View my team' },
-            { id: 'add_member', text: 'Add team member' },
-            { id: 'team_schedule', text: 'Team scheduling' }
-          ]
-        }
-      },
-      {
-        keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats', 'dashboard'],
-        response: {
-          text: `${platformName} provides ${businessName} with detailed analytics on productivity, project progress, task completion, and more.`,
-          suggestions: [
-            { id: 'performance_reports', text: 'Performance reports' },
-            { id: 'time_reports', text: 'Time & attendance reports' },
-            { id: 'export_data', text: 'Export data' }
-          ]
-        }
-      },
-      {
-        keywords: ['field', 'service', 'field service', 'location', 'site', 'remote'],
-        response: {
-          text: `${platformName}'s field service features help ${businessName} manage operations outside the office, including location tracking and service scheduling.`,
-          suggestions: [
-            { id: 'field_locations', text: 'Field locations' },
-            { id: 'service_schedule', text: 'Service scheduling' },
-            { id: 'field_reporting', text: 'Field reporting' }
-          ]
-        }
-      },
-      {
-        keywords: ['client', 'customer', 'account', 'portal'],
-        response: {
-          text: `${platformName} helps ${businessName} manage client relationships, track communications, and handle client requests.`,
-          suggestions: [
-            { id: 'add_client', text: 'Add a client' },
-            { id: 'client_portal', text: 'Client portal features' },
-            { id: 'client_invoices', text: 'Client invoicing' }
-          ]
-        }
-      },
-      {
-        keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
-        response: {
-          text: `I can help with how ${businessName} can use ${platformName} for managing projects, tracking time, organizing teams, and more. What do you need help with?`,
-          suggestions: [
-            { id: 'projects_help', text: 'Projects help' },
-            { id: 'tasks_help', text: 'Tasks help' },
-            { id: 'time_help', text: 'Time tracking help' },
-            { id: 'teams_help', text: 'Team management help' }
-          ]
-        }
-      },
-      {
-        keywords: ['auto', 'assign', 'automatic', 'assignment', 'auto-assign'],
-        response: {
-          text: `${platformName} provides ${businessName} with auto-assignment capabilities that can automatically assign tasks to the most suitable team members based on skills, workload, and availability.`,
-          suggestions: [
-            { id: 'auto_assign_setup', text: 'Set up auto-assignment' },
-            { id: 'auto_assign_trigger', text: 'Trigger auto-assignment' },
-            { id: 'pending_approvals', text: 'Pending approvals' }
-          ]
-        }
-      },
-      {
-        keywords: ['quality', 'inspection', 'compliance', 'safety', 'audit'],
-        response: {
-          text: `${platformName}'s quality control features help ${businessName} conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
-          suggestions: [
-            { id: 'create_inspection', text: 'Create inspection' },
-            { id: 'compliance_report', text: 'Compliance report' },
-            { id: 'safety_checklist', text: 'Safety checklists' }
-          ]
-        }
-      },
-      {
-        keywords: ['equipment', 'asset', 'tool', 'inventory', 'maintenance'],
-        response: {
-          text: `${platformName} includes equipment management tools for ${businessName} to track assets, schedule maintenance, and monitor usage.`,
-          suggestions: [
-            { id: 'track_equipment', text: 'Track equipment' },
-            { id: 'maintenance_schedule', text: 'Maintenance schedule' },
-            { id: 'equipment_assignment', text: 'Equipment assignment' }
-          ]
-        }
+    // 1. Try to find a matching query-response pair from our learning database
+    const matchingPairs = await this.knowledgeBaseService.searchQueryResponses(
+      normalizedMessage,
+      { 
+        category: context.currentView || 'general',
+        limit: 1
       }
-    ];
+    );
+    
+    if (matchingPairs.length > 0) {
+      const pair = matchingPairs[0];
+      // Replace placeholders in the response
+      let response = pair.response
+        .replace(/{businessName}/g, businessName)
+        .replace(/{userName}/g, userName)
+        .replace(/{platformName}/g, platformName);
+      
+      return {
+        text: response,
+        responseSource: 'learned',
+        knowledgeUsed: true
+      };
+    }
+    
+    // 2. Try to find relevant knowledge documents
+    const relevantDocs = await this.knowledgeBaseService.searchDocuments(
+      normalizedMessage,
+      {
+        businessType: business?.operationType || 'default',
+        features: business?.enabledFeatures || [],
+        currentView: context.currentView,
+        limit: 2
+      }
+    );
+    
+    if (relevantDocs.length > 0) {
+      // Use the most relevant document
+      const doc = relevantDocs[0];
+      
+      // Process content to create a conversational response
+      let response = this.formatKnowledgeResponse(
+        doc.content, 
+        businessName,
+        userName,
+        platformName
+      );
+      
+      return {
+        text: response,
+        suggestions: this.getSuggestionsFromDocument(doc),
+        responseSource: 'knowledge',
+        knowledgeUsed: true
+      };
+    }
+    
+    // 3. Fall back to predefined NLP responses
+    const nlpResponse = await this.getNlpResponse(
+      normalizedMessage,
+      keyTerms, 
+      isFollowup,
+      context, 
+      business, 
+      businessName,
+      userName,
+      platformName
+    );
+    
+    // 4. If no good NLP response, log this as an unrecognized query
+    if (nlpResponse.confidence < 0.3) {
+      await this.knowledgeBaseService.logUnrecognizedQuery(
+        message,
+        {
+          businessType: business?.operationType || 'default',
+          userId: user?._id?.toString(),
+          sessionId: context.sessionId,
+          context
+        }
+      );
+    }
+    
+    return {
+      ...nlpResponse,
+      responseSource: 'nlp',
+      knowledgeUsed: false
+    };
+  }
 
-    // Check for context-specific responses based on current view
+
+  /**
+   * Get response using the NLP system
+   */
+  private async getNlpResponse(
+    normalizedMessage: string,
+    keyTerms: string[],
+    isFollowup: boolean,
+    context: Record<string, any>,
+    business: any,
+    businessName: string,
+    userName: string,
+    platformName: string
+  ): Promise<{ 
+    text: string; 
+    suggestions?: { id: string; text: string }[];
+    confidence: number;
+  }> {
+    // Define response templates with context awareness
+const responseRules = [
+  {
+    keywords: ['hello', 'hi', 'hey', 'greetings', 'howdy'],
+    response: {
+      text: `Hello ${userName}! I'm the ${platformName} assistant for ${businessName}. How can I help you today?`,
+      suggestions: [
+        { id: 'projects', text: 'Tell me about projects' },
+        { id: 'tasks', text: 'Task management' },
+        { id: 'timeTracking', text: 'Time tracking help' },
+        { id: 'teams', text: 'Team management' }
+      ]
+    }
+  },
+  {
+    keywords: ['project', 'projects'],
+    response: {
+      text: `${platformName} provides ${businessName} with comprehensive project management tools. You can create projects, assign teams, track progress, and manage tasks.`,
+      suggestions: [
+        { id: 'create_project', text: 'Create a new project' },
+        { id: 'view_projects', text: 'View my projects' },
+        { id: 'project_reports', text: 'Project reports' }
+      ]
+    }
+  },
+  {
+    keywords: ['task', 'tasks', 'todo', 'assignment', 'assign'],
+    response: {
+      text: `With ${platformName}, tasks for ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
+      suggestions: [
+        { id: 'create_task', text: 'Create a task' },
+        { id: 'assign_task', text: 'Assign tasks' },
+        { id: 'track_tasks', text: 'Track task completion' }
+      ]
+    }
+  },
+  {
+    keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
+    response: {
+      text: `${platformName}'s time tracking system lets ${businessName} employees clock in/out, manage breaks, and review timesheets.`,
+      suggestions: [
+        { id: 'time_clock', text: 'Clock in/out' },
+        { id: 'breaks', text: 'Manage breaks' },
+        { id: 'timesheets', text: 'View timesheets' }
+      ]
+    }
+  },
+  {
+    keywords: ['team', 'staff', 'employee', 'member', 'personnel'],
+    response: {
+      text: `Using ${platformName}, ${businessName} can organize staff into departments and teams, assign leaders, and monitor performance.`,
+      suggestions: [
+        { id: 'view_team', text: 'View my team' },
+        { id: 'add_member', text: 'Add team member' },
+        { id: 'team_schedule', text: 'Team scheduling' }
+      ]
+    }
+  },
+  {
+    keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats', 'dashboard'],
+    response: {
+      text: `${platformName} provides ${businessName} with detailed analytics on productivity, project progress, task completion, and more.`,
+      suggestions: [
+        { id: 'performance_reports', text: 'Performance reports' },
+        { id: 'time_reports', text: 'Time & attendance reports' },
+        { id: 'export_data', text: 'Export data' }
+      ]
+    }
+  },
+  {
+    keywords: ['field', 'service', 'field service', 'location', 'site', 'remote'],
+    response: {
+      text: `${platformName}'s field service features help ${businessName} manage operations outside the office, including location tracking and service scheduling.`,
+      suggestions: [
+        { id: 'field_locations', text: 'Field locations' },
+        { id: 'service_schedule', text: 'Service scheduling' },
+        { id: 'field_reporting', text: 'Field reporting' }
+      ]
+    }
+  },
+  {
+    keywords: ['client', 'customer', 'account', 'portal'],
+    response: {
+      text: `${platformName} helps ${businessName} manage client relationships, track communications, and handle client requests.`,
+      suggestions: [
+        { id: 'add_client', text: 'Add a client' },
+        { id: 'client_portal', text: 'Client portal features' },
+        { id: 'client_invoices', text: 'Client invoicing' }
+      ]
+    }
+  },
+  {
+    keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
+    response: {
+      text: `I can help with how ${businessName} can use ${platformName} for managing projects, tracking time, organizing teams, and more. What do you need help with?`,
+      suggestions: [
+        { id: 'projects_help', text: 'Projects help' },
+        { id: 'tasks_help', text: 'Tasks help' },
+        { id: 'time_help', text: 'Time tracking help' },
+        { id: 'teams_help', text: 'Team management help' }
+      ]
+    }
+  },
+  {
+    keywords: ['auto', 'assign', 'automatic', 'assignment', 'auto-assign'],
+    response: {
+      text: `${platformName} provides ${businessName} with auto-assignment capabilities that can automatically assign tasks to the most suitable team members based on skills, workload, and availability.`,
+      suggestions: [
+        { id: 'auto_assign_setup', text: 'Set up auto-assignment' },
+        { id: 'auto_assign_trigger', text: 'Trigger auto-assignment' },
+        { id: 'pending_approvals', text: 'Pending approvals' }
+      ]
+    }
+  },
+  {
+    keywords: ['quality', 'inspection', 'compliance', 'safety', 'audit'],
+    response: {
+      text: `${platformName}'s quality control features help ${businessName} conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
+      suggestions: [
+        { id: 'create_inspection', text: 'Create inspection' },
+        { id: 'compliance_report', text: 'Compliance report' },
+        { id: 'safety_checklist', text: 'Safety checklists' }
+      ]
+    }
+  },
+  {
+    keywords: ['equipment', 'asset', 'tool', 'inventory', 'maintenance'],
+    response: {
+      text: `${platformName} includes equipment management tools for ${businessName} to track assets, schedule maintenance, and monitor usage.`,
+      suggestions: [
+        { id: 'track_equipment', text: 'Track equipment' },
+        { id: 'maintenance_schedule', text: 'Maintenance schedule' },
+        { id: 'equipment_assignment', text: 'Equipment assignment' }
+      ]
+    }
+  }
+];
     if (context?.currentView) {
-      const viewResponses = this.getViewSpecificResponses(context.currentView, business?.operationType, userName, businessName);
+      const viewResponses = this.getViewSpecificResponses(
+        context.currentView, 
+        business?.operationType, 
+        userName,
+        businessName
+      );
+      
       // Only return view response for greeting or help requests
       if (viewResponses && (normalizedMessage.includes('hello') || normalizedMessage.includes('hi') || 
           normalizedMessage.includes('help') || normalizedMessage.length < 5)) {
-        return viewResponses;
+        return {
+          ...viewResponses,
+          confidence: 0.9
+        };
       }
     }
-
+    
     // Find best matching response based on keyword relevance
     let bestMatch = null;
     let highestScore = 0;
@@ -494,26 +616,40 @@ export class BusinessChatbotService {
         const response = { ...bestMatch.response };
         // Remove greeting prefixes for follow-up questions
         response.text = response.text.replace(`Hello ${userName}! `, '').replace(`Hi there! `, '');
-        return response;
+        return {
+          ...response,
+          confidence: highestScore
+        };
       }
-      return bestMatch.response;
+      return {
+        ...bestMatch.response,
+        confidence: highestScore
+      };
     }
-
+    
     // See if this is asking about something specific like "how to create a project"
-    const specificResponses = this.checkForSpecificQuestions(normalizedMessage, businessName);
+    const specificResponses = this.checkForSpecificQuestions(
+      normalizedMessage, 
+      businessName
+    );
+    
     if (specificResponses) {
-      return specificResponses;
+      return {
+        ...specificResponses,
+        confidence: 0.8
+      };
     }
-
+    
     // Default response if no good match
     return {
-      text: `I'm not sure I understand your question about "${message}". Could you try rephrasing or select one of these options?`,
+      text: `I'm not sure I understand your question about "${normalizedMessage}". Could you try rephrasing or select one of these options?`,
       suggestions: [
         { id: 'help', text: 'Show all help topics' },
         { id: 'projects', text: 'Projects' },
         { id: 'tasks', text: 'Tasks' },
         { id: 'time', text: 'Time tracking' }
-      ]
+      ],
+      confidence: 0.1 // Low confidence
     };
   }
 
@@ -532,6 +668,91 @@ export class BusinessChatbotService {
 
     return hasRecentBotMessage && hasRecentUserMessage;
   }
+
+  /**
+ * Format knowledge document content into a conversational response
+ */
+private formatKnowledgeResponse(
+  content: string,
+  businessName: string,
+  userName: string,
+  platformName: string
+): string {
+  // Replace placeholders
+  let response = content
+    .replace(/{businessName}/g, businessName)
+    .replace(/{userName}/g, userName)
+    .replace(/{platformName}/g, platformName);
+  
+  // If content is too long, summarize it
+  if (response.length > 500) {
+    const sentences = response.split(/[.!?]+/);
+    
+    if (sentences.length > 5) {
+      // Use first 2-3 sentences for a brief summary
+      response = sentences.slice(0, 3).join('. ') + '.';
+      
+      // Add a concluding sentence
+      response += " I hope this helps! Let me know if you'd like more details.";
+    }
+  }
+  
+  return response;
+}
+
+/**
+ * Extract suggestions from a knowledge document
+ */
+private getSuggestionsFromDocument(doc: any): { id: string; text: string }[] {
+  // Generate suggestions based on document content and keywords
+  const suggestions = [];
+  
+  // Add a "Tell me more" suggestion
+  suggestions.push({
+    id: 'more_info',
+    text: 'Tell me more about this'
+  });
+  
+  // Add category-based suggestions
+  if (doc.categories && doc.categories.length > 0) {
+    const categoryMap = {
+      'project_management': 'About project management',
+      'task_management': 'About task management',
+      'time_tracking': 'About time tracking',
+      'team_management': 'About team management',
+      'client_management': 'About client management',
+      'reporting': 'About reporting features'
+    };
+    
+    doc.categories.forEach(category => {
+      if (categoryMap[category]) {
+        suggestions.push({
+          id: `category_${category}`,
+          text: categoryMap[category]
+        });
+      }
+    });
+  }
+  
+  // Add keyword-based suggestions if needed
+  if (suggestions.length < 3 && doc.keywords && doc.keywords.length > 0) {
+    // Limit to 3 total suggestions
+    const limit = 3 - suggestions.length;
+    
+    for (let i = 0; i < Math.min(limit, doc.keywords.length); i++) {
+      const keyword = doc.keywords[i];
+      
+      if (keyword.length > 3) {
+        suggestions.push({
+          id: `keyword_${keyword}`,
+          text: `More about ${keyword}`
+        });
+      }
+    }
+  }
+  
+  return suggestions.slice(0, 4); // Limit to max 4 suggestions
+}
 
   /**
  * Check for specific how-to questions

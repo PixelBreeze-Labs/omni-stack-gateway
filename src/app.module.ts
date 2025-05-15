@@ -81,6 +81,9 @@ import { TaskAssignment, TaskAssignmentSchema } from './schemas/task-assignment.
 import { StaffProfile, StaffProfileSchema } from './schemas/staff-profile.schema';
 import { AgentConfiguration, AgentConfigurationSchema } from './schemas/agent-configuration.schema';
 import { ChatbotMessage, ChatbotMessageSchema } from './schemas/chatbot-message.schema';
+import { KnowledgeDocument, KnowledgeDocumentSchema } from './schemas/knowledge-document.schema';
+import { UnrecognizedQuery, UnrecognizedQuerySchema } from './schemas/unrecognized-query.schema';
+import { QueryResponsePair, QueryResponsePairSchema } from './schemas/query-response-pair.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -389,6 +392,9 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
       { name: StaffProfile.name, schema: StaffProfileSchema },
       { name: AgentConfiguration.name, schema: AgentConfigurationSchema },
       { name: ChatbotMessage.name, schema: ChatbotMessageSchema },
+      { name: KnowledgeDocument.name, schema: KnowledgeDocumentSchema },
+      { name: UnrecognizedQuery.name, schema: UnrecognizedQuerySchema },
+      { name: QueryResponsePair.name, schema: QueryResponsePairSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,

@@ -1,8 +1,8 @@
 // src/controllers/business-chatbot.controller.ts
-import { Controller, Get, Post, Body, Param, Query, Delete, Headers, UnauthorizedException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Delete, Headers, UnauthorizedException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { BusinessChatbotService, ChatResponse, HistoryResponse, ClearHistoryResponse, SessionsResponse } from '../services/business-chatbot.service';
-import { BusinessService } from '../services/business.service';
+import { KnowledgeBaseService } from '../services/knowledge-base.service';
 
 @ApiTags('Business Chatbot')
 @Controller('business-chatbot')
@@ -12,7 +12,7 @@ export class BusinessChatbotController {
 
   constructor(
     private readonly chatbotService: BusinessChatbotService,
-    private readonly businessService: BusinessService
+    private readonly knowledgeBaseService: KnowledgeBaseService
   ) {}
 
   @Post(':businessId/message')
@@ -232,6 +232,32 @@ export class BusinessChatbotController {
       } else {
         throw new InternalServerErrorException('Failed to get knowledge base');
       }
+    }
+  }
+
+  @Put('query-responses/:id/feedback')
+  @ApiOperation({ summary: 'Update response success rate' })
+  @ApiParam({ name: 'id', description: 'Query-response pair ID' })
+  @ApiBody({ 
+    description: 'Feedback data',
+    schema: {
+      type: 'object',
+      properties: {
+        wasSuccessful: { type: 'boolean' }
+      },
+      required: ['wasSuccessful']
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Feedback recorded successfully' })
+  async updateResponseSuccess(
+    @Param('id') id: string,
+    @Body() data: { wasSuccessful: boolean }
+  ) {
+    try {
+      return this.knowledgeBaseService.updateResponseSuccess(id, data.wasSuccessful);
+    } catch (error) {
+      this.logger.error(`Error updating response success: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to update response success');
     }
   }
 }
