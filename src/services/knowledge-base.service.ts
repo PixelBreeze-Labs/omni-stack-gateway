@@ -6,6 +6,7 @@ import { UnrecognizedQuery } from '../schemas/unrecognized-query.schema';
 import { QueryResponsePair } from '../schemas/query-response-pair.schema';
 import * as natural from 'natural';
 import { Business } from '../schemas/business.schema';
+import { ChatbotMessage } from '../schemas/chatbot-message.schema';
 
 @Injectable()
 export class KnowledgeBaseService {
@@ -17,7 +18,8 @@ export class KnowledgeBaseService {
     @InjectModel(KnowledgeDocument.name) private knowledgeDocumentModel: Model<KnowledgeDocument>,
     @InjectModel(UnrecognizedQuery.name) private unrecognizedQueryModel: Model<UnrecognizedQuery>,
     @InjectModel(QueryResponsePair.name) private queryResponsePairModel: Model<QueryResponsePair>,
-    @InjectModel(Business.name) private businessModel: Model<Business>
+    @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(ChatbotMessage.name) private chatbotMessageModel: Model<ChatbotMessage>
   ) {
     this.tokenizer = new natural.WordTokenizer();
     this.stemmer = natural.PorterStemmer;
@@ -712,18 +714,32 @@ async getQueryResponsePair(
     return updated;
   }
   
+
+
   /**
-   * Get feedback statistics for responses
-   */
-  async getResponseStatistics(
+ * Get comprehensive feedback statistics including chatbot message feedback
+ */
+async getResponseStatistics(
     clientId: string,
     timeframe: 'day' | 'week' | 'month' | 'year' = 'month'
   ): Promise<{
     totalResponses: number;
     helpfulResponses: number;
+    unhelpfulResponses: number;
     helpfulPercentage: number;
-    responsesByCategory: { category: string; count: number; helpfulCount: number; helpfulPercentage: number }[];
-    topPerformingResponses: { id: string; query: string; successRate: number; useCount: number }[];
+    responsesByCategory: { category: string; count: number; helpfulCount: number; unhelpfulCount: number; helpfulPercentage: number }[];
+    topPerformingResponses: { id: string; query: string; successRate: number; useCount: number; category?: string }[];
+    totalDocuments: number;
+    totalQueryResponses: number;
+    totalUnrecognizedQueries: number;
+    overallSuccessRate: number;
+    recentUnrecognizedQueries: { _id: string; query: string; createdAt: Date; frequency: number }[];
+    feedbackBreakdown: {
+      totalFeedback: number;
+      helpfulCount: number;
+      unhelpfulCount: number;
+      byTimeframe: Array<{ date: string; helpful: number; unhelpful: number }>;
+    };
   }> {
     // Determine date range based on timeframe
     const now = new Date();
@@ -743,26 +759,61 @@ async getQueryResponsePair(
         startDate.setFullYear(now.getFullYear() - 1);
         break;
     }
-    
-    // Get all active pairs for this client within timeframe
+  
+    // Get all active query-response pairs for this client within timeframe
     const pairs = await this.queryResponsePairModel.find({
       clientId,
       active: true,
       updatedAt: { $gte: startDate }
     }).exec();
-    
+  
+    // Get feedback from chatbot messages
+    // You'll need to inject the ChatbotMessage model
+    const messagesWithFeedback = await this.chatbotMessageModel.find({
+      clientId,
+      sender: 'bot',
+      'metadata.feedback': { $exists: true },
+      createdAt: { $gte: startDate }
+    }).exec();
+  
+    // Aggregate feedback data
+    let totalFeedback = messagesWithFeedback.length;
+    let helpfulCount = 0;
+    let unhelpfulCount = 0;
+    const dailyFeedback = new Map();
+  
+    messagesWithFeedback.forEach(message => {
+      const feedback = message.metadata.feedback;
+      if (feedback.wasHelpful) {
+        helpfulCount++;
+      } else {
+        unhelpfulCount++;
+      }
+  
+      // Group by day
+      const day = new Date(feedback.timestamp).toISOString().split('T')[0];
+      if (!dailyFeedback.has(day)) {
+        dailyFeedback.set(day, { helpful: 0, unhelpful: 0 });
+      }
+      if (feedback.wasHelpful) {
+        dailyFeedback.get(day).helpful++;
+      } else {
+        dailyFeedback.get(day).unhelpful++;
+      }
+    });
+  
     // Calculate statistics
     const totalResponses = pairs.length;
     const helpfulResponses = pairs.filter(p => p.successRate >= 50).length;
     const helpfulPercentage = totalResponses > 0 ? (helpfulResponses / totalResponses) * 100 : 0;
-    
+  
     // Get responses by category
-    const categoryMap = new Map<string, { count: number; helpfulCount: number }>();
+    const categoryMap = new Map<string, { count: number; helpfulCount: number; unhelpfulCount: number }>();
     
     pairs.forEach(pair => {
       const category = pair.category || 'general';
       if (!categoryMap.has(category)) {
-        categoryMap.set(category, { count: 0, helpfulCount: 0 });
+        categoryMap.set(category, { count: 0, helpfulCount: 0, unhelpfulCount: 0 });
       }
       
       const data = categoryMap.get(category);
@@ -770,34 +821,85 @@ async getQueryResponsePair(
       
       if (pair.successRate >= 50) {
         data.helpfulCount += 1;
+      } else {
+        data.unhelpfulCount += 1;
       }
     });
-    
+  
     const responsesByCategory = Array.from(categoryMap.entries()).map(([category, data]) => ({
       category,
       count: data.count,
       helpfulCount: data.helpfulCount,
+      unhelpfulCount: data.unhelpfulCount,
       helpfulPercentage: data.count > 0 ? (data.helpfulCount / data.count) * 100 : 0
     }));
-    
+  
     // Get top performing responses
     const topPerformingResponses = [...pairs]
-      .filter(pair => pair.useCount > 0) // Only include responses that have been used
-      .sort((a, b) => b.successRate - a.successRate) // Sort by success rate descending
-      .slice(0, 5) // Get top 5
+      .filter(pair => pair.useCount > 0)
+      .sort((a, b) => b.successRate - a.successRate)
+      .slice(0, 5)
       .map(pair => ({
         id: pair._id.toString(),
         query: pair.query,
         successRate: pair.successRate,
-        useCount: pair.useCount
+        useCount: pair.useCount,
+        category: pair.category
       }));
+  
+    // Get document counts
+    const totalDocuments = await this.knowledgeDocumentModel.countDocuments({ clientId, active: true });
+    const totalQueryResponses = await this.queryResponsePairModel.countDocuments({ clientId, active: true });
     
+    // Get unrecognized queries
+    const unrecognizedQueries = await this.unrecognizedQueryModel
+  .find({ clientId, status: 'pending' })
+  .sort({ frequency: -1, createdAt: -1 })
+  .limit(5)
+  .lean() // Use lean() for better performance and cleaner typing
+  .exec();
+  
+  const totalUnrecognizedQueries = await this.unrecognizedQueryModel.countDocuments({ 
+    clientId, 
+    status: 'pending' 
+  });
+  
+  
+    // Calculate overall success rate
+    const overallSuccessRate = pairs.length > 0 
+      ? pairs.reduce((sum, pair) => sum + pair.successRate, 0) / pairs.length 
+      : 0;
+  
+    // Format daily feedback for frontend
+    const byTimeframe = Array.from(dailyFeedback.entries()).map(([date, counts]) => ({
+      date,
+      helpful: counts.helpful,
+      unhelpful: counts.unhelpful
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  
     return {
-      totalResponses,
-      helpfulResponses,
-      helpfulPercentage,
-      responsesByCategory,
-      topPerformingResponses
-    };
+        totalResponses,
+        helpfulResponses,
+        unhelpfulResponses: pairs.filter(p => p.successRate < 50).length,
+        helpfulPercentage,
+        responsesByCategory,
+        topPerformingResponses,
+        totalDocuments,
+        totalQueryResponses,
+        totalUnrecognizedQueries,
+        overallSuccessRate,
+        recentUnrecognizedQueries: unrecognizedQueries.map(q => ({
+          _id: q._id.toString(),
+          query: q.message,
+          createdAt: (q as any).createdAt,
+          frequency: q.frequency
+        })),
+        feedbackBreakdown: {
+          totalFeedback,
+          helpfulCount,
+          unhelpfulCount,
+          byTimeframe
+        }
+      };
   }
 }
