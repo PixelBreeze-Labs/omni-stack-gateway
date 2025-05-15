@@ -1,4 +1,4 @@
-// src/services/chatbot.service.ts
+// src/services/business-chatbot.service.ts
 import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -10,33 +10,32 @@ import { User } from '../schemas/user.schema';
 
 // Export interfaces for TypeScript
 export interface ChatResponse {
-    text: string;
-    suggestions?: { id: string; text: string }[];
-    sessionId?: string;
-    success: boolean;
-  }
-  
-  export interface HistoryResponse {
-    messages: ChatbotMessage[];
-    total: number;
-    page: number;
-    limit: number;
-    success: boolean;
-  }
-  
-  export interface ClearHistoryResponse {
-    success: boolean;
-    deletedCount: number;
-  }
-  
-  export interface SessionsResponse {
-    sessions: any[];
-    total: number;
-    page: number;
-    limit: number;
-    success: boolean;
-  }
-  
+  text: string;
+  suggestions?: { id: string; text: string }[];
+  sessionId?: string;
+  success: boolean;
+}
+
+export interface HistoryResponse {
+  messages: ChatbotMessage[];
+  total: number;
+  page: number;
+  limit: number;
+  success: boolean;
+}
+
+export interface ClearHistoryResponse {
+  success: boolean;
+  deletedCount: number;
+}
+
+export interface SessionsResponse {
+  sessions: any[];
+  total: number;
+  page: number;
+  limit: number;
+  success: boolean;
+}
 
 @Injectable()
 export class BusinessChatbotService {
@@ -65,6 +64,22 @@ export class BusinessChatbotService {
       if (!sessionId) {
         sessionId = uuidv4();
       }
+
+      // Get previous messages for context if sessionId exists
+      let previousMessages = [];
+      if (sessionId) {
+        previousMessages = await this.chatbotMessageModel
+          .find({ businessId, clientId, sessionId })
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .lean();
+      }
+      
+      // Add to context
+      context.conversationHistory = previousMessages.map(msg => ({
+        content: msg.content,
+        sender: msg.sender
+      })).reverse();
 
       // Store user message
       const userMessage = new this.chatbotMessageModel({
@@ -118,6 +133,7 @@ export class BusinessChatbotService {
       this.logger.error(`Error processing message: ${error.message}`, error.stack);
       return {
         text: "I'm sorry, I encountered an error while processing your request. Please try again.",
+        sessionId,
         success: false
       };
     }
@@ -133,7 +149,7 @@ export class BusinessChatbotService {
     sessionId: string = null,
     limit: number = 20,
     page: number = 1
-  ): Promise<{ messages: ChatbotMessage[]; total: number; page: number; limit: number; success: boolean }> {
+  ): Promise<HistoryResponse> {
     try {
       const query: any = { businessId, clientId };
       
@@ -175,7 +191,7 @@ export class BusinessChatbotService {
     businessId: string,
     clientId: string,
     sessionId: string
-  ): Promise<{ success: boolean; deletedCount: number }> {
+  ): Promise<ClearHistoryResponse> {
     try {
       const result = await this.chatbotMessageModel.deleteMany({ 
         businessId, 
@@ -201,7 +217,7 @@ export class BusinessChatbotService {
     clientId: string,
     limit: number = 20,
     page: number = 1
-  ): Promise<{ sessions: any[]; total: number; page: number; limit: number; success: boolean }> {
+  ): Promise<SessionsResponse> {
     try {
       const skip = (page - 1) * limit;
       
@@ -301,16 +317,19 @@ export class BusinessChatbotService {
     const normalizedMessage = message.toLowerCase().trim();
     
     // Personalization variables
-    const businessName = business?.name || 'your business';
+    const businessName = business?.name || 'Staffluent';
     const userName = user ? `${user.name || 'there'}` : 'there';
     
     // Extract key terms for better matching
     const keyTerms = this.extractKeyTerms(normalizedMessage);
     
+    // Get conversational context
+    const isFollowup = this.isFollowupQuestion(context);
+    
     // Define response templates with context awareness
     const responseRules = [
       {
-        keywords: ['hello', 'hi', 'hey', 'greetings'],
+        keywords: ['hello', 'hi', 'hey', 'greetings', 'howdy'],
         response: {
           text: `Hello ${userName}! I'm the ${businessName} assistant. How can I help you today?`,
           suggestions: [
@@ -344,7 +363,7 @@ export class BusinessChatbotService {
         }
       },
       {
-        keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking'],
+        keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
         response: {
           text: `${businessName}'s time tracking system lets you clock in/out, manage breaks, and review timesheets.`,
           suggestions: [
@@ -366,7 +385,7 @@ export class BusinessChatbotService {
         }
       },
       {
-        keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats'],
+        keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats', 'dashboard'],
         response: {
           text: `${businessName} provides detailed analytics on productivity, project progress, task completion, and more.`,
           suggestions: [
@@ -388,7 +407,7 @@ export class BusinessChatbotService {
         }
       },
       {
-        keywords: ['client', 'customer', 'account'],
+        keywords: ['client', 'customer', 'account', 'portal'],
         response: {
           text: `${businessName} helps you manage client relationships, track communications, and handle client requests.`,
           suggestions: [
@@ -399,14 +418,14 @@ export class BusinessChatbotService {
         }
       },
       {
-        keywords: ['help', 'support', 'assistance', 'guide', 'tutorial'],
+        keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
         response: {
           text: `I can help with managing projects, tracking time, organizing teams, and more. What do you need help with?`,
           suggestions: [
-            { id: 'projects', text: 'Projects help' },
-            { id: 'tasks', text: 'Tasks help' },
-            { id: 'time', text: 'Time tracking help' },
-            { id: 'teams', text: 'Team management help' }
+            { id: 'projects_help', text: 'Projects help' },
+            { id: 'tasks_help', text: 'Tasks help' },
+            { id: 'time_help', text: 'Time tracking help' },
+            { id: 'teams_help', text: 'Team management help' }
           ]
         }
       },
@@ -420,13 +439,37 @@ export class BusinessChatbotService {
             { id: 'pending_approvals', text: 'Pending approvals' }
           ]
         }
+      },
+      {
+        keywords: ['quality', 'inspection', 'compliance', 'safety', 'audit'],
+        response: {
+          text: `${businessName}'s quality control features help you conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
+          suggestions: [
+            { id: 'create_inspection', text: 'Create inspection' },
+            { id: 'compliance_report', text: 'Compliance report' },
+            { id: 'safety_checklist', text: 'Safety checklists' }
+          ]
+        }
+      },
+      {
+        keywords: ['equipment', 'asset', 'tool', 'inventory', 'maintenance'],
+        response: {
+          text: `${businessName} includes equipment management for tracking assets, scheduling maintenance, and monitoring usage.`,
+          suggestions: [
+            { id: 'track_equipment', text: 'Track equipment' },
+            { id: 'maintenance_schedule', text: 'Maintenance schedule' },
+            { id: 'equipment_assignment', text: 'Equipment assignment' }
+          ]
+        }
       }
     ];
 
     // Check for context-specific responses based on current view
     if (context?.currentView) {
       const viewResponses = this.getViewSpecificResponses(context.currentView, business?.operationType, userName);
-      if (viewResponses) {
+      // Only return view response for greeting or help requests
+      if (viewResponses && (normalizedMessage.includes('hello') || normalizedMessage.includes('hi') || 
+          normalizedMessage.includes('help') || normalizedMessage.length < 5)) {
         return viewResponses;
       }
     }
@@ -445,7 +488,20 @@ export class BusinessChatbotService {
     
     // If we found a reasonable match, use it
     if (bestMatch && highestScore > 0.3) {
+      // If this appears to be a follow-up question, adapt the response style
+      if (isFollowup) {
+        const response = { ...bestMatch.response };
+        // Remove greeting prefixes for follow-up questions
+        response.text = response.text.replace(`Hello ${userName}! `, '').replace(`Hi there! `, '');
+        return response;
+      }
       return bestMatch.response;
+    }
+
+    // See if this is asking about something specific like "how to create a project"
+    const specificResponses = this.checkForSpecificQuestions(normalizedMessage);
+    if (specificResponses) {
+      return specificResponses;
     }
 
     // Default response if no good match
@@ -461,6 +517,102 @@ export class BusinessChatbotService {
   }
 
   /**
+   * Check if this is a follow-up question based on conversation history
+   */
+  private isFollowupQuestion(context: Record<string, any>): boolean {
+    if (!context?.conversationHistory || context.conversationHistory.length < 2) {
+      return false;
+    }
+
+    // Check if there's a recent exchange in the last few messages
+    const recentMessages = context.conversationHistory.slice(-3);
+    const hasRecentBotMessage = recentMessages.some(msg => msg.sender === 'bot');
+    const hasRecentUserMessage = recentMessages.some(msg => msg.sender === 'user');
+
+    return hasRecentBotMessage && hasRecentUserMessage;
+  }
+
+  /**
+   * Check for specific how-to questions
+   */
+  private checkForSpecificQuestions(message: string): { text: string; suggestions?: { id: string; text: string }[] } | null {
+    const howToCreate = /how\s+(?:do\s+i|to|can\s+i)\s+create\s+(?:a|an)?\s+(\w+)/i;
+    const howToManage = /how\s+(?:do\s+i|to|can\s+i)\s+manage\s+(?:a|an)?\s+(\w+)/i;
+    const howToTrack = /how\s+(?:do\s+i|to|can\s+i)\s+track\s+(?:a|an)?\s+(\w+)/i;
+    
+    let match;
+    
+    if ((match = howToCreate.exec(message)) !== null) {
+      const item = match[1].toLowerCase();
+      if (item === 'project' || item === 'projects') {
+        return {
+          text: "To create a new project, go to the Projects section and click the 'Create Project' button. You'll need to fill in project details such as name, description, start and end dates, and assign team members.",
+          suggestions: [
+            { id: 'project_template', text: 'Use project template' },
+            { id: 'project_settings', text: 'Project settings' }
+          ]
+        };
+      } else if (item === 'task' || item === 'tasks') {
+        return {
+          text: "To create a task, navigate to the Tasks section and click 'New Task'. You can set a name, description, due date, priority level, and assign it to team members.",
+          suggestions: [
+            { id: 'task_priority', text: 'Set task priority' },
+            { id: 'task_assignment', text: 'Task assignment' }
+          ]
+        };
+      } else if (item === 'team' || item === 'teams') {
+        return {
+          text: "To create a new team, go to the Team Management section and select 'Create Team'. You'll need to provide a team name, select a department, and add team members.",
+          suggestions: [
+            { id: 'team_structure', text: 'Team structure' },
+            { id: 'team_roles', text: 'Define team roles' }
+          ]
+        };
+      }
+    } else if ((match = howToManage.exec(message)) !== null) {
+      const item = match[1].toLowerCase();
+      if (item === 'project' || item === 'projects') {
+        return {
+          text: "To manage projects, use the Projects dashboard where you can track progress, update status, manage tasks, assign team members, and monitor timelines.",
+          suggestions: [
+            { id: 'project_progress', text: 'Update project progress' },
+            { id: 'project_team', text: 'Manage project team' }
+          ]
+        };
+      } else if (item === 'team' || item === 'teams') {
+        return {
+          text: "Team management is done through the Teams section. Here you can organize team members, assign roles, monitor performance, and handle scheduling.",
+          suggestions: [
+            { id: 'team_schedule', text: 'Team scheduling' },
+            { id: 'team_performance', text: 'Performance tracking' }
+          ]
+        };
+      }
+    } else if ((match = howToTrack.exec(message)) !== null) {
+      const item = match[1].toLowerCase();
+      if (item === 'time' || item === 'hours') {
+        return {
+          text: "Time tracking can be done using the Time & Attendance module. You can clock in/out, log breaks, and record time spent on specific tasks or projects.",
+          suggestions: [
+            { id: 'time_reports', text: 'Time reports' },
+            { id: 'timesheet', text: 'View timesheets' }
+          ]
+        };
+      } else if (item === 'progress' || item === 'status') {
+        return {
+          text: "You can track progress in the Projects section by updating completion percentages, milestone achievements, and task statuses. Reports provide visual representations of progress.",
+          suggestions: [
+            { id: 'progress_report', text: 'Progress reports' },
+            { id: 'milestone_tracking', text: 'Milestone tracking' }
+          ]
+        };
+      }
+    }
+    
+    return null;
+  }
+
+  /**
    * Extract key terms from message for better matching
    */
   private extractKeyTerms(message: string): string[] {
@@ -469,7 +621,7 @@ export class BusinessChatbotService {
                        'and', 'or', 'but', 'if', 'then', 'else', 'when', 'where', 'why', 'how', 
                        'all', 'any', 'both', 'each', 'few', 'more', 'most', 'some', 'such', 
                        'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 
-                       'can', 'will', 'just', 'should', 'now'];
+                       'can', 'will', 'just', 'should', 'now', 'about', 'what', 'which'];
     
     const words = message.toLowerCase()
       .replace(/[^\w\s]/g, '') // Remove punctuation
@@ -585,6 +737,30 @@ export class BusinessChatbotService {
           { id: 'configure_weights', text: 'Configure assignment weights' },
           { id: 'pending_approvals', text: 'View pending approvals' },
           { id: 'assignment_history', text: 'View assignment history' }
+        ]
+      },
+      'equipment': {
+        text: `You're in the Equipment Management section. Here you can track assets, schedule maintenance, and manage equipment assignments.`,
+        suggestions: [
+          { id: 'add_equipment', text: 'Add equipment' },
+          { id: 'maintenance', text: 'Schedule maintenance' },
+          { id: 'equipment_logs', text: 'Equipment logs' }
+        ]
+      },
+      'quality': {
+        text: `You're in the Quality Control section. Here you can manage inspections, compliance, and safety protocols.`,
+        suggestions: [
+          { id: 'create_inspection', text: 'Create inspection' },
+          { id: 'compliance_report', text: 'Compliance report' },
+          { id: 'safety_checklist', text: 'Safety checklists' }
+        ]
+      },
+      'reports': {
+        text: `You're in the Reports section. Here you can generate and view analytics on various aspects of your business.`,
+        suggestions: [
+          { id: 'performance_report', text: 'Performance reports' },
+          { id: 'time_report', text: 'Time reports' },
+          { id: 'export_data', text: 'Export data' }
         ]
       }
     };
