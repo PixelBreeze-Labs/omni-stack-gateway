@@ -323,13 +323,9 @@ private async generateResponse(
   suggestions?: { id: string; text: string }[];
   knowledgeUsed?: boolean;
   responseSource?: string;
-  metadata?: {
-    sourceId?: string;
-    knowledgeUsed?: boolean;
-    responseSource?: string;
-    [key: string]: any;
-  };
+  metadata?: Record<string, any>;
 }> {
+  // Your existing code...
   const normalizedMessage = message.toLowerCase().trim();
   const platformName = 'Staffluent';
   
@@ -343,6 +339,17 @@ private async generateResponse(
   // Check if this is a follow-up question
   const isFollowup = this.isFollowupQuestion(context);
   
+  // Determine if we should show feedback for this message
+  // Simple approach: show feedback every X messages
+  const FEEDBACK_FREQUENCY = 5; // Show feedback every 5 messages
+  
+  // Get message count from context
+  const messageCount = context?.sessionData?.messageCount || 0;
+  
+  // Determine if we should show feedback for this response
+  // Show if it's every Xth message, or if it's knowledge-based
+  let shouldShowFeedback = (messageCount % FEEDBACK_FREQUENCY === 0);
+  
   // 1. Try to find a matching query-response pair from our learning database
   const matchingPairs = await this.knowledgeBaseService.searchQueryResponses(
     normalizedMessage,
@@ -354,6 +361,9 @@ private async generateResponse(
   
   if (matchingPairs.length > 0) {
     const pair = matchingPairs[0];
+    // Always show feedback for knowledge-based responses
+    shouldShowFeedback = true;
+    
     // Replace placeholders in the response
     let response = pair.response
       .replace(/{businessName}/g, businessName)
@@ -365,9 +375,10 @@ private async generateResponse(
       responseSource: 'learned',
       knowledgeUsed: true,
       metadata: {
-        sourceId: pair._id.toString(), // Include the pair ID as sourceId
+        sourceId: pair._id.toString(),
         knowledgeUsed: true,
-        responseSource: 'learned'
+        responseSource: 'learned',
+        shouldShowFeedback
       }
     };
   }
@@ -384,6 +395,9 @@ private async generateResponse(
   );
   
   if (relevantDocs.length > 0) {
+    // Always show feedback for knowledge-based responses
+    shouldShowFeedback = true;
+    
     // Use the most relevant document
     const doc = relevantDocs[0];
     
@@ -401,11 +415,10 @@ private async generateResponse(
       responseSource: 'knowledge',
       knowledgeUsed: true,
       metadata: {
-        sourceId: doc._id.toString(), // Include the document ID as sourceId
+        sourceId: doc._id.toString(),
         knowledgeUsed: true,
         responseSource: 'knowledge',
-        documentTitle: doc.title || null,
-        documentCategories: doc.categories || []
+        shouldShowFeedback
       }
     };
   }
@@ -424,7 +437,7 @@ private async generateResponse(
   
   // 4. If no good NLP response, log this as an unrecognized query
   if (nlpResponse.confidence < 0.3) {
-    const unrecognizedQuery = await this.knowledgeBaseService.logUnrecognizedQuery(
+    await this.knowledgeBaseService.logUnrecognizedQuery(
       message,
       {
         businessType: business?.operationType || 'default',
@@ -433,20 +446,6 @@ private async generateResponse(
         context
       }
     );
-    
-    // Include the unrecognized query ID in metadata
-    return {
-      ...nlpResponse,
-      responseSource: 'nlp',
-      knowledgeUsed: false,
-      metadata: {
-        sourceId: unrecognizedQuery._id.toString(), // Include the unrecognized query ID
-        responseSource: 'nlp',
-        knowledgeUsed: false,
-        confidence: nlpResponse.confidence,
-        unrecognized: true
-      }
-    };
   }
   
   return {
@@ -456,7 +455,8 @@ private async generateResponse(
     metadata: {
       responseSource: 'nlp',
       knowledgeUsed: false,
-      confidence: nlpResponse.confidence
+      confidence: nlpResponse.confidence,
+      shouldShowFeedback
     }
   };
 }
@@ -1035,5 +1035,69 @@ private getViewSpecificResponses(
   }
 
   return viewResponses[currentView] || null;
+}
+
+/**
+ * Record feedback for a chatbot message
+ */
+async recordMessageFeedback(
+  businessId: string,
+  clientId: string,
+  messageId: string,
+  wasHelpful: boolean,
+  feedbackText: string | null = null
+): Promise<void> {
+  try {
+    // Find the message to update
+    const message = await this.chatbotMessageModel.findOne({
+      _id: messageId,
+      businessId,
+      clientId,
+      sender: 'bot' // Only allow feedback for bot messages
+    });
+    
+    if (!message) {
+      this.logger.warn(`Message with ID ${messageId} not found when recording feedback`);
+      return; // Don't throw - just log and return
+    }
+    
+    // Add feedback to the message metadata
+    const metadata = message.metadata || {};
+    metadata.feedback = {
+      wasHelpful,
+      feedbackText,
+      timestamp: new Date()
+    };
+    
+    // Update the message
+    await this.chatbotMessageModel.updateOne(
+      { _id: messageId },
+      { 
+        $set: { 
+          metadata 
+        }
+      }
+    );
+    
+    // If this message used knowledge content, update the response success rate
+    if (metadata.sourceId && (metadata.responseSource === 'knowledge' || metadata.responseSource === 'learned')) {
+      try {
+        await this.knowledgeBaseService.updateResponseSuccess(metadata.sourceId, wasHelpful);
+      } catch (error) {
+        // If the knowledge source is not found, just log it but don't fail the request
+        if (error instanceof NotFoundException) {
+          this.logger.warn(`Source with ID ${metadata.sourceId} not found when recording feedback`);
+        } else {
+          throw error;
+        }
+      }
+    }
+    
+    // Log feedback for analytics
+    this.logger.log(`Feedback received for message ${messageId}: ${wasHelpful ? 'Helpful' : 'Not helpful'}`);
+  } catch (error) {
+    this.logger.error(`Error recording message feedback: ${error.message}`, error.stack);
+    throw error;
+  }
 }
 }
