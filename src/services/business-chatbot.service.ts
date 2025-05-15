@@ -312,6 +312,7 @@ export class BusinessChatbotService {
 
   /**
  * Generate response using knowledge base and NLP
+ * Complete enhanced version
  */
 private async generateResponse(
   message: string, 
@@ -323,9 +324,14 @@ private async generateResponse(
   suggestions?: { id: string; text: string }[];
   knowledgeUsed?: boolean;
   responseSource?: string;
-  metadata?: Record<string, any>;
+  metadata?: {
+    sourceId?: string;
+    knowledgeUsed?: boolean;
+    responseSource?: string;
+    shouldShowFeedback?: boolean;
+    [key: string]: any;
+  };
 }> {
-  // Your existing code...
   const normalizedMessage = message.toLowerCase().trim();
   const platformName = 'Staffluent';
   
@@ -418,7 +424,9 @@ private async generateResponse(
         sourceId: doc._id.toString(),
         knowledgeUsed: true,
         responseSource: 'knowledge',
-        shouldShowFeedback
+        shouldShowFeedback,
+        documentTitle: doc.title || null,
+        documentCategories: doc.categories || []
       }
     };
   }
@@ -435,9 +443,14 @@ private async generateResponse(
     platformName
   );
   
+  // For conversational or high-confidence responses, show feedback more often
+  if (nlpResponse.confidence > 0.7 || normalizedMessage.length < 20) {
+    shouldShowFeedback = true;
+  }
+  
   // 4. If no good NLP response, log this as an unrecognized query
   if (nlpResponse.confidence < 0.3) {
-    await this.knowledgeBaseService.logUnrecognizedQuery(
+    const unrecognizedQuery = await this.knowledgeBaseService.logUnrecognizedQuery(
       message,
       {
         businessType: business?.operationType || 'default',
@@ -446,6 +459,23 @@ private async generateResponse(
         context
       }
     );
+    
+    // Always show feedback for unrecognized queries to help improve
+    shouldShowFeedback = true;
+    
+    return {
+      ...nlpResponse,
+      responseSource: 'nlp',
+      knowledgeUsed: false,
+      metadata: {
+        sourceId: unrecognizedQuery._id.toString(),
+        responseSource: 'nlp',
+        knowledgeUsed: false,
+        confidence: nlpResponse.confidence,
+        unrecognized: true,
+        shouldShowFeedback
+      }
+    };
   }
   
   return {
@@ -480,142 +510,421 @@ private async generateResponse(
     confidence: number;
   }> {
     // Define response templates with context awareness
-const responseRules = [
-  {
-    keywords: ['hello', 'hi', 'hey', 'greetings', 'howdy'],
-    response: {
-      text: `Hello ${userName}! I'm the ${platformName} assistant for ${businessName}. How can I help you today?`,
-      suggestions: [
-        { id: 'projects', text: 'Tell me about projects' },
-        { id: 'tasks', text: 'Task management' },
-        { id: 'timeTracking', text: 'Time tracking help' },
-        { id: 'teams', text: 'Team management' }
-      ]
+  const responseRules = [
+    {
+      keywords: ['hello', 'hi', 'hey', 'greetings', 'howdy'],
+      response: {
+        text: `Hello ${userName}! I'm the ${platformName} assistant for ${businessName}. How can I help you today?`,
+        suggestions: [
+          { id: 'projects', text: 'Tell me about projects' },
+          { id: 'tasks', text: 'Task management' },
+          { id: 'timeTracking', text: 'Time tracking help' },
+          { id: 'teams', text: 'Team management' }
+        ]
+      }
+    },
+    {
+      keywords: ['project', 'projects'],
+      response: {
+        text: `${platformName} provides ${businessName} with comprehensive project management tools. You can create projects, assign teams, track progress, and manage tasks.`,
+        suggestions: [
+          { id: 'create_project', text: 'Create a new project' },
+          { id: 'view_projects', text: 'View my projects' },
+          { id: 'project_reports', text: 'Project reports' }
+        ]
+      }
+    },
+    {
+      keywords: ['task', 'tasks', 'todo', 'assignment', 'assign'],
+      response: {
+        text: `With ${platformName}, tasks for ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
+        suggestions: [
+          { id: 'create_task', text: 'Create a task' },
+          { id: 'assign_task', text: 'Assign tasks' },
+          { id: 'track_tasks', text: 'Track task completion' }
+        ]
+      }
+    },
+    {
+      keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
+      response: {
+        text: `${platformName}'s time tracking system lets ${businessName} employees clock in/out, manage breaks, and review timesheets.`,
+        suggestions: [
+          { id: 'time_clock', text: 'Clock in/out' },
+          { id: 'breaks', text: 'Manage breaks' },
+          { id: 'timesheets', text: 'View timesheets' }
+        ]
+      }
+    },
+    {
+      keywords: ['team', 'staff', 'employee', 'member', 'personnel'],
+      response: {
+        text: `Using ${platformName}, ${businessName} can organize staff into departments and teams, assign leaders, and monitor performance.`,
+        suggestions: [
+          { id: 'view_team', text: 'View my team' },
+          { id: 'add_member', text: 'Add team member' },
+          { id: 'team_schedule', text: 'Team scheduling' }
+        ]
+      }
+    },
+    {
+      keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats', 'dashboard'],
+      response: {
+        text: `${platformName} provides ${businessName} with detailed analytics on productivity, project progress, task completion, and more.`,
+        suggestions: [
+          { id: 'performance_reports', text: 'Performance reports' },
+          { id: 'time_reports', text: 'Time & attendance reports' },
+          { id: 'export_data', text: 'Export data' }
+        ]
+      }
+    },
+    {
+      keywords: ['field', 'service', 'field service', 'location', 'site', 'remote'],
+      response: {
+        text: `${platformName}'s field service features help ${businessName} manage operations outside the office, including location tracking and service scheduling.`,
+        suggestions: [
+          { id: 'field_locations', text: 'Field locations' },
+          { id: 'service_schedule', text: 'Service scheduling' },
+          { id: 'field_reporting', text: 'Field reporting' }
+        ]
+      }
+    },
+    {
+      keywords: ['client', 'customer', 'account', 'portal'],
+      response: {
+        text: `${platformName} helps ${businessName} manage client relationships, track communications, and handle client requests.`,
+        suggestions: [
+          { id: 'add_client', text: 'Add a client' },
+          { id: 'client_portal', text: 'Client portal features' },
+          { id: 'client_invoices', text: 'Client invoicing' }
+        ]
+      }
+    },
+    {
+      keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
+      response: {
+        text: `I can help with how ${businessName} can use ${platformName} for managing projects, tracking time, organizing teams, and more. What do you need help with?`,
+        suggestions: [
+          { id: 'projects_help', text: 'Projects help' },
+          { id: 'tasks_help', text: 'Tasks help' },
+          { id: 'time_help', text: 'Time tracking help' },
+          { id: 'teams_help', text: 'Team management help' }
+        ]
+      }
+    },
+    {
+      keywords: ['auto', 'assign', 'automatic', 'assignment', 'auto-assign'],
+      response: {
+        text: `${platformName} provides ${businessName} with auto-assignment capabilities that can automatically assign tasks to the most suitable team members based on skills, workload, and availability.`,
+        suggestions: [
+          { id: 'auto_assign_setup', text: 'Set up auto-assignment' },
+          { id: 'auto_assign_trigger', text: 'Trigger auto-assignment' },
+          { id: 'pending_approvals', text: 'Pending approvals' }
+        ]
+      }
+    },
+    {
+      keywords: ['quality', 'inspection', 'compliance', 'safety', 'audit'],
+      response: {
+        text: `${platformName}'s quality control features help ${businessName} conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
+        suggestions: [
+          { id: 'create_inspection', text: 'Create inspection' },
+          { id: 'compliance_report', text: 'Compliance report' },
+          { id: 'safety_checklist', text: 'Safety checklists' }
+        ]
+      }
+    },
+    {
+      keywords: ['equipment', 'asset', 'tool', 'inventory', 'maintenance'],
+      response: {
+        text: `${platformName} includes equipment management tools for ${businessName} to track assets, schedule maintenance, and monitor usage.`,
+        suggestions: [
+          { id: 'track_equipment', text: 'Track equipment' },
+          { id: 'maintenance_schedule', text: 'Maintenance schedule' },
+          { id: 'equipment_assignment', text: 'Equipment assignment' }
+        ]
+      }
+    },
+    {
+      keywords: ['how are you', 'how\'s it going', 'how are things', 'how do you do', 'what\'s up', 'how you doing'],
+      response: {
+        text: `I'm doing well, thanks for asking! I'm here to help with any questions you have about ${platformName} for ${businessName}. How can I assist you today?`,
+        suggestions: [
+          { id: 'help', text: 'What can you help with?' },
+          { id: 'features', text: 'Show me key features' },
+          { id: 'get_started', text: 'How do I get started?' }
+        ]
+      }
+    },
+    {
+      keywords: ['who are you', 'what are you', 'what is this', 'what can you do', 'what do you do'],
+      response: {
+        text: `I'm your ${platformName} assistant for ${businessName}. I can help with questions about projects, tasks, time tracking, team management, and more. What would you like to know about?`,
+        suggestions: [
+          { id: 'features', text: 'What features do you offer?' },
+          { id: 'start', text: 'Help me get started' },
+          { id: 'support', text: 'I need support' }
+        ]
+      }
+    },
+    {
+      keywords: ['thank you', 'thanks', 'appreciate it', 'awesome', 'great', 'thank', 'thx'],
+      response: {
+        text: `You're welcome! I'm happy to help. Is there anything else you'd like to know about ${platformName}?`,
+        suggestions: [
+          { id: 'more_help', text: 'I need more help' },
+          { id: 'features', text: 'Show me features' },
+          { id: 'no_thanks', text: 'That\'s all for now' }
+        ]
+      }
+    },
+    {
+      keywords: ['what is staffluent', 'what does staffluent do', 'what\'s staffluent', 'explain staffluent', 'about staffluent'],
+      response: {
+        text: `Staffluent is a comprehensive workforce management platform that helps ${businessName} manage projects, tasks, teams, time tracking, field service operations, client relationships, and more. It's designed to streamline operations and improve productivity across your entire organization.`,
+        suggestions: [
+          { id: 'core_features', text: 'Core features' },
+          { id: 'benefits', text: 'Key benefits' },
+          { id: 'tour', text: 'Take a tour' }
+        ]
+      }
+    },
+    {
+      keywords: ['features', 'capabilities', 'what can it do', 'functionality', 'tools', 'modules'],
+      response: {
+        text: `Staffluent offers a wide range of features for ${businessName}, including: project management, task tracking, time & attendance, team management, field service operations, client management, reporting & analytics, quality control, and equipment management. Which feature would you like to learn more about?`,
+        suggestions: [
+          { id: 'projects', text: 'Project management' },
+          { id: 'time', text: 'Time tracking' },
+          { id: 'teams', text: 'Team management' },
+          { id: 'field', text: 'Field service' }
+        ]
+      }
+    },
+    {
+      keywords: ['benefits', 'advantages', 'why use', 'value', 'roi', 'return on investment'],
+      response: {
+        text: `Staffluent helps ${businessName} boost productivity, reduce administrative overhead, improve resource allocation, enhance client satisfaction, and gain better visibility into operations. Our customers typically see significant time savings and operational improvements within weeks of implementation.`,
+        suggestions: [
+          { id: 'case_studies', text: 'Success stories' },
+          { id: 'pricing', text: 'Pricing info' },
+          { id: 'demo', text: 'Request a demo' }
+        ]
+      }
+    },
+    {
+      keywords: ['get started', 'setup', 'begin', 'start', 'onboarding', 'first steps'],
+      response: {
+        text: `Getting started with Staffluent is easy for ${businessName}. You can begin by setting up your team members, creating your first project, and configuring your dashboard. Our step-by-step guides will walk you through the process, or our support team can help with onboarding.`,
+        suggestions: [
+          { id: 'setup_team', text: 'Set up my team' },
+          { id: 'first_project', text: 'Create first project' },
+          { id: 'dashboard', text: 'Configure dashboard' }
+        ]
+      }
+    },
+    {
+      keywords: ['price', 'pricing', 'cost', 'subscription', 'plan', 'payment', 'fee'],
+      response: {
+        text: `Staffluent offers flexible pricing plans tailored to organizations of different sizes. ${businessName} can choose from our Basic, Professional, or Enterprise plans with monthly or annual billing options. Would you like me to provide more details about our pricing structure?`,
+        suggestions: [
+          { id: 'basic_plan', text: 'Basic plan details' },
+          { id: 'professional_plan', text: 'Professional plan details' },
+          { id: 'enterprise_plan', text: 'Enterprise plan details' }
+        ]
+      }
+    },
+    {
+      keywords: ['support', 'help desk', 'contact', 'assistance', 'technical help'],
+      response: {
+        text: `Staffluent provides ${businessName} with comprehensive support through our help center, email support, and dedicated account managers for Enterprise customers. Our support team is available Monday through Friday, 9am-6pm ET, with extended hours for premium support customers.`,
+        suggestions: [
+          { id: 'help_center', text: 'Visit help center' },
+          { id: 'contact_support', text: 'Contact support' },
+          { id: 'premium_support', text: 'Premium support options' }
+        ]
+      }
+    },
+    {
+      keywords: ['training', 'learn', 'tutorial', 'guide', 'documentation', 'how to use'],
+      response: {
+        text: `Staffluent offers comprehensive training resources for ${businessName} including interactive tutorials, video guides, documentation, and live webinars. Our goal is to help your team become proficient with the platform as quickly as possible.`,
+        suggestions: [
+          { id: 'tutorials', text: 'Interactive tutorials' },
+          { id: 'videos', text: 'Video guides' },
+          { id: 'webinars', text: 'Upcoming webinars' }
+        ]
+      }
+    },
+    {
+      keywords: ['mobile', 'app', 'phone', 'tablet', 'ios', 'android', 'smartphone'],
+      response: {
+        text: `Yes, Staffluent offers mobile apps for both iOS and Android devices. ${businessName} team members can manage projects, track time, update tasks, and access reports on the go. The mobile app includes offline capabilities for field workers with limited connectivity.`,
+        suggestions: [
+          { id: 'ios_app', text: 'iOS app features' },
+          { id: 'android_app', text: 'Android app features' },
+          { id: 'offline_mode', text: 'Offline capabilities' }
+        ]
+      }
+    },
+    {
+      keywords: ['integration', 'connect', 'sync', 'api', 'third party', 'other software'],
+      response: {
+        text: `Staffluent integrates with many popular business tools that ${businessName} might be using, including Slack, Microsoft 365, Google Workspace, QuickBooks, and more. We also offer an API for custom integrations with your existing systems.`,
+        suggestions: [
+          { id: 'integration_list', text: 'View all integrations' },
+          { id: 'api_docs', text: 'API documentation' },
+          { id: 'custom_integration', text: 'Request custom integration' }
+        ]
+      }
+    },
+    {
+      keywords: ['security', 'privacy', 'data protection', 'encryption', 'compliance', 'gdpr', 'hipaa'],
+      response: {
+        text: `Staffluent takes security seriously. ${businessName}'s data is protected with enterprise-grade encryption, regular security audits, and strict access controls. We're compliant with industry standards including GDPR and offer specialized compliance features for regulated industries.`,
+        suggestions: [
+          { id: 'security_features', text: 'Security features' },
+          { id: 'compliance', text: 'Compliance certifications' },
+          { id: 'privacy_policy', text: 'Privacy policy' }
+        ]
+      }
+    },
+    {
+      keywords: ['hello', 'hi', 'hey', 'greetings', 'howdy'],
+      response: {
+        text: `Hello ${userName}! I'm the ${platformName} assistant for ${businessName}. How can I help you today?`,
+        suggestions: [
+          { id: 'projects', text: 'Tell me about projects' },
+          { id: 'tasks', text: 'Task management' },
+          { id: 'timeTracking', text: 'Time tracking help' },
+          { id: 'teams', text: 'Team management' }
+        ]
+      }
+    },
+    {
+      keywords: ['project', 'projects'],
+      response: {
+        text: `${platformName} provides ${businessName} with comprehensive project management tools. You can create projects, assign teams, track progress, and manage tasks.`,
+        suggestions: [
+          { id: 'create_project', text: 'Create a new project' },
+          { id: 'view_projects', text: 'View my projects' },
+          { id: 'project_reports', text: 'Project reports' }
+        ]
+      }
+    },
+    {
+      keywords: ['task', 'tasks', 'todo', 'assignment', 'assign'],
+      response: {
+        text: `With ${platformName}, tasks for ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
+        suggestions: [
+          { id: 'create_task', text: 'Create a task' },
+          { id: 'assign_task', text: 'Assign tasks' },
+          { id: 'track_tasks', text: 'Track task completion' }
+        ]
+      }
+    },
+    {
+      keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
+      response: {
+        text: `${platformName}'s time tracking system lets ${businessName} employees clock in/out, manage breaks, and review timesheets.`,
+        suggestions: [
+          { id: 'time_clock', text: 'Clock in/out' },
+          { id: 'breaks', text: 'Manage breaks' },
+          { id: 'timesheets', text: 'View timesheets' }
+        ]
+      }
+    },
+    {
+      keywords: ['team', 'staff', 'employee', 'member', 'personnel'],
+      response: {
+        text: `Using ${platformName}, ${businessName} can organize staff into departments and teams, assign leaders, and monitor performance.`,
+        suggestions: [
+          { id: 'view_team', text: 'View my team' },
+          { id: 'add_member', text: 'Add team member' },
+          { id: 'team_schedule', text: 'Team scheduling' }
+        ]
+      }
+    },
+    {
+      keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats', 'dashboard'],
+      response: {
+        text: `${platformName} provides ${businessName} with detailed analytics on productivity, project progress, task completion, and more.`,
+        suggestions: [
+          { id: 'performance_reports', text: 'Performance reports' },
+          { id: 'time_reports', text: 'Time & attendance reports' },
+          { id: 'export_data', text: 'Export data' }
+        ]
+      }
+    },
+    {
+      keywords: ['field', 'service', 'field service', 'location', 'site', 'remote'],
+      response: {
+        text: `${platformName}'s field service features help ${businessName} manage operations outside the office, including location tracking and service scheduling.`,
+        suggestions: [
+          { id: 'field_locations', text: 'Field locations' },
+          { id: 'service_schedule', text: 'Service scheduling' },
+          { id: 'field_reporting', text: 'Field reporting' }
+        ]
+      }
+    },
+    {
+      keywords: ['client', 'customer', 'account', 'portal'],
+      response: {
+        text: `${platformName} helps ${businessName} manage client relationships, track communications, and handle client requests.`,
+        suggestions: [
+          { id: 'add_client', text: 'Add a client' },
+          { id: 'client_portal', text: 'Client portal features' },
+          { id: 'client_invoices', text: 'Client invoicing' }
+        ]
+      }
+    },
+    {
+      keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
+      response: {
+        text: `I can help with how ${businessName} can use ${platformName} for managing projects, tracking time, organizing teams, and more. What do you need help with?`,
+        suggestions: [
+          { id: 'projects_help', text: 'Projects help' },
+          { id: 'tasks_help', text: 'Tasks help' },
+          { id: 'time_help', text: 'Time tracking help' },
+          { id: 'teams_help', text: 'Team management help' }
+        ]
+      }
+    },
+    {
+      keywords: ['auto', 'assign', 'automatic', 'assignment', 'auto-assign'],
+      response: {
+        text: `${platformName} provides ${businessName} with auto-assignment capabilities that can automatically assign tasks to the most suitable team members based on skills, workload, and availability.`,
+        suggestions: [
+          { id: 'auto_assign_setup', text: 'Set up auto-assignment' },
+          { id: 'auto_assign_trigger', text: 'Trigger auto-assignment' },
+          { id: 'pending_approvals', text: 'Pending approvals' }
+        ]
+      }
+    },
+    {
+      keywords: ['quality', 'inspection', 'compliance', 'safety', 'audit'],
+      response: {
+        text: `${platformName}'s quality control features help ${businessName} conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
+        suggestions: [
+          { id: 'create_inspection', text: 'Create inspection' },
+          { id: 'compliance_report', text: 'Compliance report' },
+          { id: 'safety_checklist', text: 'Safety checklists' }
+        ]
+      }
+    },
+    {
+      keywords: ['equipment', 'asset', 'tool', 'inventory', 'maintenance'],
+      response: {
+        text: `${platformName} includes equipment management tools for ${businessName} to track assets, schedule maintenance, and monitor usage.`,
+        suggestions: [
+          { id: 'track_equipment', text: 'Track equipment' },
+          { id: 'maintenance_schedule', text: 'Maintenance schedule' },
+          { id: 'equipment_assignment', text: 'Equipment assignment' }
+        ]
+      }
     }
-  },
-  {
-    keywords: ['project', 'projects'],
-    response: {
-      text: `${platformName} provides ${businessName} with comprehensive project management tools. You can create projects, assign teams, track progress, and manage tasks.`,
-      suggestions: [
-        { id: 'create_project', text: 'Create a new project' },
-        { id: 'view_projects', text: 'View my projects' },
-        { id: 'project_reports', text: 'Project reports' }
-      ]
-    }
-  },
-  {
-    keywords: ['task', 'tasks', 'todo', 'assignment', 'assign'],
-    response: {
-      text: `With ${platformName}, tasks for ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
-      suggestions: [
-        { id: 'create_task', text: 'Create a task' },
-        { id: 'assign_task', text: 'Assign tasks' },
-        { id: 'track_tasks', text: 'Track task completion' }
-      ]
-    }
-  },
-  {
-    keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
-    response: {
-      text: `${platformName}'s time tracking system lets ${businessName} employees clock in/out, manage breaks, and review timesheets.`,
-      suggestions: [
-        { id: 'time_clock', text: 'Clock in/out' },
-        { id: 'breaks', text: 'Manage breaks' },
-        { id: 'timesheets', text: 'View timesheets' }
-      ]
-    }
-  },
-  {
-    keywords: ['team', 'staff', 'employee', 'member', 'personnel'],
-    response: {
-      text: `Using ${platformName}, ${businessName} can organize staff into departments and teams, assign leaders, and monitor performance.`,
-      suggestions: [
-        { id: 'view_team', text: 'View my team' },
-        { id: 'add_member', text: 'Add team member' },
-        { id: 'team_schedule', text: 'Team scheduling' }
-      ]
-    }
-  },
-  {
-    keywords: ['report', 'analytics', 'metrics', 'performance', 'statistics', 'stats', 'dashboard'],
-    response: {
-      text: `${platformName} provides ${businessName} with detailed analytics on productivity, project progress, task completion, and more.`,
-      suggestions: [
-        { id: 'performance_reports', text: 'Performance reports' },
-        { id: 'time_reports', text: 'Time & attendance reports' },
-        { id: 'export_data', text: 'Export data' }
-      ]
-    }
-  },
-  {
-    keywords: ['field', 'service', 'field service', 'location', 'site', 'remote'],
-    response: {
-      text: `${platformName}'s field service features help ${businessName} manage operations outside the office, including location tracking and service scheduling.`,
-      suggestions: [
-        { id: 'field_locations', text: 'Field locations' },
-        { id: 'service_schedule', text: 'Service scheduling' },
-        { id: 'field_reporting', text: 'Field reporting' }
-      ]
-    }
-  },
-  {
-    keywords: ['client', 'customer', 'account', 'portal'],
-    response: {
-      text: `${platformName} helps ${businessName} manage client relationships, track communications, and handle client requests.`,
-      suggestions: [
-        { id: 'add_client', text: 'Add a client' },
-        { id: 'client_portal', text: 'Client portal features' },
-        { id: 'client_invoices', text: 'Client invoicing' }
-      ]
-    }
-  },
-  {
-    keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
-    response: {
-      text: `I can help with how ${businessName} can use ${platformName} for managing projects, tracking time, organizing teams, and more. What do you need help with?`,
-      suggestions: [
-        { id: 'projects_help', text: 'Projects help' },
-        { id: 'tasks_help', text: 'Tasks help' },
-        { id: 'time_help', text: 'Time tracking help' },
-        { id: 'teams_help', text: 'Team management help' }
-      ]
-    }
-  },
-  {
-    keywords: ['auto', 'assign', 'automatic', 'assignment', 'auto-assign'],
-    response: {
-      text: `${platformName} provides ${businessName} with auto-assignment capabilities that can automatically assign tasks to the most suitable team members based on skills, workload, and availability.`,
-      suggestions: [
-        { id: 'auto_assign_setup', text: 'Set up auto-assignment' },
-        { id: 'auto_assign_trigger', text: 'Trigger auto-assignment' },
-        { id: 'pending_approvals', text: 'Pending approvals' }
-      ]
-    }
-  },
-  {
-    keywords: ['quality', 'inspection', 'compliance', 'safety', 'audit'],
-    response: {
-      text: `${platformName}'s quality control features help ${businessName} conduct inspections, ensure compliance with standards, and maintain safety protocols.`,
-      suggestions: [
-        { id: 'create_inspection', text: 'Create inspection' },
-        { id: 'compliance_report', text: 'Compliance report' },
-        { id: 'safety_checklist', text: 'Safety checklists' }
-      ]
-    }
-  },
-  {
-    keywords: ['equipment', 'asset', 'tool', 'inventory', 'maintenance'],
-    response: {
-      text: `${platformName} includes equipment management tools for ${businessName} to track assets, schedule maintenance, and monitor usage.`,
-      suggestions: [
-        { id: 'track_equipment', text: 'Track equipment' },
-        { id: 'maintenance_schedule', text: 'Maintenance schedule' },
-        { id: 'equipment_assignment', text: 'Equipment assignment' }
-      ]
-    }
-  }
-];
+    ];
+
     if (context?.currentView) {
       const viewResponses = this.getViewSpecificResponses(
         context.currentView, 
@@ -690,65 +999,161 @@ const responseRules = [
     };
   }
 
-  /**
-   * Check if this is a follow-up question based on conversation history
-   */
-  private isFollowupQuestion(context: Record<string, any>): boolean {
-    if (!context?.conversationHistory || context.conversationHistory.length < 2) {
-      return false;
-    }
-
-    // Check if there's a recent exchange in the last few messages
-    const recentMessages = context.conversationHistory.slice(-3);
-    const hasRecentBotMessage = recentMessages.some(msg => msg.sender === 'bot');
-    const hasRecentUserMessage = recentMessages.some(msg => msg.sender === 'user');
-
-    return hasRecentBotMessage && hasRecentUserMessage;
-  }
-
-  /**
- * Format knowledge document content into a conversational response
+  
+/**
+ * Check if this is a follow-up question based on conversation history
+ * Enhanced to detect questions without explicit context
  */
-private formatKnowledgeResponse(
-  content: string,
-  businessName: string,
-  userName: string,
-  platformName: string
-): string {
-  // Replace placeholders
-  let response = content
-    .replace(/{businessName}/g, businessName)
-    .replace(/{userName}/g, userName)
-    .replace(/{platformName}/g, platformName);
+private isFollowupQuestion(context: Record<string, any>): boolean {
+  if (!context?.conversationHistory || context.conversationHistory.length < 2) {
+    return false;
+  }
+
+  // Check if there's a recent exchange in the last few messages
+  const recentMessages = context.conversationHistory.slice(-3);
+  const hasRecentBotMessage = recentMessages.some(msg => msg.sender === 'bot');
+  const hasRecentUserMessage = recentMessages.some(msg => msg.sender === 'user');
+
+  // Basic check for recent exchanges
+  const hasRecentExchange = hasRecentBotMessage && hasRecentUserMessage;
   
-  // If content is too long, summarize it
-  if (response.length > 500) {
-    const sentences = response.split(/[.!?]+/);
+  // Enhanced check for contextual/short queries that likely depend on previous context
+  const latestUserMessage = recentMessages.find(msg => msg.sender === 'user');
+  
+  if (latestUserMessage) {
+    const message = latestUserMessage.content.toLowerCase().trim();
     
-    if (sentences.length > 5) {
-      // Use first 2-3 sentences for a brief summary
-      response = sentences.slice(0, 3).join('. ') + '.';
-      
-      // Add a concluding sentence
-      response += " I hope this helps! Let me know if you'd like more details.";
+    // Check for very short messages that are typically follow-ups
+    if (message.split(' ').length <= 3) {
+      return true;
+    }
+    
+    // Check for queries that typically reference previous context
+    const followupIndicators = [
+      'why', 'how', 'what about', 'and', 'but', 'then', 'so',
+      'can you', 'could you', 'would', 'that', 'those', 'it', 'they',
+      'this one', 'these', 'the same', 'instead'
+    ];
+    
+    for (const indicator of followupIndicators) {
+      if (message.startsWith(indicator) || message.includes(` ${indicator} `)) {
+        return true;
+      }
+    }
+    
+    // Check for messages without a clear subject that likely refer to previous messages
+    if (!message.includes('staffluent') && 
+        !message.includes('project') && 
+        !message.includes('task') && 
+        !message.includes('team') && 
+        !message.includes('time') && 
+        !message.includes('track')) {
+      // The message doesn't mention specific features or the product name
+      // It's likely referring to something from previous messages
+      return true;
     }
   }
-  
-  return response;
+
+  return hasRecentExchange;
+}
+
+/**
+* Format knowledge document content into a conversational response
+* Enhanced for readability and engagement
+*/
+private formatKnowledgeResponse(
+ content: string,
+ businessName: string,
+ userName: string,
+ platformName: string
+): string {
+ // Replace placeholders
+ let response = content
+   .replace(/{businessName}/g, businessName)
+   .replace(/{userName}/g, userName)
+   .replace(/{platformName}/g, platformName);
+ 
+ // If content is too long, summarize it
+ if (response.length > 500) {
+   const sentences = response.split(/[.!?]+/).filter(s => s.trim().length > 0);
+   
+   if (sentences.length > 5) {
+     // Use first 2-3 sentences for a brief summary
+     response = sentences.slice(0, 3).join('. ') + '.';
+     
+     // Add a concluding sentence
+     response += " I hope this helps! Let me know if you'd like more details.";
+   }
+ }
+ 
+ // Add a personal touch for better engagement
+ if (!response.includes(userName) && !response.includes('you')) {
+   response = `${userName}, ${response.charAt(0).toLowerCase() + response.slice(1)}`;
+ }
+ 
+ // Improve readability for technical content
+ if (response.includes('API') || response.includes('config') || response.includes('settings')) {
+   response += " Would you like me to explain any specific part in more detail?";
+ }
+ 
+ // Add contextual suggestions based on content
+ if (response.includes('project') && !response.includes('create a project')) {
+   response += " You can easily create a new project or view existing ones from your dashboard.";
+ } else if (response.includes('task') && !response.includes('assign tasks')) {
+   response += " Tasks can be assigned to team members with just a few clicks.";
+ } else if (response.includes('report') && !response.includes('generate reports')) {
+   response += " Reports can be generated and exported in various formats.";
+ }
+ 
+ return response;
 }
 
 /**
  * Extract suggestions from a knowledge document
+ * Enhanced to provide more relevant and contextual suggestions
  */
 private getSuggestionsFromDocument(doc: any): { id: string; text: string }[] {
   // Generate suggestions based on document content and keywords
   const suggestions = [];
   
-  // Add a "Tell me more" suggestion
-  suggestions.push({
-    id: 'more_info',
-    text: 'Tell me more about this'
-  });
+  // Analyze document content to identify action-oriented suggestions
+  const content = doc.content || '';
+  
+  // Look for specific actions in the content
+  if (content.includes('create') || content.includes('add') || content.includes('set up')) {
+    suggestions.push({
+      id: 'action_create',
+      text: content.includes('project') ? 'Create a project' : 
+            content.includes('task') ? 'Create a task' :
+            content.includes('team') ? 'Add team member' : 'Create new'
+    });
+  }
+  
+  if (content.includes('view') || content.includes('see') || content.includes('check')) {
+    suggestions.push({
+      id: 'action_view',
+      text: content.includes('project') ? 'View projects' : 
+            content.includes('task') ? 'View tasks' :
+            content.includes('team') ? 'View team' : 
+            content.includes('report') ? 'View reports' : 'View dashboard'
+    });
+  }
+  
+  if (content.includes('export') || content.includes('download') || content.includes('share')) {
+    suggestions.push({
+      id: 'action_export',
+      text: content.includes('report') ? 'Export report' : 
+            content.includes('data') ? 'Export data' : 'Share'
+    });
+  }
+  
+  // Add a "Tell me more" suggestion if we don't have any action suggestions yet
+  if (suggestions.length === 0) {
+    suggestions.push({
+      id: 'more_info',
+      text: 'Tell me more about this'
+    });
+  }
   
   // Add category-based suggestions
   if (doc.categories && doc.categories.length > 0) {
@@ -758,16 +1163,30 @@ private getSuggestionsFromDocument(doc: any): { id: string; text: string }[] {
       'time_tracking': 'About time tracking',
       'team_management': 'About team management',
       'client_management': 'About client management',
-      'reporting': 'About reporting features'
+      'reporting': 'About reporting features',
+      'field_service': 'About field service',
+      'equipment': 'About equipment management',
+      'quality_control': 'About quality control'
     };
     
-    doc.categories.forEach(category => {
-      if (categoryMap[category]) {
+    for (const category of doc.categories) {
+      if (categoryMap[category] && suggestions.length < 3) {
         suggestions.push({
           id: `category_${category}`,
           text: categoryMap[category]
         });
       }
+    }
+  }
+  
+  // Add help/tutorial suggestion
+  if (suggestions.length < 4) {
+    suggestions.push({
+      id: 'help_tutorial',
+      text: content.includes('project') ? 'Project tutorials' : 
+            content.includes('task') ? 'Task tutorials' :
+            content.includes('team') ? 'Team tutorials' : 
+            content.includes('time') ? 'Time tracking help' : 'View tutorials'
     });
   }
   
@@ -872,64 +1291,137 @@ private checkForSpecificQuestions(message: string, businessName: string = 'your 
 }
 
   /**
-   * Extract key terms from message for better matching
-   */
-  private extractKeyTerms(message: string): string[] {
-    // Remove common words and punctuation
-    const stopWords = ['a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 
-                       'and', 'or', 'but', 'if', 'then', 'else', 'when', 'where', 'why', 'how', 
-                       'all', 'any', 'both', 'each', 'few', 'more', 'most', 'some', 'such', 
-                       'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 
-                       'can', 'will', 'just', 'should', 'now', 'about', 'what', 'which'];
-    
-    const words = message.toLowerCase()
-      .replace(/[^\w\s]/g, '') // Remove punctuation
-      .split(/\s+/) // Split by whitespace
-      .filter(word => word.length > 2 && !stopWords.includes(word)); // Remove stop words and short words
-    
-    return [...new Set(words)]; // Remove duplicates
-  }
+ * Extract key terms from message for better matching
+ * Enhanced for conversational queries
+ */
+private extractKeyTerms(message: string): string[] {
+  // Remove common words and punctuation, but keep important conversational terms
+  const stopWords = new Set([
+    'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 
+    'and', 'or', 'but', 'if', 'then', 'else', 'when', 'where', 'why',  
+    'all', 'any', 'both', 'each', 'few', 'more', 'most', 'some', 'such', 
+    'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 
+    'can', 'will', 'just', 'should', 'now', 'about', 'which',
+    'i', 'me', 'my', 'mine', 'myself', 'we', 'our', 'ours', 'ourselves',
+    'you', 'your', 'yours', 'yourself', 'yourselves', 'it', 'its', 'itself',
+    'for', 'of', 'with', 'by', 'at', 'from', 'to', 'in', 'on'
+  ]);
+  
+  // Preserve important conversational keywords
+  const preserveWords = new Set([
+    'how', 'what', 'who', 'help', 'thanks', 'thank', 'hi', 'hello', 'hey'
+  ]);
+  
+  // Modified stopwords filtering to keep conversational terms
+  const words = message.toLowerCase()
+    .replace(/[^\w\s]/g, '') // Remove punctuation
+    .split(/\s+/) // Split by whitespace
+    .filter(word => {
+      // Keep the word if:
+      // 1. It's in our preserveWords list, OR
+      // 2. It's longer than 2 characters AND not in stopWords
+      return preserveWords.has(word) || (word.length > 2 && !stopWords.has(word));
+    }); 
 
-  /**
-   * Calculate relevance score between message terms and rule keywords
-   */
-  private calculateRelevanceScore(terms: string[], keywords: string[]): number {
-    if (!terms.length || !keywords.length) return 0;
-    
-    let matches = 0;
-    const expandedKeywords = keywords.flatMap(keyword => 
-      keyword.includes(' ') ? [keyword, ...keyword.split(' ')] : [keyword]
-    );
-    
-    // Count matching terms
-    for (const term of terms) {
-      if (expandedKeywords.some(keyword => keyword.includes(term) || term.includes(keyword))) {
-        matches++;
-      }
+  // Also check for common conversational phrases and add them as terms
+  const phrases = [
+    'how are you', 'what is', 'what are', 'who is', 'who are',
+    'can you', 'do you', 'tell me about', 'help me',
+    'what can', 'what does', 'how do', 'how can'
+  ];
+
+  const normalizedMessage = message.toLowerCase();
+  const phraseMatches = phrases.filter(phrase => normalizedMessage.includes(phrase));
+  
+  // Add any matched phrases to our terms
+  const allTerms = [...words, ...phraseMatches];
+  
+  // Return unique terms
+  return [...new Set(allTerms)];
+}
+
+ /**
+ * Calculate relevance score between message terms and rule keywords
+ * Enhanced version for better conversational matching
+ */
+private calculateRelevanceScore(terms: string[], keywords: string[]): number {
+  if (!terms.length || !keywords.length) return 0;
+  
+  // Join terms to handle multi-word conversational phrases
+  const fullMessage = terms.join(' ');
+  
+  // Check for direct phrase matches first (high priority)
+  for (const keyword of keywords) {
+    // Exact phrase match gives very high score
+    if (fullMessage === keyword) {
+      return 1.0; // Perfect match
     }
     
-    // Exact phrase matching (higher score)
-    for (const keyword of keywords) {
-      if (keyword.includes(' ')) {
-        const words = keyword.split(' ');
-        let allWordsMatch = true;
-        
-        for (const word of words) {
-          if (!terms.includes(word)) {
-            allWordsMatch = false;
-            break;
-          }
-        }
-        
-        if (allWordsMatch) {
-          matches += words.length; // Bonus for multi-word phrases
-        }
-      }
+    // Check if the keyword is a phrase that is contained entirely in the message
+    if (keyword.includes(' ') && fullMessage.includes(keyword)) {
+      return 0.9; // Very good match
     }
-    
-    // Calculate score based on term coverage and keyword relevance
-    return matches / (terms.length + expandedKeywords.length / 2);
   }
+  
+  // Handle very short queries better (like "hi", "help")
+  if (terms.length === 1) {
+    for (const keyword of keywords) {
+      if (terms[0] === keyword) {
+        return 1.0; // Perfect match for single term
+      }
+    }
+  }
+  
+  // Expand keywords to include both phrases and individual words
+  const expandedKeywords = keywords.flatMap(keyword => 
+    keyword.includes(' ') ? [keyword, ...keyword.split(' ')] : [keyword]
+  );
+  
+  let matches = 0;
+  
+  // Count matching terms with proper weighting
+  for (const term of terms) {
+    for (const keyword of expandedKeywords) {
+      // Exact word match
+      if (term === keyword) {
+        matches += 1.0;
+        break;
+      }
+      // Partial word match - beginning of word
+      else if (keyword.startsWith(term) || term.startsWith(keyword)) {
+        matches += 0.8;
+        break;
+      }
+      // Contains match
+      else if (keyword.includes(term) || term.includes(keyword)) {
+        matches += 0.5;
+        break;
+      }
+    }
+  }
+  
+  // Additional boost for short conversational queries (they tend to need more help matching)
+  const shortQueryBoost = terms.length <= 3 ? 0.2 : 0;
+  
+  // Special case for conversational queries
+  const conversationalQueries = [
+    'how are you', 'how is it going', 'whats up', 'what is staffluent', 
+    'what do you do', 'who are you', 'what can you do', 'what is this',
+    'help me', 'i need help', 'can you help', 'tell me about'
+  ];
+  
+  let conversationalBoost = 0;
+  for (const query of conversationalQueries) {
+    if (fullMessage.includes(query)) {
+      conversationalBoost = 0.3;
+      break;
+    }
+  }
+  
+  // Calculate weighted score
+  const baseScore = matches / (terms.length + expandedKeywords.length / 3);
+  return Math.min(1.0, baseScore + shortQueryBoost + conversationalBoost);
+}
 
   /**
    /**
