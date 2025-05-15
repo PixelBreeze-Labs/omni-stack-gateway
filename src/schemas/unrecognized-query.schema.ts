@@ -1,9 +1,11 @@
-// src/schemas/unrecognized-query.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class UnrecognizedQuery extends Document {
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: true })
+  clientId: string;
+
   @Prop({ type: String })
   businessType: string;
   
@@ -44,7 +46,9 @@ export class UnrecognizedQuery extends Document {
 export const UnrecognizedQuerySchema = SchemaFactory.createForClass(UnrecognizedQuery);
 
 // Add indexes for efficient queries
+UnrecognizedQuerySchema.index({ clientId: 1 });
 UnrecognizedQuerySchema.index({ businessType: 1, message: 1 });
 UnrecognizedQuerySchema.index({ status: 1 });
 UnrecognizedQuerySchema.index({ frequency: -1 });
 UnrecognizedQuerySchema.index({ message: 'text' });
+UnrecognizedQuerySchema.index({ clientId: 1, status: 1 }); // For efficiently querying a client's pending queries
