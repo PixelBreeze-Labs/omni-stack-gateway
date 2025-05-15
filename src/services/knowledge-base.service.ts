@@ -579,4 +579,225 @@ async logUnrecognizedQuery(
       limit
     };
   }
+
+/**
+ * Get a query-response pair by ID with client verification
+ */
+async getQueryResponsePair(
+    id: string,
+    clientId: string
+  ): Promise<QueryResponsePair> {
+    const pair = await this.queryResponsePairModel.findOne({ 
+      _id: id, 
+      clientId 
+    });
+    
+    if (!pair) {
+      throw new NotFoundException(`Query-response pair with ID ${id} not found or does not belong to this client`);
+    }
+    
+    return pair;
+  }
+  
+  /**
+   * List query-response pairs with pagination and filtering
+   */
+  async listQueryResponsePairs(
+    options: {
+      clientId: string;
+      page?: number;
+      limit?: number;
+      category?: string;
+      search?: string;
+      sortBy?: string;
+      sortDirection?: 'asc' | 'desc';
+    }
+  ): Promise<{
+    items: QueryResponsePair[];
+    total: number;
+    pages: number;
+    page: number;
+    limit: number;
+  }> {
+    const {
+      clientId,
+      page = 1,
+      limit = 10,
+      category,
+      search,
+      sortBy = 'createdAt',
+      sortDirection = 'desc'
+    } = options;
+    
+    const skip = (page - 1) * limit;
+    
+    // Build query filter
+    const filter: any = {
+      clientId,
+      active: true
+    };
+    
+    // Add category filter if provided
+    if (category) {
+      filter.category = category;
+    }
+    
+    // Add search filter if provided
+    if (search) {
+      filter.$or = [
+        { query: { $regex: search, $options: 'i' } },
+        { response: { $regex: search, $options: 'i' } },
+        { keywords: { $in: [search] } }
+      ];
+    }
+    
+    // Determine sort order
+    const sort: any = {};
+    sort[sortBy] = sortDirection === 'asc' ? 1 : -1;
+    
+    // Get total count for pagination
+    const total = await this.queryResponsePairModel.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit);
+    
+    // Get paginated results
+    const pairs = await this.queryResponsePairModel
+      .find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .exec();
+    
+    return {
+      items: pairs,
+      total,
+      pages: totalPages,
+      page,
+      limit
+    };
+  }
+  
+  /**
+   * Update a query-response pair with client verification
+   */
+  async updateQueryResponsePair(
+    id: string,
+    clientId: string,
+    updates: {
+      query?: string;
+      response?: string;
+      category?: string;
+      keywords?: string[];
+      active?: boolean;
+    }
+  ): Promise<QueryResponsePair> {
+    // First verify ownership
+    const existing = await this.queryResponsePairModel.findOne({ _id: id, clientId });
+    
+    if (!existing) {
+      throw new NotFoundException(`Query-response pair with ID ${id} not found or does not belong to this client`);
+    }
+    
+    // Extract keywords from query if not provided but query is updated
+    if (updates.query && (!updates.keywords || updates.keywords.length === 0)) {
+      updates.keywords = this.extractKeywords(updates.query);
+    }
+    
+    // Update the pair
+    const updated = await this.queryResponsePairModel.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true }
+    );
+    
+    return updated;
+  }
+  
+  /**
+   * Get feedback statistics for responses
+   */
+  async getResponseStatistics(
+    clientId: string,
+    timeframe: 'day' | 'week' | 'month' | 'year' = 'month'
+  ): Promise<{
+    totalResponses: number;
+    helpfulResponses: number;
+    helpfulPercentage: number;
+    responsesByCategory: { category: string; count: number; helpfulCount: number; helpfulPercentage: number }[];
+    topPerformingResponses: { id: string; query: string; successRate: number; useCount: number }[];
+  }> {
+    // Determine date range based on timeframe
+    const now = new Date();
+    let startDate = new Date();
+    
+    switch (timeframe) {
+      case 'day':
+        startDate.setDate(now.getDate() - 1);
+        break;
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+    }
+    
+    // Get all active pairs for this client within timeframe
+    const pairs = await this.queryResponsePairModel.find({
+      clientId,
+      active: true,
+      updatedAt: { $gte: startDate }
+    }).exec();
+    
+    // Calculate statistics
+    const totalResponses = pairs.length;
+    const helpfulResponses = pairs.filter(p => p.successRate >= 50).length;
+    const helpfulPercentage = totalResponses > 0 ? (helpfulResponses / totalResponses) * 100 : 0;
+    
+    // Get responses by category
+    const categoryMap = new Map<string, { count: number; helpfulCount: number }>();
+    
+    pairs.forEach(pair => {
+      const category = pair.category || 'general';
+      if (!categoryMap.has(category)) {
+        categoryMap.set(category, { count: 0, helpfulCount: 0 });
+      }
+      
+      const data = categoryMap.get(category);
+      data.count += 1;
+      
+      if (pair.successRate >= 50) {
+        data.helpfulCount += 1;
+      }
+    });
+    
+    const responsesByCategory = Array.from(categoryMap.entries()).map(([category, data]) => ({
+      category,
+      count: data.count,
+      helpfulCount: data.helpfulCount,
+      helpfulPercentage: data.count > 0 ? (data.helpfulCount / data.count) * 100 : 0
+    }));
+    
+    // Get top performing responses
+    const topPerformingResponses = [...pairs]
+      .filter(pair => pair.useCount > 0) // Only include responses that have been used
+      .sort((a, b) => b.successRate - a.successRate) // Sort by success rate descending
+      .slice(0, 5) // Get top 5
+      .map(pair => ({
+        id: pair._id.toString(),
+        query: pair.query,
+        successRate: pair.successRate,
+        useCount: pair.useCount
+      }));
+    
+    return {
+      totalResponses,
+      helpfulResponses,
+      helpfulPercentage,
+      responsesByCategory,
+      topPerformingResponses
+    };
+  }
 }

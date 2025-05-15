@@ -329,4 +329,126 @@ export class KnowledgeBaseController {
       throw new InternalServerErrorException('Failed to record feedback');
     }
   }
+
+  // *** ADDED NEW ENDPOINTS BELOW ***
+
+  @Get('query-responses/statistics')
+  @ApiOperation({ summary: 'Get feedback statistics for responses' })
+  @ApiQuery({ 
+    name: 'timeframe', 
+    required: false, 
+    description: 'Timeframe (day, week, month, year)',
+    enum: ['day', 'week', 'month', 'year']
+  })
+  @ApiResponse({ status: 200, description: 'Returns statistics on response feedback' })
+  async getResponseStatistics(
+    @Req() req: Request & { client: Client },
+    @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'year' = 'month'
+  ) {
+    try {
+      // Pass clientId to restrict data to this client
+      return this.knowledgeBaseService.getResponseStatistics(
+        req.client.id,
+        timeframe
+      );
+    } catch (error) {
+      this.logger.error(`Error getting response statistics: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to get response statistics');
+    }
+  }
+
+  @Get('query-responses')
+  @ApiOperation({ summary: 'List query-response pairs' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Limit results' })
+  @ApiQuery({ name: 'category', required: false, description: 'Filter by category' })
+  @ApiQuery({ name: 'search', required: false, description: 'Search in query and response content' })
+  @ApiQuery({ name: 'sortBy', required: false, description: 'Field to sort by (createdAt, useCount, successRate)' })
+  @ApiQuery({ name: 'sortDirection', required: false, description: 'Sort direction (asc, desc)' })
+  @ApiResponse({ status: 200, description: 'Returns query-response pairs' })
+  async listQueryResponsePairs(
+    @Req() req: Request & { client: Client },
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('category') category?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDirection') sortDirection?: 'asc' | 'desc'
+  ) {
+    try {
+      // Pass clientId to restrict results to this client
+      return this.knowledgeBaseService.listQueryResponsePairs({
+        clientId: req.client.id,
+        page,
+        limit,
+        category,
+        search,
+        sortBy,
+        sortDirection
+      });
+    } catch (error) {
+      this.logger.error(`Error listing query-response pairs: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to list query-response pairs');
+    }
+  }
+
+  @Get('query-responses/:id')
+  @ApiOperation({ summary: 'Get query-response pair by ID' })
+  @ApiParam({ name: 'id', description: 'Pair ID' })
+  @ApiResponse({ status: 200, description: 'Returns query-response pair' })
+  @ApiResponse({ status: 404, description: 'Pair not found' })
+  async getQueryResponsePair(
+    @Param('id') id: string,
+    @Req() req: Request & { client: Client }
+  ) {
+    try {
+      // Include clientId check for security
+      return this.knowledgeBaseService.getQueryResponsePair(id, req.client.id);
+    } catch (error) {
+      this.logger.error(`Error getting query-response pair: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to get query-response pair');
+    }
+  }
+
+  @Put('query-responses/:id')
+  @ApiOperation({ summary: 'Update a query-response pair' })
+  @ApiParam({ name: 'id', description: 'Pair ID' })
+  @ApiBody({
+    description: 'Update data',
+    schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        response: { type: 'string' },
+        category: { type: 'string' },
+        keywords: { type: 'array', items: { type: 'string' } },
+        active: { type: 'boolean' }
+      }
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Pair updated successfully' })
+  @ApiResponse({ status: 404, description: 'Pair not found' })
+  async updateQueryResponsePair(
+    @Param('id') id: string,
+    @Body() updates: {
+      query?: string;
+      response?: string;
+      category?: string;
+      keywords?: string[];
+      active?: boolean;
+    },
+    @Req() req: Request & { client: Client }
+  ) {
+    try {
+      // Pass clientId for ownership verification
+      return this.knowledgeBaseService.updateQueryResponsePair(
+        id,
+        req.client.id,
+        updates
+      );
+    } catch (error) {
+      this.logger.error(`Error updating query-response pair: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to update query-response pair');
+    }
+  }
 }
