@@ -162,6 +162,7 @@ import { StaffluentSuperadminController } from './controllers/staffluent-superad
 import { BusinessChatbotController } from './controllers/business-chatbot.controller';
 import { KnowledgeBaseController } from './controllers/knowledge-base.controller';
 import { BusinessWeatherAlertController } from './controllers/business-weather-alert.controller';
+import { VBAppProjectSyncController } from './controllers/vb-app-project-sync.controller';
 
 
 // Service imports
@@ -254,6 +255,7 @@ import { KnowledgeBaseService } from './services/knowledge-base.service';
 import { WeatherService } from './services/weather.service';
 import { WeatherMonitorService } from './services/weather-monitor.service'; 
 import { SaasNotificationService } from './services/saas-notification.service';
+import { VBAppProjectSyncService } from './services/vb-app-project-sync.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -506,6 +508,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     BusinessChatbotController,
     KnowledgeBaseController,
     BusinessWeatherAlertController,
+    VBAppProjectSyncController
   ],
   providers: [
     SnapfoodService,
@@ -604,7 +607,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     KnowledgeBaseService,
     WeatherService,
     WeatherMonitorService,
-    SaasNotificationService
+    SaasNotificationService,
+    VBAppProjectSyncService
   ],
 })
 export class AppModule implements NestModule {
