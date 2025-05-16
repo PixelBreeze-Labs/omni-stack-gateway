@@ -362,9 +362,9 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
   }
 
   /**
-   * Check weather for business projects
-   */
-  async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
+ * Check weather for business projects
+ */
+async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
     try {
       // Get business settings
       const businessSettings = await this.getBusinessWeatherSettings(businessId);
@@ -373,12 +373,10 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
         return { message: 'Weather alerts are disabled for this business' };
       }
       
-      // Get all active projects with location data
+      // Get all active projects regardless of location data
       const projects = await this.appProjectModel.find({
         businessId,
-        'metadata.status': { $in: ['planning', 'in_progress'] },
-        'metadata.location.latitude': { $exists: true },
-        'metadata.location.longitude': { $exists: true }
+        'metadata.status': { $in: ['planning', 'in_progress'] }
       });
       
       const results = {
@@ -388,18 +386,73 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
         projectResults: []
       };
       
-      // Check each project
+      // For each project
       for (const project of projects) {
         try {
-          const alerts = await this.checkWeatherForProject(businessId, project._id.toString());
+          const projectId = project._id.toString();
+          let hasLocation = false;
+          let latitude, longitude, address;
           
-          results.projectsChecked++;
-          results.alertsCreated += alerts.length;
-          results.projectResults.push({
-            projectId: project._id,
-            projectName: project.name,
-            alertsCreated: alerts.length
-          });
+          // 1. First check if project has location data
+          if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+            hasLocation = true;
+            latitude = project.metadata.location.latitude;
+            longitude = project.metadata.location.longitude;
+            address = project.metadata.location.address;
+            this.logger.log(`Using project's own location data for project ${projectId}`);
+          } 
+          // 2. If not, check if project has associated construction site with location
+          else {
+            // Find construction site for this project
+            const site = await this.constructionSiteModel.findOne({
+              businessId,
+              appProjectId: projectId,
+              isDeleted: false,
+              'location.latitude': { $exists: true, $ne: null },
+              'location.longitude': { $exists: true, $ne: null }
+            });
+            
+            if (site && site.location?.latitude && site.location?.longitude) {
+              hasLocation = true;
+              latitude = parseFloat(site.location.latitude);
+              longitude = parseFloat(site.location.longitude);
+              address = site.location.address;
+              this.logger.log(`Using construction site's location data for project ${projectId}`);
+              
+              // Temporarily update project with site's location data
+              project.metadata = project.metadata || {};
+              project.metadata.location = {
+                latitude,
+                longitude,
+                address
+              };
+            }
+          }
+          
+          // If we have location data from either source, check weather
+          if (hasLocation) {
+            const alerts = await this.checkWeatherForProject(businessId, projectId);
+            
+            results.projectsChecked++;
+            results.alertsCreated += alerts.length;
+            results.projectResults.push({
+              projectId,
+              projectName: project.name,
+              alertsCreated: alerts.length,
+              hasLocation: true,
+              locationSource: project.metadata?.location?.fromSite ? 'construction_site' : 'project'
+            });
+          } else {
+            // No location data available
+            this.logger.warn(`No location data available for project ${projectId}`);
+            results.projectResults.push({
+              projectId,
+              projectName: project.name,
+              alertsCreated: 0,
+              hasLocation: false,
+              error: 'No location data available for this project or its construction sites'
+            });
+          }
           
           // Add a small delay between API calls
           await new Promise(resolve => setTimeout(resolve, 1000));
