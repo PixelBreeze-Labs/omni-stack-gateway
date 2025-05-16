@@ -58,7 +58,7 @@ export class WeatherAlert extends Document {
   @Prop({ type: [String] })
   affectedProjectIds: string[];
   
-  // Link to potential delay notifications
+  // Link to notifications
   @Prop({ type: [MongooseSchema.Types.ObjectId], ref: 'SaasNotification' })
   notificationIds: string[];
   
@@ -73,3 +73,12 @@ export class WeatherAlert extends Document {
 }
 
 export const WeatherAlertSchema = SchemaFactory.createForClass(WeatherAlert);
+
+// Add indexes
+WeatherAlertSchema.index({ businessId: 1 });
+WeatherAlertSchema.index({ weatherType: 1 });
+WeatherAlertSchema.index({ severity: 1 });
+WeatherAlertSchema.index({ startTime: 1 });
+WeatherAlertSchema.index({ endTime: 1 });
+WeatherAlertSchema.index({ resolved: 1 });
+WeatherAlertSchema.index({ affectedProjectIds: 1 });
