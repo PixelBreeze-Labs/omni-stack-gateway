@@ -26,7 +26,7 @@ export class SaasNotificationService {
     reference?: {
       type: string;
       id: string;
-      phpId?: string;
+      venueBoostNotificationId?: string;
     };
     actionData?: {
       type?: string;
