@@ -112,38 +112,6 @@ export class WeatherService {
     }
   }
 
-  /**
-   * Geocode address to coordinates
-   */
-  async geocodeAddress(address: string) {
-    try {
-      const url = `${this.geocodingUrl}/direct`;
-      const response = await lastValueFrom(
-        this.httpService.get(url, {
-          params: {
-            q: address,
-            limit: 1,
-            appid: this.apiKey
-          }
-        })
-      );
-      
-      if (response.data && response.data.length > 0) {
-        return {
-          latitude: response.data[0].lat,
-          longitude: response.data[0].lon,
-          name: response.data[0].name,
-          country: response.data[0].country,
-          state: response.data[0].state
-        };
-      } else {
-        throw new Error('Location not found');
-      }
-    } catch (error) {
-      this.logger.error(`Error geocoding address: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
 
   /**
    * Get business weather settings

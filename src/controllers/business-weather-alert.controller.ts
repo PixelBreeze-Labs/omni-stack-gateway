@@ -1,5 +1,5 @@
 // src/controllers/business-weather-alert.controller.ts
-import { Controller, Get, Post, Put, Delete, Body, Param, Headers, Query, UnauthorizedException, NotFoundException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Headers, Query, UnauthorizedException, NotFoundException, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { WeatherService } from '../services/weather.service';
 import { BusinessService } from '../services/business.service';
@@ -186,4 +186,32 @@ export class BusinessWeatherAlertController {
       throw new InternalServerErrorException(defaultMessage);
     }
   }
+
+  @Get('current-weather/:businessId')
+    @ApiOperation({ summary: 'Get current weather for a specific location' })
+    @ApiParam({ name: 'businessId', description: 'Business ID' })
+    @ApiQuery({ name: 'latitude', required: true, description: 'Location latitude' })
+    @ApiQuery({ name: 'longitude', required: true, description: 'Location longitude' })
+    @ApiResponse({ status: 200, description: 'Returns current weather data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    @ApiResponse({ status: 404, description: 'Business not found' })
+    @ApiResponse({ status: 400, description: 'Bad request - Missing latitude or longitude' })
+    async getCurrentWeather(
+    @Param('businessId') businessId: string,
+    @Query('latitude') latitude: string,
+    @Query('longitude') longitude: string,
+    @Headers('business-x-api-key') apiKey: string
+    ) {
+    try {
+        await this.validateBusinessApiKey(businessId, apiKey);
+        
+        if (!latitude || !longitude) {
+        throw new BadRequestException('Latitude and longitude are required');
+        }
+        
+        return this.weatherService.getCurrentWeather(parseFloat(latitude), parseFloat(longitude));
+    } catch (error) {
+        this.handleError(error, 'Failed to get current weather');
+    }
+    }
 }
