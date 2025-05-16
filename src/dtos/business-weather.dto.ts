@@ -113,6 +113,9 @@ export class ForecastResponseDto {
     longitude: number;
     address?: string;
   };
+
+  @ApiProperty({ description: 'Location source', enum: ['project', 'construction_site'] })
+  locationSource: string;
 }
 
 export class ProjectAlertResponseDto {

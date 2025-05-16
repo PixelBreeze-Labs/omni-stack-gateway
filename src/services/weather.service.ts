@@ -179,9 +179,9 @@ export class WeatherService {
   }
 
   /**
-   * Get project weather forecast
-   */
-  async getProjectForecast(businessId: string, projectId: string): Promise<ForecastResponseDto> {
+ * Get project weather forecast
+ */
+async getProjectForecast(businessId: string, projectId: string): Promise<ForecastResponseDto> {
     try {
       // Get project details
       const project = await this.appProjectModel.findOne({ 
@@ -193,15 +193,43 @@ export class WeatherService {
         throw new Error('Project not found');
       }
       
-      // Check if project has location data
-      if (!project.metadata?.location?.latitude || !project.metadata?.location?.longitude) {
-        throw new Error('Project does not have location data');
+      let locationData;
+      let locationSource = 'project';
+      
+      // 1. First check if project has location data
+      if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+        locationData = project.metadata.location;
+        this.logger.log(`Using project's own location data for project ${projectId}`);
+      } 
+      // 2. If not, check if project has associated construction site with location
+      else {
+        // Find construction site for this project
+        const site = await this.constructionSiteModel.findOne({
+          businessId,
+          appProjectId: projectId,
+          isDeleted: false,
+          'location.latitude': { $exists: true, $ne: null },
+          'location.longitude': { $exists: true, $ne: null }
+        });
+        
+        if (site && site.location?.latitude && site.location?.longitude) {
+          locationData = {
+            latitude: site.location.latitude,
+            longitude: site.location.longitude,
+            address: site.location.address
+          };
+          locationSource = 'construction_site';
+          this.logger.log(`Using construction site's location data for project ${projectId}`);
+        } else {
+          throw new Error('Project does not have location data and no associated construction site with location data was found');
+        }
       }
       
-      const { latitude, longitude, address } = project.metadata.location;
-      
       // Get weather forecast data
-      const weatherData = await this.getOneCallWeather(latitude, longitude);
+      const weatherData = await this.getOneCallWeather(
+        parseFloat(locationData.latitude), 
+        parseFloat(locationData.longitude)
+      );
       
       return {
         projectId: project._id.toString(),
@@ -210,11 +238,8 @@ export class WeatherService {
         hourly: weatherData.hourly,
         daily: weatherData.daily,
         alerts: weatherData.alerts || [],
-        location: {
-          latitude,
-          longitude,
-          address
-        }
+        location: locationData,
+        locationSource: locationSource
       };
     } catch (error) {
       this.logger.error(`Error getting project forecast: ${error.message}`, error.stack);
@@ -222,23 +247,47 @@ export class WeatherService {
     }
   }
 
-  /**
-   * Get all projects forecasts for a business
-   */
-  async getAllProjectsForecasts(businessId: string): Promise<ForecastResponseDto[]> {
+/**
+ * Get all projects forecasts for a business
+ */
+async getAllProjectsForecasts(businessId: string): Promise<ForecastResponseDto[]> {
     try {
-      // Get all active projects with location data
-      const projects = await this.appProjectModel.find({
+      // Get all active projects regardless of location data
+      const activeProjects = await this.appProjectModel.find({
         businessId,
-        'metadata.status': { $in: ['planning', 'in_progress'] },
-        'metadata.location.latitude': { $exists: true },
-        'metadata.location.longitude': { $exists: true }
+        'metadata.status': { $in: ['planning', 'in_progress'] }
       });
+      
+      // Get projects that have construction sites with location data
+      const sitesWithLocation = await this.constructionSiteModel.find({
+        businessId,
+        isDeleted: false,
+        'location.latitude': { $exists: true, $ne: null },
+        'location.longitude': { $exists: true, $ne: null }
+      });
+      
+      // Create a map of project IDs that have construction sites with location
+      const projectsWithSiteLocation = new Map();
+      sitesWithLocation.forEach(site => {
+        if (site.appProjectId) {
+          projectsWithSiteLocation.set(site.appProjectId.toString(), true);
+        }
+      });
+      
+      // Filter projects to include those with their own location data or associated site location
+      const eligibleProjects = activeProjects.filter(project => 
+        // Project has its own location data
+        (project.metadata?.location?.latitude && project.metadata?.location?.longitude) ||
+        // Or project has an associated construction site with location
+        projectsWithSiteLocation.has(project._id.toString())
+      );
+      
+      this.logger.log(`Found ${eligibleProjects.length} projects eligible for weather forecasts (out of ${activeProjects.length} active projects)`);
       
       const forecasts: ForecastResponseDto[] = [];
       
-      // Process each project with delay to avoid API rate limiting
-      for (const project of projects) {
+      // Process each eligible project with delay to avoid API rate limiting
+      for (const project of eligibleProjects) {
         try {
           const forecast = await this.getProjectForecast(businessId, project._id.toString());
           forecasts.push(forecast);
@@ -483,77 +532,107 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
    */
   async checkWeatherForProject(businessId: string, projectId: string): Promise<WeatherAlert[]> {
     try {
-      // Get project details
-      const project = await this.appProjectModel.findOne({ 
+        // Get project details
+        const project = await this.appProjectModel.findOne({ 
         _id: projectId,
         businessId 
-      });
-      
-      if (!project) {
+        });
+        
+        if (!project) {
         throw new Error('Project not found');
-      }
-      
-      // Check if project has location data
-      if (!project.metadata?.location?.latitude || !project.metadata?.location?.longitude) {
-        throw new Error('Project does not have location data');
-      }
-      
-      // Get business settings
-      const businessSettings = await this.getBusinessWeatherSettings(businessId);
-      
-      if (!businessSettings.enableWeatherAlerts) {
+        }
+        
+        let locationData;
+        
+        // 1. First check if project has location data
+        if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+        locationData = project.metadata.location;
+        this.logger.log(`Using project's own location data for project ${projectId}`);
+        } 
+        // 2. If not, check if project has associated construction site with location
+        else {
+        // Find construction site for this project
+        const site = await this.constructionSiteModel.findOne({
+            businessId,
+            appProjectId: projectId,
+            isDeleted: false,
+            'location.latitude': { $exists: true, $ne: null },
+            'location.longitude': { $exists: true, $ne: null }
+        });
+        
+        if (site && site.location?.latitude && site.location?.longitude) {
+            locationData = {
+            latitude: site.location.latitude,
+            longitude: site.location.longitude,
+            address: site.location.address
+            };
+            this.logger.log(`Using construction site's location data for project ${projectId}`);
+        } else {
+            throw new Error('Project does not have location data and no associated construction site with location data was found');
+        }
+        }
+        
+        // Get business settings
+        const businessSettings = await this.getBusinessWeatherSettings(businessId);
+        
+        if (!businessSettings.enableWeatherAlerts) {
         return [];
-      }
-      
-      // Get project settings if any
-      const projectSettings = await this.projectWeatherSettingsModel.findOne({
+        }
+        
+        // Get project settings if any
+        const projectSettings = await this.projectWeatherSettingsModel.findOne({
         businessId,
         projectId
-      });
-      
-      // Skip if project has custom settings and alerts disabled
-      if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
+        });
+        
+        // Skip if project has custom settings and alerts disabled
+        if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
         return [];
-      }
-      
-      // Use project settings if available and enabled, otherwise use business settings
-      const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
-      const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
-      const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
+        }
+        
+        // Use project settings if available and enabled, otherwise use business settings
+        const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
+        const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
+        const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
         projectSettings.notificationRecipients : businessSettings.notificationRecipients;
-      
-      // Get weather data
-      const { latitude, longitude } = project.metadata.location;
-      const weatherData = await this.getOneCallWeather(latitude, longitude);
-      
-      // Check for weather conditions that exceed thresholds
-      const newAlerts: WeatherAlert[] = [];
-      
-      // Check for external alerts from weather provider
-      if (weatherData.alerts && weatherData.alerts.length > 0) {
+        
+        // Get weather data
+        const { latitude, longitude } = locationData;
+        const weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
+        
+        // Prepare a project object that includes location data for alert creation
+        const projectWithLocation = { ...project.toObject() };
+        projectWithLocation.metadata = projectWithLocation.metadata || {};
+        projectWithLocation.metadata.location = locationData;
+        
+        // Check for weather conditions that exceed thresholds
+        const newAlerts: WeatherAlert[] = [];
+        
+        // Check for external alerts from weather provider
+        if (weatherData.alerts && weatherData.alerts.length > 0) {
         for (const externalAlert of weatherData.alerts) {
-          // Map external alert to our schema
-          if (await this.shouldCreateStormAlert(externalAlert, businessId, projectId, alertThresholds)) {
+            // Map external alert to our schema
+            if (await this.shouldCreateStormAlert(externalAlert, businessId, projectId, alertThresholds)) {
             const alert = await this.createWeatherAlert({
-              businessId,
-              projectId,
-              title: externalAlert.event,
-              description: externalAlert.description,
-              weatherType: WeatherType.STORM,
-              severity: this.mapExternalAlertSeverity(externalAlert.event),
-              startTime: new Date(externalAlert.start * 1000),
-              endTime: new Date(externalAlert.end * 1000),
-              location: project.metadata.location,
-              weatherData: externalAlert
+                businessId,
+                projectId,
+                title: externalAlert.event,
+                description: externalAlert.description,
+                weatherType: WeatherType.STORM,
+                severity: this.mapExternalAlertSeverity(externalAlert.event),
+                startTime: new Date(externalAlert.start * 1000),
+                endTime: new Date(externalAlert.end * 1000),
+                location: locationData,
+                weatherData: externalAlert
             });
             
             newAlerts.push(alert);
             
             // Send notification
-            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings);
-          }
+            await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings);
+            }
         }
-      }
+        }
       
       // Check for rain
       const rainThreshold = alertThresholds.find(t => t.type === WeatherType.RAIN && t.enabled);
