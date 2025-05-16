@@ -198,11 +198,23 @@ async getProjectForecast(businessId: string, projectId: string): Promise<Forecas
       
       // 1. First check if project has location data
       if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
-        locationData = project.metadata.location;
-        this.logger.log(`Using project's own location data for project ${projectId}`);
+        // Validate coordinates
+        const validation = this.validateLocationCoordinates(
+          project.metadata.location.latitude,
+          project.metadata.location.longitude
+        );
+        
+        if (validation.valid) {
+          locationData = project.metadata.location;
+          this.logger.log(`Using project's own location data for project ${projectId}`);
+        } else {
+          this.logger.warn(`Project ${projectId} has invalid coordinates: ${validation.error}`);
+          // Try to use construction site data instead
+        }
       } 
-      // 2. If not, check if project has associated construction site with location
-      else {
+      
+      // 2. If no valid project location, check if project has associated construction site with location
+      if (!locationData) {
         // Find construction site for this project
         const site = await this.constructionSiteModel.findOne({
           businessId,
@@ -213,13 +225,24 @@ async getProjectForecast(businessId: string, projectId: string): Promise<Forecas
         });
         
         if (site && site.location?.latitude && site.location?.longitude) {
-          locationData = {
-            latitude: site.location.latitude,
-            longitude: site.location.longitude,
-            address: site.location.address
-          };
-          locationSource = 'construction_site';
-          this.logger.log(`Using construction site's location data for project ${projectId}`);
+          // Validate coordinates
+          const validation = this.validateLocationCoordinates(
+            site.location.latitude,
+            site.location.longitude
+          );
+          
+          if (validation.valid) {
+            locationData = {
+              latitude: site.location.latitude,
+              longitude: site.location.longitude,
+              address: site.location.address
+            };
+            locationSource = 'construction_site';
+            this.logger.log(`Using construction site's location data for project ${projectId}`);
+          } else {
+            this.logger.warn(`Construction site for project ${projectId} has invalid coordinates: ${validation.error}`);
+            throw new Error('Project and associated construction site have invalid location data');
+          }
         } else {
           throw new Error('Project does not have location data and no associated construction site with location data was found');
         }
@@ -245,7 +268,7 @@ async getProjectForecast(businessId: string, projectId: string): Promise<Forecas
       this.logger.error(`Error getting project forecast: ${error.message}`, error.stack);
       throw error;
     }
-  }
+}
 
 /**
  * Get all projects forecasts for a business
@@ -266,21 +289,40 @@ async getAllProjectsForecasts(businessId: string): Promise<ForecastResponseDto[]
         'location.longitude': { $exists: true, $ne: null }
       });
       
-      // Create a map of project IDs that have construction sites with location
+      // Create a map of project IDs to site data for projects that have construction sites with location
       const projectsWithSiteLocation = new Map();
       sitesWithLocation.forEach(site => {
         if (site.appProjectId) {
-          projectsWithSiteLocation.set(site.appProjectId.toString(), true);
+          // Only add if the coordinates are valid
+          const validation = this.validateLocationCoordinates(site.location.latitude, site.location.longitude);
+          if (validation.valid) {
+            projectsWithSiteLocation.set(site.appProjectId.toString(), {
+              siteId: site._id,
+              location: site.location
+            });
+          } else {
+            this.logger.warn(`Construction site ${site._id} for project ${site.appProjectId} has invalid coordinates: ${validation.error}`);
+          }
         }
       });
       
-      // Filter projects to include those with their own location data or associated site location
-      const eligibleProjects = activeProjects.filter(project => 
-        // Project has its own location data
-        (project.metadata?.location?.latitude && project.metadata?.location?.longitude) ||
-        // Or project has an associated construction site with location
-        projectsWithSiteLocation.has(project._id.toString())
-      );
+      // Filter projects to include those with valid location data
+      const eligibleProjects = activeProjects.filter(project => {
+        // Check if project has its own valid location data
+        if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+          const validation = this.validateLocationCoordinates(
+            project.metadata.location.latitude, 
+            project.metadata.location.longitude
+          );
+          if (validation.valid) {
+            return true;
+          }
+          this.logger.warn(`Project ${project._id} has invalid coordinates: ${validation.error}`);
+        }
+        
+        // Check if project has an associated construction site with valid location
+        return projectsWithSiteLocation.has(project._id.toString());
+      });
       
       this.logger.log(`Found ${eligibleProjects.length} projects eligible for weather forecasts (out of ${activeProjects.length} active projects)`);
       
@@ -448,14 +490,24 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
           
           // 1. First check if project has location data
           if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
-            hasLocation = true;
-            latitude = project.metadata.location.latitude;
-            longitude = project.metadata.location.longitude;
-            address = project.metadata.location.address;
-            this.logger.log(`Using project's own location data for project ${projectId}`);
+            // Validate coordinates
+            const validation = this.validateLocationCoordinates(
+              project.metadata.location.latitude,
+              project.metadata.location.longitude
+            );
+            
+            if (validation.valid) {
+              hasLocation = true;
+              latitude = project.metadata.location.latitude;
+              longitude = project.metadata.location.longitude;
+              address = project.metadata.location.address;
+              this.logger.log(`Using project's own location data for project ${projectId}`);
+            } else {
+              this.logger.warn(`Project ${projectId} has invalid coordinates: ${validation.error}`);
+            }
           } 
           // 2. If not, check if project has associated construction site with location
-          else {
+          if (!hasLocation) {
             // Find construction site for this project
             const site = await this.constructionSiteModel.findOne({
               businessId,
@@ -466,20 +518,30 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
             });
             
             if (site && site.location?.latitude && site.location?.longitude) {
-              hasLocation = true;
-              latitude = site.location.latitude.toString();
-              longitude = site.location.longitude.toString();
-              address = site.location.address;
-              locationSource = 'construction_site'; // Set location source to construction site
-              this.logger.log(`Using construction site's location data for project ${projectId}`);
+              // Validate coordinates
+              const validation = this.validateLocationCoordinates(
+                site.location.latitude,
+                site.location.longitude
+              );
               
-              // Temporarily update project with site's location data
-              project.metadata = project.metadata || {};
-              project.metadata.location = {
-                latitude,
-                longitude,
-                address
-              };
+              if (validation.valid) {
+                hasLocation = true;
+                latitude = site.location.latitude.toString();
+                longitude = site.location.longitude.toString();
+                address = site.location.address;
+                locationSource = 'construction_site'; // Set location source to construction site
+                this.logger.log(`Using construction site's location data for project ${projectId}`);
+                
+                // Temporarily update project with site's location data
+                project.metadata = project.metadata || {};
+                project.metadata.location = {
+                  latitude,
+                  longitude,
+                  address
+                };
+              } else {
+                this.logger.warn(`Construction site for project ${projectId} has invalid coordinates: ${validation.error}`);
+              }
             }
           }
           
@@ -497,14 +559,14 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
               locationSource // Use the location source we determined
             });
           } else {
-            // No location data available
-            this.logger.warn(`No location data available for project ${projectId}`);
+            // No valid location data available
+            this.logger.warn(`No valid location data available for project ${projectId}`);
             results.projectResults.push({
               projectId,
               projectName: project.name,
               alertsCreated: 0,
               hasLocation: false,
-              error: 'No location data available for this project or its construction sites'
+              error: 'No valid location data available for this project or its construction sites'
             });
           }
           
@@ -525,75 +587,98 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
       this.logger.error(`Error checking weather for business projects: ${error.message}`, error.stack);
       throw error;
     }
-  }
+}
 
   /**
-   * Check weather for a specific project
-   */
-  async checkWeatherForProject(businessId: string, projectId: string): Promise<WeatherAlert[]> {
+ * Check weather for a specific project
+ */
+async checkWeatherForProject(businessId: string, projectId: string): Promise<WeatherAlert[]> {
     try {
-        // Get project details
-        const project = await this.appProjectModel.findOne({ 
+      // Get project details
+      const project = await this.appProjectModel.findOne({ 
         _id: projectId,
         businessId 
-        });
-        
-        if (!project) {
+      });
+      
+      if (!project) {
         throw new Error('Project not found');
+      }
+      
+      let locationData;
+      
+      // 1. First check if project has location data
+      if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+        // Validate coordinates
+        const validation = this.validateLocationCoordinates(
+          project.metadata.location.latitude,
+          project.metadata.location.longitude
+        );
+        
+        if (validation.valid) {
+          locationData = project.metadata.location;
+          this.logger.log(`Using project's own location data for project ${projectId}`);
+        } else {
+          this.logger.warn(`Project ${projectId} has invalid coordinates: ${validation.error}`);
+          // Try to use construction site data instead
         }
-        
-        let locationData;
-        
-        // 1. First check if project has location data
-        if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
-        locationData = project.metadata.location;
-        this.logger.log(`Using project's own location data for project ${projectId}`);
-        } 
-        // 2. If not, check if project has associated construction site with location
-        else {
+      } 
+      
+      // 2. If no valid project location, check if project has associated construction site with location
+      if (!locationData) {
         // Find construction site for this project
         const site = await this.constructionSiteModel.findOne({
-            businessId,
-            appProjectId: projectId,
-            isDeleted: false,
-            'location.latitude': { $exists: true, $ne: null },
-            'location.longitude': { $exists: true, $ne: null }
+          businessId,
+          appProjectId: projectId,
+          isDeleted: false,
+          'location.latitude': { $exists: true, $ne: null },
+          'location.longitude': { $exists: true, $ne: null }
         });
         
         if (site && site.location?.latitude && site.location?.longitude) {
+          // Validate coordinates
+          const validation = this.validateLocationCoordinates(
+            site.location.latitude,
+            site.location.longitude
+          );
+          
+          if (validation.valid) {
             locationData = {
-            latitude: site.location.latitude,
-            longitude: site.location.longitude,
-            address: site.location.address
+              latitude: site.location.latitude,
+              longitude: site.location.longitude,
+              address: site.location.address
             };
             this.logger.log(`Using construction site's location data for project ${projectId}`);
+          } else {
+            this.logger.warn(`Construction site for project ${projectId} has invalid coordinates: ${validation.error}`);
+            throw new Error('Project and associated construction site have invalid location data');
+          }
         } else {
-            throw new Error('Project does not have location data and no associated construction site with location data was found');
+          throw new Error('Project does not have location data and no associated construction site with location data was found');
         }
-        }
-        
-        // Get business settings
-        const businessSettings = await this.getBusinessWeatherSettings(businessId);
-        
-        if (!businessSettings.enableWeatherAlerts) {
+      }
+      
+      // Get business settings
+      const businessSettings = await this.getBusinessWeatherSettings(businessId);
+      
+      if (!businessSettings.enableWeatherAlerts) {
         return [];
-        }
-        
-        // Get project settings if any
-        const projectSettings = await this.projectWeatherSettingsModel.findOne({
+      }
+      
+      // Get project settings if any
+      const projectSettings = await this.projectWeatherSettingsModel.findOne({
         businessId,
         projectId
-        });
-        
-        // Skip if project has custom settings and alerts disabled
-        if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
+      });
+      
+      // Skip if project has custom settings and alerts disabled
+      if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
         return [];
-        }
-        
-        // Use project settings if available and enabled, otherwise use business settings
-        const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
-        const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
-        const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
+      }
+      
+      // Use project settings if available and enabled, otherwise use business settings
+      const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
+      const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
+      const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
         projectSettings.notificationRecipients : businessSettings.notificationRecipients;
         
         // Get weather data
@@ -684,6 +769,7 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
         }
       }
       
+      // Process all the weather checks and return the alerts
       return newAlerts;
     } catch (error) {
       this.logger.error(`Error checking weather for project: ${error.message}`, error.stack);
@@ -1452,6 +1538,45 @@ async getProjectsWithConstructionSites(businessId: string): Promise<any> {
     } catch (error) {
       this.logger.error(`Error getting projects with construction sites: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  private validateLocationCoordinates(latitude: string | number, longitude: string | number): { valid: boolean; error?: string } {
+    try {
+      // Convert to numbers if strings
+      const lat = typeof latitude === 'string' ? parseFloat(latitude) : latitude;
+      const lon = typeof longitude === 'string' ? parseFloat(longitude) : longitude;
+      
+      // Check if values are valid numbers
+      if (isNaN(lat) || isNaN(lon)) {
+        return { 
+          valid: false, 
+          error: `Invalid coordinates: latitude=${latitude}, longitude=${longitude} (not valid numbers)` 
+        };
+      }
+      
+      // Check if latitude is within valid range (-90 to 90)
+      if (lat < -90 || lat > 90) {
+        return { 
+          valid: false, 
+          error: `Invalid latitude: ${lat} (must be between -90 and 90)` 
+        };
+      }
+      
+      // Check if longitude is within valid range (-180 to 180)
+      if (lon < -180 || lon > 180) {
+        return { 
+          valid: false, 
+          error: `Invalid longitude: ${lon} (must be between -180 and 180)` 
+        };
+      }
+      
+      return { valid: true };
+    } catch (error) {
+      return { 
+        valid: false, 
+        error: `Error validating coordinates: ${error.message}` 
+      };
     }
   }
 }
