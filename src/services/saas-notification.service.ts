@@ -1,12 +1,12 @@
-// src/services/saas-notification.service.ts
+// src/services/notification.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { SaasNotification, NotificationType, NotificationPriority, DeliveryChannel } from '../schemas/saas-notification.schema';
+import { SaasNotification, NotificationType, NotificationPriority, DeliveryChannel, NotificationStatus } from '../schemas/saas-notification.schema';
 
 @Injectable()
-export class SaaSNotificationService {
-  private readonly logger = new Logger(SaaSNotificationService.name);
+export class NotificationService {
+  private readonly logger = new Logger(NotificationService.name);
 
   constructor(
     @InjectModel(SaasNotification.name) private notificationModel: Model<SaasNotification>
@@ -26,7 +26,7 @@ export class SaaSNotificationService {
     reference?: {
       type: string;
       id: string;
-      venueBoostNotificationId?: string;
+      phpId?: string;
     };
     actionData?: {
       type?: string;
@@ -61,7 +61,9 @@ export class SaaSNotificationService {
       
       await notification.save();
       
-      // TODO: Trigger notification delivery
+      // TODO: Trigger notification delivery based on channels
+      // For example, if channels include EMAIL, send an email
+      // if channels include PUSH, send a push notification
       // this.deliverNotification(notification);
       
       return notification;
@@ -130,7 +132,7 @@ export class SaaSNotificationService {
     return this.notificationModel.findByIdAndUpdate(
       notificationId,
       { 
-        status: 'read',
+        status: NotificationStatus.READ,
         readAt: new Date()
       },
       { new: true }
@@ -142,9 +144,9 @@ export class SaaSNotificationService {
    */
   async markAllAsRead(userId: string): Promise<void> {
     await this.notificationModel.updateMany(
-      { userId, status: { $ne: 'read' } },
+      { userId, status: { $ne: NotificationStatus.READ } },
       { 
-        status: 'read',
+        status: NotificationStatus.READ,
         readAt: new Date()
       }
     ).exec();
@@ -155,5 +157,66 @@ export class SaaSNotificationService {
    */
   async deleteNotification(notificationId: string): Promise<void> {
     await this.notificationModel.findByIdAndDelete(notificationId).exec();
+  }
+  
+  /**
+   * Send multiple notifications to users
+   */
+  async sendBulkNotifications(userIds: string[], notificationData: {
+    businessId: string;
+    title: string;
+    body: string;
+    type: NotificationType | string;
+    priority?: NotificationPriority | string;
+    reference?: any;
+    actionData?: any;
+  }): Promise<number> {
+    try {
+      const notifications = userIds.map(userId => ({
+        ...notificationData,
+        userId,
+        status: NotificationStatus.PENDING,
+        channels: [DeliveryChannel.APP, DeliveryChannel.EMAIL],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }));
+      
+      const result = await this.notificationModel.insertMany(notifications);
+      return result.length;
+    } catch (error) {
+      this.logger.error(`Error sending bulk notifications: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Send broadcast notification to all business users
+   */
+  async sendBusinessBroadcast(businessId: string, notificationData: {
+    title: string;
+    body: string;
+    type: NotificationType | string;
+    priority?: NotificationPriority | string;
+    reference?: any;
+    actionData?: any;
+  }): Promise<SaasNotification> {
+    try {
+      const notification = await this.createNotification({
+        businessId,
+        title: notificationData.title,
+        body: notificationData.body,
+        type: notificationData.type,
+        priority: notificationData.priority,
+        reference: notificationData.reference,
+        actionData: notificationData.actionData,
+        channels: [DeliveryChannel.APP],
+        isBroadcast: true
+      });
+      
+      return notification;
+    } catch (error) {
+      this.logger.error(`Error sending business broadcast: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
