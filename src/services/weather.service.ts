@@ -731,9 +731,9 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
       if (rainThreshold) {
         const alert = await this.checkForRainAlert(weatherData, businessId, projectId, project, rainThreshold.threshold);
         if (alert) {
-          newAlerts.push(alert);
-          await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings);
-        }
+            newAlerts.push(alert);
+            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          }
       }
       
       // Check for snow
@@ -741,9 +741,9 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
       if (snowThreshold) {
         const alert = await this.checkForSnowAlert(weatherData, businessId, projectId, project, snowThreshold.threshold);
         if (alert) {
-          newAlerts.push(alert);
-          await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings);
-        }
+            newAlerts.push(alert);
+            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          }
       }
       
       // Check for wind
@@ -751,9 +751,9 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
       if (windThreshold) {
         const alert = await this.checkForWindAlert(weatherData, businessId, projectId, project, windThreshold.threshold);
         if (alert) {
-          newAlerts.push(alert);
-          await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings);
-        }
+            newAlerts.push(alert);
+            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          }
       }
       
       // Check for heat
@@ -761,9 +761,9 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
       if (heatThreshold) {
         const alert = await this.checkForHeatAlert(weatherData, businessId, projectId, project, heatThreshold.threshold);
         if (alert) {
-          newAlerts.push(alert);
-          await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings);
-        }
+            newAlerts.push(alert);
+            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          }
       }
       
       // Check for cold
@@ -771,9 +771,9 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
       if (coldThreshold) {
         const alert = await this.checkForColdAlert(weatherData, businessId, projectId, project, coldThreshold.threshold);
         if (alert) {
-          newAlerts.push(alert);
-          await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings);
-        }
+            newAlerts.push(alert);
+            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          }
       }
       
       // Process all the weather checks and return the alerts
@@ -1598,6 +1598,15 @@ async getProjectsWithConstructionSites(businessId: string): Promise<any> {
         valid: false, 
         error: `Error validating coordinates: ${error.message}` 
       };
+    }
+  }
+
+  async getProjectWeatherSettings(businessId: string, projectId: string): Promise<ProjectWeatherSettings | null> {
+    try {
+      return await this.projectWeatherSettingsModel.findOne({ businessId, projectId });
+    } catch (error) {
+      this.logger.error(`Error getting project weather settings: ${error.message}`, error.stack);
+      throw error;
     }
   }
 }
