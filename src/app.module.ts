@@ -89,6 +89,7 @@ import { BusinessWeatherSettings, BusinessWeatherSettingsSchema } from './schema
 import { ProjectWeatherSettings, ProjectWeatherSettingsSchema } from './schemas/project-weather-settings.schema';
 import { AppProject, AppProjectSchema } from './schemas/app-project.schema';
 import { SaasNotification, SaasNotificationSchema } from './schemas/saas-notification.schema';
+import { ConstructionSite, ConstructionSiteSchema } from './schemas/construction-site.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -163,6 +164,7 @@ import { BusinessChatbotController } from './controllers/business-chatbot.contro
 import { KnowledgeBaseController } from './controllers/knowledge-base.controller';
 import { BusinessWeatherAlertController } from './controllers/business-weather-alert.controller';
 import { VBAppProjectSyncController } from './controllers/vb-app-project-sync.controller';
+import { VBConstructionSiteSyncController } from './controllers/vb-construction-site-sync.controller';
 
 
 // Service imports
@@ -256,6 +258,7 @@ import { WeatherService } from './services/weather.service';
 import { WeatherMonitorService } from './services/weather-monitor.service'; 
 import { SaasNotificationService } from './services/saas-notification.service';
 import { VBAppProjectSyncService } from './services/vb-app-project-sync.service';
+import { VBConstructionSiteSyncService } from './services/vb-construction-site-sync.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -413,6 +416,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
       { name: ProjectWeatherSettings.name, schema: ProjectWeatherSettingsSchema },
       { name: AppProject.name, schema: AppProjectSchema },
       { name: SaasNotification.name, schema: SaasNotificationSchema },
+      { name: ConstructionSite.name, schema: ConstructionSiteSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -508,7 +512,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     BusinessChatbotController,
     KnowledgeBaseController,
     BusinessWeatherAlertController,
-    VBAppProjectSyncController
+    VBAppProjectSyncController,
+    VBConstructionSiteSyncController
   ],
   providers: [
     SnapfoodService,
@@ -608,7 +613,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     WeatherService,
     WeatherMonitorService,
     SaasNotificationService,
-    VBAppProjectSyncService
+    VBAppProjectSyncService,
+    VBConstructionSiteSyncService
   ],
 })
 export class AppModule implements NestModule {
