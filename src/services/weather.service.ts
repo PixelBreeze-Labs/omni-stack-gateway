@@ -392,6 +392,10 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
           const projectId = project._id.toString();
           let hasLocation = false;
           let latitude, longitude, address;
+          let locationSource = 'project'; // Default location source
+          
+          // Save the original location reference to determine source later
+          const originalLocation = project.metadata?.location;
           
           // 1. First check if project has location data
           if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
@@ -414,9 +418,10 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
             
             if (site && site.location?.latitude && site.location?.longitude) {
               hasLocation = true;
-              latitude = parseFloat(site.location.latitude);
-              longitude = parseFloat(site.location.longitude);
+              latitude = site.location.latitude.toString();
+              longitude = site.location.longitude.toString();
               address = site.location.address;
+              locationSource = 'construction_site'; // Set location source to construction site
               this.logger.log(`Using construction site's location data for project ${projectId}`);
               
               // Temporarily update project with site's location data
@@ -440,7 +445,7 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
               projectName: project.name,
               alertsCreated: alerts.length,
               hasLocation: true,
-              locationSource: project.metadata?.location?.fromSite ? 'construction_site' : 'project'
+              locationSource // Use the location source we determined
             });
           } else {
             // No location data available
