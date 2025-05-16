@@ -16,6 +16,7 @@ import { EmailService } from './email.service';
 import * as twilio from 'twilio';
 import { Business } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
+import { ConstructionSite } from '../schemas/construction-site.schema';
 
 @Injectable()
 export class WeatherService {
@@ -38,6 +39,7 @@ export class WeatherService {
     @InjectModel(WeatherAlert.name) private weatherAlertModel: Model<WeatherAlert>,
     @InjectModel(AppProject.name) private appProjectModel: Model<AppProject>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(ConstructionSite.name) private constructionSiteModel: Model<ConstructionSite>,
     @InjectModel(User.name) private userModel: Model<User>,
     private readonly emailService?: EmailService
   ) {
@@ -1273,5 +1275,46 @@ private async sendWeatherAlertEmail(
       affectedProjects: affectedProjects.filter(p => p !== null), // Filter out any null values
       location: alert.location
     };
+  }
+
+  /**
+ * Get projects associated with construction sites
+ */
+async getProjectsWithConstructionSites(businessId: string): Promise<any> {
+    try {
+      // Find all construction sites for this business
+      const constructionSites = await this.constructionSiteModel.find({
+        businessId,
+        isDeleted: false,
+        appProjectId: { $exists: true, $ne: null }
+      });
+      
+      // Extract project IDs
+      const projectIds = constructionSites
+        .map(site => site.appProjectId?.toString())
+        .filter(Boolean);
+      
+      // Create a map of project ID to site info for quick lookup
+      const projectToSiteMap = {};
+      constructionSites.forEach(site => {
+        if (site.appProjectId) {
+          projectToSiteMap[site.appProjectId.toString()] = {
+            siteId: site._id.toString(),
+            siteName: site.name,
+            siteType: site.type,
+            siteStatus: site.status,
+            location: site.location || null
+          };
+        }
+      });
+      
+      return {
+        projectIds,
+        projectToSiteMap
+      };
+    } catch (error) {
+      this.logger.error(`Error getting projects with construction sites: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
