@@ -12,6 +12,10 @@ import { WeatherAlert, WeatherType, WeatherAlertSeverity } from '../schemas/weat
 import { AppProject } from '../schemas/app-project.schema';
 import { BusinessWeatherSettingsDto, WeatherAlertConfigDto, ForecastResponseDto, ProjectAlertResponseDto } from '../dtos/business-weather.dto';
 import { NotificationType, DeliveryChannel, NotificationPriority } from '../schemas/saas-notification.schema';
+import { EmailService } from './email.service';
+import * as twilio from 'twilio';
+import { Business } from '../schemas/business.schema';
+import { User } from '../schemas/user.schema';
 
 @Injectable()
 export class WeatherService {
@@ -27,9 +31,14 @@ export class WeatherService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly notificationService: SaasNotificationService,
+    private readonly emailService: EmailService,
+    private readonly twilioClient: any,
+    private readonly twilioVerifyServiceSid: string,
     @InjectModel(BusinessWeatherSettings.name) private businessWeatherSettingsModel: Model<BusinessWeatherSettings>,
     @InjectModel(ProjectWeatherSettings.name) private projectWeatherSettingsModel: Model<ProjectWeatherSettings>,
     @InjectModel(WeatherAlert.name) private weatherAlertModel: Model<WeatherAlert>,
+    @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(AppProject.name) private appProjectModel: Model<AppProject>
   ) {
     this.apiKey = this.configService.get<string>('weather.apiKey');
@@ -38,6 +47,10 @@ export class WeatherService {
     this.geocodingUrl = this.configService.get<string>('weather.geocodingUrl');
     this.units = this.configService.get<string>('weather.units', 'metric');
     this.language = this.configService.get<string>('weather.language', 'en');
+
+    this.emailService = new EmailService(this.configService);
+    this.twilioClient = twilio(this.configService.get<string>('TWILIO_ACCOUNT_SID'), this.configService.get<string>('TWILIO_AUTH_TOKEN'));
+    this.twilioVerifyServiceSid = this.configService.get<string>('TWILIO_VERIFY_SERVICE_SID');
   }
 
   /**
@@ -264,10 +277,10 @@ export class WeatherService {
     }
   }
 
-  /**
-   * Get project alerts
-   */
-  async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAlertResponseDto[]> {
+/**
+ * Get project alerts
+ */
+async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAlertResponseDto[]> {
     try {
       // Get active alerts for the project
       const alerts = await this.weatherAlertModel.find({
@@ -276,13 +289,14 @@ export class WeatherService {
         resolved: false
       }).sort({ startTime: 1 });
       
-      return alerts.map(alert => this.mapAlertToResponseDto(alert));
+      // Use Promise.all to wait for all async mapping operations to complete
+      return await Promise.all(alerts.map(alert => this.mapAlertToResponseDto(alert)));
     } catch (error) {
       this.logger.error(`Error getting project alerts: ${error.message}`, error.stack);
       throw error;
     }
   }
-
+  
   /**
    * Get all business alerts
    */
@@ -294,7 +308,8 @@ export class WeatherService {
         resolved: false
       }).sort({ startTime: 1 });
       
-      return alerts.map(alert => this.mapAlertToResponseDto(alert));
+      // Use Promise.all to wait for all async mapping operations to complete
+      return await Promise.all(alerts.map(alert => this.mapAlertToResponseDto(alert)));
     } catch (error) {
       this.logger.error(`Error getting all business alerts: ${error.message}`, error.stack);
       throw error;
@@ -981,21 +996,20 @@ export class WeatherService {
   }
 
  /**
-   * Send alert notification
-   */
- private async sendAlertNotification(
+ * Send alert notification
+ */
+private async sendAlertNotification(
     alert: WeatherAlert, 
     project: any, 
     recipientIds: string[],
     businessSettings: BusinessWeatherSettings
   ): Promise<void> {
     try {
-      if (!recipientIds || recipientIds.length === 0) {
-        this.logger.warn(`No recipients configured for weather alerts for business ${alert.businessId}`);
-        return;
-      }
+      // Get business name for notifications
+      const business = await this.businessModel.findById(alert.businessId);
+      const businessName = business ? business.name : "Your Business";
       
-      // Determine which channels to use
+      // Determine which channels to use based on business settings
       const channels: DeliveryChannel[] = [];
       if (businessSettings.appNotificationsEnabled) {
         channels.push(DeliveryChannel.APP);
@@ -1020,31 +1034,219 @@ export class WeatherService {
         url: `/projects/${project._id}/weather`
       };
       
-      // Create notification for each recipient
-      const notificationPromises = recipientIds.map(userId => 
-        this.notificationService.createNotification({
-          businessId: alert.businessId,
-          userId,
-          title: alert.title,
-          body: alert.description,
-          type: NotificationType.WEATHER,
-          priority: this.mapAlertSeverityToPriority(alert.severity),
-          channels,
-          reference: {
-            type: 'weather_alert',
-            id: alert._id.toString()
-          },
-          actionData
-        })
-      );
+      // For tracking notifications sent
+      const notificationIds: string[] = [];
       
-      const notifications = await Promise.all(notificationPromises);
+      // 1. Process in-app notifications using recipientIds (users)
+      if (channels.includes(DeliveryChannel.APP) && recipientIds && recipientIds.length > 0) {
+        // Get all users for sending notifications
+        const users = await this.userModel.find({
+          _id: { $in: recipientIds }
+        });
+        
+        for (const user of users) {
+          const notification = await this.notificationService.createNotification({
+            businessId: alert.businessId,
+            userId: user._id.toString(),
+            title: alert.title,
+            body: alert.description,
+            type: NotificationType.WEATHER,
+            priority: this.mapAlertSeverityToPriority(alert.severity),
+            channels: [DeliveryChannel.APP],
+            reference: {
+              type: 'weather_alert',
+              id: alert._id.toString()
+            },
+            actionData
+          });
+          
+          if (notification && notification._id) {
+            notificationIds.push(notification._id.toString());
+          }
+        }
+      } else if (channels.includes(DeliveryChannel.APP)) {
+        this.logger.warn(`No app notification recipients configured for business ${alert.businessId}`);
+      }
       
-      // Update alert with notification IDs - fixed type assertion
-      alert.notificationIds = notifications.map(n => n._id.toString());
-      await alert.save();
+      // 2. Process email notifications
+      if (channels.includes(DeliveryChannel.EMAIL)) {
+        // If specific email recipients are provided, use them
+        if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
+          for (const email of businessSettings.emailNotificationRecipients) {
+            await this.sendWeatherAlertEmail({email}, businessName, project.name, alert);
+          }
+        } 
+        // Otherwise, use the user emails from recipientIds
+        else if (recipientIds && recipientIds.length > 0) {
+          const users = await this.userModel.find({
+            _id: { $in: recipientIds }
+          });
+          
+          for (const user of users) {
+            if (user.email) {
+              await this.sendWeatherAlertEmail(user, businessName, project.name, alert);
+            }
+          }
+        } else {
+          this.logger.warn(`No email recipients configured for business ${alert.businessId}`);
+        }
+      }
+      
+      // 3. Process SMS notifications
+      if (channels.includes(DeliveryChannel.SMS)) {
+        // If specific SMS recipients are provided, use them
+        if (businessSettings.smsNotificationRecipients && businessSettings.smsNotificationRecipients.length > 0) {
+          for (const phoneNumber of businessSettings.smsNotificationRecipients) {
+            await this.sendWeatherAlertSMS(phoneNumber, businessName, project.name, alert);
+          }
+        } 
+        // Otherwise, use the user phone numbers from recipientIds
+        else if (recipientIds && recipientIds.length > 0) {
+         // don't send SMS notifications
+        } else {
+          this.logger.warn(`No SMS recipients configured for business ${alert.businessId}`);
+        }
+      }
+      
+      // Update alert with notification IDs
+      if (notificationIds.length > 0) {
+        alert.notificationIds = notificationIds;
+        await alert.save();
+      }
     } catch (error) {
       this.logger.error(`Error sending alert notification: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+ * Send weather alert email
+ */
+private async sendWeatherAlertEmail(
+    user: any, 
+    businessName: string, 
+    projectName: string, 
+    alert: WeatherAlert
+  ): Promise<void> {
+    try {
+      // Extract user name
+      const userName = user.name
+        ? (user.surname ? `${user.name} ${user.surname}` : user.name)
+        : 'Team Member';
+  
+      // Get current year for the copyright
+      const currentYear = new Date().getFullYear();
+  
+      // Format date and time for email
+      const startDate = alert.startTime.toLocaleDateString();
+      const startTime = alert.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      
+      // Determine alert level for styling
+      const alertLevel = this.getSeverityDisplayInfo(alert.severity);
+  
+      // Send email notification
+      await this.emailService.sendTemplateEmail(
+        businessName,
+        'weather-alerts@omnistackhub.xyz',
+        user.email,
+        `Weather Alert: ${alert.title}`,
+        'templates/business/weather-alert-email.html', // You'll need to create this template
+        {
+          userName: userName,
+          businessName: businessName,
+          projectName: projectName,
+          alertTitle: alert.title,
+          alertDescription: alert.description,
+          alertDate: startDate,
+          alertTime: startTime,
+          alertType: this.getWeatherTypeDisplayName(alert.weatherType),
+          alertSeverity: alertLevel.name,
+          alertColor: alertLevel.color,
+          locationAddress: alert.location.address || 'Project Location',
+          currentYear: currentYear,
+          actionUrl: `https://app.staffluent.io/projects/details/${alert.affectedProjectIds[0]}`
+        }
+      );
+  
+      this.logger.log(`Sent weather alert email to user: ${user.email} for alert: ${alert._id}`);
+    } catch (error) {
+      this.logger.error(`Error sending weather alert email: ${error.message}`, error.stack);
+    }
+  }
+  
+  /**
+   * Send weather alert SMS
+   */
+  private async sendWeatherAlertSMS(
+    phoneNumber: string,
+    businessName: string,
+    projectName: string,
+    alert: WeatherAlert
+  ): Promise<void> {
+    try {
+      // Ensure proper E.164 format
+      let formattedPhone = phoneNumber;
+      if (!phoneNumber.startsWith('+')) {
+        formattedPhone = `+${phoneNumber}`;
+      }
+      
+      // Format date
+      const startDate = alert.startTime.toLocaleDateString();
+      
+      // Prepare SMS message
+      const message = `${businessName} Weather Alert: ${alert.title} for ${projectName} on ${startDate}. ${alert.description}`;
+      
+      // Send the SMS via Twilio
+      const twilioMessage = await this.twilioClient.messages.create({
+        body: message,
+        messagingServiceSid: this.twilioVerifyServiceSid,
+        to: formattedPhone
+      });
+      
+      this.logger.log(`Sent weather alert SMS to ${formattedPhone}, message ID: ${twilioMessage.sid}`);
+    } catch (error) {
+      this.logger.error(`Failed to send weather alert SMS to ${phoneNumber}: ${error.message}`, error.stack);
+    }
+  }
+  
+  /**
+   * Get display name for weather type
+   */
+  private getWeatherTypeDisplayName(type: WeatherType): string {
+    switch (type) {
+      case WeatherType.RAIN:
+        return 'Heavy Rain';
+      case WeatherType.SNOW:
+        return 'Snowfall';
+      case WeatherType.STORM:
+        return 'Storm';
+      case WeatherType.WIND:
+        return 'High Winds';
+      case WeatherType.HEAT:
+        return 'Extreme Heat';
+      case WeatherType.COLD:
+        return 'Extreme Cold';
+      case WeatherType.FOG:
+        return 'Dense Fog';
+      default:
+        return 'Weather Alert';
+    }
+  }
+  
+  /**
+   * Get severity display information
+   */
+  private getSeverityDisplayInfo(severity: WeatherAlertSeverity): { name: string, color: string } {
+    switch (severity) {
+      case WeatherAlertSeverity.EMERGENCY:
+        return { name: 'Emergency', color: '#d32f2f' }; // Red
+      case WeatherAlertSeverity.WARNING:
+        return { name: 'Warning', color: '#f57c00' };   // Orange
+      case WeatherAlertSeverity.WATCH:
+        return { name: 'Watch', color: '#fbc02d' };     // Yellow
+      case WeatherAlertSeverity.ADVISORY:
+        return { name: 'Advisory', color: '#3f51b5' };  // Blue
+      default:
+        return { name: 'Notice', color: '#757575' };    // Grey
     }
   }
 
@@ -1067,7 +1269,21 @@ export class WeatherService {
   /**
    * Map WeatherAlert to ProjectAlertResponseDto
    */
-  private mapAlertToResponseDto(alert: WeatherAlert): ProjectAlertResponseDto {
+  private async mapAlertToResponseDto(alert: WeatherAlert): Promise<ProjectAlertResponseDto> {
+    // Fetch project data for affected projects
+    const affectedProjects = await Promise.all(
+      alert.affectedProjectIds.map(async (projectId) => {
+        const project = await this.appProjectModel.findById(projectId);
+        if (project) {
+          return {
+            id: project._id.toString(),
+            name: project.name
+          };
+        }
+        return null;
+      })
+    );
+  
     return {
       id: alert._id.toString(),
       title: alert.title,
@@ -1076,7 +1292,7 @@ export class WeatherService {
       severity: alert.severity,
       startTime: alert.startTime,
       endTime: alert.endTime,
-      affectedProjects: [], // This should be populated by joining with AppProject data
+      affectedProjects: affectedProjects.filter(p => p !== null), // Filter out any null values
       location: alert.location
     };
   }
