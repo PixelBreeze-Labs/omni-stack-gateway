@@ -1,0 +1,216 @@
+<!-- templates/business/weather-alert-email.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weather Alert - {{alertTitle}}</title>
+    <style>
+        body {
+            font-family: 'Manrope', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            padding: 20px 10px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 24px;
+            border-radius: 16px;
+            background-color: #fff;
+            text-align: left;
+        }
+        .title {
+            color: #000;
+            font-size: 28px;
+            text-align: center;
+            line-height: 38px;
+            font-weight: bold;
+            margin: 24px 0;
+        }
+        .content {
+            font-size: 16px;
+            line-height: 24px;
+            color: #333;
+            margin: 24px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            text-decoration: none;
+            color: #fff !important;
+            background-color: #0A0A0A;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 32px 0;
+            text-align: center;
+        }
+        .highlight-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0A0A0A;
+            border-radius: 8px;
+            padding: 16px 24px;
+            margin: 24px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .alert-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            color: white;
+        }
+        .alert-emergency {
+            background-color: #d32f2f;
+        }
+        .alert-warning {
+            background-color: #f57c00;
+        }
+        .alert-watch {
+            background-color: #fbc02d;
+        }
+        .alert-advisory {
+            background-color: #3f51b5;
+        }
+        .weather-icon {
+            display: block; 
+            margin: 0 auto 16px auto;
+            width: 64px;
+            height: 64px;
+        }
+        .alert-details {
+            display: flex;
+            flex-wrap: wrap;
+            margin: 16px 0;
+            border-top: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+            padding: 16px 0;
+        }
+        .detail-item {
+            flex: 1 1 50%;
+            min-width: 150px;
+            margin-bottom: 16px;
+        }
+        .detail-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .detail-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+<div style="background-color: #f5f5f5; padding: 20px 10px;">
+    <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/logos/staffluent-logo.png" alt="Staffluent" style="display: block; margin: 24px auto; width: 100px" />
+    
+    <div style="width: 100%; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 24px; border-radius: 16px; background-color: #fff; text-align: left;">
+        <!-- We'll use if/else to determine which class to apply based on severity -->
+        {{#if (eq alertSeverity 'Emergency')}}
+        <div class="alert-badge alert-emergency">{{alertSeverity}} - {{alertType}}</div>
+        {{else if (eq alertSeverity 'Warning')}}
+        <div class="alert-badge alert-warning">{{alertSeverity}} - {{alertType}}</div>
+        {{else if (eq alertSeverity 'Watch')}}
+        <div class="alert-badge alert-watch">{{alertSeverity}} - {{alertType}}</div>
+        {{else}}
+        <div class="alert-badge alert-advisory">{{alertSeverity}} - {{alertType}}</div>
+        {{/if}}
+        
+        <!-- Choose weather icon based on alert type -->
+        {{#if (eq alertType 'Heavy Rain')}}
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/rain.png" alt="Rain Alert" class="weather-icon" />
+        {{else if (eq alertType 'Snowfall')}}
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/snow.png" alt="Snow Alert" class="weather-icon" />
+        {{else if (eq alertType 'Storm')}}
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/storm.png" alt="Storm Alert" class="weather-icon" />
+        {{else if (eq alertType 'High Winds')}}
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/wind.png" alt="Wind Alert" class="weather-icon" />
+        {{else if (eq alertType 'Extreme Heat')}}
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/heat.png" alt="Heat Alert" class="weather-icon" />
+        {{else if (eq alertType 'Extreme Cold')}}
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/cold.png" alt="Cold Alert" class="weather-icon" />
+        {{else}}
+        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/weather.png" alt="Weather Alert" class="weather-icon" />
+        {{/if}}
+        
+        <div class="title">{{alertTitle}}</div>
+
+        <p class="content">
+            Hi {{userName}},
+        </p>
+
+        <p class="content">
+            This is a weather alert notification for your project <strong>{{projectName}}</strong> at <strong>{{businessName}}</strong>.
+        </p>
+
+        <!-- Apply borders based on severity -->
+        {{#if (eq alertSeverity 'Emergency')}}
+        <div style="background-color: #f8f9fa; border-left: 4px solid #d32f2f; border-radius: 8px; padding: 16px 24px; margin: 24px 0;">
+        {{else if (eq alertSeverity 'Warning')}}
+        <div style="background-color: #f8f9fa; border-left: 4px solid #f57c00; border-radius: 8px; padding: 16px 24px; margin: 24px 0;">
+        {{else if (eq alertSeverity 'Watch')}}
+        <div style="background-color: #f8f9fa; border-left: 4px solid #fbc02d; border-radius: 8px; padding: 16px 24px; margin: 24px 0;">
+        {{else}}
+        <div style="background-color: #f8f9fa; border-left: 4px solid #3f51b5; border-radius: 8px; padding: 16px 24px; margin: 24px 0;">
+        {{/if}}
+            <p style="font-size: 16px; line-height: 24px; color: #333; margin: 0;">
+                {{alertDescription}}
+            </p>
+        </div>
+
+        <div class="alert-details">
+            <div class="detail-item">
+                <div class="detail-label">Project</div>
+                <div class="detail-value">{{projectName}}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Alert Type</div>
+                <div class="detail-value">{{alertType}}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Date</div>
+                <div class="detail-value">{{alertDate}}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Location</div>
+                <div class="detail-value">{{locationAddress}}</div>
+            </div>
+        </div>
+
+        <p class="content">
+            We recommend taking appropriate action based on this weather forecast. Check the project details for more information.
+        </p>
+
+        <a href="{{actionUrl}}" style="display: inline-block; padding: 14px 32px; text-decoration: none; color: #ffffff !important; background-color: #0A0A0A; border-radius: 6px; font-size: 16px; font-weight: bold; margin: 32px 0; text-align: center;">View Project Weather</a>
+
+        <p class="content">
+            Thank you for using our weather alert system!
+        </p>
+
+        <p class="content">
+            Best regards,<br>
+            The {{businessName}} Team
+        </p>
+    </div>
+    
+    <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #666;">
+        &copy; {{currentYear}} {{businessName}}. All rights reserved.<br>
+        If you need assistance, please contact our support team at <a href="mailto:support@staffluent.co">support@staffluent.co</a>.
+    </div>
+</div>
+</body>
+</html>

@@ -27,6 +27,12 @@ export class BusinessWeatherSettings extends Document {
   
   @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }] })
   notificationRecipients: string[];
+
+  @Prop({ type: [String], default: [] })
+  emailNotificationRecipients: string[];
+  
+  @Prop({ type: [String], default: [] })
+  smsNotificationRecipients: string[];
   
   @Prop({ default: true })
   appNotificationsEnabled: boolean;

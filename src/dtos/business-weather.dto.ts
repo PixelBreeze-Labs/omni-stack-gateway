@@ -40,6 +40,18 @@ export class BusinessWeatherSettingsDto {
   @ApiProperty({ description: 'Send notifications via SMS' })
   @IsBoolean()
   smsNotificationsEnabled: boolean;
+
+  @ApiProperty({ description: 'Email notification recipients (direct email addresses)', required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  emailNotificationRecipients?: string[];
+
+  @ApiProperty({ description: 'SMS notification recipients (direct phone numbers)', required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  smsNotificationRecipients?: string[];
   
   @ApiProperty({ description: 'Check interval in hours' })
   @IsNumber()
