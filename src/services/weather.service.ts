@@ -886,9 +886,13 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
             });
             
             newAlerts.push(alert);
-            
+                
             // Send notification
-            await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            try {
+                await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (error) {
+                this.logger.error(`Failed to send alert notification for external alert: ${error.message}`);
+            }
             }
         }
         }
@@ -899,7 +903,11 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         const alert = await this.checkForRainAlert(weatherData, businessId, projectId, project, rainThreshold.threshold);
         if (alert) {
             newAlerts.push(alert);
-            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            try {
+                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (error) {
+                this.logger.error(`Failed to send alert notification for rain alert: ${error.message}`);
+            }
           }
       }
       
@@ -909,7 +917,11 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         const alert = await this.checkForSnowAlert(weatherData, businessId, projectId, project, snowThreshold.threshold);
         if (alert) {
             newAlerts.push(alert);
-            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            try {
+                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (error) {
+                this.logger.error(`Failed to send alert notification for snow alert: ${error.message}`);
+            }
           }
       }
       
@@ -919,7 +931,11 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         const alert = await this.checkForWindAlert(weatherData, businessId, projectId, project, windThreshold.threshold);
         if (alert) {
             newAlerts.push(alert);
-            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            try {
+                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (error) {
+                this.logger.error(`Failed to send alert notification for wind alert: ${error.message}`);
+            }
           }
       }
       
@@ -929,7 +945,11 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         const alert = await this.checkForHeatAlert(weatherData, businessId, projectId, project, heatThreshold.threshold);
         if (alert) {
             newAlerts.push(alert);
-            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            try {
+                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (error) {
+                this.logger.error(`Failed to send alert notification for heat alert: ${error.message}`);
+            }
           }
       }
       
@@ -939,7 +959,11 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         const alert = await this.checkForColdAlert(weatherData, businessId, projectId, project, coldThreshold.threshold);
         if (alert) {
             newAlerts.push(alert);
-            await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            try {
+                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (error) {
+                this.logger.error(`Failed to send alert notification for cold alert: ${error.message}`);
+            }
           }
       }
       
