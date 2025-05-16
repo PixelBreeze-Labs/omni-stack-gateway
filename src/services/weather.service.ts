@@ -26,20 +26,20 @@ export class WeatherService {
   private readonly geocodingUrl: string;
   private readonly units: string;
   private readonly language: string;
+   private twilioClient: any;
+   private twilioVerifyServiceSid: string;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly notificationService: SaasNotificationService,
-    private readonly emailService: EmailService,
-    private readonly twilioClient: any,
-    private readonly twilioVerifyServiceSid: string,
     @InjectModel(BusinessWeatherSettings.name) private businessWeatherSettingsModel: Model<BusinessWeatherSettings>,
     @InjectModel(ProjectWeatherSettings.name) private projectWeatherSettingsModel: Model<ProjectWeatherSettings>,
     @InjectModel(WeatherAlert.name) private weatherAlertModel: Model<WeatherAlert>,
+    @InjectModel(AppProject.name) private appProjectModel: Model<AppProject>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(User.name) private userModel: Model<User>,
-    @InjectModel(AppProject.name) private appProjectModel: Model<AppProject>
+    private readonly emailService?: EmailService
   ) {
     this.apiKey = this.configService.get<string>('weather.apiKey');
     this.baseUrl = this.configService.get<string>('weather.baseUrl');
@@ -47,10 +47,20 @@ export class WeatherService {
     this.geocodingUrl = this.configService.get<string>('weather.geocodingUrl');
     this.units = this.configService.get<string>('weather.units', 'metric');
     this.language = this.configService.get<string>('weather.language', 'en');
-
-    this.emailService = new EmailService(this.configService);
-    this.twilioClient = twilio(this.configService.get<string>('TWILIO_ACCOUNT_SID'), this.configService.get<string>('TWILIO_AUTH_TOKEN'));
+    
+    // Optional Twilio setup
+    const accountSid = this.configService.get<string>('TWILIO_ACCOUNT_SID');
+    const authToken = this.configService.get<string>('TWILIO_AUTH_TOKEN');
     this.twilioVerifyServiceSid = this.configService.get<string>('TWILIO_VERIFY_SERVICE_SID');
+    
+    // Only create Twilio client if all required config is present
+    if (accountSid && authToken) {
+      try {
+        this.twilioClient = twilio(accountSid, authToken);
+      } catch (error) {
+        this.logger.warn('Failed to initialize Twilio client: ' + error.message);
+      }
+    }
   }
 
   /**

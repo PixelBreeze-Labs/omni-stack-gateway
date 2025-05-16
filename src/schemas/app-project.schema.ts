@@ -2,6 +2,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
+interface ClientInfo {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
 @Schema({ timestamps: true })
 export class AppProject extends Document {
   @Prop({ required: true })
@@ -30,6 +37,10 @@ export class AppProject extends Document {
     status?: string;
     projectType?: string;
     lastSyncedAt?: Date;
+    estimatedHours?: number;
+    estimatedBudget?: number;
+    startDate?: Date;
+    endDate?: Date;
     location?: {
       latitude: number;
       longitude: number;
@@ -38,8 +49,16 @@ export class AppProject extends Document {
       state?: string;
       country?: string;
     };
+    clientInfo?: ClientInfo;
     [key: string]: any;
   };
+  
+  // Add a field to track if the project is deleted
+  @Prop({ type: Boolean, default: false })
+  isDeleted: boolean;
+  
+  @Prop({ type: Date })
+  deletedAt?: Date;
 }
 
 export const AppProjectSchema = SchemaFactory.createForClass(AppProject);
@@ -48,3 +67,8 @@ export const AppProjectSchema = SchemaFactory.createForClass(AppProject);
 AppProjectSchema.index({ businessId: 1 });
 AppProjectSchema.index({ 'externalIds.venueBoostProjectId': 1 });
 AppProjectSchema.index({ status: 1 });
+AppProjectSchema.index({ isDeleted: 1 });
+AppProjectSchema.index({ 'metadata.projectType': 1 });
+AppProjectSchema.index({ 'metadata.startDate': 1 });
+AppProjectSchema.index({ 'metadata.endDate': 1 });
+AppProjectSchema.index({ 'metadata.clientInfo.id': 1 });
