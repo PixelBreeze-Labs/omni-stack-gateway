@@ -91,7 +91,7 @@ export class SaasNotification extends Document {
   reference: {
     type: string;
     id: string;
-    phpId?: string;
+    venueBoostNotificationId?: string;
   };
   
   @Prop({ type: Boolean, default: false })
