@@ -214,4 +214,23 @@ export class BusinessWeatherAlertController {
         this.handleError(error, 'Failed to get current weather');
     }
     }
+
+
+    @Get('projects-with-sites/:businessId')
+    @ApiOperation({ summary: 'Get projects associated with construction sites' })
+    @ApiParam({ name: 'businessId', description: 'Business ID' })
+    @ApiResponse({ status: 200, description: 'Returns projects with construction site information' })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    @ApiResponse({ status: 404, description: 'Business not found' })
+    async getProjectsWithConstructionSites(
+    @Param('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+    ) {
+    try {
+        await this.validateBusinessApiKey(businessId, apiKey);
+        return this.weatherService.getProjectsWithConstructionSites(businessId);
+    } catch (error) {
+        this.handleError(error, 'Failed to get projects with construction sites');
+    }
+    }
 }
