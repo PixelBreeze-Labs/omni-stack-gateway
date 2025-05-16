@@ -452,16 +452,16 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
     }
   }
 
-  /**
- * Check weather for business projects
- */
-async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
+  async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
     try {
       // Get business settings
       const businessSettings = await this.getBusinessWeatherSettings(businessId);
       
       if (!businessSettings.enableWeatherAlerts) {
-        return { message: 'Weather alerts are disabled for this business' };
+        return { 
+          message: 'Weather alerts are disabled for this business',
+          businessSettings 
+        };
       }
       
       // Get all active projects regardless of location data
@@ -474,7 +474,17 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
         businessId,
         projectsChecked: 0,
         alertsCreated: 0,
-        projectResults: []
+        businessSettings: {
+          enableWeatherAlerts: businessSettings.enableWeatherAlerts,
+          alertThresholds: businessSettings.alertThresholds
+        },
+        projectResults: [],
+        debugInfo: {
+          projects: projects.length,
+          weatherData: [],
+          thresholdChecks: [],
+          alertCreationAttempts: []
+        }
       };
       
       // For each project
@@ -484,6 +494,29 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
           let hasLocation = false;
           let latitude, longitude, address;
           let locationSource = 'project'; // Default location source
+          
+          // Initialize projectDebugInfo with properly typed objects
+          const projectDebugInfo: any = {
+            projectId,
+            projectName: project.name,
+            locationCheck: {
+              projectLocation: null,
+              constructionSite: null
+            },
+            weatherData: null,
+            projectSettings: null,
+            thresholdChecks: {
+              usingSettingsFrom: null,
+              alertThresholds: null,
+              heat: {
+                threshold: null,
+                enabled: null,
+                checks: []
+              }
+            },
+            alertCreationResults: [],
+            error: null
+          };
           
           // Save the original location reference to determine source later
           const originalLocation = project.metadata?.location;
@@ -496,6 +529,13 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
               project.metadata.location.longitude
             );
             
+            projectDebugInfo.locationCheck.projectLocation = {
+              hasLocation: validation.valid,
+              latitude: project.metadata.location.latitude,
+              longitude: project.metadata.location.longitude,
+              validationResult: validation
+            };
+            
             if (validation.valid) {
               hasLocation = true;
               latitude = project.metadata.location.latitude;
@@ -506,6 +546,7 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
               this.logger.warn(`Project ${projectId} has invalid coordinates: ${validation.error}`);
             }
           } 
+          
           // 2. If not, check if project has associated construction site with location
           if (!hasLocation) {
             // Find construction site for this project
@@ -517,12 +558,23 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
               'location.longitude': { $exists: true, $ne: null }
             });
             
+            projectDebugInfo.locationCheck.constructionSite = site ? {
+              siteId: site._id.toString(),
+              hasLocation: !!(site?.location?.latitude && site?.location?.longitude),
+              latitude: site?.location?.latitude,
+              longitude: site?.location?.longitude
+            } : null;
+            
             if (site && site.location?.latitude && site.location?.longitude) {
               // Validate coordinates
               const validation = this.validateLocationCoordinates(
                 site.location.latitude,
                 site.location.longitude
               );
+              
+              if (projectDebugInfo.locationCheck.constructionSite) {
+                projectDebugInfo.locationCheck.constructionSite.validationResult = validation;
+              }
               
               if (validation.valid) {
                 hasLocation = true;
@@ -547,17 +599,129 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
           
           // If we have location data from either source, check weather
           if (hasLocation) {
-            const alerts = await this.checkWeatherForProject(businessId, projectId);
-            
-            results.projectsChecked++;
-            results.alertsCreated += alerts.length;
-            results.projectResults.push({
-              projectId,
-              projectName: project.name,
-              alertsCreated: alerts.length,
-              hasLocation: true,
-              locationSource // Use the location source we determined
+            // Get project settings
+            const projectSettings = await this.projectWeatherSettingsModel.findOne({
+              businessId,
+              projectId
             });
+            
+            projectDebugInfo.projectSettings = projectSettings ? {
+              useCustomSettings: projectSettings.useCustomSettings,
+              enableWeatherAlerts: projectSettings.enableWeatherAlerts,
+              alertThresholds: projectSettings.alertThresholds
+            } : 'No project settings';
+            
+            // Skip if project has custom settings and alerts disabled
+            if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
+              projectDebugInfo.alertCreationResults.push({
+                status: 'skipped',
+                reason: 'Project has custom settings with weather alerts disabled'
+              });
+              
+              results.projectResults.push({
+                projectId,
+                projectName: project.name,
+                alertsCreated: 0,
+                hasLocation: true,
+                locationSource,
+                status: 'skipped',
+                reason: 'Project alerts disabled'
+              });
+              
+              results.debugInfo.alertCreationAttempts.push(projectDebugInfo);
+              results.projectsChecked++;
+              continue;
+            }
+            
+            // Use project settings if available and enabled, otherwise use business settings
+            const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
+            const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
+            
+            projectDebugInfo.thresholdChecks.usingSettingsFrom = useProjectSettings ? 'project' : 'business';
+            projectDebugInfo.thresholdChecks.alertThresholds = alertThresholds;
+            
+            // Get weather data
+            try {
+              const weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
+              
+              // Create a simplified version of weather data for debugging
+              const simplifiedWeatherData = {
+                current: {
+                  temp: weatherData.current.temp,
+                  feels_like: weatherData.current.feels_like,
+                  weather: weatherData.current.weather
+                },
+                daily: weatherData.daily ? weatherData.daily.slice(0, 3).map(day => ({
+                  dt: day.dt,
+                  date: new Date(day.dt * 1000).toISOString().split('T')[0],
+                  temp: day.temp,
+                  weather: day.weather
+                })) : 'No daily data'
+              };
+              
+              projectDebugInfo.weatherData = simplifiedWeatherData;
+              
+              // Process temperature checks
+              const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
+              
+              projectDebugInfo.thresholdChecks.heat = {
+                threshold: heatThreshold?.threshold,
+                enabled: heatThreshold?.enabled,
+                checks: []
+              };
+              
+              if (heatThreshold && weatherData.daily) {
+                for (let i = 0; i < Math.min(3, weatherData.daily.length); i++) {
+                  const dailyData = weatherData.daily[i];
+                  const maxTemp = dailyData.temp.max;
+                  
+                  projectDebugInfo.thresholdChecks.heat.checks.push({
+                    day: i,
+                    date: new Date(dailyData.dt * 1000).toISOString().split('T')[0],
+                    maxTemp: maxTemp,
+                    thresholdValue: heatThreshold.threshold,
+                    exceeds: maxTemp >= heatThreshold.threshold
+                  });
+                }
+              }
+              
+              // Execute normal alert check
+              const alerts = await this.checkWeatherForProject(businessId, projectId);
+              
+              projectDebugInfo.alertCreationResults = alerts.map(alert => ({
+                id: alert._id.toString(),
+                weatherType: alert.weatherType,
+                severity: alert.severity,
+                title: alert.title,
+                startTime: alert.startTime,
+                endTime: alert.endTime
+              }));
+              
+              results.projectsChecked++;
+              results.alertsCreated += alerts.length;
+              results.projectResults.push({
+                projectId,
+                projectName: project.name,
+                alertsCreated: alerts.length,
+                hasLocation: true,
+                locationSource,
+                heatThresholdChecks: projectDebugInfo.thresholdChecks.heat.checks
+              });
+            } catch (error) {
+              projectDebugInfo.error = {
+                weatherApi: error.message,
+                stack: error.stack
+              };
+              
+              results.projectResults.push({
+                projectId,
+                projectName: project.name,
+                alertsCreated: 0,
+                hasLocation: true,
+                locationSource,
+                error: `Weather API error: ${error.message}`
+              });
+            }
           } else {
             // No valid location data available
             this.logger.warn(`No valid location data available for project ${projectId}`);
@@ -569,6 +733,9 @@ async checkWeatherForBusinessProjects(businessId: string): Promise<any> {
               error: 'No valid location data available for this project or its construction sites'
             });
           }
+          
+          // Add project debug info to results
+          results.debugInfo.weatherData.push(projectDebugInfo);
           
           // Add a small delay between API calls
           await new Promise(resolve => setTimeout(resolve, 1000));
