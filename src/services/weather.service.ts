@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { lastValueFrom } from 'rxjs';
-import { NotificationService } from './saas-notification.service';
+import { SaasNotificationService } from './saas-notification.service';
 import { BusinessWeatherSettings } from '../schemas/business-weather-settings.schema';
 import { ProjectWeatherSettings } from '../schemas/project-weather-settings.schema';
 import { WeatherAlert, WeatherType, WeatherAlertSeverity } from '../schemas/weather-alert.schema';
@@ -26,7 +26,7 @@ export class WeatherService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    private readonly notificationService: NotificationService,
+    private readonly notificationService: SaasNotificationService,
     @InjectModel(BusinessWeatherSettings.name) private businessWeatherSettingsModel: Model<BusinessWeatherSettings>,
     @InjectModel(ProjectWeatherSettings.name) private projectWeatherSettingsModel: Model<ProjectWeatherSettings>,
     @InjectModel(WeatherAlert.name) private weatherAlertModel: Model<WeatherAlert>,

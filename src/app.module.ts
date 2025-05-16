@@ -84,6 +84,11 @@ import { ChatbotMessage, ChatbotMessageSchema } from './schemas/chatbot-message.
 import { KnowledgeDocument, KnowledgeDocumentSchema } from './schemas/knowledge-document.schema';
 import { UnrecognizedQuery, UnrecognizedQuerySchema } from './schemas/unrecognized-query.schema';
 import { QueryResponsePair, QueryResponsePairSchema } from './schemas/query-response-pair.schema';
+import { WeatherAlert, WeatherAlertSchema } from './schemas/weather-alert.schema';  
+import { BusinessWeatherSettings, BusinessWeatherSettingsSchema } from './schemas/business-weather-settings.schema';
+import { ProjectWeatherSettings, ProjectWeatherSettingsSchema } from './schemas/project-weather-settings.schema';
+import { AppProject, AppProjectSchema } from './schemas/app-project.schema';
+import { SaasNotification, SaasNotificationSchema } from './schemas/saas-notification.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -156,6 +161,7 @@ import { BusinessTaskAssignmentController } from './controllers/business-task-as
 import { StaffluentSuperadminController } from './controllers/staffluent-superadmin.controller';
 import { BusinessChatbotController } from './controllers/business-chatbot.controller';
 import { KnowledgeBaseController } from './controllers/knowledge-base.controller';
+import { BusinessWeatherAlertController } from './controllers/business-weather-alert.controller';
 
 
 // Service imports
@@ -245,6 +251,9 @@ import { StaffluentEmployeeService } from './services/staffluent-employee.servic
 import { BusinessTaskAssignmentService } from './services/business-task-assignment.service';
 import { BusinessChatbotService } from './services/business-chatbot.service';
 import { KnowledgeBaseService } from './services/knowledge-base.service';
+import { WeatherService } from './services/weather.service';
+import { WeatherMonitorService } from './services/weather-monitor.service'; 
+import { SaasNotificationService } from './services/saas-notification.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -397,6 +406,11 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
       { name: KnowledgeDocument.name, schema: KnowledgeDocumentSchema },
       { name: UnrecognizedQuery.name, schema: UnrecognizedQuerySchema },
       { name: QueryResponsePair.name, schema: QueryResponsePairSchema },
+      { name: WeatherAlert.name, schema: WeatherAlertSchema },
+      { name: BusinessWeatherSettings.name, schema: BusinessWeatherSettingsSchema },
+      { name: ProjectWeatherSettings.name, schema: ProjectWeatherSettingsSchema },
+      { name: AppProject.name, schema: AppProjectSchema },
+      { name: SaasNotification.name, schema: SaasNotificationSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -491,6 +505,7 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     StaffluentSuperadminController,
     BusinessChatbotController,
     KnowledgeBaseController,
+    BusinessWeatherAlertController,
   ],
   providers: [
     SnapfoodService,
@@ -587,6 +602,9 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     BusinessTaskAssignmentService,
     BusinessChatbotService,
     KnowledgeBaseService,
+    WeatherService,
+    WeatherMonitorService,
+    SaasNotificationService
   ],
 })
 export class AppModule implements NestModule {

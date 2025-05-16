@@ -5,8 +5,8 @@ import { Model } from 'mongoose';
 import { SaasNotification, NotificationType, NotificationPriority, DeliveryChannel, NotificationStatus } from '../schemas/saas-notification.schema';
 
 @Injectable()
-export class NotificationService {
-  private readonly logger = new Logger(NotificationService.name);
+export class SaasNotificationService {
+  private readonly logger = new Logger(SaasNotificationService.name);
 
   constructor(
     @InjectModel(SaasNotification.name) private notificationModel: Model<SaasNotification>
