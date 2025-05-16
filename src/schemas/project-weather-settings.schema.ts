@@ -22,11 +22,7 @@ export class ProjectWeatherSettings extends Document {
   
   @Prop({ type: [WeatherAlertThresholdConfigSchema] })
   alertThresholds: WeatherAlertThresholdConfig[];
-  
-  @Prop({ type: Object })
-  externalIds: {
-    phpProjectId?: string;
-  };
+
 }
 
 export const ProjectWeatherSettingsSchema = SchemaFactory.createForClass(ProjectWeatherSettings);
@@ -34,4 +30,3 @@ export const ProjectWeatherSettingsSchema = SchemaFactory.createForClass(Project
 // Add indexes
 ProjectWeatherSettingsSchema.index({ businessId: 1 });
 ProjectWeatherSettingsSchema.index({ projectId: 1 });
-ProjectWeatherSettingsSchema.index({ 'externalIds.phpProjectId': 1 });
