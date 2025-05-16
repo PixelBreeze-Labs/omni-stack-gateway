@@ -678,9 +678,16 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
       // Use project settings if available and enabled, otherwise use business settings
       const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
       const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
+     
       const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
         projectSettings.notificationRecipients : businessSettings.notificationRecipients;
+
+    const emailNotificationRecipients = useProjectSettings && projectSettings.emailNotificationRecipients?.length > 0 ? 
+        projectSettings.emailNotificationRecipients : businessSettings.emailNotificationRecipients;
         
+    const smsNotificationRecipients = useProjectSettings && projectSettings.smsNotificationRecipients?.length > 0 ? 
+        projectSettings.smsNotificationRecipients : businessSettings.smsNotificationRecipients;
+            
         // Get weather data
         const { latitude, longitude } = locationData;
         const weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
@@ -714,7 +721,7 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
             newAlerts.push(alert);
             
             // Send notification
-            await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings);
+            await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
             }
         }
         }
@@ -1205,7 +1212,9 @@ private async sendAlertNotification(
     alert: WeatherAlert, 
     project: any, 
     recipientIds: string[],
-    businessSettings: BusinessWeatherSettings
+    businessSettings: BusinessWeatherSettings,
+    emailNotificationRecipients?: string[],
+    smsNotificationRecipients?: string[]
   ): Promise<void> {
     try {
       // Get business name for notifications
@@ -1273,8 +1282,14 @@ private async sendAlertNotification(
       
       // 2. Process email notifications
       if (channels.includes(DeliveryChannel.EMAIL)) {
-        // If specific email recipients are provided, use them
-        if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
+        // First check if project-specific email recipients are provided
+        if (emailNotificationRecipients && emailNotificationRecipients.length > 0) {
+          for (const email of emailNotificationRecipients) {
+            await this.sendWeatherAlertEmail({email}, businessName, project.name, alert);
+          }
+        }
+        // If not, check if business has email recipients configured
+        else if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
           for (const email of businessSettings.emailNotificationRecipients) {
             await this.sendWeatherAlertEmail({email}, businessName, project.name, alert);
           }
@@ -1297,15 +1312,21 @@ private async sendAlertNotification(
       
       // 3. Process SMS notifications
       if (channels.includes(DeliveryChannel.SMS)) {
-        // If specific SMS recipients are provided, use them
-        if (businessSettings.smsNotificationRecipients && businessSettings.smsNotificationRecipients.length > 0) {
+        // First check if project-specific SMS recipients are provided
+        if (smsNotificationRecipients && smsNotificationRecipients.length > 0) {
+          for (const phoneNumber of smsNotificationRecipients) {
+            await this.sendWeatherAlertSMS(phoneNumber, businessName, project.name, alert);
+          }
+        }
+        // If not, check if business has SMS recipients configured
+        else if (businessSettings.smsNotificationRecipients && businessSettings.smsNotificationRecipients.length > 0) {
           for (const phoneNumber of businessSettings.smsNotificationRecipients) {
             await this.sendWeatherAlertSMS(phoneNumber, businessName, project.name, alert);
           }
         } 
         // Otherwise, use the user phone numbers from recipientIds
         else if (recipientIds && recipientIds.length > 0) {
-         // don't send SMS notifications
+          // don't send SMS notifications
         } else {
           this.logger.warn(`No SMS recipients configured for business ${alert.businessId}`);
         }

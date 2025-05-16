@@ -23,6 +23,12 @@ export class ProjectWeatherSettings extends Document {
   @Prop({ type: [WeatherAlertThresholdConfigSchema] })
   alertThresholds: WeatherAlertThresholdConfig[];
 
+  @Prop({ type: [String] })
+  emailNotificationRecipients: string[];
+
+  @Prop({ type: [String] })
+  smsNotificationRecipients: string[];
+
 }
 
 export const ProjectWeatherSettingsSchema = SchemaFactory.createForClass(ProjectWeatherSettings);

@@ -86,6 +86,18 @@ export class WeatherAlertConfigDto {
   @ValidateNested({ each: true })
   @Type(() => WeatherAlertThresholdDto)
   alertThresholds?: WeatherAlertThresholdDto[];
+
+  @ApiProperty({ description: 'Project-specific email notification recipients', required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  emailNotificationRecipients?: string[];
+
+  @ApiProperty({ description: 'Project-specific SMS notification recipients', required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  smsNotificationRecipients?: string[];
 }
 
 export class ForecastResponseDto {
