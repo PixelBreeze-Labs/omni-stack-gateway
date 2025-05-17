@@ -2036,7 +2036,7 @@ private async sendAlertNotification(
         alertColor: alertLevel.color,
         locationAddress: alert.location.address || 'Project Location',
         currentYear: currentYear,
-        actionUrl: `https://app.staffluent.io/projects/details/${alert.affectedProjectIds[0]}`
+        actionUrl: `https://app.staffluent.co/projects/details/${alert.affectedProjectIds[0]}`
       }
     );
   }
