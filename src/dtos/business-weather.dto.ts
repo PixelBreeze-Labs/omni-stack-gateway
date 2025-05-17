@@ -157,6 +157,9 @@ export class ProjectAlertResponseDto {
     id: string;
     name: string;
   }[];
+
+  @ApiProperty({ description: 'Alert resolved' })
+  resolved: boolean;
   
   @ApiProperty({ description: 'Location information' })
   location: {
