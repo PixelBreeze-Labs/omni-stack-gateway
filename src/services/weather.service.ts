@@ -886,7 +886,7 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
             });
             
             newAlerts.push(alert);
-                
+
             // Send notification
             try {
                 await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
@@ -1217,16 +1217,16 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         
         if (maxTemp >= threshold) {
           // Check if a similar alert already exists
-          const existingAlert = await this.weatherAlertModel.findOne({
-            businessId,
-            affectedProjectIds: projectId,
-            weatherType: WeatherType.HEAT,
-            startTime: { $lte: new Date(dailyData.dt * 1000) },
-            endTime: { $gte: new Date(dailyData.dt * 1000) },
-            resolved: false
-          });
+        //   const existingAlert = await this.weatherAlertModel.findOne({
+        //     businessId,
+        //     affectedProjectIds: projectId,
+        //     weatherType: WeatherType.HEAT,
+        //     startTime: { $lte: new Date(dailyData.dt * 1000) },
+        //     endTime: { $gte: new Date(dailyData.dt * 1000) },
+        //     resolved: false
+        //   });
           
-          if (!existingAlert) {
+        //   if (!existingAlert) {
             // Create a new alert
             const startTime = new Date(dailyData.dt * 1000);
             const endTime = new Date(startTime);
@@ -1248,7 +1248,7 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
             });
             
             return alert;
-          }
+          //}
         }
       }
       
