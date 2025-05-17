@@ -181,6 +181,9 @@ export class WeatherService {
   /**
  * Get project weather forecast
  */
+/**
+ * Get project weather forecast
+ */
 async getProjectForecast(businessId: string, projectId: string): Promise<ForecastResponseDto> {
     try {
       // Get project details
@@ -254,6 +257,20 @@ async getProjectForecast(businessId: string, projectId: string): Promise<Forecas
         parseFloat(locationData.longitude)
       );
       
+      // Get the weather delays data from project
+      const totalDelayHours = project.metadata?.totalWeatherDelayHours || 0;
+      
+      // Get recent delays (last 5)
+      const recentDelays = (project.metadata?.weatherDelays || [])
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5)
+        .map(delay => ({
+          date: delay.date,
+          hours: delay.hours,
+          reason: delay.reason,
+          weatherType: delay.weatherType
+        }));
+      
       return {
         projectId: project._id.toString(),
         projectName: project.name,
@@ -262,14 +279,15 @@ async getProjectForecast(businessId: string, projectId: string): Promise<Forecas
         daily: weatherData.daily,
         alerts: weatherData.alerts || [],
         location: locationData,
-        locationSource: locationSource
+        locationSource: locationSource,
+        totalDelayHours: totalDelayHours,
+        recentDelays: recentDelays
       };
     } catch (error) {
       this.logger.error(`Error getting project forecast: ${error.message}`, error.stack);
       throw error;
     }
 }
-
 /**
  * Get all projects forecasts for a business
  */
