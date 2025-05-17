@@ -351,14 +351,26 @@ async getAllProjectsForecasts(businessId: string): Promise<ForecastResponseDto[]
 /**
  * Get project alerts
  */
-async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAlertResponseDto[]> {
+async getProjectAlerts(
+    businessId: string, 
+    projectId: string, 
+    includeResolved: boolean = false
+  ): Promise<ProjectAlertResponseDto[]> {
     try {
-      // Get active alerts for the project
-      const alerts = await this.weatherAlertModel.find({
+      // Build query to find alerts
+      const query: any = {
         businessId,
-        affectedProjectIds: projectId,
-        resolved: false
-      }).sort({ startTime: 1 });
+        affectedProjectIds: projectId
+      };
+      
+      // Only include non-resolved alerts unless includeResolved is true
+      if (!includeResolved) {
+        query.resolved = false;
+      }
+      
+      // Get alerts for the project
+      const alerts = await this.weatherAlertModel.find(query)
+        .sort({ startTime: 1 });
       
       // Use Promise.all to wait for all async mapping operations to complete
       return await Promise.all(alerts.map(alert => this.mapAlertToResponseDto(alert)));
@@ -371,13 +383,24 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
   /**
    * Get all business alerts
    */
-  async getAllBusinessAlerts(businessId: string): Promise<ProjectAlertResponseDto[]> {
+  async getAllBusinessAlerts(
+    businessId: string, 
+    includeResolved: boolean = false
+  ): Promise<ProjectAlertResponseDto[]> {
     try {
-      // Get all active alerts for the business
-      const alerts = await this.weatherAlertModel.find({
-        businessId,
-        resolved: false
-      }).sort({ startTime: 1 });
+      // Build query to find alerts
+      const query: any = {
+        businessId
+      };
+      
+      // Only include non-resolved alerts unless includeResolved is true
+      if (!includeResolved) {
+        query.resolved = false;
+      }
+      
+      // Get all alerts for the business
+      const alerts = await this.weatherAlertModel.find(query)
+        .sort({ startTime: 1 });
       
       // Use Promise.all to wait for all async mapping operations to complete
       return await Promise.all(alerts.map(alert => this.mapAlertToResponseDto(alert)));
