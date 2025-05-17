@@ -1282,6 +1282,8 @@ if (heatThreshold) {
       
       
       try {
+                    await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+
         // Wrap the notification process in a try/catch that collects errors
         await this.sendAlertNotificationWithErrorCollection(
           result.alert, 
@@ -1295,6 +1297,8 @@ if (heatThreshold) {
         
         // If we collected any email errors, add them to the main errors array
         if (emailErrors.length > 0) {
+            await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+
           errors.push({
             phase: 'email_notification',
             message: `Email errors occurred during notification`,
@@ -1302,6 +1306,8 @@ if (heatThreshold) {
           });
         }
       } catch (notifyError) {
+        await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+
         errors.push({
           phase: 'notification',
           message: `Failed to send alert notification: ${notifyError.message}`,
