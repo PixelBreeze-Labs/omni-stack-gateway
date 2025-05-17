@@ -130,23 +130,6 @@
         <div class="alert-badge alert-advisory">{{alertSeverity}} - {{alertType}}</div>
         {{/if}}
         
-        <!-- Choose weather icon based on alert type -->
-        {{#if (eq alertType 'Heavy Rain')}}
-        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/rain.png" alt="Rain Alert" class="weather-icon" />
-        {{else if (eq alertType 'Snowfall')}}
-        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/snow.png" alt="Snow Alert" class="weather-icon" />
-        {{else if (eq alertType 'Storm')}}
-        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/storm.png" alt="Storm Alert" class="weather-icon" />
-        {{else if (eq alertType 'High Winds')}}
-        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/wind.png" alt="Wind Alert" class="weather-icon" />
-        {{else if (eq alertType 'Extreme Heat')}}
-        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/heat.png" alt="Heat Alert" class="weather-icon" />
-        {{else if (eq alertType 'Extreme Cold')}}
-        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/cold.png" alt="Cold Alert" class="weather-icon" />
-        {{else}}
-        <img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/icons/weather.png" alt="Weather Alert" class="weather-icon" />
-        {{/if}}
-        
         <div class="title">{{alertTitle}}</div>
 
         <p class="content">
