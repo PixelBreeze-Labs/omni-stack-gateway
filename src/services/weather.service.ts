@@ -515,7 +515,8 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
               }
             },
             alertCreationResults: [],
-            error: null
+            error: null,
+            alertCreationDetails: null // Add field for alert creation details
           };
           
           // Save the original location reference to determine source later
@@ -685,28 +686,47 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
                 }
               }
               
-              // Execute normal alert check
-              const alerts = await this.checkWeatherForProject(businessId, projectId);
+              // Execute modified alert check with detailed error handling
+              const alertsOrErrors = await this.checkWeatherForProjectWithErrors(businessId, projectId);
               
-              projectDebugInfo.alertCreationResults = alerts.map(alert => ({
-                id: alert._id.toString(),
-                weatherType: alert.weatherType,
-                severity: alert.severity,
-                title: alert.title,
-                startTime: alert.startTime,
-                endTime: alert.endTime
-              }));
-              
-              results.projectsChecked++;
-              results.alertsCreated += alerts.length;
-              results.projectResults.push({
-                projectId,
-                projectName: project.name,
-                alertsCreated: alerts.length,
-                hasLocation: true,
-                locationSource,
-                heatThresholdChecks: projectDebugInfo.thresholdChecks.heat.checks
-              });
+              // Check if we have errors
+              if (alertsOrErrors.errors && alertsOrErrors.errors.length > 0) {
+                projectDebugInfo.alertCreationResults = [];
+                projectDebugInfo.alertCreationDetails = alertsOrErrors.errors;
+                
+                results.projectsChecked++;
+                results.alertsCreated = 0;
+                results.projectResults.push({
+                  projectId,
+                  projectName: project.name,
+                  alertsCreated: 0,
+                  hasLocation: true,
+                  locationSource,
+                  heatThresholdChecks: projectDebugInfo.thresholdChecks.heat.checks,
+                  alertCreationErrors: alertsOrErrors.errors
+                });
+              } else {
+                // Normal case with successful alerts
+                projectDebugInfo.alertCreationResults = alertsOrErrors.alerts.map(alert => ({
+                  id: alert._id.toString(),
+                  weatherType: alert.weatherType,
+                  severity: alert.severity,
+                  title: alert.title,
+                  startTime: alert.startTime,
+                  endTime: alert.endTime
+                }));
+                
+                results.projectsChecked++;
+                results.alertsCreated += alertsOrErrors.alerts.length;
+                results.projectResults.push({
+                  projectId,
+                  projectName: project.name,
+                  alertsCreated: alertsOrErrors.alerts.length,
+                  hasLocation: true,
+                  locationSource,
+                  heatThresholdChecks: projectDebugInfo.thresholdChecks.heat.checks
+                });
+              }
             } catch (error) {
               projectDebugInfo.error = {
                 weatherApi: error.message,
@@ -756,6 +776,296 @@ async getProjectAlerts(businessId: string, projectId: string): Promise<ProjectAl
     }
 }
 
+/**
+ * Modified version of checkWeatherForProject that returns errors
+ */
+async checkWeatherForProjectWithErrors(businessId: string, projectId: string): Promise<{alerts: WeatherAlert[], errors: any[]}> {
+    try {
+      // Get project details
+      const project = await this.appProjectModel.findOne({ 
+        _id: projectId,
+        businessId 
+      });
+      
+      if (!project) {
+        return { 
+          alerts: [],
+          errors: [{ message: 'Project not found', phase: 'project_lookup' }]
+        };
+      }
+      
+      let locationData;
+      
+      // 1. First check if project has location data
+      if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+        // Validate coordinates
+        const validation = this.validateLocationCoordinates(
+          project.metadata.location.latitude,
+          project.metadata.location.longitude
+        );
+        
+        if (validation.valid) {
+          locationData = project.metadata.location;
+        } else {
+          // Try to use construction site data instead
+        }
+      } 
+      
+      // 2. If no valid project location, check if project has associated construction site with location
+      if (!locationData) {
+        // Find construction site for this project
+        const site = await this.constructionSiteModel.findOne({
+          businessId,
+          appProjectId: projectId,
+          isDeleted: false,
+          'location.latitude': { $exists: true, $ne: null },
+          'location.longitude': { $exists: true, $ne: null }
+        });
+        
+        if (site && site.location?.latitude && site.location?.longitude) {
+          // Validate coordinates
+          const validation = this.validateLocationCoordinates(
+            site.location.latitude,
+            site.location.longitude
+          );
+          
+          if (validation.valid) {
+            locationData = {
+              latitude: site.location.latitude,
+              longitude: site.location.longitude,
+              address: site.location.address
+            };
+          } else {
+            return {
+              alerts: [],
+              errors: [{ 
+                message: 'Project and associated construction site have invalid location data',
+                validation
+              }]
+            };
+          }
+        } else {
+          return {
+            alerts: [],
+            errors: [{ 
+              message: 'Project does not have location data and no associated construction site with location data was found'
+            }]
+          };
+        }
+      }
+      
+      // Get business settings
+      const businessSettings = await this.getBusinessWeatherSettings(businessId);
+      
+      if (!businessSettings.enableWeatherAlerts) {
+        return { 
+          alerts: [],
+          errors: [{ message: 'Weather alerts are disabled for this business' }]
+        };
+      }
+      
+      // Get project settings if any
+      const projectSettings = await this.projectWeatherSettingsModel.findOne({
+        businessId,
+        projectId
+      });
+      
+      // Skip if project has custom settings and alerts disabled
+      if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
+        return { 
+          alerts: [],
+          errors: [{ message: 'Project has custom settings with weather alerts disabled' }]
+        };
+      }
+      
+      // Use project settings if available and enabled, otherwise use business settings
+      const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
+      const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
+     
+      const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
+        projectSettings.notificationRecipients : businessSettings.notificationRecipients;
+  
+      const emailNotificationRecipients = useProjectSettings && projectSettings.emailNotificationRecipients?.length > 0 ? 
+        projectSettings.emailNotificationRecipients : businessSettings.emailNotificationRecipients;
+        
+      const smsNotificationRecipients = useProjectSettings && projectSettings.smsNotificationRecipients?.length > 0 ? 
+        projectSettings.smsNotificationRecipients : businessSettings.smsNotificationRecipients;
+            
+      // Get weather data
+      const { latitude, longitude } = locationData;
+      let weatherData;
+      try {
+        weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
+      } catch (error) {
+        return {
+          alerts: [],
+          errors: [{ 
+            message: `Error fetching weather data: ${error.message}`,
+            phase: 'weather_api'
+          }]
+        };
+      }
+      
+      // Prepare a project object that includes location data for alert creation
+      const projectWithLocation = { ...project.toObject() };
+      projectWithLocation.metadata = projectWithLocation.metadata || {};
+      projectWithLocation.metadata.location = locationData;
+      
+      // Check for weather conditions that exceed thresholds
+      const newAlerts: WeatherAlert[] = [];
+      const errors: any[] = [];
+      
+      // Check for heat
+      const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
+      if (heatThreshold) {
+        try {
+          // Try creating a heat alert with error details
+          const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
+          
+          if (result.alert) {
+            newAlerts.push(result.alert);
+            try {
+              await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (notifyError) {
+              errors.push({
+                phase: 'notification',
+                message: `Failed to send alert notification: ${notifyError.message}`,
+                alertType: 'heat'
+              });
+            }
+          } else if (result.error) {
+            errors.push(result.error);
+          }
+        } catch (error) {
+          errors.push({
+            phase: 'heat_check',
+            message: `Error checking for heat alert: ${error.message}`,
+            stack: error.stack
+          });
+        }
+      }
+      
+      // Return all alerts and errors
+      return {
+        alerts: newAlerts,
+        errors: errors
+      };
+    } catch (error) {
+      return {
+        alerts: [],
+        errors: [{
+          phase: 'overall_check',
+          message: `Error checking weather for project: ${error.message}`,
+          stack: error.stack
+        }]
+      };
+    }
+  }
+
+  /**
+ * Modified version of checkForHeatAlert that returns error details
+ */
+private async checkForHeatAlertWithErrors(
+    weatherData: any, 
+    businessId: string, 
+    projectId: string, 
+    project: any, 
+    threshold: number
+  ): Promise<{ alert: WeatherAlert | null, error: any | null }> {
+    try {
+      // Check daily forecast for extreme heat
+      for (let i = 0; i < 3; i++) { // Check next 3 days
+        const dailyData = weatherData.daily[i];
+        const maxTemp = dailyData.temp.max;
+        
+        if (maxTemp >= threshold) {
+          try {
+            // Try to create the alert
+            const startTime = new Date(dailyData.dt * 1000);
+            const endTime = new Date(startTime);
+            endTime.setHours(23, 59, 59); // End of day
+            
+            const tempUnit = this.units === 'metric' ? '°C' : '°F';
+            
+            const alertData = {
+              businessId,
+              title: `Extreme Heat Alert`,
+              description: `High temperatures expected to reach ${maxTemp.toFixed(1)}${tempUnit} on ${startTime.toLocaleDateString()}.`,
+              weatherType: WeatherType.HEAT,
+              severity: this.determineTemperatureSeverity(maxTemp, threshold),
+              startTime,
+              endTime,
+              location: project.metadata?.location || { latitude: 0, longitude: 0 },
+              affectedProjectIds: [projectId],
+              weatherData: {
+                temp: dailyData.temp,
+                dt: dailyData.dt
+              },
+              resolved: false
+            };
+            
+            // Try direct create
+            try {
+              const alert = await this.weatherAlertModel.create(alertData);
+              return { alert, error: null };
+            } catch (createError) {
+              // If create fails, try with new + save
+              try {
+                const alert = new this.weatherAlertModel(alertData);
+                await alert.save();
+                return { alert, error: null };
+              } catch (saveError) {
+                return {
+                  alert: null,
+                  error: {
+                    phase: 'alert_save',
+                    message: saveError.message,
+                    code: saveError.code,
+                    name: saveError.name,
+                    validationErrors: saveError.errors,
+                    alertData
+                  }
+                };
+              }
+            }
+          } catch (error) {
+            return {
+              alert: null,
+              error: {
+                phase: 'alert_creation',
+                message: error.message,
+                stack: error.stack,
+                day: i,
+                maxTemp,
+                threshold
+              }
+            };
+          }
+        }
+      }
+      
+      // No days exceeded threshold or other issue
+      return { 
+        alert: null,
+        error: { 
+          phase: 'temperature_check',
+          message: 'No days with temperature exceeding threshold',
+          thresholdValue: threshold,
+          temperatures: weatherData.daily.slice(0, 3).map(d => d.temp.max)
+        }
+      };
+    } catch (error) {
+      return {
+        alert: null,
+        error: {
+          phase: 'heat_check_overall',
+          message: error.message,
+          stack: error.stack
+        }
+      };
+    }
+  }
+  
   /**
  * Check weather for a specific project
  */
@@ -939,18 +1249,43 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
           }
       }
       
-      // Check for heat
       const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
       if (heatThreshold) {
-        const alert = await this.checkForHeatAlert(weatherData, businessId, projectId, project, heatThreshold.threshold);
-        if (alert) {
-            newAlerts.push(alert);
-            try {
-                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-            } catch (error) {
-                this.logger.error(`Failed to send alert notification for heat alert: ${error.message}`);
-            }
+        const alertOrError = await this.checkForHeatAlert(weatherData, businessId, projectId, project, heatThreshold.threshold);
+        
+        // Check if we got an error response
+        if (alertOrError && alertOrError.error === true) {
+          // Add the error info to the results
+          this.logger.error(`Heat alert creation error: ${alertOrError.message}`);
+          
+          // Create a fake alert with a string ID that won't be saved to the database
+          const errorAlert = {
+            _id: "error_" + Date.now(), // Use a string ID
+            businessId,
+            title: 'Error Creating Heat Alert',
+            description: alertOrError.message,
+            weatherType: WeatherType.HEAT,
+            severity: WeatherAlertSeverity.ADVISORY,
+            startTime: new Date(),
+            endTime: new Date(),
+            location: locationData,
+            affectedProjectIds: [projectId],
+            weatherData: { error: alertOrError },
+            resolved: false,
+            // Add any other required properties for WeatherAlert type
+          } as unknown as WeatherAlert; // Type cast to WeatherAlert
+          
+          return [errorAlert];
+        } 
+        else if (alertOrError && !alertOrError.error && alertOrError._id) {
+          // We got a valid alert
+          newAlerts.push(alertOrError);
+          try {
+            await this.sendAlertNotification(alertOrError, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (error) {
+            this.logger.error(`Failed to send alert notification for heat alert: ${error.message}`);
           }
+        }
       }
       
       // Check for cold
@@ -1199,66 +1534,72 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
     }
   }
 
-  /**
-   * Check for heat alert
-   */
-  private async checkForHeatAlert(
-    weatherData: any, 
-    businessId: string, 
-    projectId: string, 
-    project: any, 
-    threshold: number
-  ): Promise<WeatherAlert | null> {
-    try {
-      // Check daily forecast for extreme heat
-      for (let i = 0; i < 3; i++) { // Check next 3 days
-        const dailyData = weatherData.daily[i];
-        const maxTemp = dailyData.temp.max;
+ private async checkForHeatAlert(
+  weatherData: any, 
+  businessId: string, 
+  projectId: string, 
+  project: any, 
+  threshold: number
+): Promise<WeatherAlert | any> {  // Modified return type to allow error objects
+  try {
+    for (let i = 0; i < 3; i++) {
+      const dailyData = weatherData.daily[i];
+      const maxTemp = dailyData.temp.max;
+      
+      if (maxTemp >= threshold) {
+        const startTime = new Date(dailyData.dt * 1000);
+        const endTime = new Date(startTime);
+        endTime.setHours(23, 59, 59);
         
-        // if (maxTemp >= threshold) {
-          // Check if a similar alert already exists
-        //   const existingAlert = await this.weatherAlertModel.findOne({
-        //     businessId,
-        //     affectedProjectIds: projectId,
-        //     weatherType: WeatherType.HEAT,
-        //     startTime: { $lte: new Date(dailyData.dt * 1000) },
-        //     endTime: { $gte: new Date(dailyData.dt * 1000) },
-        //     resolved: false
-        //   });
+        const tempUnit = this.units === 'metric' ? '°C' : '°F';
+        
+        try {
+          const alert = await this.createWeatherAlert({
+            businessId,
+            projectId,
+            title: `Extreme Heat Alert`,
+            description: `High temperatures expected to reach ${maxTemp.toFixed(1)}${tempUnit} on ${startTime.toLocaleDateString()}.`,
+            weatherType: WeatherType.HEAT,
+            severity: this.determineTemperatureSeverity(maxTemp, threshold),
+            startTime,
+            endTime,
+            location: project.metadata?.location || { latitude: 0, longitude: 0 },
+            weatherData: dailyData
+          });
           
-        //   if (!existingAlert) {
-            // Create a new alert
-            const startTime = new Date(dailyData.dt * 1000);
-            const endTime = new Date(startTime);
-            endTime.setHours(23, 59, 59); // End of day
-            
-            const tempUnit = this.units === 'metric' ? '°C' : '°F';
-            
-            const alert = await this.createWeatherAlert({
+          return alert;
+        } catch (createError) {
+          // Return detailed error information
+          return {
+            error: true,
+            message: createError.message,
+            stack: createError.stack,
+            details: createError.errors || {},
+            data: {
               businessId,
               projectId,
-              title: `Extreme Heat Alert`,
-              description: `High temperatures expected to reach ${maxTemp.toFixed(1)}${tempUnit} on ${startTime.toLocaleDateString()}.`,
               weatherType: WeatherType.HEAT,
-              severity: this.determineTemperatureSeverity(maxTemp, threshold),
-              startTime,
-              endTime,
-              location: project.metadata.location,
-              weatherData: dailyData
-            });
-            
-            return alert;
-          //}
-        // }
+              maxTemp,
+              threshold,
+              startTime: startTime.toISOString(),
+              endTime: endTime.toISOString(),
+              location: project.metadata?.location
+            }
+          };
+        }
       }
-      
-      return null;
-    } catch (error) {
-      this.logger.error(`Error checking for heat alert: ${error.message}`, error.stack);
-      return null;
     }
+    
+    return { error: false, message: 'No temperatures exceeding threshold found' };
+  } catch (error) {
+    return {
+      error: true,
+      message: error.message,
+      stack: error.stack,
+      phase: 'checking_heat_alert'
+    };
   }
-
+}
   /**
    * Check for cold alert
    */
@@ -1358,9 +1699,6 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
     }
   }
 
-  /**
-   * Create a weather alert
-   */
   private async createWeatherAlert(params: {
     businessId: string,
     projectId: string,
@@ -1374,7 +1712,13 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
     weatherData: any
   }): Promise<WeatherAlert> {
     try {
-      const alert = new this.weatherAlertModel({
+      // Ensure required fields exist
+      if (!params.location) {
+        params.location = { latitude: 0, longitude: 0 };
+      }
+      
+      // Create the alert object
+      const alertData = {
         businessId: params.businessId,
         title: params.title,
         description: params.description,
@@ -1384,15 +1728,22 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         endTime: params.endTime,
         location: params.location,
         affectedProjectIds: [params.projectId],
-        weatherData: params.weatherData,
+        weatherData: params.weatherData || {},
         resolved: false
-      });
+      };
       
-      await alert.save();
-      return alert;
+      try {
+        // Try direct create method
+        const alert = await this.weatherAlertModel.create(alertData);
+        return alert;
+      } catch (createError) {
+        // If create fails, try the new + save approach
+        const alert = new this.weatherAlertModel(alertData);
+        await alert.save();
+        return alert;
+      }
     } catch (error) {
-      this.logger.error(`Error creating weather alert: ${error.message}`, error.stack);
-      throw error;
+      throw error; // Re-throw to be caught by the caller
     }
   }
 
