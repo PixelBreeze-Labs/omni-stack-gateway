@@ -1958,7 +1958,7 @@ private async sendAlertNotification(
     await this.emailService.sendTemplateEmail(
       businessName,
       'weather-alerts@omnistackhub.xyz',
-      email,
+      'ggerveni@gmail.com',
       `Weather Alert: ${alert.title}`,
       'templates/business/weather-alert-email.html',
       {
