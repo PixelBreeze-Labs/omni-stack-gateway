@@ -876,704 +876,822 @@ async checkWeatherForProjectWithErrors(businessId: string, projectId: string): P
           alerts: [],
           errors: [{ message: 'Project has custom settings with weather alerts disabled' }]
         };
-      }
-      
-      // Use project settings if available and enabled, otherwise use business settings
-      const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
-      const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
-     
-      const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
-        projectSettings.notificationRecipients : businessSettings.notificationRecipients;
-  
-      const emailNotificationRecipients = useProjectSettings && projectSettings.emailNotificationRecipients?.length > 0 ? 
-        projectSettings.emailNotificationRecipients : businessSettings.emailNotificationRecipients;
-        
-      const smsNotificationRecipients = useProjectSettings && projectSettings.smsNotificationRecipients?.length > 0 ? 
-        projectSettings.smsNotificationRecipients : businessSettings.smsNotificationRecipients;
-            
-      // Get weather data
-      const { latitude, longitude } = locationData;
-      let weatherData;
-      try {
-        weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
-      } catch (error) {
-        return {
-          alerts: [],
-          errors: [{ 
-            message: `Error fetching weather data: ${error.message}`,
-            phase: 'weather_api'
-          }]
-        };
-      }
-      
-      // Prepare a project object that includes location data for alert creation
-      const projectWithLocation = { ...project.toObject() };
-      projectWithLocation.metadata = projectWithLocation.metadata || {};
-      projectWithLocation.metadata.location = locationData;
-      
-      // Check for weather conditions that exceed thresholds
-      const newAlerts: WeatherAlert[] = [];
-      const errors: any[] = [];
-      
-      // Check for heat
-      const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
-      if (heatThreshold) {
-        try {
-          // Try creating a heat alert with error details
-          const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
+    }
+    
+    // Use project settings if available and enabled, otherwise use business settings
+    const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
+    const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
+   
+    // Ensure notification recipients always have valid arrays
+    const notificationRecipients = (useProjectSettings && 
+      projectSettings.notificationRecipients && 
+      projectSettings.notificationRecipients.length > 0) ? 
+        projectSettings.notificationRecipients : 
+        (businessSettings.notificationRecipients || []);
+    
+    // Ensure email recipients includes your specific email
+    let emailNotificationRecipients = [];
+    if (useProjectSettings && projectSettings.emailNotificationRecipients && projectSettings.emailNotificationRecipients.length > 0) {
+      emailNotificationRecipients = projectSettings.emailNotificationRecipients;
+    } else if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
+      emailNotificationRecipients = businessSettings.emailNotificationRecipients;
+    } else {
+      emailNotificationRecipients = [];
+    }
+    
+    const smsNotificationRecipients = (useProjectSettings && 
+      projectSettings.smsNotificationRecipients && 
+      projectSettings.smsNotificationRecipients.length > 0) ? 
+        projectSettings.smsNotificationRecipients : 
+        (businessSettings.smsNotificationRecipients || []);
           
-          if (result.alert) {
-            newAlerts.push(result.alert);
-            try {
-              await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-            } catch (notifyError) {
-                await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-
-              errors.push({
-                phase: 'notification',
-                message: `Failed to send alert notification: ${notifyError.message}`,
-                alertType: 'heat'
-              });
-            }
-          } else if (result.error) {
-            errors.push(result.error);
-          }
-        } catch (error) {
-          errors.push({
-            phase: 'heat_check',
-            message: `Error checking for heat alert: ${error.message}`,
-            stack: error.stack
-          });
-        }
-      }
-      
-      // Return all alerts and errors
-      return {
-        alerts: newAlerts,
-        errors: errors
-      };
+    // Get weather data
+    const { latitude, longitude } = locationData;
+    let weatherData;
+    try {
+      weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
     } catch (error) {
       return {
         alerts: [],
-        errors: [{
-          phase: 'overall_check',
-          message: `Error checking weather for project: ${error.message}`,
-          stack: error.stack
+        errors: [{ 
+          message: `Error fetching weather data: ${error.message}`,
+          phase: 'weather_api'
         }]
       };
     }
-  }
-
-  /**
- * Modified version of checkForHeatAlert that returns error details
- */
-private async checkForHeatAlertWithErrors(
-    weatherData: any, 
-    businessId: string, 
-    projectId: string, 
-    project: any, 
-    threshold: number
-  ): Promise<{ alert: WeatherAlert | null, error: any | null }> {
-    try {
-      // Check daily forecast for extreme heat
-      for (let i = 0; i < 3; i++) { // Check next 3 days
-        const dailyData = weatherData.daily[i];
-        const maxTemp = dailyData.temp.max;
-        
-        if (maxTemp >= threshold) {
-          try {
-            // Try to create the alert
-            const startTime = new Date(dailyData.dt * 1000);
-            const endTime = new Date(startTime);
-            endTime.setHours(23, 59, 59); // End of day
-            
-            const tempUnit = this.units === 'metric' ? '°C' : '°F';
-            
-            const alertData = {
+    
+    // Prepare a project object that includes location data for alert creation
+    const projectWithLocation = { ...project.toObject() };
+    projectWithLocation.metadata = projectWithLocation.metadata || {};
+    projectWithLocation.metadata.location = locationData;
+    
+    // Check for weather conditions that exceed thresholds
+    const newAlerts: WeatherAlert[] = [];
+    const errors: any[] = [];
+    
+    // Check for external alerts from weather provider
+    if (weatherData.alerts && weatherData.alerts.length > 0) {
+      for (const externalAlert of weatherData.alerts) {
+        try {
+          // Map external alert to our schema
+          if (await this.shouldCreateStormAlert(externalAlert, businessId, projectId, alertThresholds)) {
+            const alert = await this.createWeatherAlert({
               businessId,
-              title: `Extreme Heat Alert`,
-              description: `High temperatures expected to reach ${maxTemp.toFixed(1)}${tempUnit} on ${startTime.toLocaleDateString()}.`,
-              weatherType: WeatherType.HEAT,
-              severity: this.determineTemperatureSeverity(maxTemp, threshold),
-              startTime,
-              endTime,
-              location: project.metadata?.location || { latitude: 0, longitude: 0 },
-              affectedProjectIds: [projectId],
-              weatherData: {
-                temp: dailyData.temp,
-                dt: dailyData.dt
-              },
-              resolved: false
-            };
+              projectId,
+              title: externalAlert.event,
+              description: externalAlert.description,
+              weatherType: WeatherType.STORM,
+              severity: this.mapExternalAlertSeverity(externalAlert.event),
+              startTime: new Date(externalAlert.start * 1000),
+              endTime: new Date(externalAlert.end * 1000),
+              location: locationData,
+              weatherData: externalAlert
+            });
             
-            // Try direct create
+            newAlerts.push(alert);
+            
             try {
-              const alert = await this.weatherAlertModel.create(alertData);
-              return { alert, error: null };
-            } catch (createError) {
-              // If create fails, try with new + save
-              try {
-                const alert = new this.weatherAlertModel(alertData);
-                await alert.save();
-                return { alert, error: null };
-              } catch (saveError) {
-                return {
-                  alert: null,
-                  error: {
-                    phase: 'alert_save',
-                    message: saveError.message,
-                    code: saveError.code,
-                    name: saveError.name,
-                    validationErrors: saveError.errors,
-                    alertData
-                  }
-                };
-              }
+              await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+            } catch (notifyError) {
+              errors.push({
+                phase: 'notification_storm',
+                message: `Failed to send storm alert notification: ${notifyError.message}`
+              });
             }
-          } catch (error) {
-            return {
-              alert: null,
-              error: {
-                phase: 'alert_creation',
-                message: error.message,
-                stack: error.stack,
-                day: i,
-                maxTemp,
-                threshold
-              }
-            };
           }
+        } catch (error) {
+          errors.push({
+            phase: 'storm_check',
+            message: `Error processing storm alert: ${error.message}`
+          });
         }
       }
-      
-      // No days exceeded threshold or other issue
-      return { 
-        alert: null,
-        error: { 
-          phase: 'temperature_check',
-          message: 'No days with temperature exceeding threshold',
-          thresholdValue: threshold,
-          temperatures: weatherData.daily.slice(0, 3).map(d => d.temp.max)
-        }
-      };
-    } catch (error) {
-      return {
-        alert: null,
-        error: {
-          phase: 'heat_check_overall',
-          message: error.message,
-          stack: error.stack
-        }
-      };
     }
+    
+    // Check for rain
+    const rainThreshold = alertThresholds.find(t => t.type === WeatherType.RAIN && t.enabled);
+    if (rainThreshold) {
+      try {
+        const result = await this.checkForAlertWithErrors(
+          weatherData, 
+          businessId, 
+          projectId, 
+          project, 
+          WeatherType.RAIN, 
+          rainThreshold.threshold
+        );
+        
+        if (result.alert) {
+          newAlerts.push(result.alert);
+          try {
+            await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (notifyError) {
+            errors.push({
+              phase: 'notification_rain',
+              message: `Failed to send rain alert notification: ${notifyError.message}`
+            });
+          }
+        } else if (result.error) {
+          errors.push(result.error);
+        }
+      } catch (error) {
+        errors.push({
+          phase: 'rain_check',
+          message: `Error checking for rain alert: ${error.message}`
+        });
+      }
+    }
+    
+    // Check for snow
+    const snowThreshold = alertThresholds.find(t => t.type === WeatherType.SNOW && t.enabled);
+    if (snowThreshold) {
+      try {
+        const result = await this.checkForAlertWithErrors(
+          weatherData, 
+          businessId, 
+          projectId, 
+          project, 
+          WeatherType.SNOW, 
+          snowThreshold.threshold
+        );
+        
+        if (result.alert) {
+          newAlerts.push(result.alert);
+          try {
+            await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (notifyError) {
+            errors.push({
+              phase: 'notification_snow',
+              message: `Failed to send snow alert notification: ${notifyError.message}`
+            });
+          }
+        } else if (result.error) {
+          errors.push(result.error);
+        }
+      } catch (error) {
+        errors.push({
+          phase: 'snow_check',
+          message: `Error checking for snow alert: ${error.message}`
+        });
+      }
+    }
+    
+    // Check for wind
+    const windThreshold = alertThresholds.find(t => t.type === WeatherType.WIND && t.enabled);
+    if (windThreshold) {
+      try {
+        const result = await this.checkForAlertWithErrors(
+          weatherData, 
+          businessId, 
+          projectId, 
+          project, 
+          WeatherType.WIND, 
+          windThreshold.threshold
+        );
+        
+        if (result.alert) {
+          newAlerts.push(result.alert);
+          try {
+            await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (notifyError) {
+            errors.push({
+              phase: 'notification_wind',
+              message: `Failed to send wind alert notification: ${notifyError.message}`
+            });
+          }
+        } else if (result.error) {
+          errors.push(result.error);
+        }
+      } catch (error) {
+        errors.push({
+          phase: 'wind_check',
+          message: `Error checking for wind alert: ${error.message}`
+        });
+      }
+    }
+    
+    // Check for heat
+    const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
+    if (heatThreshold) {
+      try {
+        // Try creating a heat alert with error details
+        const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
+        
+        if (result.alert) {
+          newAlerts.push(result.alert);
+          try {
+            await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (notifyError) {
+            errors.push({
+              phase: 'notification_heat',
+              message: `Failed to send heat alert notification: ${notifyError.message}`
+            });
+          }
+        } else if (result.error) {
+          errors.push(result.error);
+        }
+      } catch (error) {
+        errors.push({
+          phase: 'heat_check',
+          message: `Error checking for heat alert: ${error.message}`,
+          stack: error.stack
+        });
+      }
+    }
+    
+    // Check for cold
+    const coldThreshold = alertThresholds.find(t => t.type === WeatherType.COLD && t.enabled);
+    if (coldThreshold) {
+      try {
+        const result = await this.checkForAlertWithErrors(
+          weatherData, 
+          businessId, 
+          projectId, 
+          project, 
+          WeatherType.COLD, 
+          coldThreshold.threshold
+        );
+        
+        if (result.alert) {
+          newAlerts.push(result.alert);
+          try {
+            await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (notifyError) {
+            errors.push({
+              phase: 'notification_cold',
+              message: `Failed to send cold alert notification: ${notifyError.message}`
+            });
+          }
+        } else if (result.error) {
+          errors.push(result.error);
+        }
+      } catch (error) {
+        errors.push({
+          phase: 'cold_check',
+          message: `Error checking for cold alert: ${error.message}`
+        });
+      }
+    }
+    
+    // Return all alerts and errors
+    return {
+      alerts: newAlerts,
+      errors: errors
+    };
+  } catch (error) {
+    return {
+      alerts: [],
+      errors: [{
+        phase: 'overall_check',
+        message: `Error checking weather for project: ${error.message}`,
+        stack: error.stack
+      }]
+    };
   }
-  
-  /**
- * Check weather for a specific project
+}
+
+/**
+ * Generic check for weather alerts with errors (for rain, snow, wind, and cold)
  */
+private async checkForAlertWithErrors(
+  weatherData: any,
+  businessId: string,
+  projectId: string,
+  project: any,
+  weatherType: WeatherType,
+  threshold: number
+): Promise<{ alert: WeatherAlert | null, error: any | null }> {
+  try {
+    let propertyName: string;
+    let valueGetter: (dailyData: any) => number;
+    let title: string;
+    let descriptionFormat: string;
+    let unit: string = '';
+    let thresholdComparator: (value: number, threshold: number) => boolean;
+    
+    // Configure based on weather type
+    switch (weatherType) {
+      case WeatherType.RAIN:
+        propertyName = 'rain';
+        valueGetter = (dailyData) => dailyData.rain || 0;
+        title = 'Heavy Rain Alert';
+        descriptionFormat = 'Heavy rain expected with %VALUE%%UNIT% precipitation forecasted for %DATE%.';
+        unit = 'mm';
+        thresholdComparator = (value, threshold) => value >= threshold;
+        break;
+      case WeatherType.SNOW:
+        propertyName = 'snow';
+        valueGetter = (dailyData) => dailyData.snow || 0;
+        title = 'Snow Alert';
+        descriptionFormat = 'Significant snowfall expected with %VALUE%%UNIT% accumulation forecasted for %DATE%.';
+        unit = 'cm';
+        thresholdComparator = (value, threshold) => value >= threshold;
+        break;
+      case WeatherType.WIND:
+        propertyName = 'wind_speed';
+        valueGetter = (dailyData) => {
+          const windSpeed = dailyData.wind_speed || 0;
+          return this.units === 'metric' ? windSpeed : windSpeed * 1.60934; // Convert to km/h if imperial
+        };
+        title = 'High Wind Alert';
+        descriptionFormat = 'Strong winds expected with speeds up to %VALUE%%UNIT% on %DATE%.';
+        unit = ' km/h';
+        thresholdComparator = (value, threshold) => value >= threshold;
+        break;
+      case WeatherType.COLD:
+        propertyName = 'temp.min';
+        valueGetter = (dailyData) => dailyData.temp.min;
+        title = 'Cold Temperature Alert';
+        descriptionFormat = 'Low temperatures expected to reach %VALUE%%UNIT% on %DATE%.';
+        unit = this.units === 'metric' ? '°C' : '°F';
+        thresholdComparator = (value, threshold) => value <= threshold;
+        break;
+      default:
+        return {
+          alert: null,
+          error: {
+            phase: 'alert_type_check',
+            message: `Unsupported weather type: ${weatherType}`
+          }
+        };
+    }
+    
+    // Check daily forecast
+    for (let i = 0; i < 3; i++) { // Check next 3 days
+      const dailyData = weatherData.daily[i];
+      const value = valueGetter(dailyData);
+      
+      if (thresholdComparator(value, threshold)) {
+        try {
+          // Create a new alert
+          const startTime = new Date(dailyData.dt * 1000);
+          const endTime = new Date(startTime);
+          endTime.setHours(23, 59, 59); // End of day
+          
+          // Format description
+          const description = descriptionFormat
+            .replace('%VALUE%', value.toFixed(1))
+            .replace('%UNIT%', unit)
+            .replace('%DATE%', startTime.toLocaleDateString());
+          
+          // Determine severity based on weather type
+          let severity: WeatherAlertSeverity;
+          switch (weatherType) {
+            case WeatherType.RAIN:
+            case WeatherType.SNOW:
+              severity = this.determinePrecipitationSeverity(value, threshold);
+              break;
+            case WeatherType.WIND:
+              severity = this.determineWindSeverity(value, threshold);
+              break;
+            case WeatherType.COLD:
+              severity = this.determineTemperatureSeverity(Math.abs(value), threshold);
+              break;
+            default:
+              severity = WeatherAlertSeverity.ADVISORY;
+          }
+          
+          // Create alert
+          const alert = await this.createWeatherAlert({
+            businessId,
+            projectId,
+            title,
+            description,
+            weatherType,
+            severity,
+            startTime,
+            endTime,
+            location: project.metadata?.location || { latitude: 0, longitude: 0 },
+            weatherData: dailyData
+          });
+          
+          return { alert, error: null };
+        } catch (error) {
+          return {
+            alert: null,
+            error: {
+              phase: 'alert_creation',
+              message: error.message,
+              weatherType,
+              day: i,
+              value,
+              threshold
+            }
+          };
+        }
+      }
+    }
+    
+    // No threshold exceeded
+    return {
+      alert: null,
+      error: {
+        phase: 'threshold_check',
+        message: `No ${weatherType} conditions exceeding threshold found`,
+        weatherType,
+        threshold
+      }
+    };
+  } catch (error) {
+    return {
+      alert: null,
+      error: {
+        phase: 'weather_check',
+        message: error.message,
+        weatherType
+      }
+    };
+  }
+}
+
+/**
+* Modified version of checkForHeatAlert that returns error details
+*/
+private async checkForHeatAlertWithErrors(
+  weatherData: any, 
+  businessId: string, 
+  projectId: string, 
+  project: any, 
+  threshold: number
+): Promise<{ alert: WeatherAlert | null, error: any | null }> {
+  try {
+    // Check daily forecast for extreme heat
+    for (let i = 0; i < 3; i++) { // Check next 3 days
+      const dailyData = weatherData.daily[i];
+      const maxTemp = dailyData.temp.max;
+      
+      if (maxTemp >= threshold) {
+        try {
+          // Try to create the alert
+          const startTime = new Date(dailyData.dt * 1000);
+          const endTime = new Date(startTime);
+          endTime.setHours(23, 59, 59); // End of day
+          
+          const tempUnit = this.units === 'metric' ? '°C' : '°F';
+          
+          const alertData = {
+            businessId,
+            title: `Extreme Heat Alert`,
+            description: `High temperatures expected to reach ${maxTemp.toFixed(1)}${tempUnit} on ${startTime.toLocaleDateString()}.`,
+            weatherType: WeatherType.HEAT,
+            severity: this.determineTemperatureSeverity(maxTemp, threshold),
+            startTime,
+            endTime,
+            location: project.metadata?.location || { latitude: 0, longitude: 0 },
+            affectedProjectIds: [projectId],
+            weatherData: {
+              temp: dailyData.temp,
+              dt: dailyData.dt
+            },
+            resolved: false
+          };
+          
+          // Try direct create
+          try {
+            const alert = await this.weatherAlertModel.create(alertData);
+            return { alert, error: null };
+          } catch (createError) {
+            // If create fails, try with new + save
+            try {
+              const alert = new this.weatherAlertModel(alertData);
+              await alert.save();
+              return { alert, error: null };
+            } catch (saveError) {
+              return {
+                alert: null,
+                error: {
+                  phase: 'alert_save',
+                  message: saveError.message,
+                  code: saveError.code,
+                  name: saveError.name,
+                  validationErrors: saveError.errors,
+                  alertData
+                }
+              };
+            }
+          }
+        } catch (error) {
+          return {
+            alert: null,
+            error: {
+              phase: 'alert_creation',
+              message: error.message,
+              stack: error.stack,
+              day: i,
+              maxTemp,
+              threshold
+            }
+          };
+        }
+      }
+    }
+    
+    // No days exceeded threshold or other issue
+    return { 
+      alert: null,
+      error: { 
+        phase: 'temperature_check',
+        message: 'No days with temperature exceeding threshold',
+        thresholdValue: threshold,
+        temperatures: weatherData.daily.slice(0, 3).map(d => d.temp.max)
+      }
+    };
+  } catch (error) {
+    return {
+      alert: null,
+      error: {
+        phase: 'heat_check_overall',
+        message: error.message,
+        stack: error.stack
+      }
+    };
+  }
+}
+
+/**
+* Check weather for a specific project
+*/
 async checkWeatherForProject(businessId: string, projectId: string): Promise<WeatherAlert[]> {
-    try {
-      // Get project details
-      const project = await this.appProjectModel.findOne({ 
-        _id: projectId,
-        businessId 
+  try {
+    // Get project details
+    const project = await this.appProjectModel.findOne({ 
+      _id: projectId,
+      businessId 
+    });
+    
+    if (!project) {
+      throw new Error('Project not found');
+    }
+    
+    let locationData;
+    
+    // 1. First check if project has location data
+    if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+      // Validate coordinates
+      const validation = this.validateLocationCoordinates(
+        project.metadata.location.latitude,
+        project.metadata.location.longitude
+      );
+      
+      if (validation.valid) {
+        locationData = project.metadata.location;
+        this.logger.log(`Using project's own location data for project ${projectId}`);
+      } else {
+        this.logger.warn(`Project ${projectId} has invalid coordinates: ${validation.error}`);
+        // Try to use construction site data instead
+      }
+    } 
+    
+    // 2. If no valid project location, check if project has associated construction site with location
+    if (!locationData) {
+      // Find construction site for this project
+      const site = await this.constructionSiteModel.findOne({
+        businessId,
+        appProjectId: projectId,
+        isDeleted: false,
+        'location.latitude': { $exists: true, $ne: null },
+        'location.longitude': { $exists: true, $ne: null }
       });
       
-      if (!project) {
-        throw new Error('Project not found');
-      }
-      
-      let locationData;
-      
-      // 1. First check if project has location data
-      if (project.metadata?.location?.latitude && project.metadata?.location?.longitude) {
+      if (site && site.location?.latitude && site.location?.longitude) {
         // Validate coordinates
         const validation = this.validateLocationCoordinates(
-          project.metadata.location.latitude,
-          project.metadata.location.longitude
+          site.location.latitude,
+          site.location.longitude
         );
         
         if (validation.valid) {
-          locationData = project.metadata.location;
-          this.logger.log(`Using project's own location data for project ${projectId}`);
+          locationData = {
+            latitude: site.location.latitude,
+            longitude: site.location.longitude,
+            address: site.location.address
+          };
+          this.logger.log(`Using construction site's location data for project ${projectId}`);
         } else {
-          this.logger.warn(`Project ${projectId} has invalid coordinates: ${validation.error}`);
-          // Try to use construction site data instead
+          this.logger.warn(`Construction site for project ${projectId} has invalid coordinates: ${validation.error}`);
+          throw new Error('Project and associated construction site have invalid location data');
         }
-      } 
-      
-      // 2. If no valid project location, check if project has associated construction site with location
-      if (!locationData) {
-        // Find construction site for this project
-        const site = await this.constructionSiteModel.findOne({
-          businessId,
-          appProjectId: projectId,
-          isDeleted: false,
-          'location.latitude': { $exists: true, $ne: null },
-          'location.longitude': { $exists: true, $ne: null }
-        });
-        
-        if (site && site.location?.latitude && site.location?.longitude) {
-          // Validate coordinates
-          const validation = this.validateLocationCoordinates(
-            site.location.latitude,
-            site.location.longitude
-          );
+      } else {
+        throw new Error('Project does not have location data and no associated construction site with location data was found');
+      }
+    }
+    
+    // Get business settings
+    const businessSettings = await this.getBusinessWeatherSettings(businessId);
+    
+    if (!businessSettings.enableWeatherAlerts) {
+      return [];
+    }
+    
+    // Get project settings if any
+    const projectSettings = await this.projectWeatherSettingsModel.findOne({
+      businessId,
+      projectId
+    });
+    
+    // Skip if project has custom settings and alerts disabled
+    if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
+      return [];
+    }
+    
+    // Use project settings if available and enabled, otherwise use business settings
+    const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
+    const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
+   
+    // Ensure notification recipients always have valid arrays
+    const notificationRecipients = (useProjectSettings && 
+        projectSettings.notificationRecipients && 
+        projectSettings.notificationRecipients.length > 0) ? 
+          projectSettings.notificationRecipients : 
+          (businessSettings.notificationRecipients || []);
+    
+    let emailNotificationRecipients = [];
+    if (useProjectSettings && projectSettings.emailNotificationRecipients && projectSettings.emailNotificationRecipients.length > 0) {
+      emailNotificationRecipients = projectSettings.emailNotificationRecipients;
+    } else if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
+      emailNotificationRecipients = businessSettings.emailNotificationRecipients;
+    } else {
+      emailNotificationRecipients = [];
+    }
+    
+    const smsNotificationRecipients = (useProjectSettings && 
+      projectSettings.smsNotificationRecipients && 
+      projectSettings.smsNotificationRecipients.length > 0) ? 
+        projectSettings.smsNotificationRecipients : 
+        (businessSettings.smsNotificationRecipients || []);
+    
+    // Get weather data
+    const { latitude, longitude } = locationData;
+    const weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
+    
+    // Prepare a project object that includes location data for alert creation
+    const projectWithLocation = { ...project.toObject() };
+    projectWithLocation.metadata = projectWithLocation.metadata || {};
+    projectWithLocation.metadata.location = locationData;
+    
+    // Check for weather conditions that exceed thresholds
+    const newAlerts: WeatherAlert[] = [];
+    
+    // Check for external alerts from weather provider
+    if (weatherData.alerts && weatherData.alerts.length > 0) {
+      for (const externalAlert of weatherData.alerts) {
+        // Map external alert to our schema
+        if (await this.shouldCreateStormAlert(externalAlert, businessId, projectId, alertThresholds)) {
+          const alert = await this.createWeatherAlert({
+            businessId,
+            projectId,
+            title: externalAlert.event,
+            description: externalAlert.description,
+            weatherType: WeatherType.STORM,
+            severity: this.mapExternalAlertSeverity(externalAlert.event),
+            startTime: new Date(externalAlert.start * 1000),
+            endTime: new Date(externalAlert.end * 1000),
+            location: locationData,
+            weatherData: externalAlert
+          });
           
-          if (validation.valid) {
-            locationData = {
-              latitude: site.location.latitude,
-              longitude: site.location.longitude,
-              address: site.location.address
-            };
-            this.logger.log(`Using construction site's location data for project ${projectId}`);
-          } else {
-            this.logger.warn(`Construction site for project ${projectId} has invalid coordinates: ${validation.error}`);
-            throw new Error('Project and associated construction site have invalid location data');
+          newAlerts.push(alert);
+          
+          // Send notification
+          try {
+            await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (error) {
+            this.logger.error(`Failed to send alert notification for external alert: ${error.message}`);
           }
-        } else {
-          throw new Error('Project does not have location data and no associated construction site with location data was found');
         }
       }
-      
-      // Get business settings
-      const businessSettings = await this.getBusinessWeatherSettings(businessId);
-      
-      if (!businessSettings.enableWeatherAlerts) {
-        return [];
-      }
-      
-      // Get project settings if any
-      const projectSettings = await this.projectWeatherSettingsModel.findOne({
-        businessId,
-        projectId
-      });
-      
-      // Skip if project has custom settings and alerts disabled
-      if (projectSettings?.useCustomSettings && !projectSettings.enableWeatherAlerts) {
-        return [];
-      }
-      
-      // Use project settings if available and enabled, otherwise use business settings
-      const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
-      const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
-     
-      // Ensure notification recipients always have valid arrays
-const notificationRecipients = (useProjectSettings && 
-    projectSettings.notificationRecipients && 
-    projectSettings.notificationRecipients.length > 0) ? 
-      projectSettings.notificationRecipients : 
-      (businessSettings.notificationRecipients || []);
-  
-  // Ensure email recipients includes your specific email
-  let emailNotificationRecipients = [];
-  if (useProjectSettings && projectSettings.emailNotificationRecipients && projectSettings.emailNotificationRecipients.length > 0) {
-    emailNotificationRecipients = projectSettings.emailNotificationRecipients;
-  } else if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
-    emailNotificationRecipients = businessSettings.emailNotificationRecipients;
-  } else {
-    // Add your email as a fallback
-    emailNotificationRecipients = ['ggerveni@gmail.com'];
-  }
-  
-  const smsNotificationRecipients = (useProjectSettings && 
-    projectSettings.smsNotificationRecipients && 
-    projectSettings.smsNotificationRecipients.length > 0) ? 
-      projectSettings.smsNotificationRecipients : 
-      (businessSettings.smsNotificationRecipients || []);
-        // Get weather data
-        const { latitude, longitude } = locationData;
-        const weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
-        
-        // Prepare a project object that includes location data for alert creation
-        const projectWithLocation = { ...project.toObject() };
-        projectWithLocation.metadata = projectWithLocation.metadata || {};
-        projectWithLocation.metadata.location = locationData;
-        
-        // Check for weather conditions that exceed thresholds
-        const newAlerts: WeatherAlert[] = [];
-        const errors: any[] = [];
-        
-        // Check for external alerts from weather provider
-        if (weatherData.alerts && weatherData.alerts.length > 0) {
-        for (const externalAlert of weatherData.alerts) {
-            // Map external alert to our schema
-            if (await this.shouldCreateStormAlert(externalAlert, businessId, projectId, alertThresholds)) {
-            const alert = await this.createWeatherAlert({
-                businessId,
-                projectId,
-                title: externalAlert.event,
-                description: externalAlert.description,
-                weatherType: WeatherType.STORM,
-                severity: this.mapExternalAlertSeverity(externalAlert.event),
-                startTime: new Date(externalAlert.start * 1000),
-                endTime: new Date(externalAlert.end * 1000),
-                location: locationData,
-                weatherData: externalAlert
-            });
-            
-            newAlerts.push(alert);
-
-            // Send notification
-            try {
-                await this.sendAlertNotification(alert, projectWithLocation, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-            } catch (error) {
-                this.logger.error(`Failed to send alert notification for external alert: ${error.message}`);
-            }
-            }
-        }
-        }
-      
-      // Check for rain
-      const rainThreshold = alertThresholds.find(t => t.type === WeatherType.RAIN && t.enabled);
-      if (rainThreshold) {
-        const alert = await this.checkForRainAlert(weatherData, businessId, projectId, project, rainThreshold.threshold);
-        if (alert) {
-            newAlerts.push(alert);
-            try {
-                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-            } catch (error) {
-                this.logger.error(`Failed to send alert notification for rain alert: ${error.message}`);
-            }
-          }
-      }
-      
-      // Check for snow
-      const snowThreshold = alertThresholds.find(t => t.type === WeatherType.SNOW && t.enabled);
-      if (snowThreshold) {
-        const alert = await this.checkForSnowAlert(weatherData, businessId, projectId, project, snowThreshold.threshold);
-        if (alert) {
-            newAlerts.push(alert);
-            try {
-                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-            } catch (error) {
-                this.logger.error(`Failed to send alert notification for snow alert: ${error.message}`);
-            }
-          }
-      }
-      
-      // Check for wind
-      const windThreshold = alertThresholds.find(t => t.type === WeatherType.WIND && t.enabled);
-      if (windThreshold) {
-        const alert = await this.checkForWindAlert(weatherData, businessId, projectId, project, windThreshold.threshold);
-        if (alert) {
-            newAlerts.push(alert);
-            try {
-                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-            } catch (error) {
-                this.logger.error(`Failed to send alert notification for wind alert: ${error.message}`);
-            }
-          }
-      }
-      
+    }
     
-      // Check for heat
-const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
-if (heatThreshold) {
-  try {
-    // Try creating a heat alert with error details
-    const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
-    
-    if (result.alert) {
-      newAlerts.push(result.alert);
-      
-      // Create an array to collect email errors
-      const emailErrors = [];
-      
-      
+    // Helper function to process each alert type
+    const processAlertType = async (
+      weatherType: WeatherType, 
+      threshold: number
+    ) => {
       try {
-                    await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-
-        // Wrap the notification process in a try/catch that collects errors
-        await this.sendAlertNotificationWithErrorCollection(
-          result.alert, 
+        const result = await this.checkForAlertWithErrors(
+          weatherData, 
+          businessId, 
+          projectId, 
           project, 
-          notificationRecipients, 
-          businessSettings, 
-          emailNotificationRecipients, 
-          smsNotificationRecipients,
-          emailErrors // Pass the error collection array
+          weatherType, 
+          threshold
         );
         
-        // If we collected any email errors, add them to the main errors array
-        if (emailErrors.length > 0) {
+        if (result.alert) {
+          newAlerts.push(result.alert);
+          try {
             await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-
-          errors.push({
-            phase: 'email_notification',
-            message: `Email errors occurred during notification`,
-            emailErrors: emailErrors
-          });
+          } catch (error) {
+            this.logger.error(`Failed to send alert notification for ${weatherType} alert: ${error.message}`);
+          }
         }
-      } catch (notifyError) {
-        await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-
-        errors.push({
-          phase: 'notification',
-          message: `Failed to send alert notification: ${notifyError.message}`,
-          alertType: 'heat',
-          emailErrors: emailErrors
-        });
+      } catch (error) {
+        this.logger.error(`Error checking for ${weatherType} alert: ${error.message}`);
       }
-    } else if (result.error) {
-      errors.push(result.error);
+    };
+    
+    // Check for rain
+    const rainThreshold = alertThresholds.find(t => t.type === WeatherType.RAIN && t.enabled);
+    if (rainThreshold) {
+      await processAlertType(WeatherType.RAIN, rainThreshold.threshold);
     }
+    
+    // Check for snow
+    const snowThreshold = alertThresholds.find(t => t.type === WeatherType.SNOW && t.enabled);
+    if (snowThreshold) {
+      await processAlertType(WeatherType.SNOW, snowThreshold.threshold);
+    }
+    
+    // Check for wind
+    const windThreshold = alertThresholds.find(t => t.type === WeatherType.WIND && t.enabled);
+    if (windThreshold) {
+      await processAlertType(WeatherType.WIND, windThreshold.threshold);
+    }
+    
+    // Check for heat
+    const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
+    if (heatThreshold) {
+      try {
+        const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
+        if (result.alert) {
+          newAlerts.push(result.alert);
+          try {
+            await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+          } catch (error) {
+            this.logger.error(`Failed to send alert notification for heat alert: ${error.message}`);
+          }
+        }
+      } catch (error) {
+        this.logger.error(`Error checking for heat alert: ${error.message}`);
+      }
+    }
+    
+    // Check for cold
+    const coldThreshold = alertThresholds.find(t => t.type === WeatherType.COLD && t.enabled);
+    if (coldThreshold) {
+      await processAlertType(WeatherType.COLD, coldThreshold.threshold);
+    }
+    
+    // Process all the weather checks and return the alerts
+    return newAlerts;
   } catch (error) {
-    errors.push({
-      phase: 'heat_check',
-      message: `Error checking for heat alert: ${error.message}`,
-      stack: error.stack
-    });
+    this.logger.error(`Error checking weather for project: ${error.message}`, error.stack);
+    throw error;
   }
 }
-      
-      // Check for cold
-      const coldThreshold = alertThresholds.find(t => t.type === WeatherType.COLD && t.enabled);
-      if (coldThreshold) {
-        const alert = await this.checkForColdAlert(weatherData, businessId, projectId, project, coldThreshold.threshold);
-        if (alert) {
-            newAlerts.push(alert);
-            try {
-                await this.sendAlertNotification(alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-            } catch (error) {
-                this.logger.error(`Failed to send alert notification for cold alert: ${error.message}`);
-            }
-          }
-      }
-      
-      // Process all the weather checks and return the alerts
-      return newAlerts
-    } catch (error) {
-      this.logger.error(`Error checking weather for project: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
 
-  /**
-   * Check if storm alert should be created (avoids duplicates)
-   */
-  private async shouldCreateStormAlert(
-    externalAlert: any, 
-    businessId: string, 
-    projectId: string,
-    alertThresholds: any[]
-  ): Promise<boolean> {
-    try {
-      // Check if storm alerts are enabled
-      const stormThreshold = alertThresholds.find(t => t.type === WeatherType.STORM && t.enabled);
-      if (!stormThreshold) {
-        return false;
-      }
-      
-      // Check if a similar alert already exists
-      const existingAlert = await this.weatherAlertModel.findOne({
-        businessId,
-        affectedProjectIds: projectId,
-        weatherType: WeatherType.STORM,
-        title: externalAlert.event,
-        startTime: new Date(externalAlert.start * 1000),
-        endTime: new Date(externalAlert.end * 1000),
-        resolved: false
-      });
-      
-      return !existingAlert;
-    } catch (error) {
-      this.logger.error(`Error checking if storm alert should be created: ${error.message}`, error.stack);
+/**
+ * Check if storm alert should be created (avoids duplicates)
+ */
+private async shouldCreateStormAlert(
+  externalAlert: any, 
+  businessId: string, 
+  projectId: string,
+  alertThresholds: any[]
+): Promise<boolean> {
+  try {
+    // Check if storm alerts are enabled
+    const stormThreshold = alertThresholds.find(t => t.type === WeatherType.STORM && t.enabled);
+    if (!stormThreshold) {
       return false;
     }
-  }
-
-  /**
-   * Map external alert severity to our schema
-   */
-  private mapExternalAlertSeverity(eventType: string): WeatherAlertSeverity {
-    eventType = eventType.toLowerCase();
     
-    if (eventType.includes('warning')) {
-      return WeatherAlertSeverity.WARNING;
-    } else if (eventType.includes('watch')) {
-      return WeatherAlertSeverity.WATCH;
-    } else if (eventType.includes('emergency')) {
-      return WeatherAlertSeverity.EMERGENCY;
-    } else {
-      return WeatherAlertSeverity.ADVISORY;
-    }
+    // Check if a similar alert already exists
+    const existingAlert = await this.weatherAlertModel.findOne({
+      businessId,
+      affectedProjectIds: projectId,
+      weatherType: WeatherType.STORM,
+      title: externalAlert.event,
+      startTime: new Date(externalAlert.start * 1000),
+      endTime: new Date(externalAlert.end * 1000),
+      resolved: false
+    });
+    
+    return !existingAlert;
+  } catch (error) {
+    this.logger.error(`Error checking if storm alert should be created: ${error.message}`, error.stack);
+    return false;
   }
+}
 
-  /**
-   * Check for rain alert
-   */
-  private async checkForRainAlert(
-    weatherData: any, 
-    businessId: string, 
-    projectId: string, 
-    project: any, 
-    threshold: number
-  ): Promise<WeatherAlert | null> {
-    try {
-      // Check daily forecast for rain
-      for (let i = 0; i < 3; i++) { // Check next 3 days
-        const dailyData = weatherData.daily[i];
-        
-        if (dailyData.rain && dailyData.rain >= threshold) {
-          // Check if a similar alert already exists
-          const existingAlert = await this.weatherAlertModel.findOne({
-            businessId,
-            affectedProjectIds: projectId,
-            weatherType: WeatherType.RAIN,
-            startTime: { $lte: new Date(dailyData.dt * 1000) },
-            endTime: { $gte: new Date(dailyData.dt * 1000) },
-            resolved: false
-          });
-          
-          if (!existingAlert) {
-            // Create a new alert
-            const startTime = new Date(dailyData.dt * 1000);
-            const endTime = new Date(startTime);
-            endTime.setHours(23, 59, 59); // End of day
-            
-            const alert = await this.createWeatherAlert({
-              businessId,
-              projectId,
-              title: `Heavy Rain Alert`,
-              description: `Heavy rain expected with ${dailyData.rain}mm precipitation forecasted for ${startTime.toLocaleDateString()}.`,
-              weatherType: WeatherType.RAIN,
-              severity: this.determinePrecipitationSeverity(dailyData.rain, threshold),
-              startTime,
-              endTime,
-              location: project.metadata.location,
-              weatherData: dailyData
-            });
-            
-            return alert;
-          }
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      this.logger.error(`Error checking for rain alert: ${error.message}`, error.stack);
-      return null;
-    }
+/**
+ * Map external alert severity to our schema
+ */
+private mapExternalAlertSeverity(eventType: string): WeatherAlertSeverity {
+  eventType = eventType.toLowerCase();
+  
+  if (eventType.includes('warning')) {
+    return WeatherAlertSeverity.WARNING;
+  } else if (eventType.includes('watch')) {
+    return WeatherAlertSeverity.WATCH;
+  } else if (eventType.includes('emergency')) {
+    return WeatherAlertSeverity.EMERGENCY;
+  } else {
+    return WeatherAlertSeverity.ADVISORY;
   }
+}
 
-  /**
-   * Check for snow alert
-   */
-  private async checkForSnowAlert(
-    weatherData: any, 
-    businessId: string, 
-    projectId: string, 
-    project: any, 
-    threshold: number
-  ): Promise<WeatherAlert | null> {
-    try {
-      // Check daily forecast for snow
-      for (let i = 0; i < 3; i++) { // Check next 3 days
-        const dailyData = weatherData.daily[i];
-        
-        if (dailyData.snow && dailyData.snow >= threshold) {
-          // Check if a similar alert already exists
-          const existingAlert = await this.weatherAlertModel.findOne({
-            businessId,
-            affectedProjectIds: projectId,
-            weatherType: WeatherType.SNOW,
-            startTime: { $lte: new Date(dailyData.dt * 1000) },
-            endTime: { $gte: new Date(dailyData.dt * 1000) },
-            resolved: false
-          });
-          
-          if (!existingAlert) {
-            // Create a new alert
-            const startTime = new Date(dailyData.dt * 1000);
-            const endTime = new Date(startTime);
-            endTime.setHours(23, 59, 59); // End of day
-            
-            const alert = await this.createWeatherAlert({
-              businessId,
-              projectId,
-              title: `Snow Alert`,
-              description: `Significant snowfall expected with ${dailyData.snow}cm accumulation forecasted for ${startTime.toLocaleDateString()}.`,
-              weatherType: WeatherType.SNOW,
-              severity: this.determinePrecipitationSeverity(dailyData.snow, threshold),
-              startTime,
-              endTime,
-              location: project.metadata.location,
-              weatherData: dailyData
-            });
-            
-            return alert;
-          }
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      this.logger.error(`Error checking for snow alert: ${error.message}`, error.stack);
-      return null;
-    }
-  }
-
-  /**
-   * Check for wind alert
-   */
-  private async checkForWindAlert(
-    weatherData: any, 
-    businessId: string, 
-    projectId: string, 
-    project: any, 
-    threshold: number
-  ): Promise<WeatherAlert | null> {
-    try {
-      // Check daily forecast for high winds
-      for (let i = 0; i < 3; i++) { // Check next 3 days
-        const dailyData = weatherData.daily[i];
-        
-        if (dailyData.wind_speed >= threshold) {
-          // Check if a similar alert already exists
-          const existingAlert = await this.weatherAlertModel.findOne({
-            businessId,
-            affectedProjectIds: projectId,
-            weatherType: WeatherType.WIND,
-            startTime: { $lte: new Date(dailyData.dt * 1000) },
-            endTime: { $gte: new Date(dailyData.dt * 1000) },
-            resolved: false
-          });
-          
-          if (!existingAlert) {
-            // Create a new alert
-            const startTime = new Date(dailyData.dt * 1000);
-            const endTime = new Date(startTime);
-            endTime.setHours(23, 59, 59); // End of day
-            
-            const windSpeed = this.units === 'metric' ? dailyData.wind_speed : dailyData.wind_speed * 1.60934; // Convert to km/h if imperial
-            
-            const alert = await this.createWeatherAlert({
-              businessId,
-              projectId,
-              title: `High Wind Alert`,
-              description: `Strong winds expected with speeds up to ${windSpeed.toFixed(1)} km/h on ${startTime.toLocaleDateString()}.`,
-              weatherType: WeatherType.WIND,
-              severity: this.determineWindSeverity(windSpeed, threshold),
-              startTime,
-              endTime,
-              location: project.metadata.location,
-              weatherData: dailyData
-            });
-            
-            return alert;
-          }
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      this.logger.error(`Error checking for wind alert: ${error.message}`, error.stack);
-      return null;
-    }
-  }
-
- private async checkForHeatAlert(
+private async checkForHeatAlert(
   weatherData: any, 
   businessId: string, 
   projectId: string, 
@@ -1617,85 +1735,26 @@ if (heatThreshold) {
             data: {
               businessId,
               projectId,
-              weatherType: WeatherType.HEAT,
-              maxTemp,
-              threshold,
-              startTime: startTime.toISOString(),
-              endTime: endTime.toISOString(),
-              location: project.metadata?.location
-            }
-          };
-        }
-      }
-    }
-    
-    return { error: false, message: 'No temperatures exceeding threshold found' };
-  } catch (error) {
-    return {
-      error: true,
-      message: error.message,
-      stack: error.stack,
-      phase: 'checking_heat_alert'
-    };
-  }
-}
-  /**
-   * Check for cold alert
-   */
-  private async checkForColdAlert(
-    weatherData: any, 
-    businessId: string, 
-    projectId: string, 
-    project: any, 
-    threshold: number
-  ): Promise<WeatherAlert | null> {
-    try {
-      // Check daily forecast for extreme cold
-      for (let i = 0; i < 3; i++) { // Check next 3 days
-        const dailyData = weatherData.daily[i];
-        const minTemp = dailyData.temp.min;
-        
-        if (minTemp <= threshold) {
-          // Check if a similar alert already exists
-          const existingAlert = await this.weatherAlertModel.findOne({
-            businessId,
-            affectedProjectIds: projectId,
-            weatherType: WeatherType.COLD,
-            startTime: { $lte: new Date(dailyData.dt * 1000) },
-            endTime: { $gte: new Date(dailyData.dt * 1000) },
-            resolved: false
-          });
-          
-          if (!existingAlert) {
-            // Create a new alert
-            const startTime = new Date(dailyData.dt * 1000);
-            const endTime = new Date(startTime);
-            endTime.setHours(23, 59, 59); // End of day
-            
-            const tempUnit = this.units === 'metric' ? '°C' : '°F';
-            
-            const alert = await this.createWeatherAlert({
-              businessId,
-              projectId,
-              title: `Cold Temperature Alert`,
-              description: `Low temperatures expected to reach ${minTemp.toFixed(1)}${tempUnit} on ${startTime.toLocaleDateString()}.`,
-              weatherType: WeatherType.COLD,
-              severity: this.determineTemperatureSeverity(Math.abs(minTemp), threshold),
-              startTime,
-              endTime,
-              location: project.metadata.location,
-              weatherData: dailyData
-            });
-            
-            return alert;
+                weatherType: WeatherType.HEAT,
+                maxTemp,
+                threshold,
+                startTime: startTime.toISOString(),
+                endTime: endTime.toISOString(),
+                location: project.metadata?.location
+              }
+            };
           }
         }
       }
       
-      return null;
+      return { error: false, message: 'No temperatures exceeding threshold found' };
     } catch (error) {
-      this.logger.error(`Error checking for cold alert: ${error.message}`, error.stack);
-      return null;
+      return {
+        error: true,
+        message: error.message,
+        stack: error.stack,
+        phase: 'checking_heat_alert'
+      };
     }
   }
 
@@ -1798,12 +1857,10 @@ private async sendAlertNotification(
     smsNotificationRecipients?: string[]
   ): Promise<void> {
     try {
-        
       // Get business name for notifications
       const business = await this.businessModel.findById(alert.businessId);
       const businessName = business ? business.name : "Your Business";
-      await this.sendWeatherAlertEmail({email: 'ggerveni@gmail.com'}, businessName, project.name, alert);
-
+      
       // Determine which channels to use based on business settings
       const channels: DeliveryChannel[] = [];
       if (businessSettings.appNotificationsEnabled) {
@@ -1865,8 +1922,7 @@ private async sendAlertNotification(
       
       // 2. Process email notifications
       if (channels.includes(DeliveryChannel.EMAIL)) {
-        await this.sendWeatherAlertEmail({email: 'ggerveni@gmail.com'}, businessName, project.name, alert);
-
+      
         // First check if project-specific email recipients are provided
         if (emailNotificationRecipients && emailNotificationRecipients.length > 0) {
           for (const email of emailNotificationRecipients) {
@@ -1886,9 +1942,7 @@ private async sendAlertNotification(
           });
           
           for (const user of users) {
-            if (user.email) {
-              await this.sendWeatherAlertEmail(user, businessName, project.name, alert);
-            }
+            await this.sendWeatherAlertEmail(user, businessName, project.name, alert);
           }
         } else {
           this.logger.warn(`No email recipients configured for business ${alert.businessId}`);
@@ -1926,6 +1980,7 @@ private async sendAlertNotification(
       this.logger.error(`Error sending alert notification: ${error.message}`, error.stack);
     }
   }
+  
   private async sendWeatherAlertEmail(
     user: any, 
     businessName: string, 
@@ -1984,184 +2039,7 @@ private async sendAlertNotification(
       }
     );
   }
-  
 
-  /**
- * Send alert notification with error collection
- */
-private async sendAlertNotificationWithErrorCollection(
-    alert: WeatherAlert, 
-    project: any, 
-    recipientIds: string[],
-    businessSettings: BusinessWeatherSettings,
-    emailNotificationRecipients?: string[],
-    smsNotificationRecipients?: string[],
-    emailErrors?: any[] // Array to collect email errors
-  ): Promise<void> {
-    try {
-      // Get business name for notifications
-      const business = await this.businessModel.findById(alert.businessId);
-      const businessName = business ? business.name : "Your Business";
-      
-      // Determine which channels to use based on business settings
-      const channels: DeliveryChannel[] = [];
-      if (businessSettings.appNotificationsEnabled) {
-        channels.push(DeliveryChannel.APP);
-      }
-      if (businessSettings.emailNotificationsEnabled) {
-        channels.push(DeliveryChannel.EMAIL);
-      }
-      if (businessSettings.smsNotificationsEnabled) {
-        channels.push(DeliveryChannel.SMS);
-      }
-      
-      if (channels.length === 0) {
-        if (emailErrors) emailErrors.push({
-          error: 'no_channels',
-          message: `No notification channels enabled for business ${alert.businessId}`
-        });
-        return;
-      }
-      
-      // Create action data
-      const actionData = {
-        type: 'project_weather',
-        entityId: project._id,
-        entityType: 'project',
-        url: `/projects/details/${project._id}`
-      };
-      
-      // For tracking notifications sent
-      const notificationIds: string[] = [];
-      
-      // 1. Process in-app notifications using recipientIds (users)
-      if (channels.includes(DeliveryChannel.APP) && recipientIds && recipientIds.length > 0) {
-        // Get all users for sending notifications
-        const users = await this.userModel.find({
-          _id: { $in: recipientIds }
-        });
-        
-        for (const user of users) {
-          try {
-            const notification = await this.notificationService.createNotification({
-              businessId: alert.businessId,
-              userId: user._id.toString(),
-              title: alert.title,
-              body: alert.description,
-              type: NotificationType.WEATHER,
-              priority: this.mapAlertSeverityToPriority(alert.severity),
-              channels: [DeliveryChannel.APP],
-              reference: {
-                type: 'weather_alert',
-                id: alert._id.toString()
-              },
-              actionData
-            });
-            
-            if (notification && notification._id) {
-              notificationIds.push(notification._id.toString());
-            }
-          } catch (notifError) {
-            if (emailErrors) emailErrors.push({
-              error: 'app_notification_creation',
-              userId: user._id.toString(),
-              message: notifError.message
-            });
-          }
-        }
-      }
-      
-      // 2. Process email notifications
-      if (channels.includes(DeliveryChannel.EMAIL)) {
-        // Try sending to your email directly
-        try {
-          await this.sendWeatherAlertEmail({email: 'ggerveni@gmail.com'}, businessName, project.name, alert);
-        } catch (directEmailError) {
-          if (emailErrors) emailErrors.push({
-            error: 'direct_email',
-            email: 'ggerveni@gmail.com',
-            message: directEmailError.message
-          });
-        }
-  
-        // First check if project-specific email recipients are provided
-        if (emailNotificationRecipients && emailNotificationRecipients.length > 0) {
-          for (const email of emailNotificationRecipients) {
-            try {
-              await this.sendWeatherAlertEmail({email}, businessName, project.name, alert);
-            } catch (emailError) {
-              if (emailErrors) emailErrors.push({
-                error: 'project_email',
-                email: email,
-                message: emailError.message
-              });
-            }
-          }
-        }
-        // If not, check if business has email recipients configured
-        else if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
-          for (const email of businessSettings.emailNotificationRecipients) {
-            try {
-              await this.sendWeatherAlertEmail({email}, businessName, project.name, alert);
-            } catch (emailError) {
-              if (emailErrors) emailErrors.push({
-                error: 'business_email',
-                email: email,
-                message: emailError.message
-              });
-            }
-          }
-        } 
-        // Otherwise, use the user emails from recipientIds
-        else if (recipientIds && recipientIds.length > 0) {
-          const users = await this.userModel.find({
-            _id: { $in: recipientIds }
-          });
-          
-          for (const user of users) {
-            if (user.email) {
-              try {
-                await this.sendWeatherAlertEmail(user, businessName, project.name, alert);
-              } catch (emailError) {
-                if (emailErrors) emailErrors.push({
-                  error: 'user_email',
-                  userId: user._id.toString(),
-                  email: user.email,
-                  message: emailError.message
-                });
-              }
-            }
-          }
-        } else {
-          if (emailErrors) emailErrors.push({
-            error: 'no_recipients',
-            message: `No email recipients configured for business ${alert.businessId}`
-          });
-        }
-      }
-      
-      // 3. Process SMS notifications
-      // ...existing SMS code...
-      
-      // Update alert with notification IDs
-      if (notificationIds.length > 0) {
-        try {
-          alert.notificationIds = notificationIds;
-          await alert.save();
-        } catch (saveError) {
-          if (emailErrors) emailErrors.push({
-            error: 'alert_save',
-            message: saveError.message
-          });
-        }
-      }
-    } catch (error) {
-      if (emailErrors) emailErrors.push({
-        error: 'notification_process',
-        message: error.message
-      });
-    }
-  }
   /**
    * Send weather alert SMS
    */
