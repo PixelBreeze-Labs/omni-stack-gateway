@@ -83,21 +83,26 @@ export class BusinessWeatherAlertController {
   @ApiOperation({ summary: 'Get active weather alerts for business projects' })
   @ApiParam({ name: 'businessId', description: 'Business ID' })
   @ApiQuery({ name: 'projectId', required: false, description: 'Filter by project ID' })
-  @ApiResponse({ status: 200, description: 'Returns active weather alerts' })
+  @ApiQuery({ name: 'includeResolved', required: false, type: String, description: 'Include resolved alerts' })
+  @ApiResponse({ status: 200, description: 'Returns weather alerts' })
   @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
   @ApiResponse({ status: 404, description: 'Business or project not found' })
   async getActiveAlerts(
     @Param('businessId') businessId: string,
     @Query('projectId') projectId: string,
+    @Query('includeResolved') includeResolved: string,
     @Headers('business-x-api-key') apiKey: string
   ) {
     try {
       await this.validateBusinessApiKey(businessId, apiKey);
       
+      // Convert string query param to boolean
+      const showResolved = includeResolved === 'true';
+      
       if (projectId) {
-        return this.weatherService.getProjectAlerts(businessId, projectId);
+        return this.weatherService.getProjectAlerts(businessId, projectId, showResolved);
       } else {
-        return this.weatherService.getAllBusinessAlerts(businessId);
+        return this.weatherService.getAllBusinessAlerts(businessId, showResolved);
       }
     } catch (error) {
       this.handleError(error, 'Failed to get weather alerts');
