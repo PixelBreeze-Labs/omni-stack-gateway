@@ -1075,7 +1075,7 @@ async checkWeatherForProjectWithErrors(businessId: string, projectId: string): P
     if (heatThreshold) {
       try {
         // Try creating a heat alert with error details
-        const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
+        const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold, locationData);
         
         if (result.alert) {
           newAlerts.push(result.alert);
@@ -1312,7 +1312,8 @@ private async checkForHeatAlertWithErrors(
   businessId: string, 
   projectId: string, 
   project: any, 
-  threshold: number
+  threshold: number,
+  locationData: any
 ): Promise<{ alert: WeatherAlert | null, error: any | null }> {
   try {
     // Check daily forecast for extreme heat
@@ -1337,7 +1338,7 @@ private async checkForHeatAlertWithErrors(
             severity: this.determineTemperatureSeverity(maxTemp, threshold),
             startTime,
             endTime,
-            location: project.metadata?.location || { latitude: 0, longitude: 0 },
+            location: locationData,
             affectedProjectIds: [projectId],
             weatherData: {
               temp: dailyData.temp,
@@ -1612,7 +1613,7 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
     const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
     if (heatThreshold) {
       try {
-        const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
+        const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold, locationData);
         if (result.alert) {
           newAlerts.push(result.alert);
           try {
