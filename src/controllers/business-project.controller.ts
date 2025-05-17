@@ -137,10 +137,10 @@ export class BusinessProjectController {
         activeAlertsCount: activeAlerts.length,
         totalDelayHours: project.metadata.totalWeatherDelayHours || 0,
         
-        // Get recent delays (last 5)
+        // Get recent delays (last 10)
         recentDelays: (project.metadata.weatherDelays || [])
           .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .slice(0, 5)
+          .slice(0, 10)
           .map(delay => ({
             date: delay.date,
             hours: delay.hours,
