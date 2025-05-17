@@ -1932,6 +1932,12 @@ private async sendAlertNotification(
     projectName: string, 
     alert: WeatherAlert
   ): Promise<void> {
+    // Register the missing eq helper
+    const handlebars = require('handlebars');
+    handlebars.registerHelper('eq', function(a, b) {
+      return a === b;
+    });
+    
     // Extract user email
     const email = user.email || (typeof user === 'object' && 'email' in user ? user.email : user);
     
@@ -1958,7 +1964,7 @@ private async sendAlertNotification(
     await this.emailService.sendTemplateEmail(
       businessName,
       'weather-alerts@omnistackhub.xyz',
-      'ggerveni@gmail.com',
+      email,
       `Weather Alert: ${alert.title}`,
       'templates/business/weather-alert-email.html',
       {
