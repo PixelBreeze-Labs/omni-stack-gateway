@@ -927,6 +927,8 @@ async checkWeatherForProjectWithErrors(businessId: string, projectId: string): P
             try {
               await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
             } catch (notifyError) {
+                await this.sendAlertNotification(result.alert, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
+
               errors.push({
                 phase: 'notification',
                 message: `Failed to send alert notification: ${notifyError.message}`,
