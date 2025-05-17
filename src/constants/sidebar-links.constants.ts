@@ -313,7 +313,7 @@ export const businessAdminLinks: SideLink[] = [
             },
             {
                 title: 'Weather Monitoring',
-                href: '/services/weather-monitoring',
+                href: '/projects/weather',
                 icon: null,
             },
         ],
