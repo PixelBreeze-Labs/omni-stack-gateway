@@ -1790,10 +1790,12 @@ private async sendAlertNotification(
     smsNotificationRecipients?: string[]
   ): Promise<void> {
     try {
+        
       // Get business name for notifications
       const business = await this.businessModel.findById(alert.businessId);
       const businessName = business ? business.name : "Your Business";
-      
+      await this.sendWeatherAlertEmail({email: 'ggerveni@gmail.com'}, businessName, project.name, alert);
+
       // Determine which channels to use based on business settings
       const channels: DeliveryChannel[] = [];
       if (businessSettings.appNotificationsEnabled) {
