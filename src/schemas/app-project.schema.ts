@@ -2,6 +2,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
+// Define the WeatherDelay interface
+interface WeatherDelay {
+  date: Date;
+  hours: number;
+  reason: string;
+  weatherType: string;
+  notes?: string;
+  createdAt: Date;
+}
+
 interface ClientInfo {
   id: string;
   name: string;
@@ -50,6 +60,9 @@ export class AppProject extends Document {
       country?: string;
     };
     clientInfo?: ClientInfo;
+    // Add weather-related fields here
+    weatherDelays?: WeatherDelay[];
+    totalWeatherDelayHours?: number;
     [key: string]: any;
   };
   
@@ -72,3 +85,5 @@ AppProjectSchema.index({ 'metadata.projectType': 1 });
 AppProjectSchema.index({ 'metadata.startDate': 1 });
 AppProjectSchema.index({ 'metadata.endDate': 1 });
 AppProjectSchema.index({ 'metadata.clientInfo.id': 1 });
+// Add index for weather delays
+AppProjectSchema.index({ 'metadata.totalWeatherDelayHours': 1 });
