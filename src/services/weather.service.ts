@@ -1190,6 +1190,7 @@ const notificationRecipients = (useProjectSettings &&
         
         // Check for weather conditions that exceed thresholds
         const newAlerts: WeatherAlert[] = [];
+        const errors: any[] = [];
         
         // Check for external alerts from weather provider
         if (weatherData.alerts && weatherData.alerts.length > 0) {
@@ -1263,44 +1264,60 @@ const notificationRecipients = (useProjectSettings &&
           }
       }
       
-      const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
-      if (heatThreshold) {
-        const alertOrError = await this.checkForHeatAlert(weatherData, businessId, projectId, project, heatThreshold.threshold);
+    
+      // Check for heat
+const heatThreshold = alertThresholds.find(t => t.type === WeatherType.HEAT && t.enabled);
+if (heatThreshold) {
+  try {
+    // Try creating a heat alert with error details
+    const result = await this.checkForHeatAlertWithErrors(weatherData, businessId, projectId, project, heatThreshold.threshold);
+    
+    if (result.alert) {
+      newAlerts.push(result.alert);
+      
+      // Create an array to collect email errors
+      const emailErrors = [];
+      
+      
+      try {
+        // Wrap the notification process in a try/catch that collects errors
+        await this.sendAlertNotificationWithErrorCollection(
+          result.alert, 
+          project, 
+          notificationRecipients, 
+          businessSettings, 
+          emailNotificationRecipients, 
+          smsNotificationRecipients,
+          emailErrors // Pass the error collection array
+        );
         
-        // Check if we got an error response
-        if (alertOrError && alertOrError.error === true) {
-          // Add the error info to the results
-          this.logger.error(`Heat alert creation error: ${alertOrError.message}`);
-          
-          // Create a fake alert with a string ID that won't be saved to the database
-          const errorAlert = {
-            _id: "error_" + Date.now(), // Use a string ID
-            businessId,
-            title: 'Error Creating Heat Alert',
-            description: alertOrError.message,
-            weatherType: WeatherType.HEAT,
-            severity: WeatherAlertSeverity.ADVISORY,
-            startTime: new Date(),
-            endTime: new Date(),
-            location: locationData,
-            affectedProjectIds: [projectId],
-            weatherData: { error: alertOrError },
-            resolved: false,
-            // Add any other required properties for WeatherAlert type
-          } as unknown as WeatherAlert; // Type cast to WeatherAlert
-          
-          return [errorAlert];
-        } 
-        else if (alertOrError && !alertOrError.error && alertOrError._id) {
-          // We got a valid alert
-          newAlerts.push(alertOrError);
-          try {
-            await this.sendAlertNotification(alertOrError, project, notificationRecipients, businessSettings, emailNotificationRecipients, smsNotificationRecipients);
-          } catch (error) {
-            this.logger.error(`Failed to send alert notification for heat alert: ${error.message}`);
-          }
+        // If we collected any email errors, add them to the main errors array
+        if (emailErrors.length > 0) {
+          errors.push({
+            phase: 'email_notification',
+            message: `Email errors occurred during notification`,
+            emailErrors: emailErrors
+          });
         }
+      } catch (notifyError) {
+        errors.push({
+          phase: 'notification',
+          message: `Failed to send alert notification: ${notifyError.message}`,
+          alertType: 'heat',
+          emailErrors: emailErrors
+        });
       }
+    } else if (result.error) {
+      errors.push(result.error);
+    }
+  } catch (error) {
+    errors.push({
+      phase: 'heat_check',
+      message: `Error checking for heat alert: ${error.message}`,
+      stack: error.stack
+    });
+  }
+}
       
       // Check for cold
       const coldThreshold = alertThresholds.find(t => t.type === WeatherType.COLD && t.enabled);
@@ -1317,7 +1334,7 @@ const notificationRecipients = (useProjectSettings &&
       }
       
       // Process all the weather checks and return the alerts
-      return newAlerts;
+      return newAlerts
     } catch (error) {
       this.logger.error(`Error checking weather for project: ${error.message}`, error.stack);
       throw error;
@@ -1799,7 +1816,7 @@ private async sendAlertNotification(
         type: 'project_weather',
         entityId: project._id,
         entityType: 'project',
-        url: `/projects/${project._id}/weather`
+        url: `/projects/details/${project._id}`
       };
       
       // For tracking notifications sent
@@ -1899,62 +1916,236 @@ private async sendAlertNotification(
       this.logger.error(`Error sending alert notification: ${error.message}`, error.stack);
     }
   }
-
-  /**
- * Send weather alert email
- */
-private async sendWeatherAlertEmail(
+  private async sendWeatherAlertEmail(
     user: any, 
     businessName: string, 
     projectName: string, 
     alert: WeatherAlert
   ): Promise<void> {
-    try {
-      // Extract user name
-      const userName = user.name
-        ? (user.surname ? `${user.name} ${user.surname}` : user.name)
-        : 'Team Member';
-  
-      // Get current year for the copyright
-      const currentYear = new Date().getFullYear();
-  
-      // Format date and time for email
-      const startDate = alert.startTime.toLocaleDateString();
-      const startTime = alert.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      
-      // Determine alert level for styling
-      const alertLevel = this.getSeverityDisplayInfo(alert.severity);
-  
-      // Send email notification
-      await this.emailService.sendTemplateEmail(
-        businessName,
-        'weather-alerts@omnistackhub.xyz',
-        user.email,
-        `Weather Alert: ${alert.title}`,
-        'templates/business/weather-alert-email.html', // You'll need to create this template
-        {
-          userName: userName,
-          businessName: businessName,
-          projectName: projectName,
-          alertTitle: alert.title,
-          alertDescription: alert.description,
-          alertDate: startDate,
-          alertTime: startTime,
-          alertType: this.getWeatherTypeDisplayName(alert.weatherType),
-          alertSeverity: alertLevel.name,
-          alertColor: alertLevel.color,
-          locationAddress: alert.location.address || 'Project Location',
-          currentYear: currentYear,
-          actionUrl: `https://app.staffluent.io/projects/details/${alert.affectedProjectIds[0]}`
-        }
-      );
-  
-      this.logger.log(`Sent weather alert email to user: ${user.email} for alert: ${alert._id}`);
-    } catch (error) {
-      this.logger.error(`Error sending weather alert email: ${error.message}`, error.stack);
+    // Extract user email
+    const email = user.email || (typeof user === 'object' && 'email' in user ? user.email : user);
+    
+    if (!email || typeof email !== 'string') {
+      throw new Error(`Invalid email recipient: ${JSON.stringify(user)}`);
     }
+    
+    // Extract user name
+    const userName = user.name
+      ? (user.surname ? `${user.name} ${user.surname}` : user.name)
+      : 'Team Member';
+  
+    // Get current year for the copyright
+    const currentYear = new Date().getFullYear();
+  
+    // Format date and time for email
+    const startDate = alert.startTime.toLocaleDateString();
+    const startTime = alert.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    // Determine alert level for styling
+    const alertLevel = this.getSeverityDisplayInfo(alert.severity);
+  
+    // Send email notification - don't catch errors here, let them propagate up
+    await this.emailService.sendTemplateEmail(
+      businessName,
+      'weather-alerts@omnistackhub.xyz',
+      email,
+      `Weather Alert: ${alert.title}`,
+      'templates/business/weather-alert-email.html',
+      {
+        userName: userName,
+        businessName: businessName,
+        projectName: projectName,
+        alertTitle: alert.title,
+        alertDescription: alert.description,
+        alertDate: startDate,
+        alertTime: startTime,
+        alertType: this.getWeatherTypeDisplayName(alert.weatherType),
+        alertSeverity: alertLevel.name,
+        alertColor: alertLevel.color,
+        locationAddress: alert.location.address || 'Project Location',
+        currentYear: currentYear,
+        actionUrl: `https://app.staffluent.io/projects/details/${alert.affectedProjectIds[0]}`
+      }
+    );
   }
   
+
+  /**
+ * Send alert notification with error collection
+ */
+private async sendAlertNotificationWithErrorCollection(
+    alert: WeatherAlert, 
+    project: any, 
+    recipientIds: string[],
+    businessSettings: BusinessWeatherSettings,
+    emailNotificationRecipients?: string[],
+    smsNotificationRecipients?: string[],
+    emailErrors?: any[] // Array to collect email errors
+  ): Promise<void> {
+    try {
+      // Get business name for notifications
+      const business = await this.businessModel.findById(alert.businessId);
+      const businessName = business ? business.name : "Your Business";
+      
+      // Determine which channels to use based on business settings
+      const channels: DeliveryChannel[] = [];
+      if (businessSettings.appNotificationsEnabled) {
+        channels.push(DeliveryChannel.APP);
+      }
+      if (businessSettings.emailNotificationsEnabled) {
+        channels.push(DeliveryChannel.EMAIL);
+      }
+      if (businessSettings.smsNotificationsEnabled) {
+        channels.push(DeliveryChannel.SMS);
+      }
+      
+      if (channels.length === 0) {
+        if (emailErrors) emailErrors.push({
+          error: 'no_channels',
+          message: `No notification channels enabled for business ${alert.businessId}`
+        });
+        return;
+      }
+      
+      // Create action data
+      const actionData = {
+        type: 'project_weather',
+        entityId: project._id,
+        entityType: 'project',
+        url: `/projects/details/${project._id}`
+      };
+      
+      // For tracking notifications sent
+      const notificationIds: string[] = [];
+      
+      // 1. Process in-app notifications using recipientIds (users)
+      if (channels.includes(DeliveryChannel.APP) && recipientIds && recipientIds.length > 0) {
+        // Get all users for sending notifications
+        const users = await this.userModel.find({
+          _id: { $in: recipientIds }
+        });
+        
+        for (const user of users) {
+          try {
+            const notification = await this.notificationService.createNotification({
+              businessId: alert.businessId,
+              userId: user._id.toString(),
+              title: alert.title,
+              body: alert.description,
+              type: NotificationType.WEATHER,
+              priority: this.mapAlertSeverityToPriority(alert.severity),
+              channels: [DeliveryChannel.APP],
+              reference: {
+                type: 'weather_alert',
+                id: alert._id.toString()
+              },
+              actionData
+            });
+            
+            if (notification && notification._id) {
+              notificationIds.push(notification._id.toString());
+            }
+          } catch (notifError) {
+            if (emailErrors) emailErrors.push({
+              error: 'app_notification_creation',
+              userId: user._id.toString(),
+              message: notifError.message
+            });
+          }
+        }
+      }
+      
+      // 2. Process email notifications
+      if (channels.includes(DeliveryChannel.EMAIL)) {
+        // Try sending to your email directly
+        try {
+          await this.sendWeatherAlertEmail({email: 'ggerveni@gmail.com'}, businessName, project.name, alert);
+        } catch (directEmailError) {
+          if (emailErrors) emailErrors.push({
+            error: 'direct_email',
+            email: 'ggerveni@gmail.com',
+            message: directEmailError.message
+          });
+        }
+  
+        // First check if project-specific email recipients are provided
+        if (emailNotificationRecipients && emailNotificationRecipients.length > 0) {
+          for (const email of emailNotificationRecipients) {
+            try {
+              await this.sendWeatherAlertEmail({email}, businessName, project.name, alert);
+            } catch (emailError) {
+              if (emailErrors) emailErrors.push({
+                error: 'project_email',
+                email: email,
+                message: emailError.message
+              });
+            }
+          }
+        }
+        // If not, check if business has email recipients configured
+        else if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
+          for (const email of businessSettings.emailNotificationRecipients) {
+            try {
+              await this.sendWeatherAlertEmail({email}, businessName, project.name, alert);
+            } catch (emailError) {
+              if (emailErrors) emailErrors.push({
+                error: 'business_email',
+                email: email,
+                message: emailError.message
+              });
+            }
+          }
+        } 
+        // Otherwise, use the user emails from recipientIds
+        else if (recipientIds && recipientIds.length > 0) {
+          const users = await this.userModel.find({
+            _id: { $in: recipientIds }
+          });
+          
+          for (const user of users) {
+            if (user.email) {
+              try {
+                await this.sendWeatherAlertEmail(user, businessName, project.name, alert);
+              } catch (emailError) {
+                if (emailErrors) emailErrors.push({
+                  error: 'user_email',
+                  userId: user._id.toString(),
+                  email: user.email,
+                  message: emailError.message
+                });
+              }
+            }
+          }
+        } else {
+          if (emailErrors) emailErrors.push({
+            error: 'no_recipients',
+            message: `No email recipients configured for business ${alert.businessId}`
+          });
+        }
+      }
+      
+      // 3. Process SMS notifications
+      // ...existing SMS code...
+      
+      // Update alert with notification IDs
+      if (notificationIds.length > 0) {
+        try {
+          alert.notificationIds = notificationIds;
+          await alert.save();
+        } catch (saveError) {
+          if (emailErrors) emailErrors.push({
+            error: 'alert_save',
+            message: saveError.message
+          });
+        }
+      }
+    } catch (error) {
+      if (emailErrors) emailErrors.push({
+        error: 'notification_process',
+        message: error.message
+      });
+    }
+  }
   /**
    * Send weather alert SMS
    */
