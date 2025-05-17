@@ -2184,7 +2184,8 @@ private async sendAlertNotification(
       startTime: alert.startTime,
       endTime: alert.endTime,
       affectedProjects: affectedProjects.filter(p => p !== null), // Filter out any null values
-      location: alert.location
+      location: alert.location,
+      resolved: alert.resolved,
     };
   }
 
