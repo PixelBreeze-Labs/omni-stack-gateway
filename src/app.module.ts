@@ -165,7 +165,7 @@ import { KnowledgeBaseController } from './controllers/knowledge-base.controller
 import { BusinessWeatherAlertController } from './controllers/business-weather-alert.controller';
 import { VBAppProjectSyncController } from './controllers/vb-app-project-sync.controller';
 import { VBConstructionSiteSyncController } from './controllers/vb-construction-site-sync.controller';
-
+import { BusinessProjectController } from './controllers/business-project.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -513,7 +513,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     KnowledgeBaseController,
     BusinessWeatherAlertController,
     VBAppProjectSyncController,
-    VBConstructionSiteSyncController
+    VBConstructionSiteSyncController,
+    BusinessProjectController
   ],
   providers: [
     SnapfoodService,

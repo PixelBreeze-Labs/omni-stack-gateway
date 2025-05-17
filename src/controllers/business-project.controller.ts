@@ -8,11 +8,11 @@ import { AppProject } from '../schemas/app-project.schema';
 import { WeatherAlert } from '../schemas/weather-alert.schema';
 import { AddWeatherDelayDto, ProjectWeatherDetailsDto } from '../dtos/project-weather.dto';
 
-@ApiTags('Business Project Weather')
+@ApiTags('Business Project')
 @Controller('business-project')
 @ApiHeader({ name: 'business-x-api-key', required: true, description: 'Business API key for authentication' })
-export class BusinessProjectWeatherController {
-  private readonly logger = new Logger(BusinessProjectWeatherController.name);
+export class BusinessProjectController {
+  private readonly logger = new Logger(BusinessProjectController.name);
 
   constructor(
     private readonly businessService: BusinessService,
