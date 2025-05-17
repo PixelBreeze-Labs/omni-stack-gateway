@@ -70,7 +70,16 @@ export class BusinessProjectController {
       project.metadata.totalWeatherDelayHours += delayData.delayHours;
       
       // Save project
-      await project.save();
+      await this.appProjectModel.updateOne(
+        { _id: projectId },
+        { 
+          $set: { 
+            'metadata.weatherDelays': project.metadata.weatherDelays,
+            'metadata.totalWeatherDelayHours': project.metadata.totalWeatherDelayHours
+          } 
+        }
+      );
+      
       
       return {
         success: true,
