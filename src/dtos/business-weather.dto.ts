@@ -128,6 +128,14 @@ export class ForecastResponseDto {
 
   @ApiProperty({ description: 'Location source', enum: ['project', 'construction_site'] })
   locationSource: string;
+
+  totalDelayHours?: number; // Added field
+  recentDelays?: Array<{  // Added field
+    date: Date;
+    hours: number;
+    reason: string;
+    weatherType: string;
+  }>;
 }
 
 export class ProjectAlertResponseDto {
