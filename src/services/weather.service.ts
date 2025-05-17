@@ -1854,20 +1854,7 @@ private async checkForHeatAlert(
         params.location = { latitude: 0, longitude: 0 };
       }
 
-      // check if the alert already exists and unresolved
-      const existingAlert = await this.weatherAlertModel.findOne({
-        businessId: params.businessId,
-        projectId: params.projectId,
-        weatherType: params.weatherType,
-        startTime: params.startTime,
-        endTime: params.endTime,
-        resolved: false
-      });
-      
-      if (existingAlert) {
-        // return message that alert already exists
-        throw new Error('An alert already exists for this project and time period');
-      }
+     // create as many alerts as needed
       
       
       // Create the alert object
