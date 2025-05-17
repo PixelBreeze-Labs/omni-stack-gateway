@@ -1215,7 +1215,7 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
         const dailyData = weatherData.daily[i];
         const maxTemp = dailyData.temp.max;
         
-        if (maxTemp >= threshold) {
+        // if (maxTemp >= threshold) {
           // Check if a similar alert already exists
         //   const existingAlert = await this.weatherAlertModel.findOne({
         //     businessId,
@@ -1249,7 +1249,7 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
             
             return alert;
           //}
-        }
+        // }
       }
       
       return null;
