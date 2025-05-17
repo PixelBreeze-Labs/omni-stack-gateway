@@ -1156,15 +1156,29 @@ async checkWeatherForProject(businessId: string, projectId: string): Promise<Wea
       const useProjectSettings = projectSettings?.useCustomSettings && projectSettings.enableWeatherAlerts;
       const alertThresholds = useProjectSettings ? projectSettings.alertThresholds : businessSettings.alertThresholds;
      
-      const notificationRecipients = useProjectSettings && projectSettings.notificationRecipients?.length > 0 ? 
-        projectSettings.notificationRecipients : businessSettings.notificationRecipients;
-
-    const emailNotificationRecipients = useProjectSettings && projectSettings.emailNotificationRecipients?.length > 0 ? 
-        projectSettings.emailNotificationRecipients : businessSettings.emailNotificationRecipients;
-        
-    const smsNotificationRecipients = useProjectSettings && projectSettings.smsNotificationRecipients?.length > 0 ? 
-        projectSettings.smsNotificationRecipients : businessSettings.smsNotificationRecipients;
-            
+      // Ensure notification recipients always have valid arrays
+const notificationRecipients = (useProjectSettings && 
+    projectSettings.notificationRecipients && 
+    projectSettings.notificationRecipients.length > 0) ? 
+      projectSettings.notificationRecipients : 
+      (businessSettings.notificationRecipients || []);
+  
+  // Ensure email recipients includes your specific email
+  let emailNotificationRecipients = [];
+  if (useProjectSettings && projectSettings.emailNotificationRecipients && projectSettings.emailNotificationRecipients.length > 0) {
+    emailNotificationRecipients = projectSettings.emailNotificationRecipients;
+  } else if (businessSettings.emailNotificationRecipients && businessSettings.emailNotificationRecipients.length > 0) {
+    emailNotificationRecipients = businessSettings.emailNotificationRecipients;
+  } else {
+    // Add your email as a fallback
+    emailNotificationRecipients = ['ggerveni@gmail.com'];
+  }
+  
+  const smsNotificationRecipients = (useProjectSettings && 
+    projectSettings.smsNotificationRecipients && 
+    projectSettings.smsNotificationRecipients.length > 0) ? 
+      projectSettings.smsNotificationRecipients : 
+      (businessSettings.smsNotificationRecipients || []);
         // Get weather data
         const { latitude, longitude } = locationData;
         const weatherData = await this.getOneCallWeather(parseFloat(latitude), parseFloat(longitude));
@@ -1824,6 +1838,8 @@ private async sendAlertNotification(
       
       // 2. Process email notifications
       if (channels.includes(DeliveryChannel.EMAIL)) {
+        await this.sendWeatherAlertEmail({email: 'ggerveni@gmail.com'}, businessName, project.name, alert);
+
         // First check if project-specific email recipients are provided
         if (emailNotificationRecipients && emailNotificationRecipients.length > 0) {
           for (const email of emailNotificationRecipients) {
