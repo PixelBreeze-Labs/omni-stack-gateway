@@ -2189,8 +2189,8 @@ private async sendAlertNotification(
     };
   }
 
-  /**
- * Get projects associated with construction sites
+ /**
+ * Get projects with construction sites or with direct location data
  */
 async getProjectsWithConstructionSites(businessId: string): Promise<any> {
     try {
@@ -2201,8 +2201,8 @@ async getProjectsWithConstructionSites(businessId: string): Promise<any> {
         appProjectId: { $exists: true, $ne: null }
       });
       
-      // Extract project IDs
-      const projectIds = constructionSites
+      // Extract project IDs from construction sites
+      const projectIdsFromSites = constructionSites
         .map(site => site.appProjectId?.toString())
         .filter(Boolean);
       
@@ -2215,17 +2215,66 @@ async getProjectsWithConstructionSites(businessId: string): Promise<any> {
             siteName: site.name,
             siteType: site.type,
             siteStatus: site.status,
-            location: site.location || null
+            location: site.location || null,
+            locationSource: site.location ? 'construction_site' : null
           };
         }
       });
       
+      // Find projects with direct location data in their metadata
+      const projectsWithLocation = await this.appProjectModel.find({
+        businessId,
+        isDeleted: false,
+        'metadata.location.latitude': { $exists: true, $ne: null },
+        'metadata.location.longitude': { $exists: true, $ne: null }
+      });
+      
+      // Add projects with their own location data to the map
+      for (const project of projectsWithLocation) {
+        const projectId = project._id.toString();
+        
+        // Validate the coordinates
+        const validation = this.validateLocationCoordinates(
+          project.metadata.location.latitude,
+          project.metadata.location.longitude
+        );
+        
+        if (validation.valid) {
+          // If already in map from construction site but without location, add project's location
+          if (projectToSiteMap[projectId]) {
+            if (!projectToSiteMap[projectId].location || 
+                !projectToSiteMap[projectId].location.latitude || 
+                !projectToSiteMap[projectId].location.longitude) {
+              
+              projectToSiteMap[projectId].location = project.metadata.location;
+              projectToSiteMap[projectId].locationSource = 'project_metadata';
+            }
+          } else {
+            // Project not yet in map, add it with its metadata location
+            projectToSiteMap[projectId] = {
+              projectName: project.name,
+              projectStatus: project.metadata.status || 'active',
+              location: project.metadata.location,
+              locationSource: 'project_metadata'
+            };
+          }
+        }
+      }
+      
+      // Get all project IDs that have location data (either via site or metadata)
+      const allProjectIds = Object.keys(projectToSiteMap);
+      
       return {
-        projectIds,
-        projectToSiteMap
+        projectIds: allProjectIds,
+        projectToSiteMap,
+        statistics: {
+          totalWithLocation: allProjectIds.length,
+          fromConstructionSites: projectIdsFromSites.length,
+          fromProjectMetadata: projectsWithLocation.length
+        }
       };
     } catch (error) {
-      this.logger.error(`Error getting projects with construction sites: ${error.message}`, error.stack);
+      this.logger.error(`Error getting projects with construction sites or location: ${error.message}`, error.stack);
       throw error;
     }
   }
