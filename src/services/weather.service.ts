@@ -1,5 +1,5 @@
 // src/services/weather.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -2250,6 +2250,34 @@ async getProjectsWithConstructionSites(businessId: string): Promise<any> {
       return await this.projectWeatherSettingsModel.findOne({ businessId, projectId });
     } catch (error) {
       this.logger.error(`Error getting project weather settings: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+ * Resolve a weather alert
+ */
+async resolveWeatherAlert(businessId: string, alertId: string): Promise<WeatherAlert> {
+    try {
+      // Find the alert and ensure it belongs to the specified business
+      const alert = await this.weatherAlertModel.findOne({
+        _id: alertId,
+        businessId,
+        resolved: false
+      });
+      
+      if (!alert) {
+        throw new NotFoundException('Alert not found or already resolved');
+      }
+      
+      // Update the alert
+      alert.resolved = true;
+      alert.resolvedAt = new Date();
+      await alert.save();
+      
+      return alert;
+    } catch (error) {
+      this.logger.error(`Error resolving weather alert: ${error.message}`, error.stack);
       throw error;
     }
   }

@@ -252,4 +252,25 @@ export class BusinessWeatherAlertController {
         this.handleError(error, 'Failed to get project weather settings');
     }
     }
+
+
+    @Put('alerts/:businessId/resolve/:alertId')
+    @ApiOperation({ summary: 'Resolve a weather alert' })
+    @ApiParam({ name: 'businessId', description: 'Business ID' })
+    @ApiParam({ name: 'alertId', description: 'Alert ID to resolve' })
+    @ApiResponse({ status: 200, description: 'Alert resolved successfully' })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    @ApiResponse({ status: 404, description: 'Alert not found' })
+    async resolveAlert(
+    @Param('businessId') businessId: string,
+    @Param('alertId') alertId: string,
+    @Headers('business-x-api-key') apiKey: string
+    ) {
+    try {
+        await this.validateBusinessApiKey(businessId, apiKey);
+        return this.weatherService.resolveWeatherAlert(businessId, alertId);
+    } catch (error) {
+        this.handleError(error, 'Failed to resolve weather alert');
+    }
+    }
 }
