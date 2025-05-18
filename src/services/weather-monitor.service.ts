@@ -24,7 +24,7 @@ export class WeatherMonitorService {
    * Check weather for all active businesses with weather alerts enabled
    * Runs by default every 3 hours
    */
-  @Cron(CronExpression.EVERY_3_HOURS)
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async checkWeatherForAllBusinesses() {
     const startTime = new Date();
     this.logger.log('[CRON START] Weather check job started at ' + startTime.toISOString());
