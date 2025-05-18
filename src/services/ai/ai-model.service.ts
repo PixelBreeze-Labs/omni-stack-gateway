@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MLRegistryRepository } from '../../repositories/ai/ml-registry.repository';
 import { CreateMLRegistryDto } from '../../dtos/ai/ml-registry.dto';
-import * as fs from 'fs';
-import * as path from 'path';
 
 @Injectable()
 export class AIModelService {
