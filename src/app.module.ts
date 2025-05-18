@@ -306,6 +306,7 @@ import { ReportGenerationAgentModule } from './modules/report-generation-agent.m
 import { ClientCommunicationAgentModule } from './modules/client-communication-agent.module';
 import { ResourceRequestAgentModule } from './modules/resource-request-agent.module';
 import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent.module';
+import { MLModule } from './modules/ml.module';
 
 
 @Module({
@@ -423,7 +424,8 @@ import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent
     ReportGenerationAgentModule,
     ClientCommunicationAgentModule,
     ResourceRequestAgentModule,
-    ShiftOptimizationAgentModule  
+    ShiftOptimizationAgentModule,
+    MLModule,  
   ],
   controllers: [
     GatewayController,
