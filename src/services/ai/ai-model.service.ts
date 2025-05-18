@@ -153,4 +153,12 @@ export class AIModelService {
   async getModelInfo(modelName: string): Promise<any> {
     return this.mlRegistryRepository.getActiveModel(modelName);
   }
+
+  async findAllModels(): Promise<any[]> {
+    return this.mlRegistryRepository.findAll();
+  }
+
+  async findModelById(id: string): Promise<any> {
+    return this.mlRegistryRepository.findById(id);
+  }
 }
