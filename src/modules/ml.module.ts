@@ -14,7 +14,7 @@ import { AIPredictionService } from '../services/ai/ai-prediction.service';
 import { AIInsightService } from '../services/ai/ai-insight.service';
 import { AIFeatureService } from '../services/ai/ai-feature.service';
 import { AIAgentService } from '../services/ai/ai-agent.service';
-import { AITestController } from '../controllers/ai/ml-testing.controller';
+import { MLTestController } from '../controllers/ai/ml-testing.controller';
 import { Business, BusinessSchema } from '../schemas/business.schema';
 import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-configuration.schema';
 
@@ -29,7 +29,7 @@ import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-c
       { name: AgentConfiguration.name, schema: AgentConfigurationSchema },
     ]),
   ],
-  controllers: [AITestController],
+  controllers: [MLTestController],
   providers: [
     MLRegistryRepository,
     PredictionLogRepository,
