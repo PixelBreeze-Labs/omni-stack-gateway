@@ -2,7 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MLRegistryRepository } from '../../repositories/ai/ml-registry.repository';
 import { CreateMLRegistryDto } from '../../dtos/ai/ml-registry.dto';
-import * as tf from '@tensorflow/tfjs-node';
+import * as tf from '@tensorflow/tfjs';
 
 @Injectable()
 export class AIModelService {
@@ -66,7 +66,7 @@ export class AIModelService {
   }
 
   async predict(modelName: string, features: Record<string, any>): Promise<any> {
-    const modelEntry = this.models.get(modelName);
+    let modelEntry = this.models.get(modelName);
     
     if (!modelEntry) {
       this.logger.warn(`Model ${modelName} not found in memory, attempting to load`);
@@ -148,5 +148,17 @@ export class AIModelService {
     }
     
     return null;
+  }
+
+  async getModelInfo(modelName: string): Promise<any> {
+    return this.mlRegistryRepository.getActiveModel(modelName);
+  }
+
+  async findAllModels(): Promise<any[]> {
+    return this.mlRegistryRepository.findAll();
+  }
+
+  async findModelById(id: string): Promise<any> {
+    return this.mlRegistryRepository.findById(id);
   }
 }

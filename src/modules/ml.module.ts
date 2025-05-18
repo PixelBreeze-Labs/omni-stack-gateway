@@ -9,6 +9,14 @@ import { MLRegistryRepository } from '../repositories/ai/ml-registry.repository'
 import { PredictionLogRepository } from '../repositories/ai/prediction-log.repository';
 import { InsightCollectionRepository } from '../repositories/ai/insight-collection.repository';
 import { FeatureCollectionRepository } from '../repositories/ai/feature-collection.repository';
+import { AIModelService } from '../services/ai/ai-model.service';
+import { AIPredictionService } from '../services/ai/ai-prediction.service';
+import { AIInsightService } from '../services/ai/ai-insight.service';
+import { AIFeatureService } from '../services/ai/ai-feature.service';
+import { AIAgentService } from '../services/ai/ai-agent.service';
+import { AITestController } from '../controllers/ai/ml-testing.controller';
+import { Business, BusinessSchema } from '../schemas/business.schema';
+import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-configuration.schema';
 
 @Module({
   imports: [
@@ -17,19 +25,28 @@ import { FeatureCollectionRepository } from '../repositories/ai/feature-collecti
       { name: PredictionLog.name, schema: PredictionLogSchema },
       { name: InsightCollection.name, schema: InsightCollectionSchema },
       { name: FeatureCollection.name, schema: FeatureCollectionSchema },
+      { name: Business.name, schema: BusinessSchema },
+      { name: AgentConfiguration.name, schema: AgentConfigurationSchema },
     ]),
   ],
+  controllers: [AITestController],
   providers: [
     MLRegistryRepository,
     PredictionLogRepository,
     InsightCollectionRepository,
     FeatureCollectionRepository,
+    AIModelService,
+    AIPredictionService,
+    AIInsightService,
+    AIFeatureService,
+    AIAgentService,
   ],
   exports: [
-    MLRegistryRepository,
-    PredictionLogRepository,
-    InsightCollectionRepository,
-    FeatureCollectionRepository,
+    AIModelService,
+    AIPredictionService,
+    AIInsightService,
+    AIFeatureService,
+    AIAgentService,
   ],
 })
 export class MLModule {}

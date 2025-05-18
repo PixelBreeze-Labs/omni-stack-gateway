@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PredictionLogRepository } from '../../repositories/ai/prediction-log.repository';
 import { AIModelService } from './ai-model.service';
 import { CreatePredictionLogDto } from '../../dtos/ai/prediction-log.dto';
+import { Types } from 'mongoose';
 
 @Injectable()
 export class AIPredictionService {
@@ -95,12 +96,32 @@ export class AIPredictionService {
       
       // Sort by date descending and limit
       return predictions
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .sort((a, b) => {
+          // Cast to ObjectId and get timestamp
+          const bTime = a._id instanceof Types.ObjectId 
+            ? a._id.getTimestamp() 
+            : a._id && typeof a._id === 'object'
+              ? (a._id as Types.ObjectId).getTimestamp()
+              : new Date();
+              
+          const aTime = b._id instanceof Types.ObjectId 
+            ? b._id.getTimestamp() 
+            : b._id && typeof b._id === 'object'
+              ? (b._id as Types.ObjectId).getTimestamp()
+              : new Date();
+              
+          return bTime.getTime() - aTime.getTime();
+        })
         .slice(0, limit)
         .map(p => ({
           id: p.id,
           modelId: p.modelId,
-          timestamp: p.createdAt,
+          // Cast to ObjectId and get timestamp
+          timestamp: p._id instanceof Types.ObjectId
+            ? p._id.getTimestamp()
+            : p._id && typeof p._id === 'object'
+              ? (p._id as Types.ObjectId).getTimestamp()
+              : new Date(),
           input: p.input,
           output: p.output,
           confidence: p.confidence,
