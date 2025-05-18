@@ -9,6 +9,7 @@ import { AgentFeatureFlag, Business } from '../schemas/business.schema';
 import { TaskAssignment, TaskStatus } from '../schemas/task-assignment.schema';
 import { StaffProfile } from '../schemas/staff-profile.schema';
 import { AgentConfiguration } from '../schemas/agent-configuration.schema';
+import { BusinessWeatherSettings } from '../schemas/business-weather-settings.schema';
 
 @ApiTags('Staffluent Superadmin Dashboard')
 @ApiBearerAuth()
@@ -20,7 +21,8 @@ export class StaffluentSuperadminController {
         @InjectModel(Business.name) private businessModel: Model<Business>,
         @InjectModel(TaskAssignment.name) private taskAssignmentModel: Model<TaskAssignment>,
         @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
-        @InjectModel(AgentConfiguration.name) private agentConfigModel: Model<AgentConfiguration>
+        @InjectModel(AgentConfiguration.name) private agentConfigModel: Model<AgentConfiguration>,
+        @InjectModel(BusinessWeatherSettings.name) private businessWeatherSettingsModel: Model<BusinessWeatherSettings>
     ) {}
 
     @ApiOperation({ summary: 'Get cron job history statistics for client businesses' })
@@ -802,6 +804,237 @@ export class StaffluentSuperadminController {
                     failed: autoAssignJobs.filter(job => job.status === 'failed').length
                 }
             }
+        };
+    }
+
+    @ApiOperation({ summary: 'Get weather monitoring statistics and job history' })
+    @ApiResponse({
+        status: 200,
+        description: 'Returns statistics and history about weather monitoring jobs',
+        schema: {
+            type: 'object',
+            properties: {
+                stats: {
+                    type: 'object',
+                    properties: {
+                        totalJobs: { type: 'number', example: 120 },
+                        successful: { type: 'number', example: 115 },
+                        failed: { type: 'number', example: 5 },
+                        avgDuration: { type: 'number', example: 45.3 },
+                        totalAlerts: { type: 'number', example: 67 },
+                        businessesWithAlerts: { type: 'number', example: 8 },
+                        businessesWithWeatherEnabled: { type: 'number', example: 12 }
+                    }
+                },
+                businessStats: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            businessId: { type: 'string', example: '60d5ec9f1a0a0e001f4f3c7a' },
+                            businessName: { type: 'string', example: 'Acme Inc.' },
+                            weatherEnabled: { type: 'boolean', example: true },
+                            totalJobs: { type: 'number', example: 10 },
+                            successful: { type: 'number', example: 9 },
+                            failed: { type: 'number', example: 1 },
+                            alertCount: { type: 'number', example: 12 },
+                            lastRunStatus: { type: 'string', example: 'completed' },
+                            lastRunDate: { type: 'string', format: 'date-time' }
+                        }
+                    }
+                },
+                recentJobs: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            id: { type: 'string', example: '60d5ec9f1a0a0e001f4f3c7a' },
+                            jobName: { type: 'string', example: 'weatherCheckJob' },
+                            startTime: { type: 'string', format: 'date-time' },
+                            endTime: { type: 'string', format: 'date-time' },
+                            duration: { type: 'number', example: 45.3 },
+                            status: { type: 'string', example: 'completed' },
+                            totalBusinesses: { type: 'number', example: 15 },
+                            processedBusinesses: { type: 'number', example: 12 },
+                            failedBusinesses: { type: 'number', example: 3 },
+                            totalAlerts: { type: 'number', example: 8 }
+                        }
+                    }
+                }
+            }
+        }
+    })
+    @ApiResponse({ status: 403, description: 'Forbidden' })
+    @ApiQuery({ name: 'days', required: false, type: Number, description: 'Number of days to look back (default: 30)' })
+    @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of recent jobs to return (default: 10)' })
+    @Get('weather-monitoring')
+    async getWeatherMonitoringStats(
+        @Req() req: Request & { client: Client },
+        @Query('days') days: number = 30,
+        @Query('limit') limit: number = 10
+    ) {
+        // Get all businesses for this client
+        const businesses = await this.businessModel.find({ 
+            clientId: req.client.id,
+            isDeleted: false
+        });
+        
+        const businessIds = businesses.map(b => b.id);
+        
+        // Set date range for query
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        
+        // Get all weather monitoring jobs from cron history
+        const weatherJobs = await this.cronJobHistoryModel.find({
+            $or: [
+                { businessId: { $in: businessIds } },
+                { businessIds: { $in: businessIds } },
+                { businessId: null, businessIds: null } // Include global jobs with no specific business
+            ],
+            jobName: 'weatherCheckJob',
+            startTime: { $gte: startDate }
+        }).sort({ startTime: -1 });
+        
+        // Get weather settings to determine which businesses have weather monitoring enabled
+        const weatherSettings = await this.businessWeatherSettingsModel.find({
+            businessId: { $in: businessIds }
+        });
+        
+        const enabledBusinessIds = weatherSettings
+            .filter(setting => setting.enableWeatherAlerts)
+            .map(setting => setting.businessId);
+        
+        // Calculate overall statistics
+        let totalAlerts = 0;
+        let businessesWithAlerts = 0;
+        
+        // Calculate durations
+        const durations = weatherJobs
+            .filter(job => job.duration && job.status === 'completed')
+            .map(job => job.duration);
+        
+        const avgDuration = durations.length > 0
+            ? durations.reduce((sum, val) => sum + val, 0) / durations.length
+            : 0;
+        
+        // Count businesses with alerts
+        const businessesWithAlertsSet = new Set();
+        
+        weatherJobs.forEach(job => {
+            // Extract alert counts from job details
+            if (job.details?.totalAlerts) {
+                totalAlerts += job.details.totalAlerts;
+            }
+            
+            // Count unique businesses with alerts
+            if (job.details?.businessResults) {
+                job.details.businessResults.forEach(result => {
+                    if (result.alertCount && result.alertCount > 0) {
+                        businessesWithAlertsSet.add(result.businessId);
+                    }
+                });
+            }
+        });
+        
+        businessesWithAlerts = businessesWithAlertsSet.size;
+        
+        // Prepare stats object
+        const stats = {
+            totalJobs: weatherJobs.length,
+            successful: weatherJobs.filter(job => job.status === 'completed').length,
+            failed: weatherJobs.filter(job => job.status === 'failed').length,
+            avgDuration: parseFloat(avgDuration.toFixed(2)),
+            totalAlerts,
+            businessesWithAlerts,
+            businessesWithWeatherEnabled: enabledBusinessIds.length
+        };
+        
+        // Calculate per-business statistics
+        const businessStatsMap = {};
+        
+        for (const business of businesses) {
+            // Check if weather monitoring is enabled
+            const weatherEnabled = enabledBusinessIds.includes(business.id);
+            
+            // Find jobs related to this business
+            const businessJobs = weatherJobs.filter(job => {
+                if (job.businessId === business.id) return true;
+                if (job.businessIds && job.businessIds.includes(business.id)) return true;
+                
+                // Check in details
+                if (job.details?.businessResults) {
+                    return job.details.businessResults.some(
+                        result => result.businessId === business.id
+                    );
+                }
+                
+                return false;
+            });
+            
+            // Count alerts for this business
+            let alertCount = 0;
+            businessJobs.forEach(job => {
+                if (job.details?.businessResults) {
+                    job.details.businessResults.forEach(result => {
+                        if (result.businessId === business.id && result.alertCount) {
+                            alertCount += result.alertCount;
+                        }
+                    });
+                }
+            });
+            
+            // Get last run status
+            let lastRunStatus = null;
+            let lastRunDate = null;
+            
+            if (businessJobs.length > 0) {
+                // Sort by start time descending to get the most recent
+                const sortedJobs = [...businessJobs].sort((a, b) => 
+                    b.startTime.getTime() - a.startTime.getTime()
+                );
+                
+                const lastJob = sortedJobs[0];
+                lastRunStatus = lastJob.status;
+                lastRunDate = lastJob.startTime;
+            }
+            
+            businessStatsMap[business.id] = {
+                businessId: business.id,
+                businessName: business.name,
+                weatherEnabled,
+                totalJobs: businessJobs.length,
+                successful: businessJobs.filter(job => job.status === 'completed').length,
+                failed: businessJobs.filter(job => job.status === 'failed').length,
+                alertCount,
+                lastRunStatus,
+                lastRunDate
+            };
+        }
+        
+        const businessStats = Object.values(businessStatsMap);
+        
+        // Format recent jobs for the response
+        const recentJobs = weatherJobs.slice(0, limit).map(job => {
+            return {
+                id: job._id,
+                jobName: job.jobName,
+                startTime: job.startTime,
+                endTime: job.endTime,
+                duration: job.duration,
+                status: job.status,
+                totalBusinesses: job.details?.totalBusinesses || 0,
+                processedBusinesses: job.processedCount || 0,
+                failedBusinesses: job.failedCount || 0,
+                totalAlerts: job.details?.totalAlerts || 0,
+                error: job.error
+            };
+        });
+        
+        return {
+            stats,
+            businessStats,
+            recentJobs
         };
     }
 }
