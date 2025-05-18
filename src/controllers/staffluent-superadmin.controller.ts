@@ -887,18 +887,12 @@ export class StaffluentSuperadminController {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
         
-        // Get all weather monitoring jobs from cron history
-        // Look for both weatherCheckJob and checkWeatherForAllBusinesses job names
         const weatherJobs = await this.cronJobHistoryModel.find({
+            // Only match weather-related job names
             $or: [
-                { businessId: { $in: businessIds } },
-                { businessIds: { $in: businessIds } },
-                { 
-                    jobName: { 
-                        $regex: /^weatherCheckJob-/ 
-                    },
-                    businessId: { $in: businessIds }
-                }
+                { jobName: 'weatherCheckJob' },
+                { jobName: 'checkWeatherForAllBusinesses' },
+                { jobName: { $regex: /^weatherCheckJob-/ } }
             ],
             startTime: { $gte: startDate }
         }).sort({ startTime: -1 });
