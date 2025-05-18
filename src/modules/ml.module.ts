@@ -15,6 +15,8 @@ import { AIInsightService } from '../services/ai/ai-insight.service';
 import { AIFeatureService } from '../services/ai/ai-feature.service';
 import { AIAgentService } from '../services/ai/ai-agent.service';
 import { AITestController } from '../controllers/ai/ml-testing.controller';
+import { Business, BusinessSchema } from '../schemas/business.schema';
+import { AgentConfiguration, AgentConfigurationSchema } from '../schemas/agent-configuration.schema';
 
 @Module({
   imports: [
@@ -23,8 +25,11 @@ import { AITestController } from '../controllers/ai/ml-testing.controller';
       { name: PredictionLog.name, schema: PredictionLogSchema },
       { name: InsightCollection.name, schema: InsightCollectionSchema },
       { name: FeatureCollection.name, schema: FeatureCollectionSchema },
+      { name: Business.name, schema: BusinessSchema },
+      { name: AgentConfiguration.name, schema: AgentConfigurationSchema },
     ]),
   ],
+  controllers: [AITestController],
   providers: [
     MLRegistryRepository,
     PredictionLogRepository,
