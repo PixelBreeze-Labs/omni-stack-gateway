@@ -10,6 +10,7 @@ import { TaskAssignment, TaskStatus } from '../schemas/task-assignment.schema';
 import { StaffProfile } from '../schemas/staff-profile.schema';
 import { AgentConfiguration } from '../schemas/agent-configuration.schema';
 import { BusinessWeatherSettings } from '../schemas/business-weather-settings.schema';
+import { WeatherAlert } from '../schemas/weather-alert.schema';
 
 @ApiTags('Staffluent Superadmin Dashboard')
 @ApiBearerAuth()
@@ -22,7 +23,8 @@ export class StaffluentSuperadminController {
         @InjectModel(TaskAssignment.name) private taskAssignmentModel: Model<TaskAssignment>,
         @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
         @InjectModel(AgentConfiguration.name) private agentConfigModel: Model<AgentConfiguration>,
-        @InjectModel(BusinessWeatherSettings.name) private businessWeatherSettingsModel: Model<BusinessWeatherSettings>
+        @InjectModel(BusinessWeatherSettings.name) private businessWeatherSettingsModel: Model<BusinessWeatherSettings>,
+        @InjectModel(WeatherAlert.name) private weatherAlertModel: Model<WeatherAlert>,
     ) {}
 
     @ApiOperation({ summary: 'Get cron job history statistics for client businesses' })
@@ -908,9 +910,25 @@ export class StaffluentSuperadminController {
             weatherSettingsMap[setting.businessId.toString()] = setting;
         });
         
+        // Get all weather alerts for these businesses
+        const weatherAlerts = await this.weatherAlertModel.find({
+            businessId: { $in: businessIds.map(id => id.toString()) },
+            startTime: { $gte: startDate }
+        });
+        
+        // Count alerts by business
+        const businessAlertCountMap = {};
+        const businessesWithAlertsSet = new Set();
+        
+        weatherAlerts.forEach(alert => {
+            const businessId = alert.businessId.toString();
+            businessAlertCountMap[businessId] = (businessAlertCountMap[businessId] || 0) + 1;
+            businessesWithAlertsSet.add(businessId);
+        });
+        
         // Calculate overall statistics
-        let totalAlerts = 0;
-        let businessesWithAlerts = 0;
+        const totalAlerts = weatherAlerts.length;
+        const businessesWithAlerts = businessesWithAlertsSet.size;
         
         // Calculate durations
         const durations = weatherJobs
@@ -920,27 +938,6 @@ export class StaffluentSuperadminController {
         const avgDuration = durations.length > 0
             ? durations.reduce((sum, val) => sum + val, 0) / durations.length
             : 0;
-        
-        // Count businesses with alerts
-        const businessesWithAlertsSet = new Set();
-        
-        weatherJobs.forEach(job => {
-            // Extract alert counts from job details
-            if (job.details?.totalAlerts) {
-                totalAlerts += job.details.totalAlerts;
-            }
-            
-            // Count unique businesses with alerts
-            if (job.details?.businessResults) {
-                job.details.businessResults.forEach(result => {
-                    if (result.alertCount && result.alertCount > 0) {
-                        businessesWithAlertsSet.add(result.businessId.toString());
-                    }
-                });
-            }
-        });
-        
-        businessesWithAlerts = businessesWithAlertsSet.size;
         
         // Count businesses with weather monitoring enabled
         const businessesWithWeatherEnabled = weatherSettings.filter(
@@ -988,19 +985,8 @@ export class StaffluentSuperadminController {
                 return false;
             });
             
-            // Count alerts for this business
-            let alertCount = 0;
-            businessJobs.forEach(job => {
-                if (job.details?.businessResults) {
-                    job.details.businessResults.forEach(result => {
-                        if (result.businessId && 
-                            result.businessId.toString() === businessIdStr && 
-                            result.alertCount) {
-                            alertCount += result.alertCount;
-                        }
-                    });
-                }
-            });
+            // Get alert count for this business from the alerts collection
+            const alertCount = businessAlertCountMap[businessIdStr] || 0;
             
             // Get last run status
             let lastRunStatus = null;
