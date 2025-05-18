@@ -1,8 +1,8 @@
-// src/ai/services/ai-model.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { MLRegistryRepository } from '../../repositories/ai/ml-registry.repository';
 import { CreateMLRegistryDto } from '../../dtos/ai/ml-registry.dto';
-import * as tf from '@tensorflow/tfjs';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class AIModelService {
@@ -19,21 +19,19 @@ export class AIModelService {
       
       for (const modelInfo of activeModels) {
         try {
-          if (modelInfo.modelPath) {
-            const model = await tf.loadLayersModel(`file://${modelInfo.modelPath}`);
-            this.models.set(modelInfo.modelName, { 
-              model, 
-              info: modelInfo,
-              tfModel: true
-            });
-            this.logger.log(`Loaded model: ${modelInfo.modelName}`);
-          }
+          // Instead of loading TensorFlow models, we're just storing model info
+          // and will use mock predictions for testing purposes
+          this.models.set(modelInfo.modelName, { 
+            info: modelInfo,
+            mockModel: true
+          });
+          this.logger.log(`Registered model info: ${modelInfo.modelName}`);
         } catch (error) {
-          this.logger.error(`Failed to load model ${modelInfo.modelName}: ${error.message}`);
+          this.logger.error(`Failed to register model ${modelInfo.modelName}: ${error.message}`);
         }
       }
       
-      this.logger.log(`Loaded ${this.models.size} active models`);
+      this.logger.log(`Registered ${this.models.size} active models`);
     } catch (error) {
       this.logger.error(`Error loading active models: ${error.message}`);
     }
@@ -48,18 +46,12 @@ export class AIModelService {
     // Create the new model registry entry
     const modelRegistry = await this.mlRegistryRepository.create(createDto);
     
-    // If it's an active model, load it into memory
-    if (createDto.status === 'active' && createDto.modelPath) {
-      try {
-        const model = await tf.loadLayersModel(`file://${createDto.modelPath}`);
-        this.models.set(createDto.modelName, { 
-          model, 
-          info: modelRegistry,
-          tfModel: true
-        });
-      } catch (error) {
-        this.logger.error(`Failed to load model ${createDto.modelName}: ${error.message}`);
-      }
+    // Store model info in memory
+    if (createDto.status === 'active') {
+      this.models.set(createDto.modelName, { 
+        info: modelRegistry,
+        mockModel: true
+      });
     }
     
     return modelRegistry;
@@ -69,58 +61,77 @@ export class AIModelService {
     let modelEntry = this.models.get(modelName);
     
     if (!modelEntry) {
-      this.logger.warn(`Model ${modelName} not found in memory, attempting to load`);
+      this.logger.warn(`Model ${modelName} not found in memory, attempting to load info`);
       
-      // Try to find and load the model from the database
+      // Try to find the model from the database
       const modelInfo = await this.mlRegistryRepository.getActiveModel(modelName);
       
-      if (!modelInfo || !modelInfo.modelPath) {
+      if (!modelInfo) {
         throw new Error(`No active model found for ${modelName}`);
       }
       
-      // Load the model
-      try {
-        const model = await tf.loadLayersModel(`file://${modelInfo.modelPath}`);
-        this.models.set(modelName, { 
-          model, 
-          info: modelInfo,
-          tfModel: true
-        });
-        
-        // Update modelEntry reference
-        modelEntry = this.models.get(modelName);
-      } catch (error) {
-        throw new Error(`Failed to load model ${modelName}: ${error.message}`);
-      }
+      // Register the model info
+      this.models.set(modelName, { 
+        info: modelInfo,
+        mockModel: true
+      });
+      
+      // Update modelEntry reference
+      modelEntry = this.models.get(modelName);
     }
     
-    if (modelEntry.tfModel) {
-      // Create input tensor from features
-      const featureTensor = this.createFeatureTensor(features, modelEntry.info.features);
-      
-      // Make prediction
-      const prediction = modelEntry.model.predict(featureTensor);
-      
-      // Get result data
-      const result = await prediction.data();
-      
-      // Clean up tensors
-      featureTensor.dispose();
-      prediction.dispose();
-      
-      return Array.from(result);
-    } else {
-      // Handle non-TensorFlow models
-      throw new Error('Unsupported model type');
-    }
+    // For testing purposes, generate mock predictions based on the model type
+    return this.generateMockPrediction(modelName, modelEntry.info.type, features);
   }
 
-  private createFeatureTensor(features: Record<string, any>, featureNames: string[]) {
-    // Extract features in the correct order
-    const orderedFeatures = featureNames.map(name => features[name] || 0);
-    
-    // Create tensor
-    return tf.tensor2d([orderedFeatures]);
+  private generateMockPrediction(modelName: string, modelType: string, features: Record<string, any>): any[] {
+    // Generate different mock predictions based on model type and name
+    if (modelType === 'classification') {
+      if (modelName.includes('risk')) {
+        // Risk prediction models - return high/medium/low risk score
+        const riskScore = Math.random();
+        if (riskScore > 0.7) return [0.8, 0.15, 0.05]; // High risk
+        if (riskScore > 0.4) return [0.2, 0.7, 0.1];   // Medium risk
+        return [0.1, 0.2, 0.7];                        // Low risk
+      } else if (modelName.includes('compliance')) {
+        // Compliance checker - return compliance probability
+        return [Math.random() > 0.3 ? 0.95 : 0.2];     // Mostly compliant
+      } else {
+        // Generic classification - binary result
+        return [Math.random() > 0.5 ? 0.9 : 0.1];
+      }
+    } else if (modelType === 'regression') {
+      // For regression models, return a continuous value
+      if (modelName.includes('weather')) {
+        // Weather impact - higher is more severe
+        return [Math.random() * 10];
+      } else if (modelName.includes('duration')) {
+        // Duration prediction
+        const baseDuration = 30; // base duration in days
+        const complexity = features.complexity || 1;
+        const scope = features.scope || 1;
+        return [baseDuration * complexity * scope * (0.8 + Math.random() * 0.4)];
+      } else {
+        // Generic regression - random value between 0 and 100
+        return [Math.random() * 100];
+      }
+    } else if (modelType === 'recommendation') {
+      if (modelName.includes('assignment')) {
+        // Task assignment - return mock employee IDs with scores
+        const employeeCount = 5;
+        const result = [];
+        for (let i = 0; i < employeeCount; i++) {
+          result.push(Math.random()); // Score for each employee
+        }
+        return result;
+      } else {
+        // Generic recommendation - return 3 scores
+        return [Math.random(), Math.random(), Math.random()];
+      }
+    } else {
+      // Default fallback
+      return [Math.random()];
+    }
   }
 
   // Additional methods for model management
