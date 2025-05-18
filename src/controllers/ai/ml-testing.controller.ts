@@ -6,8 +6,8 @@ import { AIInsightService } from '../../services/ai/ai-insight.service';
 import { AIFeatureService } from '../../services/ai/ai-feature.service';
 import { AIAgentService } from '../../services/ai/ai-agent.service';
 
-@Controller('ai-test')
-export class AITestController {
+@Controller('ml-test')
+export class MLTestController {
   constructor(
     private aiModelService: AIModelService,
     private aiPredictionService: AIPredictionService,
