@@ -886,24 +886,27 @@ export class StaffluentSuperadminController {
         startDate.setDate(startDate.getDate() - days);
         
         // Get all weather monitoring jobs from cron history
+        // Look for both weatherCheckJob and checkWeatherForAllBusinesses job names
         const weatherJobs = await this.cronJobHistoryModel.find({
             $or: [
                 { businessId: { $in: businessIds } },
                 { businessIds: { $in: businessIds } },
-                { businessId: null, businessIds: null } // Include global jobs with no specific business
+                { businessId: null, businessIds: null }
             ],
-            jobName: 'weatherCheckJob',
+            jobName: { $in: ['weatherCheckJob', 'checkWeatherForAllBusinesses'] },
             startTime: { $gte: startDate }
         }).sort({ startTime: -1 });
         
         // Get weather settings to determine which businesses have weather monitoring enabled
         const weatherSettings = await this.businessWeatherSettingsModel.find({
-            businessId: { $in: businessIds }
+            businessId: { $in: businessIds.map(id => id.toString()) }
         });
         
-        const enabledBusinessIds = weatherSettings
-            .filter(setting => setting.enableWeatherAlerts)
-            .map(setting => setting.businessId);
+        // Convert all businessIds to strings for consistent comparison
+        const weatherSettingsMap = {};
+        weatherSettings.forEach(setting => {
+            weatherSettingsMap[setting.businessId.toString()] = setting;
+        });
         
         // Calculate overall statistics
         let totalAlerts = 0;
@@ -931,13 +934,18 @@ export class StaffluentSuperadminController {
             if (job.details?.businessResults) {
                 job.details.businessResults.forEach(result => {
                     if (result.alertCount && result.alertCount > 0) {
-                        businessesWithAlertsSet.add(result.businessId);
+                        businessesWithAlertsSet.add(result.businessId.toString());
                     }
                 });
             }
         });
         
         businessesWithAlerts = businessesWithAlertsSet.size;
+        
+        // Count businesses with weather monitoring enabled
+        const businessesWithWeatherEnabled = weatherSettings.filter(
+            setting => setting.enableWeatherAlerts
+        ).length;
         
         // Prepare stats object
         const stats = {
@@ -947,25 +955,33 @@ export class StaffluentSuperadminController {
             avgDuration: parseFloat(avgDuration.toFixed(2)),
             totalAlerts,
             businessesWithAlerts,
-            businessesWithWeatherEnabled: enabledBusinessIds.length
+            businessesWithWeatherEnabled
         };
         
         // Calculate per-business statistics
         const businessStatsMap = {};
         
         for (const business of businesses) {
-            // Check if weather monitoring is enabled
-            const weatherEnabled = enabledBusinessIds.includes(business.id);
+            const businessIdStr = business.id.toString();
+            
+            // Check if weather monitoring is enabled for this business
+            const weatherSetting = weatherSettingsMap[businessIdStr];
+            const weatherEnabled = weatherSetting ? weatherSetting.enableWeatherAlerts : false;
             
             // Find jobs related to this business
             const businessJobs = weatherJobs.filter(job => {
-                if (job.businessId === business.id) return true;
-                if (job.businessIds && job.businessIds.includes(business.id)) return true;
+                const jobBusinessId = job.businessId ? job.businessId.toString() : null;
+                
+                if (jobBusinessId === businessIdStr) return true;
+                
+                if (job.businessIds && job.businessIds.some(id => id.toString() === businessIdStr)) {
+                    return true;
+                }
                 
                 // Check in details
                 if (job.details?.businessResults) {
                     return job.details.businessResults.some(
-                        result => result.businessId === business.id
+                        result => result.businessId && result.businessId.toString() === businessIdStr
                     );
                 }
                 
@@ -977,7 +993,9 @@ export class StaffluentSuperadminController {
             businessJobs.forEach(job => {
                 if (job.details?.businessResults) {
                     job.details.businessResults.forEach(result => {
-                        if (result.businessId === business.id && result.alertCount) {
+                        if (result.businessId && 
+                            result.businessId.toString() === businessIdStr && 
+                            result.alertCount) {
                             alertCount += result.alertCount;
                         }
                     });
@@ -999,8 +1017,8 @@ export class StaffluentSuperadminController {
                 lastRunDate = lastJob.startTime;
             }
             
-            businessStatsMap[business.id] = {
-                businessId: business.id,
+            businessStatsMap[businessIdStr] = {
+                businessId: businessIdStr,
                 businessName: business.name,
                 weatherEnabled,
                 totalJobs: businessJobs.length,
@@ -1017,7 +1035,7 @@ export class StaffluentSuperadminController {
         // Format recent jobs for the response
         const recentJobs = weatherJobs.slice(0, limit).map(job => {
             return {
-                id: job._id,
+                id: job._id.toString(),
                 jobName: job.jobName,
                 startTime: job.startTime,
                 endTime: job.endTime,
