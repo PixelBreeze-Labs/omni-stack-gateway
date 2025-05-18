@@ -893,9 +893,13 @@ export class StaffluentSuperadminController {
             $or: [
                 { businessId: { $in: businessIds } },
                 { businessIds: { $in: businessIds } },
-                { businessId: null, businessIds: null }
+                { 
+                    jobName: { 
+                        $regex: /^weatherCheckJob-/ 
+                    },
+                    businessId: { $in: businessIds }
+                }
             ],
-            jobName: { $in: ['weatherCheckJob', 'checkWeatherForAllBusinesses'] },
             startTime: { $gte: startDate }
         }).sort({ startTime: -1 });
         
