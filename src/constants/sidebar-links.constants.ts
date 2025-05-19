@@ -325,7 +325,7 @@ export const businessAdminLinks: SideLink[] = [
         sub: [
             {
                 title: 'Orders',
-                href: '/work-orders',
+                href: '/work-orders/list',
                 icon: null,
             },
             {
@@ -668,7 +668,7 @@ export const businessAdminLinks: SideLink[] = [
                 icon: null,
             },
             {
-                title: 'Construction Milestones',
+                title: 'Milestones',
                 href: '/projects/milestones',
                 icon: null,
             },
