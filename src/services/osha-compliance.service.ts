@@ -84,6 +84,12 @@ export class OshaComplianceService {
         .limit(limit)
         .exec();
 
+    // format nextInspectionDate to human readable format
+    requirements.forEach(requirement => {
+      // @ts-ignore
+      requirement.nextInspectionDate = requirement.nextInspectionDate.toLocaleDateString();
+    });
+    
       const total = await this.oshaComplianceModel.countDocuments(query);
 
       return {
