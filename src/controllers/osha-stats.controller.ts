@@ -161,4 +161,54 @@ import {
       
       return business;
     }
+
+    @Get('upcoming-tasks-summary')
+  @ApiOperation({ summary: 'Get upcoming OSHA compliance tasks summary' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiQuery({ name: 'constructionSiteId', required: false, description: 'Filter by construction site' })
+  @ApiResponse({ status: 200, description: 'Upcoming tasks summary retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  async getUpcomingTasksSummary(
+    @Query('businessId') businessId: string,
+    @Query('constructionSiteId') constructionSiteId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ) {
+    try {
+      // Validate business API key
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      return await this.oshaStatsService.getUpcomingTasksSummary(businessId, constructionSiteId);
+    } catch (error) {
+      this.logger.error(`Error fetching upcoming tasks summary: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to fetch upcoming tasks summary');
+    }
+  }
+
+  @Get('health-score')
+  @ApiOperation({ summary: 'Get OSHA compliance health score' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiQuery({ name: 'constructionSiteId', required: false, description: 'Filter by construction site' })
+  @ApiResponse({ status: 200, description: 'Compliance health score retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  async getComplianceHealthScore(
+    @Query('businessId') businessId: string,
+    @Query('constructionSiteId') constructionSiteId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ) {
+    try {
+      // Validate business API key
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      return await this.oshaStatsService.getComplianceHealthScore(businessId, constructionSiteId);
+    } catch (error) {
+      this.logger.error(`Error fetching compliance health score: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to fetch compliance health score');
+    }
+  }
   }

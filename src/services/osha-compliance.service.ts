@@ -274,4 +274,208 @@ export class OshaComplianceService {
     
     return now.toISOString().split('T')[0]; // Return YYYY-MM-DD format
   }
+
+  async runComplianceAudit(businessId: string, constructionSiteId?: string) {
+    try {
+      this.logger.log(`Running OSHA compliance audit for business: ${businessId}`);
+      
+      // Build query for audit scope
+      const query: any = { 
+        businessId,
+        isDeleted: false 
+      };
+      if (constructionSiteId) {
+        query.constructionSiteId = constructionSiteId;
+      }
+
+      // Get all requirements in scope
+      const requirements = await this.oshaComplianceModel
+        .find(query)
+        .populate('assignedTo', 'name email')
+        .exec();
+
+      const today = new Date();
+      let updatedCount = 0;
+      const updates = [];
+
+      // Process each requirement
+      for (const requirement of requirements) {
+        let needsUpdate = false;
+        const updateData: any = {};
+
+        // Check if inspection is overdue
+        if (requirement.nextInspectionDate) {
+          const nextInspectionDate = new Date(requirement.nextInspectionDate);
+          if (nextInspectionDate < today && requirement.status !== 'non_compliant') {
+            updateData.status = 'non_compliant';
+            needsUpdate = true;
+            updates.push(`${requirement.title}: Marked as non-compliant (overdue inspection)`);
+          }
+        }
+
+        // Update last audit date
+        updateData.lastAuditDate = today;
+        updateData.updatedAt = today;
+        needsUpdate = true;
+
+        if (needsUpdate) {
+          await this.oshaComplianceModel.findByIdAndUpdate(requirement._id, updateData);
+          updatedCount++;
+        }
+      }
+
+      // Calculate audit results
+      const totalRequirements = requirements.length;
+      const compliantRequirements = requirements.filter(r => r.status === 'compliant').length;
+      const nonCompliantRequirements = requirements.filter(r => r.status === 'non_compliant').length;
+      
+      // Count overdue inspections
+      const overdueInspections = requirements.filter(r => {
+        if (!r.nextInspectionDate) return false;
+        return new Date(r.nextInspectionDate) < today;
+      }).length;
+
+      // Count critical violations (high priority non-compliant)
+      const criticalViolations = requirements.filter(r => 
+        r.status === 'non_compliant' && r.priority === 'high'
+      ).length;
+
+      const newComplianceRate = totalRequirements > 0 
+        ? Math.round((compliantRequirements / totalRequirements) * 100) 
+        : 0;
+
+      const auditResults = {
+        totalRequirements,
+        compliantRequirements,
+        nonCompliantRequirements,
+        overdueInspections,
+        criticalViolations,
+        newComplianceRate,
+        updatedRequirements: updates,
+        auditDate: today.toISOString(),
+        requirementsUpdated: updatedCount
+      };
+
+      this.logger.log(`Audit completed. Updated ${updatedCount} requirements. Compliance rate: ${newComplianceRate}%`);
+      
+      return auditResults;
+    } catch (error) {
+      this.logger.error(`Error running OSHA compliance audit: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async getUpcomingTasks(businessId: string, constructionSiteId?: string, days: number = 30) {
+    try {
+      const today = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(today.getDate() + days);
+
+      const query: any = {
+        businessId,
+        isDeleted: false,
+        nextInspectionDate: { 
+          $gte: today,
+          $lte: futureDate 
+        }
+      };
+
+      if (constructionSiteId) {
+        query.constructionSiteId = constructionSiteId;
+      }
+
+      const upcomingTasks = await this.oshaComplianceModel
+        .find(query)
+        .populate('assignedTo', 'name email')
+        .populate('constructionSiteId', 'name')
+        .sort({ nextInspectionDate: 1 })
+        .exec();
+
+      // Calculate days until due for each task
+      const tasksWithDays = upcomingTasks.map(task => {
+        const daysUntilDue = Math.floor(
+          (new Date(task.nextInspectionDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        
+        return {
+          id: task._id.toString(),
+          title: task.title,
+          category: task.category,
+          priority: task.priority,
+          status: task.status,
+          nextInspectionDate: task.nextInspectionDate,
+          daysUntilDue,
+          assignedTo: task.assignedTo,
+          constructionSite: task.constructionSiteId,
+          isUrgent: daysUntilDue <= 7,
+          isCritical: daysUntilDue <= 3
+        };
+      });
+
+      return {
+        tasks: tasksWithDays,
+        totalTasks: tasksWithDays.length,
+        urgentTasks: tasksWithDays.filter(t => t.isUrgent).length,
+        criticalTasks: tasksWithDays.filter(t => t.isCritical).length
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching upcoming OSHA tasks: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async getOverdueInspections(businessId: string, constructionSiteId?: string) {
+    try {
+      const today = new Date();
+      
+      const query: any = {
+        businessId,
+        isDeleted: false,
+        nextInspectionDate: { $lt: today }
+      };
+
+      if (constructionSiteId) {
+        query.constructionSiteId = constructionSiteId;
+      }
+
+      const overdueInspections = await this.oshaComplianceModel
+        .find(query)
+        .populate('assignedTo', 'name email')
+        .populate('constructionSiteId', 'name')
+        .sort({ nextInspectionDate: 1 })
+        .exec();
+
+      // Calculate days overdue for each inspection
+      const inspectionsWithOverdueDays = overdueInspections.map(inspection => {
+        const daysOverdue = Math.floor(
+          (today.getTime() - new Date(inspection.nextInspectionDate).getTime()) / (1000 * 60 * 60 * 24)
+        );
+        
+        return {
+          id: inspection._id.toString(),
+          title: inspection.title,
+          category: inspection.category,
+          priority: inspection.priority,
+          status: inspection.status,
+          nextInspectionDate: inspection.nextInspectionDate,
+          daysOverdue,
+          assignedTo: inspection.assignedTo,
+          constructionSite: inspection.constructionSiteId,
+          isCritical: daysOverdue > 30 || inspection.priority === 'high'
+        };
+      });
+
+      return {
+        inspections: inspectionsWithOverdueDays,
+        totalOverdue: inspectionsWithOverdueDays.length,
+        criticalOverdue: inspectionsWithOverdueDays.filter(i => i.isCritical).length,
+        averageDaysOverdue: inspectionsWithOverdueDays.length > 0 
+          ? Math.round(inspectionsWithOverdueDays.reduce((sum, i) => sum + i.daysOverdue, 0) / inspectionsWithOverdueDays.length)
+          : 0
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching overdue OSHA inspections: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
 }
