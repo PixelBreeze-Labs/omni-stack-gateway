@@ -60,20 +60,20 @@ export class OshaComplianceService {
         page = 1, 
         limit = 10 
       } = queryDto;
-
+  
       // Build query
       const query: any = { 
         businessId,
         isDeleted: false 
       };
-
+  
       if (constructionSiteId) query.constructionSiteId = constructionSiteId;
       if (category) query.category = category;
       if (complianceType) query.complianceType = complianceType;
       if (priority) query.priority = priority;
       if (assignedTo) query.assignedTo = assignedTo;
-
-      // Execute query with pagination
+  
+      // Execute query with pagination - USE .lean() for plain objects
       const skip = (page - 1) * limit;
       const requirements = await this.oshaComplianceModel
         .find(query)
@@ -82,16 +82,28 @@ export class OshaComplianceService {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
+        .lean() // This returns plain JavaScript objects instead of Mongoose documents
         .exec();
-
-    // format nextInspectionDate to human readable format
-    requirements.forEach(requirement => {
-      // @ts-ignore
-      requirement.nextInspectionDate = requirement.nextInspectionDate.toLocaleDateString();
-    });
-    
+  
+      // Now format dates (works because they're plain objects)
+      requirements.forEach(requirement => {
+        if (requirement.nextInspectionDate) {
+            // @ts-ignore
+          requirement.nextInspectionDate = new Date(requirement.nextInspectionDate).toLocaleDateString();
+        }
+        if (requirement.lastInspectionDate) {
+            // @ts-ignore
+          requirement.lastInspectionDate = new Date(requirement.lastInspectionDate).toLocaleDateString();
+        }
+        // Format createdAt and updatedAt as well
+        // @ts-ignore
+        requirement.createdAt = new Date(requirement.createdAt).toLocaleDateString();
+        // @ts-ignore
+        requirement.updatedAt = new Date(requirement.updatedAt).toLocaleDateString();
+      });
+      
       const total = await this.oshaComplianceModel.countDocuments(query);
-
+  
       return {
         data: requirements,
         pagination: {
