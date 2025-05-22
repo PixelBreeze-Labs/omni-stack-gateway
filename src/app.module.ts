@@ -90,6 +90,10 @@ import { ProjectWeatherSettings, ProjectWeatherSettingsSchema } from './schemas/
 import { AppProject, AppProjectSchema } from './schemas/app-project.schema';
 import { SaasNotification, SaasNotificationSchema } from './schemas/saas-notification.schema';
 import { ConstructionSite, ConstructionSiteSchema } from './schemas/construction-site.schema';
+import { OshaComplianceRequirement, OshaComplianceRequirementSchema } from './schemas/osha-compliance-requirement.schema';
+import { OshaInspection, OshaInspectionSchema } from './schemas/osha-inspection.schema';
+import { OshaViolation, OshaViolationSchema } from './schemas/osha-violation.schema';
+import { OshaEquipmentCompliance, OshaEquipmentComplianceSchema } from './schemas/osha-equipment-compliance.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -166,6 +170,10 @@ import { BusinessWeatherAlertController } from './controllers/business-weather-a
 import { VBAppProjectSyncController } from './controllers/vb-app-project-sync.controller';
 import { VBConstructionSiteSyncController } from './controllers/vb-construction-site-sync.controller';
 import { BusinessProjectController } from './controllers/business-project.controller';
+import { OshaStatsController } from './controllers/osha-stats.controller';
+import { OshaReportsController } from './controllers/osha-reports.controller';
+import { OshaComplianceController } from './controllers/osha-compliance.controller';
+
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -259,6 +267,10 @@ import { WeatherMonitorService } from './services/weather-monitor.service';
 import { SaasNotificationService } from './services/saas-notification.service';
 import { VBAppProjectSyncService } from './services/vb-app-project-sync.service';
 import { VBConstructionSiteSyncService } from './services/vb-construction-site-sync.service';
+import { OshaInspectionService } from './services/osha-inspection.service';
+import { OshaComplianceService } from './services/osha-compliance.service';
+import { OshaReportsService } from './services/osha-reports.service';
+import { OshaStatsService } from './services/osha-stats.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -418,6 +430,10 @@ import { MLModule } from './modules/ml.module';
       { name: AppProject.name, schema: AppProjectSchema },
       { name: SaasNotification.name, schema: SaasNotificationSchema },
       { name: ConstructionSite.name, schema: ConstructionSiteSchema },
+      { name: OshaInspection.name, schema: OshaInspectionSchema },
+      { name: OshaViolation.name, schema: OshaViolationSchema },
+      { name: OshaComplianceRequirement.name, schema: OshaComplianceRequirementSchema },
+      { name: OshaEquipmentCompliance.name, schema: OshaEquipmentComplianceSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -516,7 +532,10 @@ import { MLModule } from './modules/ml.module';
     BusinessWeatherAlertController,
     VBAppProjectSyncController,
     VBConstructionSiteSyncController,
-    BusinessProjectController
+    BusinessProjectController,
+    OshaComplianceController,
+    OshaReportsController,
+    OshaStatsController,
   ],
   providers: [
     SnapfoodService,
@@ -617,7 +636,11 @@ import { MLModule } from './modules/ml.module';
     WeatherMonitorService,
     SaasNotificationService,
     VBAppProjectSyncService,
-    VBConstructionSiteSyncService
+    VBConstructionSiteSyncService,
+    OshaInspectionService,
+    OshaComplianceService,
+    OshaReportsService,
+    OshaStatsService,
   ],
 })
 export class AppModule implements NestModule {

@@ -48,7 +48,7 @@ export class OshaEquipmentCompliance extends Document {
   manufacturer?: string;
 
   @Prop({ type: String })
-  model?: string;
+  equipmentModel?: string;
 
   @Prop({ type: String })
   certificationNumber?: string;
