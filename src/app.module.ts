@@ -173,7 +173,7 @@ import { BusinessProjectController } from './controllers/business-project.contro
 import { OshaStatsController } from './controllers/osha-stats.controller';
 import { OshaReportsController } from './controllers/osha-reports.controller';
 import { OshaComplianceController } from './controllers/osha-compliance.controller';
-
+import { OshaAuditController } from './controllers/osha-audit.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -536,6 +536,7 @@ import { MLModule } from './modules/ml.module';
     OshaComplianceController,
     OshaReportsController,
     OshaStatsController,
+    OshaAuditController
   ],
   providers: [
     SnapfoodService,
