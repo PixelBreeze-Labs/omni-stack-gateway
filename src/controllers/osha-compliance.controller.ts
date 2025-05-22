@@ -15,7 +15,7 @@ import {
     InternalServerErrorException 
   } from '@nestjs/common';
   import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
-  import { OshaComplianceService } from '../services/osha-compliance.service.ts';
+  import { OshaComplianceService } from '../services/osha-compliance.service';
   import { BusinessService } from '../services/business.service';
   import { 
     CreateOshaComplianceRequirementDto, 

@@ -38,7 +38,7 @@ import { EquipmentType } from '../schemas/osha-equipment-compliance.schema';
     @ApiPropertyOptional({ description: 'Equipment model' })
     @IsOptional()
     @IsString()
-    model?: string;
+    equipmentModel?: string;
   
     @ApiPropertyOptional({ description: 'Certification number' })
     @IsOptional()

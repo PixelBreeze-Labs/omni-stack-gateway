@@ -6,7 +6,8 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 
 import { 
     InspectionType, 
-    InspectionResult 
+    InspectionResult, 
+    InspectionStatus
   } from '../schemas/osha-inspection.schema';
   
   class ViolationDetailDto {
@@ -187,4 +188,12 @@ import {
     inspectionDuration?: number;
   }
   
-  export class UpdateOshaInspectionDto extends PartialType(CreateOshaInspectionDto) {}
+  export class UpdateOshaInspectionDto extends PartialType(CreateOshaInspectionDto) {
+    @ApiPropertyOptional({ 
+      enum: InspectionStatus, 
+      description: 'Current status of the inspection' 
+    })
+    @IsOptional()
+    @IsEnum(InspectionStatus)
+    status?: InspectionStatus;
+  }
