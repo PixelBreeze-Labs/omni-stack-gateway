@@ -1,12 +1,10 @@
-// src/services/osha-stats.service.ts
+// src/services/osha-stats.service.ts - COMPLETE VERSION
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { 
   OshaComplianceRequirement,
   OshaComplianceStatus,
-  OshaComplianceCategory,
-  OshaCompliancePriority
 } from '../schemas/osha-compliance-requirement.schema';
 import { OshaInspection } from '../schemas/osha-inspection.schema';
 import { OshaViolation } from '../schemas/osha-violation.schema';
@@ -304,6 +302,110 @@ export class OshaStatsService {
       };
     } catch (error) {
       this.logger.error(`Error calculating OSHA compliance trends: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // NEW METHOD: Get upcoming tasks summary
+  async getUpcomingTasksSummary(businessId: string, constructionSiteId?: string) {
+    try {
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+      const baseQuery: any = { 
+        businessId,
+        isDeleted: false,
+        nextInspectionDate: {
+          $gte: today,
+          $lte: thirtyDaysFromNow
+        }
+      };
+      
+      if (constructionSiteId) {
+        baseQuery.constructionSiteId = constructionSiteId;
+      }
+
+      // Get upcoming tasks grouped by urgency
+      const upcomingTasks = await this.oshaComplianceModel
+        .find(baseQuery)
+        .populate('assignedTo', 'name email')
+        .populate('constructionSiteId', 'name')
+        .sort({ nextInspectionDate: 1 })
+        .exec();
+
+      const tasksWithUrgency = upcomingTasks.map(task => {
+        const daysUntilDue = Math.floor(
+          (new Date(task.nextInspectionDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        
+        return {
+          id: task._id.toString(),
+          title: task.title,
+          category: task.category,
+          priority: task.priority,
+          status: task.status,
+          nextInspectionDate: task.nextInspectionDate,
+          daysUntilDue,
+          assignedTo: task.assignedTo,
+          constructionSite: task.constructionSiteId,
+          urgencyLevel: daysUntilDue <= 3 ? 'critical' : daysUntilDue <= 7 ? 'urgent' : 'upcoming'
+        };
+      });
+
+      return {
+        total: tasksWithUrgency.length,
+        critical: tasksWithUrgency.filter(t => t.urgencyLevel === 'critical').length,
+        urgent: tasksWithUrgency.filter(t => t.urgencyLevel === 'urgent').length,
+        upcoming: tasksWithUrgency.filter(t => t.urgencyLevel === 'upcoming').length,
+        tasks: tasksWithUrgency.slice(0, 10) // Return top 10 most urgent
+      };
+    } catch (error) {
+      this.logger.error(`Error getting upcoming tasks summary: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // NEW METHOD: Get compliance health score
+  async getComplianceHealthScore(businessId: string, constructionSiteId?: string) {
+    try {
+      const stats = await this.getComplianceStats({ businessId, constructionSiteId });
+      
+      // Calculate health score based on multiple factors
+      let healthScore = 100;
+      
+      // Deduct points for compliance issues
+      healthScore -= (stats.open_violations * 5); // 5 points per violation
+      healthScore -= (stats.overdue_inspections * 10); // 10 points per overdue inspection
+      healthScore -= Math.max(0, (85 - stats.compliance_rate)); // Deduct if below 85% compliance
+      
+      // Bonus points for recent audit
+      if (stats.last_audit_days_ago !== null && stats.last_audit_days_ago <= 30) {
+        healthScore += 5; // Bonus for recent audit
+      }
+      
+      // Ensure score is between 0-100
+      healthScore = Math.max(0, Math.min(100, healthScore));
+      
+      let healthLevel: 'excellent' | 'good' | 'fair' | 'poor' | 'critical';
+      if (healthScore >= 90) healthLevel = 'excellent';
+      else if (healthScore >= 80) healthLevel = 'good';
+      else if (healthScore >= 70) healthLevel = 'fair';
+      else if (healthScore >= 50) healthLevel = 'poor';
+      else healthLevel = 'critical';
+      
+      return {
+        score: healthScore,
+        level: healthLevel,
+        factors: {
+          compliance_rate: stats.compliance_rate,
+          violations: stats.open_violations,
+          overdue_inspections: stats.overdue_inspections,
+          recent_audit: stats.last_audit_days_ago !== null && stats.last_audit_days_ago <= 30
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Error calculating compliance health score: ${error.message}`, error.stack);
       throw error;
     }
   }
