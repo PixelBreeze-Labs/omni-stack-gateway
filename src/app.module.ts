@@ -176,6 +176,7 @@ import { OshaReportsController } from './controllers/osha-reports.controller';
 import { OshaComplianceController } from './controllers/osha-compliance.controller';
 import { OshaAuditController } from './controllers/osha-audit.controller';
 import { BusinessOnboardingController } from './controllers/business-onboarding.controller';
+import { BusinessStorageController } from './controllers/business-storage.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -292,6 +293,7 @@ import { AiModelClass, AiModelClassSchema } from './schemas/ai-model-class.schem
 import { DetectionResult, DetectionResultSchema } from './schemas/detection-result.schema';
 import { DetectionSummary, DetectionSummarySchema } from './schemas/detection-summary.schema';
 import {TwilioVerificationService} from "./services/twilio-verification.service";
+import { BusinessStorageService } from './services/business-storage.service';
 
 // Log
 import { LogService } from './services/log.service';
@@ -541,7 +543,8 @@ import { MLModule } from './modules/ml.module';
     OshaReportsController,
     OshaStatsController,
     OshaAuditController,
-    BusinessOnboardingController
+    BusinessOnboardingController,
+    BusinessStorageController
   ],
   providers: [
     SnapfoodService,
@@ -647,7 +650,8 @@ import { MLModule } from './modules/ml.module';
     OshaComplianceService,
     OshaReportsService,
     OshaStatsService,
-    BusinessOnboardingService
+    BusinessOnboardingService,
+    BusinessStorageService
   ],
 })
 export class AppModule implements NestModule {
