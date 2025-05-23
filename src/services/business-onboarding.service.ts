@@ -11,7 +11,6 @@ import {
 import { 
   CreateBusinessOnboardingDto, 
   UpdateBusinessOnboardingDto,
-  BusinessOnboardingResponse,
   OnboardingState
 } from '../dtos/business-onboarding.dto';
 
