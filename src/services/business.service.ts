@@ -16,6 +16,7 @@ import {SidebarFeatureService} from "./sidebar-feature.service";
 import {AuthService} from "./auth.service";
 import {AppClient, ClientType} from "../schemas/app-client.schema";
 import {Employee} from "../schemas/employee.schema";
+import {BusinessOnboarding} from "../schemas/business-onboarding.schema";
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -30,6 +31,7 @@ export class BusinessService {
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Employee.name) private employeeModel: Model<Employee>,
         @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
+        @InjectModel(BusinessOnboarding.name) private businessOnboardingModel: Model<BusinessOnboarding>,
         private venueBoostService: VenueBoostService,
         private magicLinkService: MagicLinkService,
         private emailService: EmailService,
@@ -1721,59 +1723,137 @@ async updateBusiness(
         }
     }
 
-    /**
-     * Get business details by ID
-     */
-    async getBusinessDetails(clientId: string, businessId: string) {
-        try {
-            // Find the business with the client's ID to ensure access control
-            const business = await this.businessModel.findOne({
-                _id: businessId,
-                clientId
-            })
-            .populate('address')
-            .populate({
-                path: 'adminUserId',
-                select: 'name surname email',
-                model: 'User'
-            });
+   /**
+ * Get business details by ID with onboarding data
+ */
+async getBusinessDetails(clientId: string, businessId: string) {
+    try {
+        // Find the business with the client's ID to ensure access control
+        const business = await this.businessModel.findOne({
+            _id: businessId,
+            clientId
+        })
+        .populate('address')
+        .populate({
+            path: 'adminUserId',
+            select: 'name surname email',
+            model: 'User'
+        });
 
-            if (!business) {
-                throw new NotFoundException('Business not found');
-            }
-
-            // Format the response similar to the list endpoint
-            const adminUserData = business.adminUserId && typeof business.adminUserId !== 'string'
-                ? business.adminUserId as any  // Type assertion
-                : null;
-
-            const adminUser = adminUserData ? {
-                _id: adminUserData._id,
-                name: adminUserData.surname
-                    ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
-                    : (adminUserData.name || ''),
-                email: adminUserData.email
-            } : undefined;
-
-            // Extract the business object and restructure for the response
-            const { adminUserId, ...businessData } = business.toObject();
-
-            // Create the formatted business response
-            return {
-                ...businessData,
-                adminUser,
-                subscription: {
-                    tier: this.getSubscriptionTier(business),
-                    status: business.subscriptionStatus,
-                    endDate: business.subscriptionEndDate,
-                    details: business.subscriptionDetails
-                }
-            };
-        } catch (error) {
-            this.logger.error(`Error fetching business details: ${error.message}`);
-            throw error;
+        if (!business) {
+            throw new NotFoundException('Business not found');
         }
+
+        // Get onboarding data for both walkthrough and setup guide
+        const [walkthroughOnboarding, setupGuideOnboarding] = await Promise.all([
+            this.businessOnboardingModel.findOne({
+                businessId,
+                type: 'walkthrough',
+                isDeleted: { $ne: true }
+            }).lean(),
+            this.businessOnboardingModel.findOne({
+                businessId,
+                type: 'setup_guide',
+                isDeleted: { $ne: true }
+            }).lean()
+        ]);
+
+        // Format the response similar to the list endpoint
+        const adminUserData = business.adminUserId && typeof business.adminUserId !== 'string'
+            ? business.adminUserId as any  // Type assertion
+            : null;
+
+        const adminUser = adminUserData ? {
+            _id: adminUserData._id,
+            name: adminUserData.surname
+                ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
+                : (adminUserData.name || ''),
+            email: adminUserData.email
+        } : undefined;
+
+        // Extract the business object and restructure for the response
+        const { adminUserId, ...businessData } = business.toObject();
+
+        // Format address for response if it exists
+        let formattedAddress = undefined;
+        const addressData = business.addressId as any;
+        if (addressData) {
+            formattedAddress = {
+                street: addressData.addressLine1,
+                city: addressData.city?.name || '',
+                state: addressData.state?.name || '',
+                postcode: addressData.postcode || '',
+                country: addressData.country?.name || ''
+            };
+        }
+
+        // Format onboarding data for response
+        const onboardingData = {
+            walkthrough: walkthroughOnboarding ? {
+                _id: walkthroughOnboarding._id,
+                type: walkthroughOnboarding.type,
+                status: walkthroughOnboarding.status,
+                currentStep: walkthroughOnboarding.currentStep,
+                totalSteps: walkthroughOnboarding.totalSteps,
+                completedSteps: walkthroughOnboarding.completedSteps,
+                progressPercentage: walkthroughOnboarding.progressPercentage,
+                startedAt: walkthroughOnboarding.startedAt,
+                completedAt: walkthroughOnboarding.completedAt,
+                lastActiveAt: walkthroughOnboarding.lastActiveAt,
+                completionCount: walkthroughOnboarding.completionCount,
+                isFirstTime: walkthroughOnboarding.isFirstTime,
+                deviceType: walkthroughOnboarding.deviceType,
+                userAgent: walkthroughOnboarding.userAgent,
+                isPWA: walkthroughOnboarding.isPWA,
+                metadata: walkthroughOnboarding.metadata || {},
+                // @ts-ignore
+                createdAt: walkthroughOnboarding.createdAt,
+                // @ts-ignore
+                updatedAt: walkthroughOnboarding.updatedAt
+            } : null,
+            
+            setupGuide: setupGuideOnboarding ? {
+                _id: setupGuideOnboarding._id,
+                type: setupGuideOnboarding.type,
+                status: setupGuideOnboarding.status,
+                currentStep: setupGuideOnboarding.currentStep,
+                totalSteps: setupGuideOnboarding.totalSteps,
+                completedSteps: setupGuideOnboarding.completedSteps,
+                progressPercentage: setupGuideOnboarding.progressPercentage,
+                startedAt: setupGuideOnboarding.startedAt,
+                completedAt: setupGuideOnboarding.completedAt,
+                lastActiveAt: setupGuideOnboarding.lastActiveAt,
+                completionCount: setupGuideOnboarding.completionCount,
+                isFirstTime: setupGuideOnboarding.isFirstTime,
+                deviceType: setupGuideOnboarding.deviceType,
+                userAgent: setupGuideOnboarding.userAgent,
+                isPWA: setupGuideOnboarding.isPWA,
+                metadata: setupGuideOnboarding.metadata || {},
+                // @ts-ignore
+                createdAt: setupGuideOnboarding.createdAt,
+                // @ts-ignore
+                updatedAt: setupGuideOnboarding.updatedAt
+            } : null
+        };
+
+        // Create the formatted business response
+        return {
+            ...businessData,
+            address: formattedAddress,
+            adminUser,
+            subscription: {
+                tier: this.getSubscriptionTier(business),
+                status: business.subscriptionStatus,
+                endDate: business.subscriptionEndDate,
+                details: business.subscriptionDetails
+            },
+            onboarding: onboardingData
+        };
+    } catch (error) {
+        this.logger.error(`Error fetching business details: ${error.message}`);
+        throw error;
     }
+}
 
     // Add this method to src/services/business.service.ts
 
