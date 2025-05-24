@@ -237,7 +237,7 @@ export class SupabaseService {
 
             const { data, error } = await this.supabase
                 .storage
-                .from('staffluent')
+                .from('staffluent-content')
                 .upload(path, buffer, {
                     contentType: this.getContentType(filename),
                     upsert: true
@@ -250,7 +250,7 @@ export class SupabaseService {
 
             const { data: { publicUrl } } = this.supabase
                 .storage
-                .from('staffluent')
+                .from('staffluent-content')
                 .getPublicUrl(data.path);
 
             this.logger.log(`Upload successful, public URL: ${publicUrl}`);
@@ -289,7 +289,7 @@ export class SupabaseService {
                 // List files in specific category
                 const { data, error } = await this.supabase
                     .storage
-                    .from('staffluent')
+                    .from('staffluent-content')
                     .list(folderPath, {
                         limit: 1000,
                         sortBy: { column: 'created_at', order: 'desc' }
@@ -309,7 +309,7 @@ export class SupabaseService {
                 // List all categories
                 const { data: categories, error: categoryError } = await this.supabase
                     .storage
-                    .from('staffluent')
+                    .from('staffluent-content')
                     .list(folderPath, {
                         limit: 1000,
                         sortBy: { column: 'created_at', order: 'desc' }
@@ -327,7 +327,7 @@ export class SupabaseService {
                     const categoryPath = `${folderPath}/${categoryItem.name}`;
                     const { data: filesInCategory, error: filesError } = await this.supabase
                         .storage
-                        .from('staffluent')
+                        .from('staffluent-content')
                         .list(categoryPath, {
                             limit: 1000,
                             sortBy: { column: 'created_at', order: 'desc' }
@@ -354,7 +354,7 @@ export class SupabaseService {
 
                 const { data: { publicUrl } } = this.supabase
                     .storage
-                    .from('staffluent')
+                    .from('staffluent-content')
                     .getPublicUrl(file.fullPath);
 
                 // Get actual file info to ensure we have the correct size
@@ -362,7 +362,7 @@ export class SupabaseService {
                 try {
                     const { data: fileInfo, error: infoError } = await this.supabase
                         .storage
-                        .from('staffluent')
+                        .from('staffluent-content')
                         .info(file.fullPath);
                     
                     if (!infoError && fileInfo) {
@@ -416,7 +416,7 @@ export class SupabaseService {
 
             const { error } = await this.supabase
                 .storage
-                .from('staffluent')
+                .from('staffluent-content')
                 .remove([file.path]);
 
             if (error) {
@@ -492,7 +492,7 @@ export class SupabaseService {
                 
                 await this.supabase
                     .storage
-                    .from('staffluent')
+                    .from('staffluent-content')
                     .upload(path, Buffer.from(''), {
                         contentType: 'text/plain',
                         upsert: true
@@ -549,7 +549,7 @@ export class SupabaseService {
 
             const { error } = await this.supabase
                 .storage
-                .from('staffluent')
+                .from('staffluent-content')
                 .remove(pathsToDelete);
 
             if (error) {
