@@ -1,9 +1,10 @@
-// src/services/business-storage.service.ts (Simplified version)
+// src/services/business-storage.service.ts (Fixed version)
 import { Injectable, Logger, BadRequestException, PayloadTooLargeException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
 import { SupabaseService, BusinessFileInfo, StorageUsage } from './supabase.service';
+import { TIER_LIMITS } from '../constants/features.constants';
 
 export interface UploadResult {
     success: boolean;
@@ -28,9 +29,9 @@ export interface StorageSettings {
 export class BusinessStorageService {
     private readonly logger = new Logger(BusinessStorageService.name);
     
-    // Default storage settings
-    private readonly DEFAULT_STORAGE_LIMIT_MB = 100; // 100MB per business
-    private readonly DEFAULT_MAX_FILE_SIZE_MB = 10;  // 10MB per file
+    // Fallback defaults (only used if plan detection fails)
+    private readonly FALLBACK_STORAGE_LIMIT_MB = 5; // 5MB fallback
+    private readonly FALLBACK_MAX_FILE_SIZE_MB = 5;  // 5MB per file fallback
     private readonly ALLOWED_FILE_TYPES = [
         'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',
         'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'
@@ -43,7 +44,6 @@ export class BusinessStorageService {
 
     /**
      * Upload an image for a business with validation and storage limit checks
-     * Note: Feature validation should be done in the controller before calling this method
      */
     async uploadImage(
         businessId: string,
@@ -52,7 +52,7 @@ export class BusinessStorageService {
         category: string = 'other'
     ): Promise<UploadResult> {
         try {
-            this.logger.log(`Uploading image for business ${businessId}: ${filename}`);
+            this.logger.log(`Uploading image for business ${businessId}: ${filename} (${file.length} bytes)`);
 
             // Get business and storage settings
             const business = await this.businessModel.findById(businessId);
@@ -134,7 +134,6 @@ export class BusinessStorageService {
 
     /**
      * Delete a file for a business
-     * Note: Feature validation should be done in the controller before calling this method
      */
     async deleteFile(businessId: string, fileName: string): Promise<DeleteResult> {
         try {
@@ -146,13 +145,7 @@ export class BusinessStorageService {
                 throw new NotFoundException('Business not found');
             }
 
-            // Check if file exists
-            const file = await this.supabaseService.getBusinessFile(businessId, fileName);
-            if (!file) {
-                throw new NotFoundException('File not found');
-            }
-
-            // Delete file
+            // Delete file (the supabase service will handle finding the file)
             await this.supabaseService.deleteBusinessFile(businessId, fileName);
 
             // Get updated storage usage
@@ -178,7 +171,6 @@ export class BusinessStorageService {
 
     /**
      * List all files for a business
-     * Note: Feature validation should be done in the controller before calling this method
      */
     async listFiles(businessId: string, category?: string): Promise<BusinessFileInfo[]> {
         try {
@@ -214,7 +206,6 @@ export class BusinessStorageService {
 
     /**
      * Get storage usage for a business
-     * Note: Feature validation should be done in the controller before calling this method
      */
     async getStorageUsage(businessId: string): Promise<StorageUsage> {
         try {
@@ -281,7 +272,8 @@ export class BusinessStorageService {
                 throw new NotFoundException('Business not found');
             }
 
-            // Update business metadata
+            // Set storage override flag and custom limits
+            business.metadata.set('storage_overriden', 'true');
             business.metadata.set('storageLimitMB', newLimitMB.toString());
             await business.save();
 
@@ -296,17 +288,65 @@ export class BusinessStorageService {
     }
 
     /**
-     * Get storage settings for a business
+     * Get storage settings for a business based on plan or override
      */
     private getStorageSettings(business: Business): StorageSettings {
-        const customLimit = business.metadata?.get('storageLimitMB');
-        const customMaxFileSize = business.metadata?.get('maxFileSizeMB');
+        // Check if storage is overridden
+        const isOverridden = business.metadata?.get('storage_overriden') === 'true';
+        
+        if (isOverridden) {
+            const customLimit = business.metadata?.get('storageLimitMB');
+            const customMaxFileSize = business.metadata?.get('maxFileSizeMB');
 
+            return {
+                limitMB: customLimit ? parseInt(customLimit) : this.FALLBACK_STORAGE_LIMIT_MB,
+                maxFileSizeMB: customMaxFileSize ? parseInt(customMaxFileSize) : this.FALLBACK_MAX_FILE_SIZE_MB,
+                allowedFileTypes: this.ALLOWED_FILE_TYPES
+            };
+        }
+
+        // Use plan-based limits
+        const planBasedLimits = this.getPlanBasedLimits(business);
+        
         return {
-            limitMB: customLimit ? parseInt(customLimit) : this.DEFAULT_STORAGE_LIMIT_MB,
-            maxFileSizeMB: customMaxFileSize ? parseInt(customMaxFileSize) : this.DEFAULT_MAX_FILE_SIZE_MB,
+            limitMB: planBasedLimits.storage_gb * 1024, // Convert GB to MB
+            maxFileSizeMB: Math.min(planBasedLimits.storage_gb * 1024 * 0.1, 50), // 10% of total or 50MB max
             allowedFileTypes: this.ALLOWED_FILE_TYPES
         };
+    }
+
+    /**
+     * Get plan-based limits from tier configuration
+     */
+    private getPlanBasedLimits(business: Business): any {
+        // Get the subscription tier - you might need to adjust this based on your business model
+        let tier = 'basic'; // default
+        
+        if (business.subscriptionStatus === 'trialing') {
+            tier = 'trialing';
+        } else if (business.subscriptionDetails?.planId) {
+            // Map plan IDs to tiers based on your pricing structure
+            const planId = business.subscriptionDetails.planId.toLowerCase();
+            if (planId.includes('enterprise')) {
+                tier = 'enterprise';
+            } else if (planId.includes('professional') || planId.includes('pro')) {
+                tier = 'professional';
+            } else {
+                tier = 'basic';
+            }
+        }
+
+        const limits = TIER_LIMITS[tier];
+        
+        if (!limits) {
+            this.logger.warn(`No limits found for tier ${tier}, using fallback`);
+            return {
+                storage_gb: this.FALLBACK_STORAGE_LIMIT_MB / 1024,
+                max_file_size_mb: this.FALLBACK_MAX_FILE_SIZE_MB
+            };
+        }
+
+        return limits;
     }
 
     /**
@@ -319,7 +359,6 @@ export class BusinessStorageService {
 
     /**
      * Get file info by filename
-     * Note: Feature validation should be done in the controller before calling this method
      */
     async getFileInfo(businessId: string, fileName: string): Promise<BusinessFileInfo> {
         try {
@@ -339,7 +378,6 @@ export class BusinessStorageService {
 
     /**
      * Bulk delete files for a business
-     * Note: Feature validation should be done in the controller before calling this method
      */
     async bulkDeleteFiles(businessId: string, fileNames: string[]): Promise<{ 
         successful: string[], 
