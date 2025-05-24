@@ -288,6 +288,140 @@ export class BusinessStorageService {
     }
 
     /**
+     * Override storage settings for a business
+     */
+    async overrideStorageSettings(
+        businessId: string, 
+        settings: {
+            enableOverride: boolean;
+            storageLimitMB?: number;
+            maxFileSizeMB?: number;
+        }
+    ): Promise<{
+        success: boolean;
+        message: string;
+        business: Business;
+        storageSettings: StorageSettings;
+        storageUsage?: StorageUsage;
+    }> {
+        try {
+            this.logger.log(`Overriding storage settings for business ${businessId}:`, settings);
+
+            const business = await this.businessModel.findById(businessId);
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            if (settings.enableOverride) {
+                // Enable override and set custom limits
+                business.metadata.set('storage_overriden', 'true');
+                
+                if (settings.storageLimitMB !== undefined) {
+                    if (settings.storageLimitMB <= 0) {
+                        throw new BadRequestException('Storage limit must be greater than 0');
+                    }
+                    business.metadata.set('storageLimitMB', settings.storageLimitMB.toString());
+                }
+
+                if (settings.maxFileSizeMB !== undefined) {
+                    if (settings.maxFileSizeMB <= 0) {
+                        throw new BadRequestException('Max file size must be greater than 0');
+                    }
+                    business.metadata.set('maxFileSizeMB', settings.maxFileSizeMB.toString());
+                }
+            } else {
+                // Disable override - remove custom settings
+                business.metadata.delete('storage_overriden');
+                business.metadata.delete('storageLimitMB');
+                business.metadata.delete('maxFileSizeMB');
+            }
+
+            await business.save();
+
+            // Get updated storage settings and usage
+            const storageSettings = this.getStorageSettings(business);
+            const storageUsage = await this.supabaseService.getBusinessStorageUsage(
+                businessId,
+                storageSettings.limitMB
+            );
+
+            const message = settings.enableOverride 
+                ? 'Storage override enabled with custom settings'
+                : 'Storage override disabled, using plan-based limits';
+
+            this.logger.log(`Successfully updated storage override for business ${businessId}`);
+
+            return {
+                success: true,
+                message,
+                business,
+                storageSettings,
+                storageUsage
+            };
+
+        } catch (error) {
+            this.logger.error(`Failed to override storage settings for business ${businessId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get detailed storage information for a business
+     */
+    async getDetailedStorageInfo(businessId: string): Promise<{
+        storageSettings: StorageSettings;
+        storageUsage: StorageUsage;
+        isOverridden: boolean;
+        planBasedLimits: any;
+        filesByCategory: { [category: string]: number };
+        recentFiles: BusinessFileInfo[];
+    }> {
+        try {
+            const business = await this.businessModel.findById(businessId);
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            const storageSettings = this.getStorageSettings(business);
+            const storageUsage = await this.supabaseService.getBusinessStorageUsage(
+                businessId,
+                storageSettings.limitMB
+            );
+
+            // Check if storage is overridden
+            const isOverridden = business.metadata?.get('storage_overriden') === 'true';
+
+            // Get plan-based limits for comparison
+            const planBasedLimits = this.getPlanBasedLimits(business);
+
+            // Get files by category
+            const allFiles = await this.supabaseService.listBusinessFiles(businessId);
+            const filesByCategory = allFiles.reduce((acc, file) => {
+                acc[file.category] = (acc[file.category] || 0) + 1;
+                return acc;
+            }, {} as { [category: string]: number });
+
+            // Get recent files (last 10)
+            const recentFiles = allFiles
+                .sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime())
+                .slice(0, 10);
+
+            return {
+                storageSettings,
+                storageUsage,
+                isOverridden,
+                planBasedLimits,
+                filesByCategory,
+                recentFiles
+            };
+
+        } catch (error) {
+            this.logger.error(`Failed to get detailed storage info for business ${businessId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Get storage settings for a business based on plan or override
      */
     private getStorageSettings(business: Business): StorageSettings {
