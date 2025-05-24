@@ -18,6 +18,7 @@ import {AppClient, ClientType} from "../schemas/app-client.schema";
 import {Employee} from "../schemas/employee.schema";
 import {BusinessOnboarding} from "../schemas/business-onboarding.schema";
 import * as bcrypt from 'bcrypt';
+import { BusinessStorageService } from './business-storage.service';
 
 @Injectable()
 export class BusinessService {
@@ -37,7 +38,8 @@ export class BusinessService {
         private emailService: EmailService,
         private featureAccessService: FeatureAccessService,
         private sidebarFeatureService: SidebarFeatureService,
-        private authService: AuthService
+        private authService: AuthService,
+        private businessStorageService: BusinessStorageService
     ) {}
 
     /**
@@ -1723,139 +1725,237 @@ async updateBusiness(
         }
     }
 
-   /**
- * Get business details by ID with onboarding data
- */
-async getBusinessDetails(clientId: string, businessId: string) {
-    try {
-        // Find the business with the client's ID to ensure access control
-        const business = await this.businessModel.findOne({
-            _id: businessId,
-            clientId
-        })
-        .populate('address')
-        .populate({
-            path: 'adminUserId',
-            select: 'name surname email',
-            model: 'User'
-        });
+    /**
+     * Get business details by ID with onboarding data and storage information
+     */
+    async getBusinessDetails(clientId: string, businessId: string) {
+        try {
+            // Find the business with the client's ID to ensure access control
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            })
+            .populate('address')
+            .populate({
+                path: 'adminUserId',
+                select: 'name surname email',
+                model: 'User'
+            });
 
-        if (!business) {
-            throw new NotFoundException('Business not found');
-        }
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
 
-        // Get onboarding data for both walkthrough and setup guide
-        const [walkthroughOnboarding, setupGuideOnboarding] = await Promise.all([
-            this.businessOnboardingModel.findOne({
-                businessId,
-                type: 'walkthrough',
-                isDeleted: { $ne: true }
-            }).lean(),
-            this.businessOnboardingModel.findOne({
-                businessId,
-                type: 'setup_guide',
-                isDeleted: { $ne: true }
-            }).lean()
-        ]);
+            // Get onboarding data for both walkthrough and setup guide
+            const [walkthroughOnboarding, setupGuideOnboarding] = await Promise.all([
+                this.businessOnboardingModel.findOne({
+                    businessId,
+                    type: 'walkthrough',
+                    isDeleted: { $ne: true }
+                }).lean(),
+                this.businessOnboardingModel.findOne({
+                    businessId,
+                    type: 'setup_guide',
+                    isDeleted: { $ne: true }
+                }).lean()
+            ]);
 
-        // Format the response similar to the list endpoint
-        const adminUserData = business.adminUserId && typeof business.adminUserId !== 'string'
-            ? business.adminUserId as any  // Type assertion
-            : null;
+            // Get storage information
+            let storageInfo = null;
+            try {
+                const storageData = await this.businessStorageService.getDetailedStorageInfo(businessId);
+                storageInfo = {
+                    usage: storageData.storageUsage,
+                    settings: storageData.storageSettings,
+                    isOverridden: storageData.isOverridden,
+                    planBasedLimits: storageData.planBasedLimits,
+                    filesByCategory: storageData.filesByCategory,
+                    recentFiles: storageData.recentFiles
+                };
+            } catch (storageError) {
+                this.logger.warn(`Could not fetch storage info for business ${businessId}: ${storageError.message}`);
+                // Continue without storage info if there's an error
+            }
 
-        const adminUser = adminUserData ? {
-            _id: adminUserData._id,
-            name: adminUserData.surname
-                ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
-                : (adminUserData.name || ''),
-            email: adminUserData.email
-        } : undefined;
+            // Format the response similar to the list endpoint
+            const adminUserData = business.adminUserId && typeof business.adminUserId !== 'string'
+                ? business.adminUserId as any  // Type assertion
+                : null;
 
-        // Extract the business object and restructure for the response
-        const { adminUserId, ...businessData } = business.toObject();
+            const adminUser = adminUserData ? {
+                _id: adminUserData._id,
+                name: adminUserData.surname
+                    ? `${adminUserData.name || ''} ${adminUserData.surname}`.trim()
+                    : (adminUserData.name || ''),
+                email: adminUserData.email
+            } : undefined;
 
-        // Format address for response if it exists
-        let formattedAddress = undefined;
-        const addressData = business.addressId as any;
-        if (addressData) {
-            formattedAddress = {
-                street: addressData.addressLine1,
-                city: addressData.city?.name || '',
-                state: addressData.state?.name || '',
-                postcode: addressData.postcode || '',
-                country: addressData.country?.name || ''
+            // Extract the business object and restructure for the response
+            const { adminUserId, ...businessData } = business.toObject();
+
+            // Format address for response if it exists
+            let formattedAddress = undefined;
+            const addressData = business.addressId as any;
+            if (addressData) {
+                formattedAddress = {
+                    street: addressData.addressLine1,
+                    city: addressData.city?.name || '',
+                    state: addressData.state?.name || '',
+                    postcode: addressData.postcode || '',
+                    country: addressData.country?.name || ''
+                };
+            }
+
+            // Format onboarding data for response
+            const onboardingData = {
+                walkthrough: walkthroughOnboarding ? {
+                    _id: walkthroughOnboarding._id,
+                    type: walkthroughOnboarding.type,
+                    status: walkthroughOnboarding.status,
+                    currentStep: walkthroughOnboarding.currentStep,
+                    totalSteps: walkthroughOnboarding.totalSteps,
+                    completedSteps: walkthroughOnboarding.completedSteps,
+                    progressPercentage: walkthroughOnboarding.progressPercentage,
+                    startedAt: walkthroughOnboarding.startedAt,
+                    completedAt: walkthroughOnboarding.completedAt,
+                    lastActiveAt: walkthroughOnboarding.lastActiveAt,
+                    completionCount: walkthroughOnboarding.completionCount,
+                    isFirstTime: walkthroughOnboarding.isFirstTime,
+                    deviceType: walkthroughOnboarding.deviceType,
+                    userAgent: walkthroughOnboarding.userAgent,
+                    isPWA: walkthroughOnboarding.isPWA,
+                    metadata: walkthroughOnboarding.metadata || {},
+                    // @ts-ignore
+                    createdAt: walkthroughOnboarding.createdAt,
+                    // @ts-ignore
+                    updatedAt: walkthroughOnboarding.updatedAt
+                } : null,
+                
+                setupGuide: setupGuideOnboarding ? {
+                    _id: setupGuideOnboarding._id,
+                    type: setupGuideOnboarding.type,
+                    status: setupGuideOnboarding.status,
+                    currentStep: setupGuideOnboarding.currentStep,
+                    totalSteps: setupGuideOnboarding.totalSteps,
+                    completedSteps: setupGuideOnboarding.completedSteps,
+                    progressPercentage: setupGuideOnboarding.progressPercentage,
+                    startedAt: setupGuideOnboarding.startedAt,
+                    completedAt: setupGuideOnboarding.completedAt,
+                    lastActiveAt: setupGuideOnboarding.lastActiveAt,
+                    completionCount: setupGuideOnboarding.completionCount,
+                    isFirstTime: setupGuideOnboarding.isFirstTime,
+                    deviceType: setupGuideOnboarding.deviceType,
+                    userAgent: setupGuideOnboarding.userAgent,
+                    isPWA: setupGuideOnboarding.isPWA,
+                    metadata: setupGuideOnboarding.metadata || {},
+                    // @ts-ignore
+                    createdAt: setupGuideOnboarding.createdAt,
+                    // @ts-ignore
+                    updatedAt: setupGuideOnboarding.updatedAt
+                } : null
             };
+
+            // Create the formatted business response
+            return {
+                ...businessData,
+                address: formattedAddress,
+                adminUser,
+                subscription: {
+                    tier: this.getSubscriptionTier(business),
+                    status: business.subscriptionStatus,
+                    endDate: business.subscriptionEndDate,
+                    details: business.subscriptionDetails
+                },
+                onboarding: onboardingData,
+                storage: storageInfo // Add storage information
+            };
+        } catch (error) {
+            this.logger.error(`Error fetching business details: ${error.message}`);
+            throw error;
         }
-
-        // Format onboarding data for response
-        const onboardingData = {
-            walkthrough: walkthroughOnboarding ? {
-                _id: walkthroughOnboarding._id,
-                type: walkthroughOnboarding.type,
-                status: walkthroughOnboarding.status,
-                currentStep: walkthroughOnboarding.currentStep,
-                totalSteps: walkthroughOnboarding.totalSteps,
-                completedSteps: walkthroughOnboarding.completedSteps,
-                progressPercentage: walkthroughOnboarding.progressPercentage,
-                startedAt: walkthroughOnboarding.startedAt,
-                completedAt: walkthroughOnboarding.completedAt,
-                lastActiveAt: walkthroughOnboarding.lastActiveAt,
-                completionCount: walkthroughOnboarding.completionCount,
-                isFirstTime: walkthroughOnboarding.isFirstTime,
-                deviceType: walkthroughOnboarding.deviceType,
-                userAgent: walkthroughOnboarding.userAgent,
-                isPWA: walkthroughOnboarding.isPWA,
-                metadata: walkthroughOnboarding.metadata || {},
-                // @ts-ignore
-                createdAt: walkthroughOnboarding.createdAt,
-                // @ts-ignore
-                updatedAt: walkthroughOnboarding.updatedAt
-            } : null,
-            
-            setupGuide: setupGuideOnboarding ? {
-                _id: setupGuideOnboarding._id,
-                type: setupGuideOnboarding.type,
-                status: setupGuideOnboarding.status,
-                currentStep: setupGuideOnboarding.currentStep,
-                totalSteps: setupGuideOnboarding.totalSteps,
-                completedSteps: setupGuideOnboarding.completedSteps,
-                progressPercentage: setupGuideOnboarding.progressPercentage,
-                startedAt: setupGuideOnboarding.startedAt,
-                completedAt: setupGuideOnboarding.completedAt,
-                lastActiveAt: setupGuideOnboarding.lastActiveAt,
-                completionCount: setupGuideOnboarding.completionCount,
-                isFirstTime: setupGuideOnboarding.isFirstTime,
-                deviceType: setupGuideOnboarding.deviceType,
-                userAgent: setupGuideOnboarding.userAgent,
-                isPWA: setupGuideOnboarding.isPWA,
-                metadata: setupGuideOnboarding.metadata || {},
-                // @ts-ignore
-                createdAt: setupGuideOnboarding.createdAt,
-                // @ts-ignore
-                updatedAt: setupGuideOnboarding.updatedAt
-            } : null
-        };
-
-        // Create the formatted business response
-        return {
-            ...businessData,
-            address: formattedAddress,
-            adminUser,
-            subscription: {
-                tier: this.getSubscriptionTier(business),
-                status: business.subscriptionStatus,
-                endDate: business.subscriptionEndDate,
-                details: business.subscriptionDetails
-            },
-            onboarding: onboardingData
-        };
-    } catch (error) {
-        this.logger.error(`Error fetching business details: ${error.message}`);
-        throw error;
     }
-}
 
-    // Add this method to src/services/business.service.ts
+    /**
+     * Override storage settings for a business
+     */
+    async overrideBusinessStorageSettings(
+        clientId: string,
+        businessId: string,
+        settings: {
+            enableOverride: boolean;
+            storageLimitMB?: number;
+            maxFileSizeMB?: number;
+        }
+    ) {
+        try {
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Use the business storage service to handle the override
+            const result = await this.businessStorageService.overrideStorageSettings(
+                businessId,
+                settings
+            );
+
+            return {
+                success: true,
+                message: result.message,
+                storage: {
+                    settings: result.storageSettings,
+                    usage: result.storageUsage,
+                    isOverridden: settings.enableOverride
+                }
+            };
+
+        } catch (error) {
+            this.logger.error(`Error overriding storage settings for business ${businessId}: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get storage information for a business
+     */
+    async getBusinessStorageInfo(clientId: string, businessId: string) {
+        try {
+            // Verify business exists and belongs to this client
+            const business = await this.businessModel.findOne({
+                _id: businessId,
+                clientId
+            });
+
+            if (!business) {
+                throw new NotFoundException('Business not found');
+            }
+
+            // Get detailed storage information
+            const storageData = await this.businessStorageService.getDetailedStorageInfo(businessId);
+
+            return {
+                success: true,
+                storage: {
+                    usage: storageData.storageUsage,
+                    settings: storageData.storageSettings,
+                    isOverridden: storageData.isOverridden,
+                    planBasedLimits: storageData.planBasedLimits,
+                    filesByCategory: storageData.filesByCategory,
+                    recentFiles: storageData.recentFiles,
+                    tier: this.getSubscriptionTier(business)
+                }
+            };
+
+        } catch (error) {
+            this.logger.error(`Error getting storage info for business ${businessId}: ${error.message}`);
+            throw error;
+        }
+    }
 
     /**
      * Get subscription tier from business

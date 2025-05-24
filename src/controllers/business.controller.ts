@@ -1,10 +1,10 @@
 // src/controllers/business.controller.ts
-import {Controller, Post, Get, Param, Body, Query, Req, UseGuards, Patch} from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Query, Req, UseGuards, Patch } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { BusinessService } from '../services/business.service';
 import { ClientAuthGuard } from '../guards/client-auth.guard';
 import { Client } from '../schemas/client.schema';
-import {ClientType} from "../schemas/app-client.schema";
+import { ClientType } from "../schemas/app-client.schema";
 import { Address } from '../schemas/address.schema';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -12,8 +12,10 @@ import { Model } from 'mongoose';
 @ApiTags('Businesses')
 @Controller('businesses')
 export class BusinessController {
-    constructor(private businessService: BusinessService,
-                @InjectModel(Address.name) private addressModel: Model<Address>) {}
+    constructor(
+        private businessService: BusinessService,
+        @InjectModel(Address.name) private addressModel: Model<Address>
+    ) {}
 
     //============================
     // Generic business list endpoints (no params)
@@ -88,8 +90,6 @@ export class BusinessController {
     //============================
     // Employee-specific endpoints
     //============================
-    
-    // Having employee endpoints before business ID endpoints prevents "employee" from being matched as a business ID
     
     @Post('employee')
     @UseGuards(ClientAuthGuard)
@@ -225,8 +225,8 @@ export class BusinessController {
     @Get(':id')
     @UseGuards(ClientAuthGuard)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get business details' })
-    @ApiResponse({ status: 200, description: 'Returns business details' })
+    @ApiOperation({ summary: 'Get business details with storage information' })
+    @ApiResponse({ status: 200, description: 'Returns business details with storage data' })
     async getBusinessDetails(
         @Req() req: Request & { client: Client },
         @Param('id') businessId: string
@@ -266,6 +266,39 @@ export class BusinessController {
         }
         
         return result;
+    }
+
+    @Get(':id/storage')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get detailed storage information for a business' })
+    @ApiResponse({ status: 200, description: 'Returns detailed storage information' })
+    async getBusinessStorageInfo(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string
+    ) {
+        return this.businessService.getBusinessStorageInfo(req.client.id, businessId);
+    }
+
+    @Patch(':id/storage/override')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Override storage settings for a business' })
+    @ApiResponse({ status: 200, description: 'Storage settings updated successfully' })
+    async overrideBusinessStorageSettings(
+        @Req() req: Request & { client: Client },
+        @Param('id') businessId: string,
+        @Body() settings: {
+            enableOverride: boolean;
+            storageLimitMB?: number;
+            maxFileSizeMB?: number;
+        }
+    ) {
+        return this.businessService.overrideBusinessStorageSettings(
+            req.client.id,
+            businessId,
+            settings
+        );
     }
     
     @Post(':id/subscribe')
