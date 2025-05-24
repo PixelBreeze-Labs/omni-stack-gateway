@@ -1,4 +1,4 @@
-// src/services/supabase.service.ts (Enhanced version)
+// src/services/supabase.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
@@ -41,7 +41,7 @@ export class SupabaseService {
         );
     }
 
-    // ========== EXISTING METHODS (unchanged) ==========
+    // ========== EXISTING METHODS (unchanged but updated bucket) ==========
     async uploadFile(buffer: Buffer, path: string): Promise<string> {
         const { data, error } = await this.supabase
             .storage
@@ -217,7 +217,7 @@ export class SupabaseService {
         return publicUrl;
     }
 
-    // ========== NEW BUSINESS STORAGE METHODS ==========
+    // ========== BUSINESS STORAGE METHODS (Fixed) ==========
 
     /**
      * Upload an image file for a specific business
@@ -226,16 +226,18 @@ export class SupabaseService {
         businessId: string, 
         buffer: Buffer, 
         filename: string, 
-        category: string = 'misc'
+        category: string = 'other'
     ): Promise<BusinessFileInfo> {
         try {
             const timestamp = Date.now();
             const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const path = `staffluent_storage/${businessId}/${category}/${timestamp}_${safeFilename}`;
+            const path = `business_storage/${businessId}/${category}/${timestamp}_${safeFilename}`;
+
+            this.logger.log(`Uploading to path: ${path}, size: ${buffer.length} bytes`);
 
             const { data, error } = await this.supabase
                 .storage
-                .from('products')
+                .from('staffluent')
                 .upload(path, buffer, {
                     contentType: this.getContentType(filename),
                     upsert: true
@@ -248,14 +250,16 @@ export class SupabaseService {
 
             const { data: { publicUrl } } = this.supabase
                 .storage
-                .from('products')
+                .from('staffluent')
                 .getPublicUrl(data.path);
+
+            this.logger.log(`Upload successful, public URL: ${publicUrl}`);
 
             return {
                 name: safeFilename,
                 path: data.path,
                 url: publicUrl,
-                size: buffer.length,
+                size: buffer.length, // Use actual buffer length
                 category,
                 lastModified: new Date(),
                 type: this.getContentType(filename)
@@ -268,52 +272,119 @@ export class SupabaseService {
     }
 
     /**
-     * List all files for a business
+     * List all files for a business (Fixed to properly get file sizes)
      */
     async listBusinessFiles(businessId: string, category?: string): Promise<BusinessFileInfo[]> {
         try {
             const folderPath = category 
-                ? `staffluent_storage/${businessId}/${category}/`
-                : `staffluent_storage/${businessId}/`;
+                ? `business_storage/${businessId}/${category}`
+                : `business_storage/${businessId}`;
 
-            const { data, error } = await this.supabase
-                .storage
-                .from('products')
-                .list(folderPath, {
-                    limit: 1000,
-                    sortBy: { column: 'created_at', order: 'desc' }
-                });
+            this.logger.log(`Listing files in: ${folderPath}`);
 
-            if (error) {
-                this.logger.error(`Failed to list business files: ${error.message}`, error);
-                throw error;
+            // Get all files recursively if no category specified
+            let allFiles: any[] = [];
+
+            if (category) {
+                // List files in specific category
+                const { data, error } = await this.supabase
+                    .storage
+                    .from('staffluent')
+                    .list(folderPath, {
+                        limit: 1000,
+                        sortBy: { column: 'created_at', order: 'desc' }
+                    });
+
+                if (error) {
+                    this.logger.error(`Failed to list business files: ${error.message}`, error);
+                    throw error;
+                }
+
+                allFiles = (data || []).map(file => ({
+                    ...file,
+                    fullPath: `${folderPath}/${file.name}`,
+                    category
+                }));
+            } else {
+                // List all categories
+                const { data: categories, error: categoryError } = await this.supabase
+                    .storage
+                    .from('staffluent')
+                    .list(folderPath, {
+                        limit: 1000,
+                        sortBy: { column: 'created_at', order: 'desc' }
+                    });
+
+                if (categoryError) {
+                    this.logger.error(`Failed to list categories: ${categoryError.message}`, categoryError);
+                    throw categoryError;
+                }
+
+                // For each category (folder), list its files
+                for (const categoryItem of categories || []) {
+                    if (categoryItem.name === '.emptyFolderPlaceholder') continue;
+                    
+                    const categoryPath = `${folderPath}/${categoryItem.name}`;
+                    const { data: filesInCategory, error: filesError } = await this.supabase
+                        .storage
+                        .from('staffluent')
+                        .list(categoryPath, {
+                            limit: 1000,
+                            sortBy: { column: 'created_at', order: 'desc' }
+                        });
+
+                    if (!filesError && filesInCategory) {
+                        const categoryFiles = filesInCategory
+                            .filter(file => file.name !== '.emptyFolderPlaceholder')
+                            .map(file => ({
+                                ...file,
+                                fullPath: `${categoryPath}/${file.name}`,
+                                category: categoryItem.name
+                            }));
+                        
+                        allFiles.push(...categoryFiles);
+                    }
+                }
             }
 
             const files: BusinessFileInfo[] = [];
 
-            for (const file of data || []) {
+            for (const file of allFiles) {
                 if (file.name === '.emptyFolderPlaceholder') continue;
 
                 const { data: { publicUrl } } = this.supabase
                     .storage
-                    .from('products')
-                    .getPublicUrl(`${folderPath}${file.name}`);
+                    .from('staffluent')
+                    .getPublicUrl(file.fullPath);
 
-                // Extract category from path if not provided
-                const pathParts = folderPath.split('/');
-                const fileCategory = category || pathParts[pathParts.length - 2] || 'misc';
+                // Get actual file info to ensure we have the correct size
+                let fileSize = 0;
+                try {
+                    const { data: fileInfo, error: infoError } = await this.supabase
+                        .storage
+                        .from('staffluent')
+                        .info(file.fullPath);
+                    
+                    if (!infoError && fileInfo) {
+                        fileSize = fileInfo.size || 0;
+                    }
+                } catch (infoError) {
+                    // Fallback to metadata size if info call fails
+                    fileSize = file.metadata?.size || 0;
+                }
 
                 files.push({
                     name: file.name,
-                    path: `${folderPath}${file.name}`,
+                    path: file.fullPath,
                     url: publicUrl,
-                    size: file.metadata?.size || 0,
-                    category: fileCategory,
+                    size: fileSize,
+                    category: file.category || 'other',
                     lastModified: new Date(file.updated_at || file.created_at),
                     type: file.metadata?.mimetype || this.getContentType(file.name)
                 });
             }
 
+            this.logger.log(`Found ${files.length} files for business ${businessId}`);
             return files;
 
         } catch (error) {
@@ -323,21 +394,29 @@ export class SupabaseService {
     }
 
     /**
-     * Delete a business file
+     * Delete a business file (Fixed)
      */
     async deleteBusinessFile(businessId: string, fileName: string): Promise<void> {
         try {
-            // Find the file first to get its full path
+            this.logger.log(`Looking for file to delete: ${fileName} for business ${businessId}`);
+
+            // Get all files to find the exact path
             const allFiles = await this.listBusinessFiles(businessId);
-            const file = allFiles.find(f => f.name === fileName || f.path.endsWith(fileName));
+            const file = allFiles.find(f => 
+                f.name === fileName || 
+                f.name.endsWith(fileName) || 
+                f.path.endsWith(fileName)
+            );
 
             if (!file) {
-                throw new Error('File not found');
+                throw new Error(`File not found: ${fileName}`);
             }
+
+            this.logger.log(`Deleting file at path: ${file.path}`);
 
             const { error } = await this.supabase
                 .storage
-                .from('products')
+                .from('staffluent')
                 .remove([file.path]);
 
             if (error) {
@@ -354,7 +433,7 @@ export class SupabaseService {
     }
 
     /**
-     * Get storage usage for a business
+     * Get storage usage for a business (Fixed)
      */
     async getBusinessStorageUsage(businessId: string, limitMB: number): Promise<StorageUsage> {
         try {
@@ -365,13 +444,16 @@ export class SupabaseService {
             const remainingMB = Math.max(0, limitMB - totalSizeMB);
             const percentUsed = limitMB > 0 ? (totalSizeMB / limitMB) * 100 : 0;
 
-            return {
+            const usage = {
                 totalSizeMB: parseFloat(totalSizeMB.toFixed(2)),
                 limitMB,
                 remainingMB: parseFloat(remainingMB.toFixed(2)),
                 fileCount: files.length,
                 percentUsed: parseFloat(percentUsed.toFixed(2))
             };
+
+            this.logger.log(`Storage usage for ${businessId}: ${usage.totalSizeMB}MB / ${usage.limitMB}MB (${usage.percentUsed}%)`);
+            return usage;
 
         } catch (error) {
             this.logger.error(`Error getting storage usage for ${businessId}:`, error);
@@ -387,7 +469,10 @@ export class SupabaseService {
             const usage = await this.getBusinessStorageUsage(businessId, limitMB);
             const fileSizeMB = fileSizeBytes / (1024 * 1024);
             
-            return (usage.totalSizeMB + fileSizeMB) <= limitMB;
+            const canUpload = (usage.totalSizeMB + fileSizeMB) <= limitMB;
+            this.logger.log(`Can upload check for ${businessId}: ${canUpload} (current: ${usage.totalSizeMB}MB + new: ${fileSizeMB.toFixed(2)}MB = ${(usage.totalSizeMB + fileSizeMB).toFixed(2)}MB vs limit: ${limitMB}MB)`);
+            
+            return canUpload;
 
         } catch (error) {
             this.logger.error(`Error checking upload capacity for ${businessId}:`, error);
@@ -400,14 +485,14 @@ export class SupabaseService {
      */
     async initializeBusinessStorage(businessId: string): Promise<void> {
         try {
-            const categories = ['logos', 'products', 'documents', 'misc'];
+            const categories = ['sites', 'general', 'compliance', 'management', 'business', 'legal', 'hr', 'other'];
             
             for (const category of categories) {
-                const path = `staffluent_storage/${businessId}/${category}/.emptyFolderPlaceholder`;
+                const path = `business_storage/${businessId}/${category}/.emptyFolderPlaceholder`;
                 
                 await this.supabase
                     .storage
-                    .from('products')
+                    .from('staffluent')
                     .upload(path, Buffer.from(''), {
                         contentType: 'text/plain',
                         upsert: true
@@ -423,12 +508,18 @@ export class SupabaseService {
     }
 
     /**
-     * Get business file by name
+     * Get business file by name (Fixed)
      */
     async getBusinessFile(businessId: string, fileName: string): Promise<BusinessFileInfo | null> {
         try {
             const files = await this.listBusinessFiles(businessId);
-            return files.find(f => f.name === fileName || f.path.endsWith(fileName)) || null;
+            const file = files.find(f => 
+                f.name === fileName || 
+                f.name.endsWith(fileName) || 
+                f.path.endsWith(fileName)
+            );
+            
+            return file || null;
 
         } catch (error) {
             this.logger.error(`Error getting business file for ${businessId}:`, error);
@@ -444,7 +535,9 @@ export class SupabaseService {
             const allFiles = await this.listBusinessFiles(businessId);
             const filesToDelete = allFiles.filter(file => 
                 fileNames.some(fileName => 
-                    file.name === fileName || file.path.endsWith(fileName)
+                    file.name === fileName || 
+                    file.name.endsWith(fileName) || 
+                    file.path.endsWith(fileName)
                 )
             );
 
@@ -456,7 +549,7 @@ export class SupabaseService {
 
             const { error } = await this.supabase
                 .storage
-                .from('products')
+                .from('staffluent')
                 .remove(pathsToDelete);
 
             if (error) {
@@ -499,6 +592,10 @@ export class SupabaseService {
                 return 'application/vnd.ms-excel';
             case 'xlsx':
                 return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            case 'txt':
+                return 'text/plain';
+            case 'csv':
+                return 'text/csv';
             case 'mp3':
                 return 'audio/mpeg';
             case 'mp4':
