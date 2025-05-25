@@ -22,8 +22,6 @@ import {
     BusinessMessagingService, 
     SendMessageResponse, 
     ConversationResponse, 
-    ConversationsListResponse,
-    MessageStatusResponse
   } from '../services/business-messaging.service';
   import { MessageType } from '../schemas/business-client-message.schema';
   
@@ -208,38 +206,7 @@ import {
         }
       }
     }
-  
-    @Get(':businessId/conversations')
-    @ApiOperation({ summary: 'Get list of all conversations' })
-    @ApiParam({ name: 'businessId', description: 'Business ID' })
-    @ApiQuery({ name: 'page', required: false, description: 'Page number for pagination', type: 'number' })
-    @ApiQuery({ name: 'limit', required: false, description: 'Number of conversations per page', type: 'number' })
-    @ApiResponse({ status: 200, description: 'Returns list of conversations' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    async getConversationsList(
-      @Param('businessId') businessId: string,
-      @Headers('business-x-api-key') apiKey: string,
-      @Query('page') page?: number,
-      @Query('limit') limit?: number
-    ): Promise<ConversationsListResponse> {
-      try {
-        // Validate API key
-        await this.messagingService.validateBusinessApiKey(businessId, apiKey);
-  
-        return await this.messagingService.getConversationsList(
-          businessId,
-          page ? parseInt(page.toString()) : 1,
-          limit ? parseInt(limit.toString()) : 20
-        );
-      } catch (error) {
-        this.logger.error(`Error getting conversations list: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException) {
-          throw error;
-        } else {
-          throw new InternalServerErrorException('Failed to get conversations list');
-        }
-      }
-    }
+
   
     @Put(':businessId/conversation/:appClientId/mark-read')
     @ApiOperation({ summary: 'Mark messages as read' })
@@ -285,117 +252,5 @@ import {
       }
     }
   
-    @Get(':businessId/unread-count')
-    @ApiOperation({ summary: 'Get unread message count' })
-    @ApiParam({ name: 'businessId', description: 'Business ID' })
-    @ApiQuery({ name: 'appClientId', required: false, description: 'Optional specific client ID' })
-    @ApiResponse({ status: 200, description: 'Returns unread message count' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    async getUnreadCount(
-      @Param('businessId') businessId: string,
-      @Headers('business-x-api-key') apiKey: string,
-      @Query('appClientId') appClientId?: string
-    ): Promise<{ count: number; success: boolean }> {
-      try {
-        // Validate API key
-        await this.messagingService.validateBusinessApiKey(businessId, apiKey);
   
-        const count = await this.messagingService.getUnreadMessageCount(businessId, appClientId);
-  
-        return { count, success: true };
-      } catch (error) {
-        this.logger.error(`Error getting unread count: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException) {
-          throw error;
-        } else {
-          throw new InternalServerErrorException('Failed to get unread count');
-        }
-      }
-    }
-  
-    @Delete(':businessId/message/:messageId')
-    @ApiOperation({ summary: 'Delete a message' })
-    @ApiParam({ name: 'businessId', description: 'Business ID' })
-    @ApiParam({ name: 'messageId', description: 'Message ID to delete' })
-    @ApiResponse({ status: 200, description: 'Message deleted successfully' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    async deleteMessage(
-      @Param('businessId') businessId: string,
-      @Param('messageId') messageId: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<{ success: boolean }> {
-      try {
-        // Validate API key
-        await this.messagingService.validateBusinessApiKey(businessId, apiKey);
-  
-        return await this.messagingService.deleteMessage(businessId, messageId);
-      } catch (error) {
-        this.logger.error(`Error deleting message: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException) {
-          throw error;
-        } else {
-          throw new InternalServerErrorException('Failed to delete message');
-        }
-      }
-    }
-  
-    @Get(':businessId/stats')
-    @ApiOperation({ summary: 'Get conversation statistics' })
-    @ApiParam({ name: 'businessId', description: 'Business ID' })
-    @ApiResponse({ status: 200, description: 'Returns conversation statistics' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    async getConversationStats(
-      @Param('businessId') businessId: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<{
-      totalConversations: number;
-      totalUnreadMessages: number;
-      activeConversationsToday: number;
-      success: boolean;
-    }> {
-      try {
-        // Validate API key
-        await this.messagingService.validateBusinessApiKey(businessId, apiKey);
-  
-        const stats = await this.messagingService.getConversationStats(businessId);
-  
-        return {
-          ...stats,
-          success: true
-        };
-      } catch (error) {
-        this.logger.error(`Error getting conversation stats: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException) {
-          throw error;
-        } else {
-          throw new InternalServerErrorException('Failed to get conversation stats');
-        }
-      }
-    }
-  
-    @Get(':businessId/health')
-    @ApiOperation({ summary: 'Check messaging service health' })
-    @ApiParam({ name: 'businessId', description: 'Business ID' })
-    @ApiResponse({ status: 200, description: 'Messaging service is healthy' })
-    async checkHealth(
-      @Param('businessId') businessId: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<{ status: string; timestamp: string }> {
-      try {
-        // Validate API key
-        await this.messagingService.validateBusinessApiKey(businessId, apiKey);
-        
-        return {
-          status: 'ok',
-          timestamp: new Date().toISOString()
-        };
-      } catch (error) {
-        this.logger.error(`Health check failed: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException) {
-          throw error;
-        } else {
-          throw new InternalServerErrorException('Health check failed');
-        }
-      }
-    }
   }
