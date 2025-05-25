@@ -272,6 +272,58 @@ export class SupabaseService {
     }
 
     /**
+     * Upload a chat file for business messaging
+     */
+    async uploadChatFile(
+        businessId: string,
+        appClientId: string,
+        buffer: Buffer,
+        filename: string
+    ): Promise<BusinessFileInfo> {
+        try {
+            const timestamp = Date.now();
+            const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const path = `chat_files/${businessId}/${appClientId}/${timestamp}_${safeFilename}`;
+
+            this.logger.log(`Uploading chat file to path: ${path}, size: ${buffer.length} bytes`);
+
+            const { data, error } = await this.supabase
+                .storage
+                .from('staffluent-content')
+                .upload(path, buffer, {
+                    contentType: this.getContentType(filename),
+                    upsert: true
+                });
+
+            if (error) {
+                this.logger.error(`Failed to upload chat file: ${error.message}`, error);
+                throw error;
+            }
+
+            const { data: { publicUrl } } = this.supabase
+                .storage
+                .from('staffluent-content')
+                .getPublicUrl(data.path);
+
+            this.logger.log(`Chat file upload successful, public URL: ${publicUrl}`);
+
+            return {
+                name: safeFilename,
+                path: data.path,
+                url: publicUrl,
+                size: buffer.length,
+                category: 'chat',
+                lastModified: new Date(),
+                type: this.getContentType(filename)
+            };
+
+        } catch (error) {
+            this.logger.error(`Error uploading chat file for ${businessId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * List all files for a business (Fixed to properly get file sizes)
      */
     async listBusinessFiles(businessId: string, category?: string): Promise<BusinessFileInfo[]> {
