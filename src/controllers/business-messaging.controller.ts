@@ -4,7 +4,6 @@ import {
     Get, 
     Post, 
     Put, 
-    Delete,
     Body, 
     Param, 
     Query, 
@@ -21,8 +20,9 @@ import {
   import { 
     BusinessMessagingService, 
     SendMessageResponse, 
-    ConversationResponse, 
+    ConversationResponse,
   } from '../services/business-messaging.service';
+  import { SupabaseService } from '../services/supabase.service';
   import { MessageType } from '../schemas/business-client-message.schema';
   
   @ApiTags('Business Messaging')
@@ -32,7 +32,8 @@ import {
     private readonly logger = new Logger(BusinessMessagingController.name);
   
     constructor(
-      private readonly messagingService: BusinessMessagingService
+      private readonly messagingService: BusinessMessagingService,
+      private readonly supabaseService: SupabaseService
     ) {}
   
     @Post(':businessId/send/:appClientId')
@@ -140,13 +141,17 @@ import {
         if (!file) {
           throw new BadRequestException('File is required');
         }
-  
-        // Here you would upload the file to your storage service (S3, etc.)
-        // For now, we'll simulate a file URL
-        const fileUrl = `https://your-storage.com/files/${Date.now()}-${file.originalname}`;
+
+        // Upload file to Supabase storage
+        const fileInfo = await this.supabaseService.uploadChatFile(
+          businessId,
+          appClientId,
+          file.buffer,
+          file.originalname
+        );
         
         const messageType = file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE;
-        const content = body.content || `Sent a file: ${file.originalname}`;
+        const content = body.content || '';
   
         return await this.messagingService.sendMessageToClient(
           businessId,
@@ -156,7 +161,7 @@ import {
           body.senderUserId,
           {
             fileName: file.originalname,
-            fileUrl: fileUrl,
+            fileUrl: fileInfo.url,
             fileSize: file.size,
             mimeType: file.mimetype
           }
@@ -206,7 +211,6 @@ import {
         }
       }
     }
-
   
     @Put(':businessId/conversation/:appClientId/mark-read')
     @ApiOperation({ summary: 'Mark messages as read' })
@@ -251,6 +255,4 @@ import {
         }
       }
     }
-  
-  
   }
