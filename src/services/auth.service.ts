@@ -187,18 +187,18 @@ export class AuthService {
             }
 
             // Get VenueBoost authentication data if available
-            let auth_response = null;
-            try {
-                if (user.external_ids?.supabaseId) {
-                    auth_response = await this.venueBoostService.getConnection(
-                        user.email,
-                        user.external_ids.supabaseId
-                    );
-                }
-            } catch (error) {
-                this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
-                // Continue even if getting auth response fails
-            }
+            // let auth_response = null;
+            // try {
+            //     if (user.external_ids?.supabaseId) {
+            //         auth_response = await this.venueBoostService.getConnection(
+            //             user.email,
+            //             user.external_ids.supabaseId
+            //         );
+            //     }
+            // } catch (error) {
+            //     this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
+            //     // Continue even if getting auth response fails
+            // }
 
             // Get features and subscription details
             const businessFeatures = await this.getBusinessFeaturesForLogin(business._id.toString(), 'business_admin');
@@ -217,6 +217,38 @@ export class AuthService {
                 clientId: business.clientId,
                 role: 'business_admin'
             });
+
+            // Simulate auth_response
+
+            // auth_response: {
+            //     type: 'object',
+            //     properties: {
+            //         user: {
+            //             type: 'object',
+            //             properties: {
+            //                 id: { type: 'number', example: 123 },
+            //                 name: { type: 'string', example: 'John Doe' },
+            //                 email: { type: 'string', example: 'business@example.com' }
+            //             }
+            //         },
+            //         token: { type: 'string' },
+            //         account_type: { type: 'string', example: 'business' },
+            //         refresh_token: { type: 'string' }
+            //     }
+            // }
+
+            const auth_response = {
+                access_token: token,
+                refresh_token: token,
+                account_type: 'business',
+                user: {
+                    id: user._id.toString(),
+                    name: 'Griseld',
+                    email: user.email
+                },
+                expires_in: 3600,
+                token_type: 'Bearer'
+            };
 
             // Generate or retrieve business API key
             if (!business.apiKey) {
