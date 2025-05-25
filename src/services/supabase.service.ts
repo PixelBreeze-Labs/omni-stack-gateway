@@ -41,7 +41,7 @@ export class SupabaseService {
         );
     }
 
-    // ========== EXISTING METHODS (unchanged but updated bucket) ==========
+    // ========== EXISTING METHODS (unchanged) ==========
     async uploadFile(buffer: Buffer, path: string): Promise<string> {
         const { data, error } = await this.supabase
             .storage
@@ -217,11 +217,8 @@ export class SupabaseService {
         return publicUrl;
     }
 
-    // ========== BUSINESS STORAGE METHODS (Fixed) ==========
+    // ========== BUSINESS STORAGE METHODS ==========
 
-    /**
-     * Upload an image file for a specific business
-     */
     async uploadBusinessImage(
         businessId: string, 
         buffer: Buffer, 
@@ -259,7 +256,7 @@ export class SupabaseService {
                 name: safeFilename,
                 path: data.path,
                 url: publicUrl,
-                size: buffer.length, // Use actual buffer length
+                size: buffer.length,
                 category,
                 lastModified: new Date(),
                 type: this.getContentType(filename)
@@ -271,8 +268,43 @@ export class SupabaseService {
         }
     }
 
+    // ========== ENHANCED CHAT FILE METHODS ==========
+
     /**
-     * Upload a chat file for business messaging
+     * Initialize chat storage for a business-client conversation
+     */
+    async initializeChatStorage(businessId: string, appClientId: string): Promise<void> {
+        try {
+            // Sanitize appClientId for use in file path
+            const safeAppClientId = this.sanitizePathComponent(appClientId);
+            const path = `chat_files/${businessId}/${safeAppClientId}/.emptyFolderPlaceholder`;
+            
+            this.logger.log(`Initializing chat storage: ${path}`);
+            
+            // Create the folder structure by uploading a placeholder file
+            const { error } = await this.supabase
+                .storage
+                .from('staffluent-content')
+                .upload(path, Buffer.from(''), {
+                    contentType: 'text/plain',
+                    upsert: true
+                });
+
+            if (error) {
+                this.logger.warn(`Failed to initialize chat storage (might already exist): ${error.message}`);
+                // Don't throw - folder might already exist
+            } else {
+                this.logger.log(`Chat storage initialized for business ${businessId}, client ${safeAppClientId}`);
+            }
+
+        } catch (error) {
+            this.logger.error(`Error initializing chat storage for ${businessId}/${appClientId}:`, error);
+            // Don't throw - this is not critical
+        }
+    }
+
+    /**
+     * Upload a chat file for business messaging (FIXED)
      */
     async uploadChatFile(
         businessId: string,
@@ -281,12 +313,19 @@ export class SupabaseService {
         filename: string
     ): Promise<BusinessFileInfo> {
         try {
+            // Sanitize inputs for safe file paths
+            const safeBusinessId = this.sanitizePathComponent(businessId);
+            const safeAppClientId = this.sanitizePathComponent(appClientId);
             const timestamp = Date.now();
             const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const path = `chat_files/${businessId}/${appClientId}/${timestamp}_${safeFilename}`;
+            const path = `chat_files/${safeBusinessId}/${safeAppClientId}/${timestamp}_${safeFilename}`;
 
             this.logger.log(`Uploading chat file to path: ${path}, size: ${buffer.length} bytes`);
 
+            // Ensure chat folder exists first
+            await this.initializeChatStorage(businessId, appClientId);
+
+            // Attempt upload with more detailed error handling
             const { data, error } = await this.supabase
                 .storage
                 .from('staffluent-content')
@@ -296,8 +335,12 @@ export class SupabaseService {
                 });
 
             if (error) {
-                this.logger.error(`Failed to upload chat file: ${error.message}`, error);
-                throw error;
+                this.logger.error(`Failed to upload chat file: ${JSON.stringify(error)}`, error);
+                throw new Error(`Upload failed: ${error.message}`);
+            }
+
+            if (!data || !data.path) {
+                throw new Error('Upload succeeded but no path returned');
             }
 
             const { data: { publicUrl } } = this.supabase
@@ -318,14 +361,67 @@ export class SupabaseService {
             };
 
         } catch (error) {
-            this.logger.error(`Error uploading chat file for ${businessId}:`, error);
+            this.logger.error(`Error uploading chat file for ${businessId}/${appClientId}:`, error);
             throw error;
         }
     }
 
     /**
-     * List all files for a business (Fixed to properly get file sizes)
+     * Alternative chat upload method with different path structure (fallback)
      */
+    async uploadChatFileAlternative(
+        businessId: string,
+        appClientId: string,
+        buffer: Buffer,
+        filename: string
+    ): Promise<BusinessFileInfo> {
+        try {
+            // Use business_storage path instead of chat_files (since we know it works)
+            const timestamp = Date.now();
+            const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const safeAppClientId = this.sanitizePathComponent(appClientId);
+            const path = `business_storage/${businessId}/chat/${safeAppClientId}/${timestamp}_${safeFilename}`;
+
+            this.logger.log(`Uploading chat file (alternative path): ${path}, size: ${buffer.length} bytes`);
+
+            const { data, error } = await this.supabase
+                .storage
+                .from('staffluent-content')
+                .upload(path, buffer, {
+                    contentType: this.getContentType(filename),
+                    upsert: true
+                });
+
+            if (error) {
+                this.logger.error(`Failed to upload chat file (alternative): ${error.message}`, error);
+                throw error;
+            }
+
+            const { data: { publicUrl } } = this.supabase
+                .storage
+                .from('staffluent-content')
+                .getPublicUrl(data.path);
+
+            this.logger.log(`Chat file upload successful (alternative), public URL: ${publicUrl}`);
+
+            return {
+                name: safeFilename,
+                path: data.path,
+                url: publicUrl,
+                size: buffer.length,
+                category: 'chat',
+                lastModified: new Date(),
+                type: this.getContentType(filename)
+            };
+
+        } catch (error) {
+            this.logger.error(`Error uploading chat file (alternative) for ${businessId}/${appClientId}:`, error);
+            throw error;
+        }
+    }
+
+    // ========== REST OF EXISTING METHODS (unchanged) ==========
+
     async listBusinessFiles(businessId: string, category?: string): Promise<BusinessFileInfo[]> {
         try {
             const folderPath = category 
@@ -334,11 +430,9 @@ export class SupabaseService {
 
             this.logger.log(`Listing files in: ${folderPath}`);
 
-            // Get all files recursively if no category specified
             let allFiles: any[] = [];
 
             if (category) {
-                // List files in specific category
                 const { data, error } = await this.supabase
                     .storage
                     .from('staffluent-content')
@@ -358,7 +452,6 @@ export class SupabaseService {
                     category
                 }));
             } else {
-                // List all categories
                 const { data: categories, error: categoryError } = await this.supabase
                     .storage
                     .from('staffluent-content')
@@ -372,7 +465,6 @@ export class SupabaseService {
                     throw categoryError;
                 }
 
-                // For each category (folder), list its files
                 for (const categoryItem of categories || []) {
                     if (categoryItem.name === '.emptyFolderPlaceholder') continue;
                     
@@ -409,7 +501,6 @@ export class SupabaseService {
                     .from('staffluent-content')
                     .getPublicUrl(file.fullPath);
 
-                // Get actual file info to ensure we have the correct size
                 let fileSize = 0;
                 try {
                     const { data: fileInfo, error: infoError } = await this.supabase
@@ -421,7 +512,6 @@ export class SupabaseService {
                         fileSize = fileInfo.size || 0;
                     }
                 } catch (infoError) {
-                    // Fallback to metadata size if info call fails
                     fileSize = file.metadata?.size || 0;
                 }
 
@@ -445,14 +535,10 @@ export class SupabaseService {
         }
     }
 
-    /**
-     * Delete a business file (Fixed)
-     */
     async deleteBusinessFile(businessId: string, fileName: string): Promise<void> {
         try {
             this.logger.log(`Looking for file to delete: ${fileName} for business ${businessId}`);
 
-            // Get all files to find the exact path
             const allFiles = await this.listBusinessFiles(businessId);
             const file = allFiles.find(f => 
                 f.name === fileName || 
@@ -484,9 +570,6 @@ export class SupabaseService {
         }
     }
 
-    /**
-     * Get storage usage for a business (Fixed)
-     */
     async getBusinessStorageUsage(businessId: string, limitMB: number): Promise<StorageUsage> {
         try {
             const files = await this.listBusinessFiles(businessId);
@@ -513,9 +596,6 @@ export class SupabaseService {
         }
     }
 
-    /**
-     * Check if a business can upload a file (within storage limits)
-     */
     async canUploadFile(businessId: string, fileSizeBytes: number, limitMB: number): Promise<boolean> {
         try {
             const usage = await this.getBusinessStorageUsage(businessId, limitMB);
@@ -532,12 +612,9 @@ export class SupabaseService {
         }
     }
 
-    /**
-     * Initialize storage structure for a new business
-     */
     async initializeBusinessStorage(businessId: string): Promise<void> {
         try {
-            const categories = ['sites', 'general', 'compliance', 'management', 'business', 'legal', 'hr', 'other'];
+            const categories = ['sites', 'general', 'compliance', 'management', 'business', 'legal', 'hr', 'other', 'chat'];
             
             for (const category of categories) {
                 const path = `business_storage/${businessId}/${category}/.emptyFolderPlaceholder`;
@@ -559,9 +636,6 @@ export class SupabaseService {
         }
     }
 
-    /**
-     * Get business file by name (Fixed)
-     */
     async getBusinessFile(businessId: string, fileName: string): Promise<BusinessFileInfo | null> {
         try {
             const files = await this.listBusinessFiles(businessId);
@@ -579,9 +653,6 @@ export class SupabaseService {
         }
     }
 
-    /**
-     * Bulk delete business files
-     */
     async bulkDeleteBusinessFiles(businessId: string, fileNames: string[]): Promise<void> {
         try {
             const allFiles = await this.listBusinessFiles(businessId);
@@ -618,6 +689,13 @@ export class SupabaseService {
     }
 
     // ========== HELPER METHODS ==========
+
+    /**
+     * Sanitize path components to ensure valid file paths
+     */
+    private sanitizePathComponent(component: string): string {
+        return component.replace(/[^a-zA-Z0-9._-]/g, '_');
+    }
 
     private getContentType(filename: string): string {
         const ext = filename.split('.').pop()?.toLowerCase();
