@@ -98,6 +98,10 @@ export class BusinessClientMessage extends Document {
 
     @Prop({ type: Date })
     deletedAt?: Date;
+
+    // Timestamps (automatically added by Mongoose when timestamps: true)
+    createdAt: Date;
+    updatedAt: Date;
 }
 
 export const BusinessClientMessageSchema = SchemaFactory.createForClass(BusinessClientMessage);
