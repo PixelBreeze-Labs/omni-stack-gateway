@@ -144,36 +144,28 @@ import {
 
         this.logger.log(`Attempting to upload file: ${file.originalname}, size: ${file.size}, mimetype: ${file.mimetype}`);
 
-        let fileInfo;
-        try {
-          // Try primary chat upload method
-          fileInfo = await this.supabaseService.uploadChatFile(
-            businessId,
-            appClientId,
-            file.buffer,
-            file.originalname
-          );
-          this.logger.log(`Chat file uploaded successfully using primary method`);
-        } catch (primaryError) {
-          this.logger.warn(`Primary chat upload failed: ${primaryError.message}`);
-          
-          try {
-            // Fallback to alternative method (using business_storage path)
-            fileInfo = await this.supabaseService.uploadChatFileAlternative(
-              businessId,
-              appClientId,
-              file.buffer,
-              file.originalname
-            );
-            this.logger.log(`Chat file uploaded successfully using alternative method`);
-          } catch (fallbackError) {
-            this.logger.error(`Both chat upload methods failed. Primary: ${primaryError.message}, Fallback: ${fallbackError.message}`);
-            throw new InternalServerErrorException(`Failed to upload file: ${fallbackError.message}`);
-          }
-        }
+        // Upload file to Supabase storage
+        const fileInfo = await this.supabaseService.uploadChatFile(
+          businessId,
+          appClientId,
+          file.buffer,
+          file.originalname
+        );
         
         const messageType = file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE;
-        const content = body.content || '';
+        
+        // FIXED: Always provide content - use custom message or default
+        let content = '';
+        if (body.content && body.content.trim()) {
+          content = body.content.trim();
+        } else {
+          // Generate default content based on file type
+          if (messageType === MessageType.IMAGE) {
+            content = `📷 Image: ${file.originalname}`;
+          } else {
+            content = `📎 File: ${file.originalname}`;
+          }
+        }
   
         return await this.messagingService.sendMessageToClient(
           businessId,
@@ -275,30 +267,6 @@ import {
         } else {
           throw new InternalServerErrorException('Failed to mark messages as read');
         }
-      }
-    }
-
-    // ========== DEBUGGING ENDPOINT (Remove in production) ==========
-    
-    @Post(':businessId/debug/init-chat-storage/:appClientId')
-    @ApiOperation({ summary: 'Initialize chat storage for debugging' })
-    async initChatStorage(
-      @Param('businessId') businessId: string,
-      @Param('appClientId') appClientId: string,
-      @Headers('business-x-api-key') apiKey: string,
-    ): Promise<{ success: boolean; message: string }> {
-      try {
-        await this.messagingService.validateBusinessApiKey(businessId, apiKey);
-        
-        await this.supabaseService.initializeChatStorage(businessId, appClientId);
-        
-        return {
-          success: true,
-          message: `Chat storage initialized for business ${businessId} and client ${appClientId}`
-        };
-      } catch (error) {
-        this.logger.error(`Error initializing chat storage: ${error.message}`, error.stack);
-        throw new InternalServerErrorException(`Failed to initialize chat storage: ${error.message}`);
       }
     }
   }
