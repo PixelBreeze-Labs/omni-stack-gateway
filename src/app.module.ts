@@ -95,6 +95,7 @@ import { OshaInspection, OshaInspectionSchema } from './schemas/osha-inspection.
 import { OshaViolation, OshaViolationSchema } from './schemas/osha-violation.schema';
 import { OshaEquipmentCompliance, OshaEquipmentComplianceSchema } from './schemas/osha-equipment-compliance.schema';
 import { BusinessOnboarding, BusinessOnboardingSchema } from './schemas/business-onboarding.schema';
+import { BusinessClientMessage, BusinessClientMessageSchema } from './schemas/business-client-message.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -177,6 +178,7 @@ import { OshaComplianceController } from './controllers/osha-compliance.controll
 import { OshaAuditController } from './controllers/osha-audit.controller';
 import { BusinessOnboardingController } from './controllers/business-onboarding.controller';
 import { BusinessStorageController } from './controllers/business-storage.controller';
+import { BusinessMessagingController } from './controllers/business-messaging.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -275,6 +277,7 @@ import { OshaComplianceService } from './services/osha-compliance.service';
 import { OshaReportsService } from './services/osha-reports.service';
 import { OshaStatsService } from './services/osha-stats.service';
 import { BusinessOnboardingService } from './services/business-onboarding.service';
+import { BusinessMessagingService } from './services/business-messaging.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -440,6 +443,7 @@ import { MLModule } from './modules/ml.module';
       { name: OshaComplianceRequirement.name, schema: OshaComplianceRequirementSchema },
       { name: OshaEquipmentCompliance.name, schema: OshaEquipmentComplianceSchema },
       { name: BusinessOnboarding.name, schema: BusinessOnboardingSchema },
+      { name: BusinessClientMessage.name, schema: BusinessClientMessageSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -544,7 +548,8 @@ import { MLModule } from './modules/ml.module';
     OshaStatsController,
     OshaAuditController,
     BusinessOnboardingController,
-    BusinessStorageController
+    BusinessStorageController,
+    BusinessMessagingController,
   ],
   providers: [
     SnapfoodService,
@@ -651,7 +656,8 @@ import { MLModule } from './modules/ml.module';
     OshaReportsService,
     OshaStatsService,
     BusinessOnboardingService,
-    BusinessStorageService
+    BusinessStorageService,
+    BusinessMessagingService
   ],
 })
 export class AppModule implements NestModule {
