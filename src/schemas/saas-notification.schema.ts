@@ -9,7 +9,8 @@ export enum NotificationType {
   TASK = 'task',
   SIGNATURE = 'signature',
   INVOICE = 'invoice',
-  ALERT = 'alert'
+  ALERT = 'alert',
+  TICKET = 'ticket'
 }
 
 export enum NotificationPriority {

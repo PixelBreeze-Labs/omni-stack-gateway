@@ -4,6 +4,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Ticket, TicketStatus, TicketPriority, TicketCategory, TicketMessage } from '../schemas/ticket.schema';
 import { Business } from '../schemas/business.schema';
+import { User } from '../schemas/user.schema';
+import { SaasNotificationService } from './saas-notification.service';
+import { EmailService } from './email.service';
+import { DeliveryChannel, NotificationPriority, NotificationType } from 'src/schemas/saas-notification.schema';
 
 export interface CreateTicketDto {
   title: string;
@@ -62,7 +66,229 @@ export class TicketService {
   constructor(
     @InjectModel(Ticket.name) private ticketModel: Model<Ticket>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(User.name) private userModel: Model<User>,
+    private readonly notificationService: SaasNotificationService,
+    private readonly emailService?: EmailService
   ) {}
+
+   /**
+   * Send notification to business when support updates ticket
+   */
+   private async sendTicketUpdateNotification(
+    ticket: Ticket,
+    updateType: 'status_changed' | 'message_added' | 'assignment_changed',
+    additionalData?: any
+  ): Promise<void> {
+    try {
+      // Get business details
+      const business = await this.businessModel.findById(ticket.businessId);
+      if (!business) {
+        this.logger.warn(`Business not found for ticket notification: ${ticket.businessId}`);
+        return;
+      }
+
+      // Get business users (admin and other users)
+      const businessUsers = await this.userModel.find({
+        _id: { $in: [business.adminUserId, ...(business.userIds || [])] }
+      });
+
+      if (!businessUsers || businessUsers.length === 0) {
+        this.logger.warn(`No users found for business: ${ticket.businessId}`);
+        return;
+      }
+
+      // Prepare notification content based on update type
+      let title: string;
+      let body: string;
+      let priority: NotificationPriority = NotificationPriority.MEDIUM;
+
+      switch (updateType) {
+        case 'status_changed':
+          title = `Ticket Status Updated`;
+          body = `Your support ticket "${ticket.title}" status has been changed to ${ticket.status}.`;
+          priority = ticket.status === 'resolved' ? NotificationPriority.HIGH : NotificationPriority.MEDIUM;
+          break;
+        
+        case 'message_added':
+          title = `New Support Message`;
+          body = `Staffluent support has replied to your ticket "${ticket.title}".`;
+          priority = NotificationPriority.HIGH;
+          break;
+        
+        case 'assignment_changed':
+          title = `Ticket Assignment Updated`;
+          body = `Your support ticket "${ticket.title}" has been assigned to ${ticket.assignedTo}.`;
+          priority = NotificationPriority.LOW;
+          break;
+        
+        default:
+          title = `Ticket Updated`;
+          body = `Your support ticket "${ticket.title}" has been updated.`;
+      }
+
+      // Create action data for deep linking
+      const actionData = {
+        type: 'support_ticket',
+        entityId: ticket._id.toString(),
+        entityType: 'ticket',
+        url: `/support/tickets/${ticket._id}` // Adjust this URL to match your frontend routes
+      };
+
+      // Determine delivery channels (you can make this configurable per business)
+      const channels: DeliveryChannel[] = [DeliveryChannel.APP];
+      
+      // Add email if business has email notifications enabled (you can add this setting to Business schema)
+      if (business.metadata?.get('emailNotificationsEnabled') !== false) {
+        channels.push(DeliveryChannel.EMAIL);
+      }
+
+      // Send notifications to all business users
+      for (const user of businessUsers) {
+        try {
+          // Send in-app notification
+          const notification = await this.notificationService.createNotification({
+            businessId: ticket.businessId,
+            userId: user._id.toString(),
+            title,
+            body,
+            type: NotificationType.TICKET,
+            priority,
+            channels: [DeliveryChannel.APP],
+            reference: {
+              type: 'support_ticket',
+              id: ticket._id.toString()
+            },
+            actionData
+          });
+
+          // Send email notification if enabled
+          if (channels.includes(DeliveryChannel.EMAIL) && user.email) {
+            await this.sendTicketUpdateEmail(user, business, ticket, updateType, additionalData);
+          }
+
+        } catch (notificationError) {
+          this.logger.error(`Failed to send ticket notification to user ${user._id}: ${notificationError.message}`);
+        }
+      }
+
+      this.logger.log(`Sent ticket ${updateType} notifications for ticket ${ticket._id} to ${businessUsers.length} users`);
+
+    } catch (error) {
+      this.logger.error(`Error sending ticket update notification: ${error.message}`, error.stack);
+    }
+  }
+
+
+  /**
+   * Send email notification for ticket updates
+   */
+  private async sendTicketUpdateEmail(
+    user: any,
+    business: any,
+    ticket: Ticket,
+    updateType: string,
+    additionalData?: any
+  ): Promise<void> {
+    try {
+      if (!this.emailService) {
+        this.logger.warn('Email service not available for ticket notifications');
+        return;
+      }
+
+      const userName = user.name 
+        ? (user.surname ? `${user.name} ${user.surname}` : user.name)
+        : 'Team Member';
+
+      // Determine email subject and content based on update type
+      let subject: string;
+      let templateData: any;
+
+      switch (updateType) {
+        case 'status_changed':
+          subject = `Ticket Status Updated - ${ticket.title}`;
+          templateData = {
+            updateType: 'Status Change',
+            updateDetails: `Status changed to: ${ticket.status}`,
+            actionText: 'View Ticket Details',
+            statusColor: this.getStatusColor(ticket.status)
+          };
+          break;
+
+        case 'message_added':
+          subject = `New Support Reply - ${ticket.title}`;
+          const lastMessage = ticket.messages[ticket.messages.length - 1];
+          templateData = {
+            updateType: 'New Message',
+            updateDetails: lastMessage?.message || 'A new message has been added to your ticket.',
+            actionText: 'View Message & Reply',
+            senderName: lastMessage?.senderName || 'Support Team'
+          };
+          break;
+
+        case 'assignment_changed':
+          subject = `Ticket Assignment Updated - ${ticket.title}`;
+          templateData = {
+            updateType: 'Assignment Change',
+            updateDetails: `Assigned to: ${ticket.assignedTo}`,
+            actionText: 'View Ticket',
+            assignedEmail: ticket.assignedToEmail
+          };
+          break;
+
+        default:
+          subject = `Ticket Updated - ${ticket.title}`;
+          templateData = {
+            updateType: 'Ticket Update',
+            updateDetails: 'Your support ticket has been updated.',
+            actionText: 'View Ticket'
+          };
+      }
+
+      // Common template data
+      templateData = {
+        ...templateData,
+        userName,
+        businessName: business.name,
+        ticketTitle: ticket.title,
+        ticketId: ticket._id.toString(),
+        ticketStatus: ticket.status,
+        ticketPriority: ticket.priority,
+        actionUrl: `https://app.staffluent.co/help-center`,
+        currentYear: new Date().getFullYear()
+      };
+
+      await this.emailService.sendTemplateEmail(
+        business.name,
+        'staffluent@omnistackhub.xyz',
+        user.email,
+        subject,
+        'templates/business/ticket-update-email.html',
+        templateData
+      );
+
+    } catch (error) {
+      this.logger.error(`Failed to send ticket update email: ${error.message}`, error.stack);
+    }
+  }
+
+   /**
+   * Get status color for email templates
+   */
+   private getStatusColor(status: string): string {
+    switch (status.toLowerCase()) {
+      case 'open':
+        return '#2196f3'; // Blue
+      case 'in_progress':
+        return '#ff9800'; // Orange
+      case 'resolved':
+        return '#4caf50'; // Green
+      case 'closed':
+        return '#757575'; // Gray
+      default:
+        return '#2196f3';
+    }
+  }
+
 
   /**
    * Create a new support ticket
@@ -264,13 +490,21 @@ export class TicketService {
   }
 
   /**
-   * Update ticket details (for support team)
+   * Update ticket details
    */
   async updateTicket(
     ticketId: string,
     updateTicketDto: UpdateTicketDto
   ): Promise<Ticket> {
     try {
+      const originalTicket = await this.ticketModel.findOne(
+        { _id: ticketId, isDeleted: false }
+      ).exec();
+
+      if (!originalTicket) {
+        throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
+      }
+
       const updateData: any = { ...updateTicketDto };
 
       // If marking as resolved, set resolvedAt timestamp
@@ -288,6 +522,16 @@ export class TicketService {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
 
+      // Send notification if status changed
+      if (updateTicketDto.status && updateTicketDto.status !== originalTicket.status) {
+        await this.sendTicketUpdateNotification(ticket, 'status_changed');
+      }
+
+      // Send notification if assignment changed
+      if (updateTicketDto.assignedTo && updateTicketDto.assignedTo !== originalTicket.assignedTo) {
+        await this.sendTicketUpdateNotification(ticket, 'assignment_changed');
+      }
+
       this.logger.log(`Ticket updated: ${ticketId} - Status: ${ticket.status}`);
       
       return ticket;
@@ -298,7 +542,7 @@ export class TicketService {
   }
 
   /**
-   * Add a message to a ticket
+   * Add a message to a ticket (MODIFIED to send notifications when support replies)
    */
   async addMessage(
     ticketId: string,
@@ -309,17 +553,26 @@ export class TicketService {
     try {
       const query: any = { _id: ticketId, isDeleted: false };
       
-      // If businessId is provided, restrict to that business
       if (businessId) {
         query.businessId = businessId;
       }
 
-      const business = await this.businessModel.findById(businessId);
+      let senderName = addMessageDto.senderName;
+      let senderEmail = addMessageDto.senderEmail;
+
+      // If it's a business message, get business details
+      if (sender === 'business' && businessId) {
+        const business = await this.businessModel.findById(businessId);
+        if (business) {
+          senderName = business.name;
+          senderEmail = business.email;
+        }
+      }
       
       const message: TicketMessage = {
         sender,
-        senderName: business.name,
-        senderEmail: business.email,
+        senderName,
+        senderEmail,
         message: addMessageDto.message,
         attachments: addMessageDto.attachments || [],
         timestamp: new Date(),
@@ -342,6 +595,14 @@ export class TicketService {
 
       if (!ticket) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
+      }
+
+      // Send notification when SUPPORT adds a message (reply to business)
+      if (sender === 'support') {
+        await this.sendTicketUpdateNotification(ticket, 'message_added', {
+          message: addMessageDto.message,
+          senderName
+        });
       }
 
       this.logger.log(`Message added to ticket: ${ticketId} by ${sender}`);
@@ -448,4 +709,5 @@ export class TicketService {
       throw error;
     }
   }
+  
 }

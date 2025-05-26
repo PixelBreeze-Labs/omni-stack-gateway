@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ticket Update - {{ticketTitle}}</title>
+    <style>
+        body {
+            font-family: 'Manrope', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            padding: 20px 10px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 24px;
+            border-radius: 16px;
+            background-color: #fff;
+            text-align: left;
+        }
+        .title {
+            color: #000;
+            font-size: 32px;
+            text-align: center;
+            line-height: 46px;
+            font-weight: bold;
+            margin: 24px 0;
+        }
+        .content {
+            font-size: 16px;
+            line-height: 24px;
+            color: #333;
+            margin: 24px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            text-decoration: none;
+            color: #fff!important;
+            background-color: #0A0A0A;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 32px 0;
+            text-align: center;
+        }
+        .button:hover {
+            background-color: #0A0A0A;
+        }
+        .highlight-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0A0A0A;
+            border-radius: 8px;
+            padding: 16px 24px;
+            margin: 24px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .note {
+            font-size: 14px;
+            color: #666;
+            font-style: italic;
+        }
+        .ticket-details {
+            font-family: monospace;
+            background-color: #f1f1f1;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 8px 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: white;
+            margin-left: 8px;
+        }
+        .priority-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+        .priority-low { background: #28a745; color: white; }
+        .priority-medium { background: #ffc107; color: #333; }
+        .priority-high { background: #fd7e14; color: white; }
+        .priority-urgent { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+<img src="https://unzkbvyeaefcpooqeenz.supabase.co/storage/v1/object/public/templates/logos/staffluent-logo.png" alt="Staffluent" style="display: block; margin: 24px auto; width: 100px" />
+<div class="container">
+    <div class="title">Support Ticket Update</div>
+
+    <p class="content">
+        Hi {{userName}},
+    </p>
+
+    <p class="content">
+        We have an update regarding your support ticket with <strong>{{businessName}}</strong>.
+    </p>
+
+    <div class="highlight-box">
+        <p class="content" style="margin: 0 0 12px 0;">
+            <strong>{{ticketTitle}}</strong>
+        </p>
+        <div class="ticket-details">
+            <div><strong>Ticket ID:</strong> #{{ticketId}}</div>
+            <div><strong>Status:</strong> {{ticketStatus}}<span class="status-badge" style="background-color: {{statusColor}};">{{ticketStatus}}</span></div>
+            <div><strong>Priority:</strong> {{ticketPriority}}<span class="priority-badge priority-{{ticketPriority}}">{{ticketPriority}}</span></div>
+        </div>
+    </div>
+
+    <div class="highlight-box">
+        <p class="content" style="margin: 0 0 12px 0;">
+            <strong>📢 {{updateType}}</strong>
+        </p>
+        <p class="content" style="margin: 0;">
+            {{updateDetails}}
+        </p>
+        {{#if senderName}}
+        <p class="note" style="margin-top: 12px;">
+            Updated by: {{senderName}}
+        </p>
+        {{/if}}
+        {{#if assignedEmail}}
+        <p class="note" style="margin-top: 8px;">
+            Contact: {{assignedEmail}}
+        </p>
+        {{/if}}
+    </div>
+
+    <div style="text-align: center;">
+        <a href="{{actionUrl}}" class="button">
+            {{actionText}}
+        </a>
+    </div>
+
+    <p class="content">
+        You can also access your ticket by logging into your account and navigating to the support section.
+    </p>
+
+    <p class="content">
+        If you have any questions or need further assistance, please don't hesitate to reach out to our support team.
+    </p>
+
+    <p class="content">
+        Best regards,<br>
+        The Staffluent Support Team
+    </p>
+</div>
+<div class="footer">
+    &copy; {{currentYear}} Staffluent. All rights reserved.<br>
+    If you need assistance, please contact our support team at support@staffluent.co
+</div>
+</body>
+</html>
