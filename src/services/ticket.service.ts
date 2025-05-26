@@ -314,10 +314,12 @@ export class TicketService {
         query.businessId = businessId;
       }
 
+      const business = await this.businessModel.findById(businessId);
+      
       const message: TicketMessage = {
         sender,
-        senderName: addMessageDto.senderName,
-        senderEmail: addMessageDto.senderEmail,
+        senderName: business.name,
+        senderEmail: business.email,
         message: addMessageDto.message,
         attachments: addMessageDto.attachments || [],
         timestamp: new Date(),
