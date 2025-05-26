@@ -333,6 +333,9 @@ import { TicketService } from './services/ticket.service';
 import { TicketController } from './controllers/ticket.controller';
 import { Ticket, TicketSchema } from './schemas/ticket.schema';
 
+// SaaS Notifications
+import { SaasNotificationController } from './controllers/saas-notification.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -555,7 +558,8 @@ import { Ticket, TicketSchema } from './schemas/ticket.schema';
     BusinessOnboardingController,
     BusinessStorageController,
     BusinessMessagingController,
-    TicketController
+    TicketController,
+    SaasNotificationController
   ],
   providers: [
     SnapfoodService,
