@@ -95,10 +95,19 @@
             text-transform: uppercase;
             margin-left: 8px;
         }
+        
+        /* Priority Badge Classes */
         .priority-low { background: #28a745; color: white; }
         .priority-medium { background: #ffc107; color: #333; }
         .priority-high { background: #fd7e14; color: white; }
         .priority-urgent { background: #dc3545; color: white; }
+        
+        /* Status Badge Classes - Fixed! */
+        .status-open { background: #2196f3; }
+        .status-in_progress { background: #ff9800; }
+        .status-resolved { background: #4caf50; }
+        .status-closed { background: #757575; }
+        .status-duplicate { background: #9c27b0; }
     </style>
 </head>
 <body>
@@ -120,7 +129,7 @@
         </p>
         <div class="ticket-details">
             <div><strong>Ticket ID:</strong> #{{ticketId}}</div>
-            <div><strong>Status:</strong> {{ticketStatus}}<span class="status-badge" style="background-color: {{statusColor}};">{{ticketStatus}}</span></div>
+            <div><strong>Status:</strong> {{ticketStatus}}<span class="status-badge status-{{ticketStatus}}">{{ticketStatus}}</span></div>
             <div><strong>Priority:</strong> {{ticketPriority}}<span class="priority-badge priority-{{ticketPriority}}">{{ticketPriority}}</span></div>
         </div>
     </div>
