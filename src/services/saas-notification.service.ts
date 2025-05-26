@@ -219,4 +219,164 @@ export class SaasNotificationService {
       throw error;
     }
   }
+
+  /**
+ * Get business notification count
+ */
+async getBusinessNotificationCount(businessId: string, query?: any): Promise<number> {
+  const countQuery = query || { businessId };
+  return this.notificationModel.countDocuments(countQuery).exec();
+}
+
+/**
+ * Get business notification statistics
+ */
+async getBusinessNotificationStats(businessId: string): Promise<{
+  total: number;
+  unread: number;
+  highPriority: number;
+  byType: Record<string, number>;
+  byStatus: Record<string, number>;
+  recentCount: number;
+}> {
+  try {
+    const [
+      total,
+      unread,
+      highPriority,
+      typeStats,
+      statusStats,
+      recentCount
+    ] = await Promise.all([
+      // Total notifications
+      this.notificationModel.countDocuments({ businessId }).exec(),
+      
+      // Unread notifications
+      this.notificationModel.countDocuments({ 
+        businessId, 
+        status: { $ne: NotificationStatus.READ } 
+      }).exec(),
+      
+      // High priority notifications
+      this.notificationModel.countDocuments({ 
+        businessId, 
+        priority: { $in: ['high', 'urgent'] }
+      }).exec(),
+      
+      // By type
+      this.notificationModel.aggregate([
+        { $match: { businessId } },
+        { $group: { _id: '$type', count: { $sum: 1 } } }
+      ]).exec(),
+      
+      // By status
+      this.notificationModel.aggregate([
+        { $match: { businessId } },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]).exec(),
+      
+      // Recent notifications (last 24 hours)
+      this.notificationModel.countDocuments({
+        businessId,
+        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+      }).exec()
+    ]);
+
+    // Convert aggregation results to objects
+    const byType: Record<string, number> = {};
+    typeStats.forEach(stat => {
+      byType[stat._id] = stat.count;
+    });
+
+    const byStatus: Record<string, number> = {};
+    statusStats.forEach(stat => {
+      byStatus[stat._id] = stat.count;
+    });
+
+    return {
+      total,
+      unread,
+      highPriority,
+      byType,
+      byStatus,
+      recentCount
+    };
+
+  } catch (error) {
+    this.logger.error(`Error getting notification stats: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Mark all business notifications as read
+ */
+async markAllBusinessNotificationsAsRead(businessId: string): Promise<number> {
+  try {
+    const result = await this.notificationModel.updateMany(
+      { 
+        businessId, 
+        status: { $ne: NotificationStatus.READ } 
+      },
+      { 
+        status: NotificationStatus.READ,
+        readAt: new Date()
+      }
+    ).exec();
+
+    return result.modifiedCount;
+  } catch (error) {
+    this.logger.error(`Error marking all business notifications as read: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Get notifications with advanced filtering
+ */
+async getNotificationsWithFilters(filters: {
+  businessId?: string;
+  userId?: string;
+  type?: NotificationType;
+  status?: NotificationStatus;
+  priority?: string;
+  fromDate?: Date;
+  toDate?: Date;
+  skip?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}): Promise<SaasNotification[]> {
+  try {
+    const query: any = {};
+    
+    if (filters.businessId) query.businessId = filters.businessId;
+    if (filters.userId) query.userId = filters.userId;
+    if (filters.type) query.type = filters.type;
+    if (filters.status) query.status = filters.status;
+    if (filters.priority) query.priority = filters.priority;
+    
+    if (filters.fromDate || filters.toDate) {
+      query.createdAt = {};
+      if (filters.fromDate) query.createdAt.$gte = filters.fromDate;
+      if (filters.toDate) query.createdAt.$lte = filters.toDate;
+    }
+
+    const sortField = filters.sortBy || 'createdAt';
+    const sortDirection = filters.sortOrder === 'asc' ? 1 : -1;
+    const sortObj = { [sortField]: sortDirection };
+
+    return this.notificationModel
+      .find(query)
+      // @ts-ignore
+      .sort(sortObj)
+      .skip(filters.skip || 0)
+      .limit(filters.limit || 20)
+      .exec();
+
+  } catch (error) {
+    this.logger.error(`Error getting notifications with filters: ${error.message}`, error.stack);
+    throw error;
+  }
+}
 }
