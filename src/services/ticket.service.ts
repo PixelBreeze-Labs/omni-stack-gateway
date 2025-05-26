@@ -3,7 +3,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Ticket, TicketStatus, TicketPriority, TicketCategory, TicketMessage } from '../schemas/ticket.schema';
-import { BusinessService } from './business.service';
+import { Business } from '../schemas/business.schema';
 
 export interface CreateTicketDto {
   title: string;
@@ -61,7 +61,7 @@ export class TicketService {
 
   constructor(
     @InjectModel(Ticket.name) private ticketModel: Model<Ticket>,
-    private readonly businessService: BusinessService
+    @InjectModel(Business.name) private businessModel: Model<Business>,
   ) {}
 
   /**
@@ -73,9 +73,16 @@ export class TicketService {
     createTicketDto: CreateTicketDto
   ): Promise<Ticket> {
     try {
+
+        const business = await this.businessModel.findById(businessId);
+
       const ticket = new this.ticketModel({
         businessId,
         clientId,
+        createdByName: business.name,
+        createdByEmail: business.email,
+        assignedTo: 'Staffluent Support Team',
+        assignedToEmail: 'support@staffluent.co',
         ...createTicketDto,
         status: TicketStatus.OPEN
       });
