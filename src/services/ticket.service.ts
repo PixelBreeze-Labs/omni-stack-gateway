@@ -79,11 +79,11 @@ export class TicketService {
       const ticket = new this.ticketModel({
         businessId,
         clientId,
+        ...createTicketDto,
         createdByName: business.name,
         createdByEmail: business.email,
         assignedTo: 'Staffluent Support Team',
         assignedToEmail: 'support@staffluent.co',
-        ...createTicketDto,
         status: TicketStatus.OPEN
       });
 
