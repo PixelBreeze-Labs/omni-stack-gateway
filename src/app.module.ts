@@ -328,6 +328,10 @@ import { ResourceRequestAgentModule } from './modules/resource-request-agent.mod
 import { ShiftOptimizationAgentModule } from './modules/shift-optimization-agent.module';
 import { MLModule } from './modules/ml.module';
 
+// Ticket
+import { TicketService } from './services/ticket.service';
+import { TicketController } from './controllers/ticket.controller';
+import { Ticket, TicketSchema } from './schemas/ticket.schema';
 
 @Module({
   imports: [
@@ -444,6 +448,7 @@ import { MLModule } from './modules/ml.module';
       { name: OshaEquipmentCompliance.name, schema: OshaEquipmentComplianceSchema },
       { name: BusinessOnboarding.name, schema: BusinessOnboardingSchema },
       { name: BusinessClientMessage.name, schema: BusinessClientMessageSchema },
+      { name: Ticket.name, schema: TicketSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -550,6 +555,7 @@ import { MLModule } from './modules/ml.module';
     BusinessOnboardingController,
     BusinessStorageController,
     BusinessMessagingController,
+    TicketController
   ],
   providers: [
     SnapfoodService,
@@ -657,7 +663,8 @@ import { MLModule } from './modules/ml.module';
     OshaStatsService,
     BusinessOnboardingService,
     BusinessStorageService,
-    BusinessMessagingService
+    BusinessMessagingService,
+    TicketService
   ],
 })
 export class AppModule implements NestModule {
