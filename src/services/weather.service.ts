@@ -1887,10 +1887,10 @@ private async checkForHeatAlert(
     }
   }
 
- /**
+/**
  * Send alert notification
  */
-private async sendAlertNotification(
+  private async sendAlertNotification(
     alert: WeatherAlert, 
     project: any, 
     recipientIds: string[],
@@ -1931,17 +1931,16 @@ private async sendAlertNotification(
       // For tracking notifications sent
       const notificationIds: string[] = [];
       
-      // 1. Process in-app notifications using recipientIds (users)
-      if (channels.includes(DeliveryChannel.APP) && recipientIds && recipientIds.length > 0) {
-        // Get all users for sending notifications
-        const users = await this.userModel.find({
-          _id: { $in: recipientIds }
-        });
+      // 1. Process in-app notifications - ALWAYS create notification for admin user
+      if (channels.includes(DeliveryChannel.APP)) {
+        // Get business admin user (always create notification for admin)
+        const adminUser = await this.userModel.findById(business.adminUserId);
         
-        for (const user of users) {
+        if (adminUser) {
+          // Create notification for admin user
           const notification = await this.notificationService.createNotification({
             businessId: alert.businessId,
-            userId: user._id.toString(),
+            userId: adminUser._id.toString(),
             title: alert.title,
             body: alert.description,
             type: NotificationType.WEATHER,
@@ -1957,9 +1956,10 @@ private async sendAlertNotification(
           if (notification && notification._id) {
             notificationIds.push(notification._id.toString());
           }
+        } else {
+          this.logger.warn(`Admin user not found for business: ${alert.businessId}`);
         }
-      } else if (channels.includes(DeliveryChannel.APP)) {
-        this.logger.warn(`No app notification recipients configured for business ${alert.businessId}`);
+
       }
       
       // 2. Process email notifications
