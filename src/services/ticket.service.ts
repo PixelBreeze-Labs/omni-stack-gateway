@@ -475,6 +475,20 @@ async getAllTickets(
         .populate('businessId', 'name email') // Populate business details
         .exec();
   
+        // for each ticket add business object with name and email
+        tickets.forEach(ticket => {
+            // find business by id
+            const business = this.businessModel.findById(ticket.businessId);
+            // wait for business to be found
+            business.then(business => {
+                // @ts-ignore
+                ticket.business = {
+                    name: business.name,
+                    email: business.email
+                };
+            });
+        });
+
       return {
         tickets,
         total,
