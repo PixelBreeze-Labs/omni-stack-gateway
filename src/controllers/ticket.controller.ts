@@ -12,9 +12,10 @@ import {
     UnauthorizedException, 
     Logger, 
     InternalServerErrorException,
-    BadRequestException
+    Req,
+    UseGuards
   } from '@nestjs/common';
-  import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
+  import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
   import { 
     TicketService, 
     CreateTicketDto, 
@@ -25,6 +26,8 @@ import {
   } from '../services/ticket.service';
   import { BusinessChatbotService } from '../services/business-chatbot.service';
   import { Ticket, TicketStatus, TicketPriority, TicketCategory } from '../schemas/ticket.schema';
+  import { ClientAuthGuard } from '../guards/client-auth.guard';
+  import { Client } from '../schemas/client.schema';
   
   @ApiTags('Support Tickets')
   @Controller('tickets')
@@ -132,7 +135,6 @@ import {
       }
     }
   
-    // 🔥 MOVED THIS BEFORE THE /:ticketId ROUTE
     @Get('business/:businessId/stats')
     @ApiOperation({ summary: 'Get ticket statistics for a business' })
     @ApiHeader({ name: 'business-x-api-key', required: true, description: 'Business API key for authentication' })
@@ -158,7 +160,6 @@ import {
       }
     }
   
-    // NOW this comes AFTER the /stats route
     @Get('business/:businessId/:ticketId')
     @ApiOperation({ summary: 'Get a specific ticket' })
     @ApiHeader({ name: 'business-x-api-key', required: true, description: 'Business API key for authentication' })
@@ -234,31 +235,42 @@ import {
       }
     }
   
-    // ========== SUPPORT TEAM ENDPOINTS (No business API key required) ==========
+    // ========== SUPPORT TEAM ENDPOINTS (Now require client authentication) ==========
   
     @Get('support/all')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Get all tickets (Support team only)' })
     @ApiQuery({ name: 'status', required: false, enum: TicketStatus, description: 'Filter by status' })
     @ApiQuery({ name: 'priority', required: false, enum: TicketPriority, description: 'Filter by priority' })
     @ApiQuery({ name: 'category', required: false, enum: TicketCategory, description: 'Filter by category' })
     @ApiQuery({ name: 'assignedTo', required: false, description: 'Filter by assigned support agent' })
+    @ApiQuery({ name: 'search', required: false, description: 'Search in ticket title or description' })
+    @ApiQuery({ name: 'businessId', required: false, description: 'Filter by business' })
     @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number' })
     @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page' })
     @ApiResponse({ status: 200, description: 'Returns all tickets' })
     async getAllTickets(
+      @Req() req: Request & { client: Client },
       @Query('status') status?: TicketStatus,
       @Query('priority') priority?: TicketPriority,
       @Query('category') category?: TicketCategory,
       @Query('assignedTo') assignedTo?: string,
+      @Query('search') search?: string,
+      @Query('businessId') businessId?: string,
       @Query('page') page?: number,
       @Query('limit') limit?: number
     ): Promise<TicketListResponse> {
       try {
-        const filters: TicketFilters = {};
+        const clientId = req.client.id;
+        const filters: TicketFilters = { clientId };
+        
         if (status) filters.status = status;
         if (priority) filters.priority = priority;
         if (category) filters.category = category;
         if (assignedTo) filters.assignedTo = assignedTo;
+        if (search) filters.search = search;
+        if (businessId) filters.businessId = businessId;
   
         return await this.ticketService.getAllTickets(
           filters,
@@ -271,13 +283,17 @@ import {
       }
     }
   
-    // Same pattern here - /stats comes before /:ticketId
     @Get('support/stats')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Get overall ticket statistics (Support team)' })
     @ApiResponse({ status: 200, description: 'Returns ticket statistics' })
-    async getAllTicketStats(): Promise<any> {
+    async getAllTicketStats(
+      @Req() req: Request & { client: Client }
+    ): Promise<any> {
       try {
-        return await this.ticketService.getTicketStats();
+        const clientId = req.client.id;
+        return await this.ticketService.getTicketStats(undefined, clientId);
       } catch (error) {
         this.logger.error(`Error getting ticket stats: ${error.message}`, error.stack);
         throw new InternalServerErrorException('Failed to get ticket stats');
@@ -285,15 +301,19 @@ import {
     }
   
     @Get('support/:ticketId')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Get a specific ticket (Support team)' })
     @ApiParam({ name: 'ticketId', description: 'Ticket ID' })
     @ApiResponse({ status: 200, description: 'Returns the ticket' })
     @ApiResponse({ status: 404, description: 'Ticket not found' })
     async getSupportTicket(
+      @Req() req: Request & { client: Client },
       @Param('ticketId') ticketId: string
     ): Promise<Ticket> {
       try {
-        return await this.ticketService.getTicket(ticketId);
+        const clientId = req.client.id;
+        return await this.ticketService.getTicket(ticketId, undefined, clientId);
       } catch (error) {
         this.logger.error(`Error getting ticket: ${error.message}`, error.stack);
         throw new InternalServerErrorException('Failed to get ticket');
@@ -301,6 +321,8 @@ import {
     }
   
     @Put('support/:ticketId')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Update ticket (Support team only)' })
     @ApiParam({ name: 'ticketId', description: 'Ticket ID' })
     @ApiBody({ 
@@ -322,11 +344,13 @@ import {
     @ApiResponse({ status: 200, description: 'Ticket updated successfully' })
     @ApiResponse({ status: 404, description: 'Ticket not found' })
     async updateTicket(
+      @Req() req: Request & { client: Client },
       @Param('ticketId') ticketId: string,
       @Body() updateTicketDto: UpdateTicketDto
     ): Promise<Ticket> {
       try {
-        return await this.ticketService.updateTicket(ticketId, updateTicketDto);
+        const clientId = req.client.id;
+        return await this.ticketService.updateTicket(ticketId, updateTicketDto, clientId);
       } catch (error) {
         this.logger.error(`Error updating ticket: ${error.message}`, error.stack);
         throw new InternalServerErrorException('Failed to update ticket');
@@ -334,6 +358,8 @@ import {
     }
   
     @Post('support/:ticketId/messages')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Add support message to ticket' })
     @ApiParam({ name: 'ticketId', description: 'Ticket ID' })
     @ApiBody({ 
@@ -353,14 +379,18 @@ import {
     @ApiResponse({ status: 200, description: 'Message added successfully' })
     @ApiResponse({ status: 404, description: 'Ticket not found' })
     async addSupportMessage(
+      @Req() req: Request & { client: Client },
       @Param('ticketId') ticketId: string,
       @Body() addMessageDto: AddMessageDto
     ): Promise<Ticket> {
       try {
+        const clientId = req.client.id;
         return await this.ticketService.addMessage(
           ticketId,
           addMessageDto,
-          'support'
+          'support',
+          undefined,
+          clientId
         );
       } catch (error) {
         this.logger.error(`Error adding support message: ${error.message}`, error.stack);
@@ -369,15 +399,19 @@ import {
     }
   
     @Delete('support/:ticketId')
+    @UseGuards(ClientAuthGuard)
+    @ApiBearerAuth()
     @ApiOperation({ summary: 'Delete/archive ticket (Support team only)' })
     @ApiParam({ name: 'ticketId', description: 'Ticket ID' })
     @ApiResponse({ status: 200, description: 'Ticket deleted successfully' })
     @ApiResponse({ status: 404, description: 'Ticket not found' })
     async deleteTicket(
+      @Req() req: Request & { client: Client },
       @Param('ticketId') ticketId: string
     ): Promise<{ success: boolean }> {
       try {
-        return await this.ticketService.deleteTicket(ticketId);
+        const clientId = req.client.id;
+        return await this.ticketService.deleteTicket(ticketId, clientId);
       } catch (error) {
         this.logger.error(`Error deleting ticket: ${error.message}`, error.stack);
         throw new InternalServerErrorException('Failed to delete ticket');

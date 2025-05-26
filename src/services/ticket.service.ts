@@ -57,6 +57,9 @@ export interface TicketFilters {
   tags?: string[];
   fromDate?: Date;
   toDate?: Date;
+  clientId?: string;
+  search?: string;
+  businessId?: string;
 }
 
 @Injectable()
@@ -397,17 +400,22 @@ private async sendTicketUpdateNotification(
   }
 
   /**
-   * Get all tickets (for support team)
-   */
-  async getAllTickets(
+ * Get all tickets (for support team) - UPDATED to support client filtering
+ */
+async getAllTickets(
     filters: TicketFilters = {},
     page: number = 1,
     limit: number = 20
   ): Promise<TicketListResponse> {
     try {
       const query: any = { isDeleted: false };
-
-      // Apply same filters as business tickets
+  
+      // Apply client filter for support team
+      if (filters.clientId) {
+        query.clientId = filters.clientId;
+      }
+  
+      // Apply other filters
       if (filters.status) {
         query.status = filters.status;
       }
@@ -427,6 +435,10 @@ private async sendTicketUpdateNotification(
       if (filters.createdByEmail) {
         query.createdByEmail = filters.createdByEmail;
       }
+  
+      if (filters.businessId) {
+        query.businessId = filters.businessId;
+      }
       
       if (filters.tags && filters.tags.length > 0) {
         query.tags = { $in: filters.tags };
@@ -441,17 +453,28 @@ private async sendTicketUpdateNotification(
           query.createdAt.$lte = filters.toDate;
         }
       }
-
+  
+      // Search functionality
+      if (filters.search) {
+        query.$or = [
+          { title: { $regex: filters.search, $options: 'i' } },
+          { description: { $regex: filters.search, $options: 'i' } },
+          { createdByName: { $regex: filters.search, $options: 'i' } },
+          { createdByEmail: { $regex: filters.search, $options: 'i' } }
+        ];
+      }
+  
       const total = await this.ticketModel.countDocuments(query);
       const skip = (page - 1) * limit;
-
+  
       const tickets = await this.ticketModel
         .find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
+        .populate('businessId', 'name email') // Populate business details
         .exec();
-
+  
       return {
         tickets,
         total,
@@ -466,9 +489,9 @@ private async sendTicketUpdateNotification(
   }
 
   /**
-   * Get a specific ticket
-   */
-  async getTicket(ticketId: string, businessId?: string): Promise<Ticket> {
+ * Get a specific ticket - UPDATED to support client filtering
+ */
+async getTicket(ticketId: string, businessId?: string, clientId?: string): Promise<Ticket> {
     try {
       const query: any = { _id: ticketId, isDeleted: false };
       
@@ -476,13 +499,21 @@ private async sendTicketUpdateNotification(
       if (businessId) {
         query.businessId = businessId;
       }
-
-      const ticket = await this.ticketModel.findOne(query).exec();
+  
+      // If clientId is provided (support team access), restrict to that client
+      if (clientId) {
+        query.clientId = clientId;
+      }
+  
+      const ticket = await this.ticketModel
+        .findOne(query)
+        .populate('businessId', 'name email')
+        .exec();
       
       if (!ticket) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-
+  
       return ticket;
     } catch (error) {
       this.logger.error(`Error getting ticket: ${error.message}`, error.stack);
@@ -491,48 +522,54 @@ private async sendTicketUpdateNotification(
   }
 
   /**
-   * Update ticket details
-   */
-  async updateTicket(
+ * Update ticket details - UPDATED to support client verification
+ */
+async updateTicket(
     ticketId: string,
-    updateTicketDto: UpdateTicketDto
+    updateTicketDto: UpdateTicketDto,
+    clientId?: string
   ): Promise<Ticket> {
     try {
-      const originalTicket = await this.ticketModel.findOne(
-        { _id: ticketId, isDeleted: false }
-      ).exec();
-
+      const query: any = { _id: ticketId, isDeleted: false };
+      
+      // If clientId provided (support team), verify client ownership
+      if (clientId) {
+        query.clientId = clientId;
+      }
+  
+      const originalTicket = await this.ticketModel.findOne(query).exec();
+  
       if (!originalTicket) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-
+  
       const updateData: any = { ...updateTicketDto };
-
+  
       // If marking as resolved, set resolvedAt timestamp
       if (updateTicketDto.status === TicketStatus.RESOLVED) {
         updateData.resolvedAt = new Date();
       }
-
+  
       const ticket = await this.ticketModel.findOneAndUpdate(
-        { _id: ticketId, isDeleted: false },
+        query,
         { $set: updateData },
         { new: true }
       ).exec();
-
+  
       if (!ticket) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-
+  
       // Send notification if status changed
       if (updateTicketDto.status && updateTicketDto.status !== originalTicket.status) {
         await this.sendTicketUpdateNotification(ticket, 'status_changed');
       }
-
+  
       // Send notification if assignment changed
       if (updateTicketDto.assignedTo && updateTicketDto.assignedTo !== originalTicket.assignedTo) {
         await this.sendTicketUpdateNotification(ticket, 'assignment_changed');
       }
-
+  
       this.logger.log(`Ticket updated: ${ticketId} - Status: ${ticket.status}`);
       
       return ticket;
@@ -542,14 +579,15 @@ private async sendTicketUpdateNotification(
     }
   }
 
-  /**
-   * Add a message to a ticket (MODIFIED to send notifications when support replies)
-   */
-  async addMessage(
+ /**
+ * Add a message to a ticket - UPDATED to support client verification
+ */
+async addMessage(
     ticketId: string,
     addMessageDto: AddMessageDto,
     sender: 'business' | 'support',
-    businessId?: string
+    businessId?: string,
+    clientId?: string
   ): Promise<Ticket> {
     try {
       const query: any = { _id: ticketId, isDeleted: false };
@@ -557,10 +595,15 @@ private async sendTicketUpdateNotification(
       if (businessId) {
         query.businessId = businessId;
       }
-
+  
+      // If clientId provided (support team), verify client ownership
+      if (clientId) {
+        query.clientId = clientId;
+      }
+  
       let senderName = addMessageDto.senderName;
       let senderEmail = addMessageDto.senderEmail;
-
+  
       // If it's a business message, get business details
       if (sender === 'business' && businessId) {
         const business = await this.businessModel.findById(businessId);
@@ -579,7 +622,7 @@ private async sendTicketUpdateNotification(
         timestamp: new Date(),
         metadata: addMessageDto.metadata || {}
       } as TicketMessage;
-
+  
       const ticket = await this.ticketModel.findOneAndUpdate(
         query,
         { 
@@ -593,11 +636,11 @@ private async sendTicketUpdateNotification(
         },
         { new: true }
       ).exec();
-
+  
       if (!ticket) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-
+  
       // Send notification when SUPPORT adds a message (reply to business)
       if (sender === 'support') {
         await this.sendTicketUpdateNotification(ticket, 'message_added', {
@@ -605,7 +648,7 @@ private async sendTicketUpdateNotification(
           senderName
         });
       }
-
+  
       this.logger.log(`Message added to ticket: ${ticketId} by ${sender}`);
       
       return ticket;
@@ -614,14 +657,21 @@ private async sendTicketUpdateNotification(
       throw error;
     }
   }
-
+  
   /**
-   * Delete/archive a ticket (soft delete)
-   */
-  async deleteTicket(ticketId: string): Promise<{ success: boolean }> {
+ * Delete/archive a ticket - UPDATED to support client verification
+ */
+async deleteTicket(ticketId: string, clientId?: string): Promise<{ success: boolean }> {
     try {
+      const query: any = { _id: ticketId };
+      
+      // If clientId provided (support team), verify client ownership
+      if (clientId) {
+        query.clientId = clientId;
+      }
+  
       const result = await this.ticketModel.updateOne(
-        { _id: ticketId },
+        query,
         { 
           $set: { 
             isDeleted: true, 
@@ -629,11 +679,11 @@ private async sendTicketUpdateNotification(
           } 
         }
       ).exec();
-
+  
       if (result.modifiedCount === 0) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-
+  
       this.logger.log(`Ticket deleted: ${ticketId}`);
       
       return { success: true };
@@ -644,9 +694,9 @@ private async sendTicketUpdateNotification(
   }
 
   /**
-   * Get ticket statistics
-   */
-  async getTicketStats(businessId?: string): Promise<{
+ * Get ticket statistics - UPDATED to support client filtering
+ */
+async getTicketStats(businessId?: string, clientId?: string): Promise<{
     total: number;
     open: number;
     inProgress: number;
@@ -661,7 +711,11 @@ private async sendTicketUpdateNotification(
       if (businessId) {
         query.businessId = businessId;
       }
-
+  
+      if (clientId) {
+        query.clientId = clientId;
+      }
+  
       const [
         total,
         open,
@@ -685,17 +739,17 @@ private async sendTicketUpdateNotification(
           { $group: { _id: '$category', count: { $sum: 1 } } }
         ])
       ]);
-
+  
       const byPriority = priorityStats.reduce((acc, stat) => {
         acc[stat._id] = stat.count;
         return acc;
       }, {} as Record<string, number>);
-
+  
       const byCategory = categoryStats.reduce((acc, stat) => {
         acc[stat._id] = stat.count;
         return acc;
       }, {} as Record<string, number>);
-
+  
       return {
         total,
         open,
