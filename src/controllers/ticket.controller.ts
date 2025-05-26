@@ -132,6 +132,33 @@ import {
       }
     }
   
+    // 🔥 MOVED THIS BEFORE THE /:ticketId ROUTE
+    @Get('business/:businessId/stats')
+    @ApiOperation({ summary: 'Get ticket statistics for a business' })
+    @ApiHeader({ name: 'business-x-api-key', required: true, description: 'Business API key for authentication' })
+    @ApiParam({ name: 'businessId', description: 'Business ID' })
+    @ApiResponse({ status: 200, description: 'Returns ticket statistics' })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    async getBusinessTicketStats(
+      @Param('businessId') businessId: string,
+      @Headers('business-x-api-key') apiKey: string
+    ): Promise<any> {
+      try {
+        // Verify API key is valid for this business
+        await this.businessChatbotService.validateBusinessApiKey(businessId, apiKey);
+        
+        return await this.ticketService.getTicketStats(businessId);
+      } catch (error) {
+        this.logger.error(`Error getting ticket stats: ${error.message}`, error.stack);
+        if (error instanceof UnauthorizedException) {
+          throw error;
+        } else {
+          throw new InternalServerErrorException('Failed to get ticket stats');
+        }
+      }
+    }
+  
+    // NOW this comes AFTER the /stats route
     @Get('business/:businessId/:ticketId')
     @ApiOperation({ summary: 'Get a specific ticket' })
     @ApiHeader({ name: 'business-x-api-key', required: true, description: 'Business API key for authentication' })
@@ -207,31 +234,6 @@ import {
       }
     }
   
-    @Get('business/:businessId/stats')
-    @ApiOperation({ summary: 'Get ticket statistics for a business' })
-    @ApiHeader({ name: 'business-x-api-key', required: true, description: 'Business API key for authentication' })
-    @ApiParam({ name: 'businessId', description: 'Business ID' })
-    @ApiResponse({ status: 200, description: 'Returns ticket statistics' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    async getBusinessTicketStats(
-      @Param('businessId') businessId: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<any> {
-      try {
-        // Verify API key is valid for this business
-        await this.businessChatbotService.validateBusinessApiKey(businessId, apiKey);
-        
-        return await this.ticketService.getTicketStats(businessId);
-      } catch (error) {
-        this.logger.error(`Error getting ticket stats: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException) {
-          throw error;
-        } else {
-          throw new InternalServerErrorException('Failed to get ticket stats');
-        }
-      }
-    }
-  
     // ========== SUPPORT TEAM ENDPOINTS (No business API key required) ==========
   
     @Get('support/all')
@@ -266,6 +268,19 @@ import {
       } catch (error) {
         this.logger.error(`Error getting all tickets: ${error.message}`, error.stack);
         throw new InternalServerErrorException('Failed to get tickets');
+      }
+    }
+  
+    // Same pattern here - /stats comes before /:ticketId
+    @Get('support/stats')
+    @ApiOperation({ summary: 'Get overall ticket statistics (Support team)' })
+    @ApiResponse({ status: 200, description: 'Returns ticket statistics' })
+    async getAllTicketStats(): Promise<any> {
+      try {
+        return await this.ticketService.getTicketStats();
+      } catch (error) {
+        this.logger.error(`Error getting ticket stats: ${error.message}`, error.stack);
+        throw new InternalServerErrorException('Failed to get ticket stats');
       }
     }
   
@@ -366,18 +381,6 @@ import {
       } catch (error) {
         this.logger.error(`Error deleting ticket: ${error.message}`, error.stack);
         throw new InternalServerErrorException('Failed to delete ticket');
-      }
-    }
-  
-    @Get('support/stats')
-    @ApiOperation({ summary: 'Get overall ticket statistics (Support team)' })
-    @ApiResponse({ status: 200, description: 'Returns ticket statistics' })
-    async getAllTicketStats(): Promise<any> {
-      try {
-        return await this.ticketService.getTicketStats();
-      } catch (error) {
-        this.logger.error(`Error getting ticket stats: ${error.message}`, error.stack);
-        throw new InternalServerErrorException('Failed to get ticket stats');
       }
     }
   }
