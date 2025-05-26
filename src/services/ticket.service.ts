@@ -399,8 +399,8 @@ private async sendTicketUpdateNotification(
     }
   }
 
-  /**
- * Get all tickets (for support team) - UPDATED to support client filtering
+/**
+ * Get all tickets (for support team) - FIXED business population
  */
 async getAllTickets(
     filters: TicketFilters = {},
@@ -467,35 +467,82 @@ async getAllTickets(
       const total = await this.ticketModel.countDocuments(query);
       const skip = (page - 1) * limit;
   
+      // Get tickets without populate since businessId is not a ref
       const tickets = await this.ticketModel
         .find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('businessId', 'name email') // Populate business details
         .exec();
-  
-        // for each ticket add business object with name and email
-        tickets.forEach(ticket => {
-            // find business by id
-            const business = this.businessModel.findById(ticket.businessId);
-            // wait for business to be found
-            business.then(business => {
-                // @ts-ignore
-                ticket.business = {
-                    name: business.name,
-                    email: business.email
-                };
-            });
-        });
+
+      // Get unique business IDs
+      const businessIds = [...new Set(tickets.map(ticket => ticket.businessId.toString()))];
+      
+      // Fetch all businesses in one query
+      const businesses = await this.businessModel
+        .find({ _id: { $in: businessIds } })
+        .select('name email')
+        .exec();
+
+      // Create a business lookup map
+      const businessMap = businesses.reduce((map, business) => {
+        map[business._id.toString()] = {
+          name: business.name,
+          email: business.email
+        };
+        return map;
+      }, {});
+
+      // Add business data to tickets
+      const ticketsWithBusiness = tickets.map(ticket => {
+        const ticketObj = ticket.toObject();
+        return {
+          ...ticketObj,
+          business: businessMap[ticket.businessId.toString()] || null
+        };
+      });
 
       return {
-        tickets,
+        tickets: ticketsWithBusiness as any[], // Type assertion needed for business property
         total,
         page,
         limit,
         success: true
       };
+
+      // METHOD 3: Using aggregation pipeline (most efficient)
+      // const result = await this.ticketModel.aggregate([
+      //   { $match: query },
+      //   { $sort: { createdAt: -1 } },
+      //   { $skip: skip },
+      //   { $limit: limit },
+      //   {
+      //     $lookup: {
+      //       from: 'businesses', // Make sure this matches your collection name
+      //       localField: 'businessId',
+      //       foreignField: '_id',
+      //       as: 'business',
+      //       pipeline: [
+      //         { $project: { name: 1, email: 1 } }
+      //       ]
+      //     }
+      //   },
+      //   {
+      //     $unwind: {
+      //       path: '$business',
+      //       preserveNullAndEmptyArrays: true
+      //     }
+      //   }
+      // ]);
+
+      // return {
+      //   tickets: result,
+      //   total,
+      //   page,
+      //   limit,
+      //   success: true
+      // };
+
     } catch (error) {
       this.logger.error(`Error getting all tickets: ${error.message}`, error.stack);
       throw error;
