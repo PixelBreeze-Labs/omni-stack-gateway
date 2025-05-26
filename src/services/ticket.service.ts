@@ -71,10 +71,10 @@ export class TicketService {
     private readonly emailService?: EmailService
   ) {}
 
-   /**
-   * Send notification to business when support updates ticket
-   */
-   private async sendTicketUpdateNotification(
+  /**
+ * Send notification to business when support updates ticket
+ */
+private async sendTicketUpdateNotification(
     ticket: Ticket,
     updateType: 'status_changed' | 'message_added' | 'assignment_changed',
     additionalData?: any
@@ -86,22 +86,20 @@ export class TicketService {
         this.logger.warn(`Business not found for ticket notification: ${ticket.businessId}`);
         return;
       }
-
-      // Get business users (admin and other users)
-      const businessUsers = await this.userModel.find({
-        _id: { $in: [business.adminUserId, ...(business.userIds || [])] }
-      });
-
-      if (!businessUsers || businessUsers.length === 0) {
-        this.logger.warn(`No users found for business: ${ticket.businessId}`);
+  
+      // Get business admin user only
+      const adminUser = await this.userModel.findById(business.adminUserId);
+  
+      if (!adminUser) {
+        this.logger.warn(`Admin user not found for business: ${ticket.businessId}`);
         return;
       }
-
+  
       // Prepare notification content based on update type
       let title: string;
       let body: string;
       let priority: NotificationPriority = NotificationPriority.MEDIUM;
-
+  
       switch (updateType) {
         case 'status_changed':
           title = `Ticket Status Updated`;
@@ -125,54 +123,57 @@ export class TicketService {
           title = `Ticket Updated`;
           body = `Your support ticket "${ticket.title}" has been updated.`;
       }
-
+  
       // Create action data for deep linking
       const actionData = {
         type: 'support_ticket',
         entityId: ticket._id.toString(),
         entityType: 'ticket',
-        url: `/support/tickets/${ticket._id}` // Adjust this URL to match your frontend routes
+        url: `https://app.staffluent.co/help-center`
       };
-
-      // Determine delivery channels (you can make this configurable per business)
-      const channels: DeliveryChannel[] = [DeliveryChannel.APP];
-      
-      // Add email if business has email notifications enabled (you can add this setting to Business schema)
-      if (business.metadata?.get('emailNotificationsEnabled') !== false) {
-        channels.push(DeliveryChannel.EMAIL);
-      }
-
-      // Send notifications to all business users
-      for (const user of businessUsers) {
-        try {
-          // Send in-app notification
-          const notification = await this.notificationService.createNotification({
-            businessId: ticket.businessId,
-            userId: user._id.toString(),
-            title,
-            body,
-            type: NotificationType.TICKET,
-            priority,
-            channels: [DeliveryChannel.APP],
-            reference: {
-              type: 'support_ticket',
-              id: ticket._id.toString()
-            },
-            actionData
-          });
-
-          // Send email notification if enabled
-          if (channels.includes(DeliveryChannel.EMAIL) && user.email) {
-            await this.sendTicketUpdateEmail(user, business, ticket, updateType, additionalData);
-          }
-
-        } catch (notificationError) {
-          this.logger.error(`Failed to send ticket notification to user ${user._id}: ${notificationError.message}`);
+  
+      // Send notification to admin user based on their preferences
+      try {
+        // Check admin user's individual notification preferences
+        const emailEnabled = adminUser.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
+        // Determine channels for admin user
+        const userChannels: DeliveryChannel[] = [DeliveryChannel.APP]; // Always send in-app notification
+        
+        if (emailEnabled) {
+          userChannels.push(DeliveryChannel.EMAIL);
         }
+  
+        // Send in-app notification (always sent)
+        const notification = await this.notificationService.createNotification({
+          businessId: ticket.businessId,
+          userId: adminUser._id.toString(),
+          title,
+          body,
+          type: NotificationType.TICKET,
+          priority,
+          channels: [DeliveryChannel.APP],
+          reference: {
+            type: 'support_ticket',
+            id: ticket._id.toString()
+          },
+          actionData
+        });
+  
+        // Send email notification if admin user has email notifications enabled
+        if (emailEnabled && adminUser.email) {
+          await this.sendTicketUpdateEmail(adminUser, business, ticket, updateType, additionalData);
+        }
+  
+    
+  
+        this.logger.log(`Sent ticket notification to admin user ${adminUser._id} via channels: ${userChannels.join(', ')}`);
+  
+      } catch (notificationError) {
+        this.logger.error(`Failed to send ticket notification to admin user ${adminUser._id}: ${notificationError.message}`);
       }
-
-      this.logger.log(`Sent ticket ${updateType} notifications for ticket ${ticket._id} to ${businessUsers.length} users`);
-
+  
+      this.logger.log(`Sent ticket ${updateType} notification for ticket ${ticket._id} to admin user`);
+  
     } catch (error) {
       this.logger.error(`Error sending ticket update notification: ${error.message}`, error.stack);
     }

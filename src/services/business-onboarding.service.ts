@@ -13,6 +13,8 @@ import {
   UpdateBusinessOnboardingDto,
   OnboardingState
 } from '../dtos/business-onboarding.dto';
+import { User } from 'src/schemas/user.schema';
+import { NotificationPreferencesResponse, UpdateNotificationPreferencesDto } from 'src/dtos/user-notification-preferences.dto';
 
 @Injectable()
 export class BusinessOnboardingService {
@@ -20,7 +22,9 @@ export class BusinessOnboardingService {
 
   constructor(
     @InjectModel(BusinessOnboarding.name) 
-    private businessOnboardingModel: Model<BusinessOnboarding>
+    private businessOnboardingModel: Model<BusinessOnboarding>,
+    @InjectModel(User.name) 
+    private userModel: Model<User>
   ) {}
 
   async initialize(createDto: CreateBusinessOnboardingDto): Promise<BusinessOnboarding> {
@@ -389,4 +393,149 @@ export class BusinessOnboardingService {
       throw error;
     }
   }
+/**
+ * Update admin user notification preferences based on business ID
+ */
+async updateNotificationPreferences(
+  businessId: string,
+  updateDto: UpdateNotificationPreferencesDto
+): Promise<NotificationPreferencesResponse> {
+  try {
+    // Get business to find admin user ID
+    const Business = this.userModel.db.model('Business');
+    const business = await Business.findById(businessId).exec();
+    
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find the admin user
+    const user = await this.userModel.findById(business.adminUserId).exec();
+    if (!user) {
+      throw new NotFoundException('Admin user not found');
+    }
+
+    // Get current metadata or initialize empty map
+    const currentMetadata = user.metadata || new Map();
+
+    // Update only the specified notification preferences
+    if (updateDto.emailNotificationsEnabled !== undefined) {
+      currentMetadata.set('emailNotificationsEnabled', updateDto.emailNotificationsEnabled.toString());
+    }
+
+    if (updateDto.smsNotificationsEnabled !== undefined) {
+      currentMetadata.set('smsNotificationsEnabled', updateDto.smsNotificationsEnabled.toString());
+    }
+
+    // Add timestamp for when preferences were last updated
+    currentMetadata.set('notificationPreferencesUpdatedAt', new Date().toISOString());
+
+    // Update the user with the modified metadata
+    const updatedUser = await this.userModel.findByIdAndUpdate(
+      business.adminUserId,
+      { 
+        metadata: currentMetadata,
+        updatedAt: new Date() 
+      },
+      { new: true }
+    ).exec();
+
+    if (!updatedUser) {
+      throw new NotFoundException('Failed to update admin user preferences');
+    }
+
+    // Return the current preferences
+    const emailEnabled = updatedUser.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
+    const smsEnabled = updatedUser.metadata?.get('smsNotificationsEnabled') === 'true'; // Default false
+
+    this.logger.log(`Updated notification preferences for admin user ${business.adminUserId} in business ${businessId}`);
+
+    return {
+      emailNotificationsEnabled: emailEnabled,
+      smsNotificationsEnabled: smsEnabled,
+    };
+
+  } catch (error) {
+    this.logger.error(`Error updating notification preferences: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Get admin user notification preferences based on business ID
+ */
+async getNotificationPreferences(
+  businessId: string
+): Promise<NotificationPreferencesResponse> {
+  try {
+    // Get business to find admin user ID
+    const Business = this.userModel.db.model('Business');
+    const business = await Business.findById(businessId).exec();
+    
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find the admin user
+    const user = await this.userModel.findById(business.adminUserId).exec();
+    if (!user) {
+      throw new NotFoundException('Admin user not found');
+    }
+
+    // Get preferences from metadata, defaulting to true for email and false for SMS
+    const emailEnabled = user.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
+    const smsEnabled = user.metadata?.get('smsNotificationsEnabled') === 'true'; // Default false
+   
+
+    return {
+      emailNotificationsEnabled: emailEnabled,
+      smsNotificationsEnabled: smsEnabled,
+    };
+
+  } catch (error) {
+    this.logger.error(`Error getting notification preferences: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Helper method to check if admin user has email notifications enabled
+ */
+async hasEmailNotificationsEnabled(businessId: string): Promise<boolean> {
+  try {
+    const Business = this.userModel.db.model('Business');
+    const business = await Business.findById(businessId).exec();
+    
+    if (!business) {
+      return true; // Default to enabled if business not found
+    }
+
+    const user = await this.userModel.findById(business.adminUserId).exec();
+    return user?.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
+  } catch (error) {
+    this.logger.warn(`Error checking email notification status for business ${businessId}: ${error.message}`);
+    return true; // Default to enabled if error
+  }
+}
+
+/**
+ * Helper method to check if admin user has SMS notifications enabled
+ */
+async hasSmsNotificationsEnabled(businessId: string): Promise<boolean> {
+  try {
+    const Business = this.userModel.db.model('Business');
+    const business = await Business.findById(businessId).exec();
+    
+    if (!business) {
+      return false; // Default to disabled if business not found
+    }
+
+    const user = await this.userModel.findById(business.adminUserId).exec();
+    return user?.metadata?.get('smsNotificationsEnabled') === 'true'; // Default false
+  } catch (error) {
+    this.logger.warn(`Error checking SMS notification status for business ${businessId}: ${error.message}`);
+    return false; // Default to disabled if error
+  }
+}
+
 }

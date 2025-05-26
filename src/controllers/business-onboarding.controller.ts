@@ -22,6 +22,7 @@ import {
     BusinessOnboardingResponse 
   } from '../dtos/business-onboarding.dto';
   import { BusinessOnboarding, OnboardingType } from '../schemas/business-onboarding.schema';
+import { NotificationPreferencesResponse, UpdateNotificationPreferencesDto } from 'src/dtos/user-notification-preferences.dto';
   
   @ApiTags('Business Onboarding')
   @Controller('business/onboarding')
@@ -181,5 +182,52 @@ import {
       }
       
       return business;
+    }
+
+    @Put('notification-preferences')
+    @ApiOperation({ summary: 'Update admin user notification preferences' })
+    @ApiBody({ type: UpdateNotificationPreferencesDto })
+    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+    @ApiResponse({ status: 200, description: 'Notification preferences updated successfully', type: NotificationPreferencesResponse })
+    @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    @ApiResponse({ status: 404, description: 'Business or admin user not found' })
+    async updateNotificationPreferences(
+      @Query('businessId') businessId: string,
+      @Body() updateDto: UpdateNotificationPreferencesDto,
+      @Headers('business-x-api-key') apiKey: string
+    ): Promise<NotificationPreferencesResponse> {
+      try {
+        await this.validateBusinessApiKey(businessId, apiKey);
+        return await this.businessOnboardingService.updateNotificationPreferences(businessId, updateDto);
+      } catch (error) {
+        this.logger.error(`Error updating notification preferences: ${error.message}`, error.stack);
+        if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+          throw error;
+        }
+        throw new InternalServerErrorException('Failed to update notification preferences');
+      }
+    }
+    
+    @Get('notification-preferences')
+    @ApiOperation({ summary: 'Get admin user notification preferences' })
+    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+    @ApiResponse({ status: 200, description: 'Notification preferences retrieved successfully', type: NotificationPreferencesResponse })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    @ApiResponse({ status: 404, description: 'Business or admin user not found' })
+    async getNotificationPreferences(
+      @Query('businessId') businessId: string,
+      @Headers('business-x-api-key') apiKey: string
+    ): Promise<NotificationPreferencesResponse> {
+      try {
+        await this.validateBusinessApiKey(businessId, apiKey);
+        return await this.businessOnboardingService.getNotificationPreferences(businessId);
+      } catch (error) {
+        this.logger.error(`Error getting notification preferences: ${error.message}`, error.stack);
+        if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+          throw error;
+        }
+        throw new InternalServerErrorException('Failed to get notification preferences');
+      }
     }
   }
