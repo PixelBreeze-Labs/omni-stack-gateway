@@ -38,10 +38,15 @@ export class StaffluentIntegrationController {
   @Post('employees/sync/:businessId')
   @ApiOperation({ summary: 'Sync employees from VenueBoost for a business' })
   async syncEmployees(@Param('businessId') businessId: string) {
-    const count = await this.staffluentEmployeeService.syncEmployeesFromVenueBoost(businessId);
+    const syncResult = await this.staffluentEmployeeService.syncEmployeesFromVenueBoost(businessId);
     return {
       success: true,
-      message: `Successfully synced ${count} employees for business ${businessId}`
+      message: `Successfully synced ${syncResult.totalSynced} employees for business ${businessId}. External ID updates: ${syncResult.summary.externalIdUpdates}, failures: ${syncResult.summary.externalIdFailures}`,
+      syncedCount: syncResult.totalSynced,
+      externalIdUpdates: syncResult.summary.externalIdUpdates,
+      externalIdFailures: syncResult.summary.externalIdFailures,
+      logs: syncResult.logs,
+      summary: syncResult.summary
     };
   }
 
