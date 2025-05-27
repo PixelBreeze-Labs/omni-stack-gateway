@@ -242,7 +242,7 @@ export class StaffluentEmployeeService {
               currentTenureMonths: experienceMetrics.currentTenureMonths,
               totalWorkExperienceMonths: experienceMetrics.totalWorkExperienceMonths,
               industryExperienceMonths: experienceMetrics.industryExperienceMonths,
-              workExperience: this.createWorkExperienceFromPhp(phpEmployee),
+              workExperience: this.createWorkExperienceFromPhp(phpEmployee,business),
               certifications: [],
               specializations: [],
               currentWorkload: 0,
@@ -389,7 +389,7 @@ export class StaffluentEmployeeService {
   /**
    * Create work experience entry from PHP employee data
    */
-  private createWorkExperienceFromPhp(phpEmployee: any): WorkExperience[] {
+  private createWorkExperienceFromPhp(phpEmployee: any, business: Business): WorkExperience[] {
     if (!phpEmployee.hire_date) return [];
     
     const hireDate = new Date(phpEmployee.hire_date);
@@ -397,15 +397,15 @@ export class StaffluentEmployeeService {
     const durationMonths = Math.floor((now.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
     
     return [{
-      companyName: 'Current Company', // You might want to get this from business data
+      companyName: business.name,
       position: phpEmployee.role?.name || 'Staff',
-      industry: 'hospitality', // Default, can be enhanced with business industry
+      industry: business.industry,
       startDate: hireDate,
       durationMonths,
       type: ExperienceType.FULL_TIME,
       responsibilities: [],
       skillsGained: [],
-      verified: false
+      verified: true
     }];
   }
   
