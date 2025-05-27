@@ -77,140 +77,106 @@ export class StaffluentEmployeeService {
     }
   }
 
-  /**
+ /**
    * Sync employees from Staffluent to NestJS for a specific business
    */
-  async syncEmployeesFromVenueBoost(businessId: string): Promise<{
-    totalSynced: number;
-    logs: string[];
-    summary: any;
-  }> {
-    const startTime = new Date();
-    const logs: string[] = [];
-    
-    logs.push(`[SYNC START] Syncing employees from VenueBoost for business: ${businessId}`);
-    this.logger.log(`[SYNC START] Syncing employees from VenueBoost for business: ${businessId}`);
-    
-    // Create a record for this job execution
-    const jobRecord = await this.cronJobHistoryModel.create({
-      jobName: 'syncEmployeesFromVenueBoost',
-      startTime,
-      status: 'started',
-      businessId
-    });
-    
-    try {
-      // Find the business in our system
-      const business = await this.businessModel.findById(businessId);
-      if (!business || !business.externalIds?.venueBoostId) {
-        throw new Error(`Business ${businessId} not found or not connected to VenueBoost`);
-      }
+ async syncEmployeesFromVenueBoost(businessId: string): Promise<{
+  totalSynced: number;
+  logs: string[];
+  summary: any;
+}> {
+  const startTime = new Date();
+  const logs: string[] = [];
+  
+  logs.push(`[SYNC START] Syncing employees from VenueBoost for business: ${businessId}`);
+  this.logger.log(`[SYNC START] Syncing employees from VenueBoost for business: ${businessId}`);
+  
+  // Create a record for this job execution
+  const jobRecord = await this.cronJobHistoryModel.create({
+    jobName: 'syncEmployeesFromVenueBoost',
+    startTime,
+    status: 'started',
+    businessId
+  });
+  
+  try {
+    // Find the business in our system
+    const business = await this.businessModel.findById(businessId);
+    if (!business || !business.externalIds?.venueBoostId) {
+      throw new Error(`Business ${businessId} not found or not connected to VenueBoost`);
+    }
 
-      logs.push(`Found business: ${business.name}, VenueBoost ID: ${business.externalIds.venueBoostId}`);
+    logs.push(`Found business: ${business.name}, VenueBoost ID: ${business.externalIds.venueBoostId}`);
 
-      // Get employees from VenueBoost API
-      const venueBoostEmployees = await this.venueBoostService.getEmployees(business.externalIds.venueBoostId);
-      logs.push(`Retrieved ${venueBoostEmployees.length} employees from VenueBoost API`);
-      
-      const syncSummary = {
-        added: 0,
-        updated: 0,
-        skipped: 0,
-        failed: 0,
-        externalIdUpdates: 0,
-        externalIdFailures: 0
-      };
-      
-      for (const phpEmployee of venueBoostEmployees) {
-        try {
-          logs.push(`\n--- Processing employee: ${phpEmployee.name} (ID: ${phpEmployee.id}) ---`);
-          
-          // Check if employee already exists in our system
-          let staffProfile = await this.staffProfileModel.findOne({
-            'externalIds.venueBoostId': String(phpEmployee.id)
-          });
-          
-          logs.push(`Staff profile exists: ${!!staffProfile}`);
-          logs.push(`PHP Employee external_ids: ${phpEmployee.external_ids || 'null'}`);
-          
-          // Map skills from PHP to MongoDB format (with fallback since skills may not exist)
-          const skills = this.mapSkillsFromPhp(phpEmployee.skills || [], phpEmployee);
-          
-          // Find or create a user for this employee
-          let user = await this.userModel.findOne({ email: phpEmployee.email });
-          if (!user && phpEmployee.user_id) {
-            user = await this.userModel.create({
-              email: phpEmployee.email,
-              name: phpEmployee.name,
-              role: this.mapPhpRoleToMongoRole(phpEmployee.role?.name || 'staff'),
-              external_ids: {
-                venueBoostId: String(phpEmployee.user_id)
-              }
-            });
-            logs.push(`Created new user for employee: ${user._id}`);
-          } else if (user) {
-            logs.push(`Found existing user: ${user._id}`);
-          }
-          
-          if (staffProfile) {
-            // Update existing staff profile
-            await staffProfile.updateOne({
-              name: phpEmployee.name,
-              email: phpEmployee.email,
-              role: phpEmployee.role?.name || 'staff',
-              department: phpEmployee.department?.name,
-              skills,
-              userId: user?._id,
-              businessId,
-              metadata: {
-                ...staffProfile.metadata,
-                lastSyncedAt: new Date(),
-                status: phpEmployee.status,
-                custom_role: phpEmployee.custom_role
-              }
-            });
-            syncSummary.updated++;
-            logs.push(`Updated existing staff profile: ${staffProfile._id}`);
-
-            // Check if PHP employee needs external ID update
-            const needsUpdate = !phpEmployee.external_ids || !JSON.parse(phpEmployee.external_ids || '{}').omnistackId;
-            logs.push(`PHP employee needs external ID update: ${needsUpdate}`);
-            
-            if (needsUpdate) {
-              logs.push(`Calling updateEmployeeExternalId(${phpEmployee.id}, ${staffProfile._id.toString()})`);
-              const updateSuccess = await this.updateEmployeeExternalId(phpEmployee.id, staffProfile._id.toString());
-              logs.push(`External ID update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
-              
-              if (updateSuccess) {
-                syncSummary.externalIdUpdates++;
-              } else {
-                syncSummary.externalIdFailures++;
-              }
+    // Get employees from VenueBoost API
+    const venueBoostEmployees = await this.venueBoostService.getEmployees(business.externalIds.venueBoostId);
+    logs.push(`Retrieved ${venueBoostEmployees.length} employees from VenueBoost API`);
+    
+    const syncSummary = {
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      externalIdUpdates: 0,
+      externalIdFailures: 0
+    };
+    
+    for (const phpEmployee of venueBoostEmployees) {
+      try {
+        logs.push(`\n--- Processing employee: ${phpEmployee.name} (ID: ${phpEmployee.id}) ---`);
+        
+        // Check if employee already exists in our system
+        let staffProfile = await this.staffProfileModel.findOne({
+          'externalIds.venueBoostId': String(phpEmployee.id)
+        });
+        
+        logs.push(`Staff profile exists: ${!!staffProfile}`);
+        logs.push(`PHP Employee external_ids: ${phpEmployee.external_ids || 'null'}`);
+        
+        // Map skills from PHP to MongoDB format (with fallback since skills may not exist)
+        const skills = this.mapSkillsFromPhp(phpEmployee.skills || [], phpEmployee);
+        
+        // Find or create a user for this employee
+        let user = await this.userModel.findOne({ email: phpEmployee.email });
+        if (!user && phpEmployee.user_id) {
+          user = await this.userModel.create({
+            email: phpEmployee.email,
+            name: phpEmployee.name,
+            role: this.mapPhpRoleToMongoRole(phpEmployee.role?.name || 'staff'),
+            external_ids: {
+              venueBoostId: String(phpEmployee.user_id)
             }
-          } else {
-            // Create new staff profile
-            staffProfile = await this.staffProfileModel.create({
-              name: phpEmployee.name,
-              email: phpEmployee.email,
-              role: phpEmployee.role?.name || 'staff',
-              department: phpEmployee.department?.name,
-              skills,
-              currentWorkload: 0, // Start with no workload
-              userId: user?._id,
-              businessId,
-              externalIds: {
-                venueBoostId: String(phpEmployee.id)
-              },
-              metadata: {
-                status: phpEmployee.status,
-                custom_role: phpEmployee.custom_role,
-                lastSyncedAt: new Date()
-              }
-            });
-            syncSummary.added++;
-            logs.push(`Created new staff profile: ${staffProfile._id}`);
+          });
+          logs.push(`Created new user for employee: ${user._id}`);
+        } else if (user) {
+          logs.push(`Found existing user: ${user._id}`);
+        }
+        
+        if (staffProfile) {
+          // Update existing staff profile
+          await staffProfile.updateOne({
+            name: phpEmployee.name,
+            email: phpEmployee.email,
+            role: phpEmployee.role?.name || 'staff',
+            department: phpEmployee.department?.name,
+            skills,
+            userId: user?._id,
+            businessId,
+            metadata: {
+              ...staffProfile.metadata,
+              lastSyncedAt: new Date(),
+              status: phpEmployee.status,
+              custom_role: phpEmployee.custom_role
+            }
+          });
+          syncSummary.updated++;
+          logs.push(`Updated existing staff profile: ${staffProfile._id}`);
 
-            // Update PHP employee with the new StaffProfile ID
+          // Check if PHP employee needs external ID update
+          const needsUpdate = !phpEmployee.external_ids || !JSON.parse(phpEmployee.external_ids || '{}').omnistackId;
+          logs.push(`PHP employee needs external ID update: ${needsUpdate}`);
+          
+          if (needsUpdate) {
             logs.push(`Calling updateEmployeeExternalId(${phpEmployee.id}, ${staffProfile._id.toString()})`);
             const updateSuccess = await this.updateEmployeeExternalId(phpEmployee.id, staffProfile._id.toString());
             logs.push(`External ID update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
@@ -221,70 +187,104 @@ export class StaffluentEmployeeService {
               syncSummary.externalIdFailures++;
             }
           }
-        } catch (employeeError) {
-          const errorMsg = `Failed to sync employee ${phpEmployee.id}: ${employeeError.message}`;
-          logs.push(`ERROR: ${errorMsg}`);
-          this.logger.error(errorMsg);
-          syncSummary.failed++;
+        } else {
+          // Create new staff profile
+          staffProfile = await this.staffProfileModel.create({
+            name: phpEmployee.name,
+            email: phpEmployee.email,
+            role: phpEmployee.role?.name || 'staff',
+            department: phpEmployee.department?.name,
+            skills,
+            currentWorkload: 0, // Start with no workload
+            userId: user?._id,
+            businessId,
+            externalIds: {
+              venueBoostId: String(phpEmployee.id)
+            },
+            metadata: {
+              status: phpEmployee.status,
+              custom_role: phpEmployee.custom_role,
+              lastSyncedAt: new Date()
+            }
+          });
+          syncSummary.added++;
+          logs.push(`Created new staff profile: ${staffProfile._id}`);
+
+          // Update PHP employee with the new StaffProfile ID
+          logs.push(`Calling updateEmployeeExternalId(${phpEmployee.id}, ${staffProfile._id.toString()})`);
+          const updateSuccess = await this.updateEmployeeExternalId(phpEmployee.id, staffProfile._id.toString());
+          logs.push(`External ID update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
+          
+          if (updateSuccess) {
+            syncSummary.externalIdUpdates++;
+          } else {
+            syncSummary.externalIdFailures++;
+          }
         }
+      } catch (employeeError) {
+        const errorMsg = `Failed to sync employee ${phpEmployee.id}: ${employeeError.message}`;
+        logs.push(`ERROR: ${errorMsg}`);
+        this.logger.error(errorMsg);
+        syncSummary.failed++;
       }
-      
-      const totalSynced = syncSummary.added + syncSummary.updated;
-      
-      // Update the job record on completion
-      const endTime = new Date();
-      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
-      
-      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
-        endTime,
-        duration,
-        status: 'completed',
-        syncSummary,
-        targetCount: venueBoostEmployees.length,
-        processedCount: totalSynced,
-        details: { 
-          businessId,
-          employeeCount: venueBoostEmployees.length,
-          added: syncSummary.added,
-          updated: syncSummary.updated,
-          failed: syncSummary.failed,
-          externalIdUpdates: syncSummary.externalIdUpdates,
-          externalIdFailures: syncSummary.externalIdFailures
-        }
-      });
-      
-      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} employees for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`;
-      logs.push(completionMsg);
-      this.logger.log(completionMsg);
-      
-      return {
-        totalSynced,
-        logs,
-        summary: syncSummary
-      };
-    } catch (error) {
-      // Update the job record on failure
-      const endTime = new Date();
-      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
-      
-      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
-        endTime,
-        duration,
-        status: 'failed',
-        error: error.message
-      });
-      
-      const errorMsg = `[SYNC FAILED] Error syncing employees from VenueBoost: ${error.message}`;
-      logs.push(`ERROR: ${errorMsg}`);
-      this.logger.error(errorMsg, error.stack);
-      
-      throw {
-        message: error.message,
-        logs,
-        stack: error.stack
-      };
     }
+    
+    const totalSynced = syncSummary.added + syncSummary.updated;
+    
+    // Update the job record on completion
+    const endTime = new Date();
+    const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+    
+    await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+      endTime,
+      duration,
+      status: 'completed',
+      syncSummary,
+      targetCount: venueBoostEmployees.length,
+      processedCount: totalSynced,
+      details: { 
+        businessId,
+        employeeCount: venueBoostEmployees.length,
+        added: syncSummary.added,
+        updated: syncSummary.updated,
+        failed: syncSummary.failed,
+        externalIdUpdates: syncSummary.externalIdUpdates,
+        externalIdFailures: syncSummary.externalIdFailures
+      }
+    });
+    
+    const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} employees for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`;
+    logs.push(completionMsg);
+    this.logger.log(completionMsg);
+    
+    return {
+      totalSynced,
+      logs,
+      summary: syncSummary
+    };
+  } catch (error) {
+    // Update the job record on failure
+    const endTime = new Date();
+    const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+    
+    await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+      endTime,
+      duration,
+      status: 'failed',
+      error: error.message
+    });
+    
+    const errorMsg = `[SYNC FAILED] Error syncing employees from VenueBoost: ${error.message}`;
+    logs.push(`ERROR: ${errorMsg}`);
+    this.logger.error(errorMsg, error.stack);
+    
+    throw {
+      message: error.message,
+      logs,
+      stack: error.stack
+    };
   }
+}
   
   /**
    * Map employee skills from PHP format to MongoDB format
