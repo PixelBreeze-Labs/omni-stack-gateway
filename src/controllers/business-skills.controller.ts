@@ -33,7 +33,9 @@ import {
     ApproveSkillAssessmentDto,
     RejectSkillAssessmentDto,
     BulkSkillAssessmentActionDto,
-    SkillAssessmentFilterDto
+    SkillAssessmentFilterDto,
+    BusinessConfigResponse,
+    UpdateBusinessConfigDto
   } from '../dtos/business-skills.dto';
   import { SkillAssessment } from '../schemas/skill-assessment.schema';
   
@@ -457,4 +459,91 @@ import {
       
       return business;
     }
+
+    @Get('business-config')
+@ApiOperation({ 
+  summary: 'Get business configuration',
+  description: 'Retrieve business profile, settings, and configuration details'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Business configuration retrieved successfully',
+  type: BusinessConfigResponse 
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async getBusinessConfiguration(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<BusinessConfigResponse> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessSkillsService.getBusinessConfiguration(businessId);
+  } catch (error) {
+    this.logger.error(`Error getting business configuration: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve business configuration');
+  }
+}
+
+@Put('business-config')
+@ApiOperation({ 
+  summary: 'Update business configuration',
+  description: 'Update business profile, settings, and operational configuration'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiBody({ type: UpdateBusinessConfigDto })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Business configuration updated successfully',
+  type: BusinessConfigResponse 
+})
+@ApiResponse({ status: 400, description: 'Bad request - Invalid configuration data' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async updateBusinessConfiguration(
+  @Query('businessId') businessId: string,
+  @Body() updateDto: UpdateBusinessConfigDto,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<BusinessConfigResponse> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessSkillsService.updateBusinessConfiguration(businessId, updateDto);
+  } catch (error) {
+    this.logger.error(`Error updating business configuration: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to update business configuration');
+  }
+}
+
+@Get('business-config/options')
+@ApiOperation({ 
+  summary: 'Get business configuration options',
+  description: 'Get available options for business type, industry, categories, etc.'
+})
+@ApiResponse({ 
+  status: 200, 
+  description: 'Configuration options retrieved successfully'
+})
+async getBusinessConfigOptions() {
+  try {
+    return await this.businessSkillsService.getConfigurationOptions();
+  } catch (error) {
+    this.logger.error(`Error getting configuration options: ${error.message}`, error.stack);
+    throw new InternalServerErrorException('Failed to retrieve configuration options');
+  }
+}
   }

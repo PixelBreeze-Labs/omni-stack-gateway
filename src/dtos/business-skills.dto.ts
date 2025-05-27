@@ -1,6 +1,6 @@
 // src/dtos/business-skills.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsNumber, IsEnum, IsArray, IsOptional, ValidateNested, Min, Max } from 'class-validator';
+import { IsString, IsBoolean, IsNumber, IsEnum, IsArray, IsOptional, ValidateNested, Min, Max, IsEmail } from 'class-validator';
 import { Type } from 'class-transformer';
 import { 
   BusinessIndustry, 
@@ -16,6 +16,13 @@ import {
   AssessmentStatus,
   AssessmentTrigger
 } from '../schemas/skill-assessment.schema';
+
+import { 
+    BusinessType,
+    AgentFeatureFlag,
+    SubscriptionStatus
+  } from '../schemas/business.schema';
+import { Currency } from 'src/enums/currency.enum';
 
 // ============================================================================
 // SKILL CONFIGURATION DTOs
@@ -433,3 +440,206 @@ export class SkillAssessmentFilterDto {
   @IsEnum(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc' = 'desc';
 }
+
+// ============================================================================
+// BUSINESS CONFIGURATION DTOs
+// ============================================================================
+
+export class UpdateBusinessConfigDto {
+    @ApiProperty({ description: 'Business name', required: false })
+    @IsOptional()
+    @IsString()
+    name?: string;
+  
+    @ApiProperty({ description: 'Business email', required: false })
+    @IsOptional()
+    @IsEmail()
+    email?: string;
+  
+    @ApiProperty({ description: 'Business phone number', required: false })
+    @IsOptional()
+    @IsString()
+    phone?: string;
+  
+    @ApiProperty({ 
+      description: 'Business type', 
+      enum: BusinessType, 
+      required: false 
+    })
+    @IsOptional()
+    @IsEnum(BusinessType)
+    type?: BusinessType;
+  
+    @ApiProperty({ 
+      description: 'Business industry', 
+      enum: BusinessIndustry, 
+      required: false 
+    })
+    @IsOptional()
+    @IsEnum(BusinessIndustry)
+    industry?: BusinessIndustry;
+  
+    @ApiProperty({ 
+      description: 'Business subcategory', 
+      enum: BusinessSubCategory, 
+      required: false 
+    })
+    @IsOptional()
+    @IsEnum(BusinessSubCategory)
+    subCategory?: BusinessSubCategory;
+  
+    @ApiProperty({ 
+      description: 'Operation type', 
+      enum: BusinessOperationType, 
+      required: false 
+    })
+    @IsOptional()
+    @IsEnum(BusinessOperationType)
+    operationType?: BusinessOperationType;
+  
+    @ApiProperty({ 
+      description: 'Business currency', 
+      enum: Currency, 
+      required: false 
+    })
+    @IsOptional()
+    @IsEnum(Currency)
+    currency?: Currency;
+  
+    @ApiProperty({ description: 'Tax ID', required: false })
+    @IsOptional()
+    @IsString()
+    taxId?: string;
+  
+    @ApiProperty({ description: 'VAT number', required: false })
+    @IsOptional()
+    @IsString()
+    vatNumber?: string;
+  
+    @ApiProperty({ 
+      description: 'Agent features to include', 
+      enum: AgentFeatureFlag,
+      isArray: true,
+      required: false 
+    })
+    @IsOptional()
+    @IsArray()
+    @IsEnum(AgentFeatureFlag, { each: true })
+    includedFeatures?: AgentFeatureFlag[];
+  
+    @ApiProperty({ description: 'Allow clock in/out', required: false })
+    @IsOptional()
+    @IsBoolean()
+    allow_clockinout?: boolean;
+  
+    @ApiProperty({ description: 'Has app access', required: false })
+    @IsOptional()
+    @IsBoolean()
+    has_app_access?: boolean;
+  
+    @ApiProperty({ description: 'Allow check-in', required: false })
+    @IsOptional()
+    @IsBoolean()
+    allow_checkin?: boolean;
+  
+    @ApiProperty({ description: 'Business departments', required: false })
+    @IsOptional()
+    @IsArray()
+    departments?: {
+      name: string;
+      requiredSkills: string[];
+      optionalSkills: string[];
+      skillWeights: Record<string, number>;
+    }[];
+  
+    @ApiProperty({ description: 'Additional metadata', required: false })
+    @IsOptional()
+    metadata?: Record<string, any>;
+  }
+  
+  export class BusinessConfigResponse {
+    @ApiProperty({ description: 'Business ID' })
+    id: string;
+  
+    @ApiProperty({ description: 'Business name' })
+    name: string;
+  
+    @ApiProperty({ description: 'Business email' })
+    email: string;
+  
+    @ApiProperty({ description: 'Business phone' })
+    phone?: string;
+  
+    @ApiProperty({ enum: BusinessType })
+    type: BusinessType;
+  
+    @ApiProperty({ enum: BusinessIndustry })
+    industry: BusinessIndustry;
+  
+    @ApiProperty({ enum: BusinessSubCategory })
+    subCategory: BusinessSubCategory;
+  
+    @ApiProperty({ enum: BusinessOperationType })
+    operationType: BusinessOperationType;
+  
+    @ApiProperty({ enum: Currency })
+    currency: Currency;
+  
+    @ApiProperty({ description: 'Tax ID' })
+    taxId?: string;
+  
+    @ApiProperty({ description: 'VAT number' })
+    vatNumber?: string;
+  
+    @ApiProperty({ enum: AgentFeatureFlag, isArray: true })
+    includedFeatures: AgentFeatureFlag[];
+  
+    @ApiProperty({ description: 'Employee capabilities' })
+    employeeCapabilities: {
+      allowClockInOut: boolean;
+      hasAppAccess: boolean;
+      allowCheckIn: boolean;
+    };
+  
+    @ApiProperty({ description: 'Subscription information' })
+    subscriptionInfo: {
+      status: SubscriptionStatus;
+      endDate?: Date;
+      details?: any;
+    };
+  
+    @ApiProperty({ description: 'Business departments' })
+    departments: {
+      name: string;
+      requiredSkills: string[];
+      optionalSkills: string[];
+      skillWeights: Record<string, number>;
+    }[];
+  
+    @ApiProperty({ description: 'Additional metadata' })
+    metadata: Record<string, any>;
+  
+  }
+  
+  export class ConfigurationOptionsResponse {
+    @ApiProperty({ enum: BusinessType, isArray: true })
+    businessTypes: BusinessType[];
+  
+    @ApiProperty({ enum: BusinessIndustry, isArray: true })
+    industries: BusinessIndustry[];
+  
+    @ApiProperty({ enum: BusinessSubCategory, isArray: true })
+    subCategories: BusinessSubCategory[];
+  
+    @ApiProperty({ enum: BusinessOperationType, isArray: true })
+    operationTypes: BusinessOperationType[];
+  
+    @ApiProperty({ enum: Currency, isArray: true })
+    currencies: Currency[];
+  
+    @ApiProperty({ enum: AgentFeatureFlag, isArray: true })
+    agentFeatures: AgentFeatureFlag[];
+  
+    @ApiProperty({ enum: SubscriptionStatus, isArray: true })
+    subscriptionStatuses: SubscriptionStatus[];
+  }
