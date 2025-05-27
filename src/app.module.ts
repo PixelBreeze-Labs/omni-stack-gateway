@@ -96,6 +96,9 @@ import { OshaViolation, OshaViolationSchema } from './schemas/osha-violation.sch
 import { OshaEquipmentCompliance, OshaEquipmentComplianceSchema } from './schemas/osha-equipment-compliance.schema';
 import { BusinessOnboarding, BusinessOnboardingSchema } from './schemas/business-onboarding.schema';
 import { BusinessClientMessage, BusinessClientMessageSchema } from './schemas/business-client-message.schema';
+import { SkillAssessment, SkillAssessmentSchema } from './schemas/skill-assessment.schema';
+import { SkillTemplate, SkillTemplateSchema } from './schemas/skill-assessment.schema';
+import { SkillDevelopmentPlan, SkillDevelopmentPlanSchema } from './schemas/skill-assessment.schema';
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -179,6 +182,7 @@ import { OshaAuditController } from './controllers/osha-audit.controller';
 import { BusinessOnboardingController } from './controllers/business-onboarding.controller';
 import { BusinessStorageController } from './controllers/business-storage.controller';
 import { BusinessMessagingController } from './controllers/business-messaging.controller';
+import { BusinessSkillsController } from './controllers/business-skills.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -278,6 +282,7 @@ import { OshaReportsService } from './services/osha-reports.service';
 import { OshaStatsService } from './services/osha-stats.service';
 import { BusinessOnboardingService } from './services/business-onboarding.service';
 import { BusinessMessagingService } from './services/business-messaging.service';
+import { BusinessSkillsService } from './services/business-skills.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -452,6 +457,9 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
       { name: BusinessOnboarding.name, schema: BusinessOnboardingSchema },
       { name: BusinessClientMessage.name, schema: BusinessClientMessageSchema },
       { name: Ticket.name, schema: TicketSchema },
+      { name: SkillAssessment.name, schema: SkillAssessmentSchema },
+      { name: SkillTemplate.name, schema: SkillTemplateSchema },
+      { name: SkillDevelopmentPlan.name, schema: SkillDevelopmentPlanSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -559,7 +567,8 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     BusinessStorageController,
     BusinessMessagingController,
     TicketController,
-    SaasNotificationController
+    SaasNotificationController,
+    BusinessSkillsController
   ],
   providers: [
     SnapfoodService,
@@ -668,7 +677,8 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     BusinessOnboardingService,
     BusinessStorageService,
     BusinessMessagingService,
-    TicketService
+    TicketService,
+    BusinessSkillsService
   ],
 })
 export class AppModule implements NestModule {

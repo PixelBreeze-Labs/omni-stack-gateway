@@ -53,12 +53,83 @@ export enum BusinessType {
     OTHER = 'other'
 }
 
+// Business Industry Categories for Skills
+export enum BusinessIndustry {
+    RESTAURANT = 'restaurant',
+    HOTEL = 'hotel',
+    RETAIL = 'retail',
+    HEALTHCARE = 'healthcare',
+    MANUFACTURING = 'manufacturing',
+    CONSTRUCTION = 'construction',
+    CLEANING_SERVICE = 'cleaning_service',
+    TRANSPORTATION = 'transportation',
+    EDUCATION = 'education',
+    TECHNOLOGY = 'technology',
+    FINANCE = 'finance',
+    REAL_ESTATE = 'real_estate',
+    ENTERTAINMENT = 'entertainment',
+    FITNESS = 'fitness',
+    BEAUTY_WELLNESS = 'beauty_wellness',
+    AUTOMOTIVE = 'automotive',
+    AGRICULTURE = 'agriculture',
+    OTHER = 'other'
+}
+
+// Business Sub-categories for more specific skills
+export enum BusinessSubCategory {
+    // Restaurant subcategories
+    FINE_DINING = 'fine_dining',
+    FAST_FOOD = 'fast_food',
+    CASUAL_DINING = 'casual_dining',
+    CAFE = 'cafe',
+    BAR_PUB = 'bar_pub',
+    FOOD_TRUCK = 'food_truck',
+    CATERING = 'catering',
+    
+    // Hotel subcategories
+    LUXURY_HOTEL = 'luxury_hotel',
+    BOUTIQUE_HOTEL = 'boutique_hotel',
+    BUSINESS_HOTEL = 'business_hotel',
+    RESORT = 'resort',
+    MOTEL = 'motel',
+    BED_BREAKFAST = 'bed_breakfast',
+    
+    // Retail subcategories
+    GROCERY_STORE = 'grocery_store',
+    CLOTHING_STORE = 'clothing_store',
+    ELECTRONICS_STORE = 'electronics_store',
+    DEPARTMENT_STORE = 'department_store',
+    SPECIALTY_STORE = 'specialty_store',
+    
+    // Add more as needed
+    OTHER = 'other'
+}
+
 export enum SubscriptionStatus {
     ACTIVE = 'active',
     PAST_DUE = 'past_due',
     CANCELED = 'canceled',
     INCOMPLETE = 'incomplete',
     TRIALING = 'trialing'
+}
+
+// Skill requirement levels
+export enum SkillRequirementLevel {
+    REQUIRED = 'required',           // Must have this skill
+    PREFERRED = 'preferred',         // Nice to have
+    OPTIONAL = 'optional',           // Can be learned on the job
+    RESTRICTED = 'restricted'        // Only certain roles can have this
+}
+
+// Skill data structure for business requirements
+export interface BusinessSkillRequirement {
+    name: string;
+    level: SkillRequirementLevel;
+    minimumProficiency: 'novice' | 'intermediate' | 'advanced' | 'expert';
+    applicableRoles: string[];       // Which roles need this skill
+    department?: string;             // Department-specific skill
+    description?: string;
+    customWeight?: number;           // How important is this skill (1-10)
 }
 
 @Schema({ timestamps: true })
@@ -81,6 +152,21 @@ export class Business extends Document {
         required: true
     })
     type: BusinessType;
+
+    // NEW: Industry and subcategory for skill inference
+    @Prop({
+        type: String,
+        enum: BusinessIndustry,
+        required: true
+    })
+    industry: BusinessIndustry;
+
+    @Prop({
+        type: String,
+        enum: BusinessSubCategory,
+        default: BusinessSubCategory.OTHER
+    })
+    subCategory: BusinessSubCategory;
 
     @Prop({ required: true })
     email: string;
@@ -164,6 +250,38 @@ export class Business extends Document {
         venueBoostId?: string;
         [key: string]: string;
     };
+
+    // NEW: Skills Management
+    @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+    skillRequirements: BusinessSkillRequirement[];
+
+    @Prop({ type: [String], default: [] })
+    customSkills: string[];                    // Custom skills defined by business
+
+    @Prop({ type: Boolean, default: true })
+    autoInferSkills: boolean;                  // Auto-infer skills based on industry/role
+
+    @Prop({ type: Boolean, default: true })
+    requireSkillApproval: boolean;             // Require manual approval of inferred skills
+
+    @Prop({ type: MongooseSchema.Types.Mixed })
+    skillsConfiguration: {
+        enablePerformanceTracking?: boolean;    // Track skills through task performance
+        enablePeerReviews?: boolean;            // Allow peer skill assessments
+        enableSelfAssessment?: boolean;         // Allow employees to self-assess
+        skillDecayMonths?: number;              // How many months before skills "decay" without use
+        mandatorySkillsReview?: boolean;        // Require periodic review of all skills
+        reviewFrequencyMonths?: number;         // How often to review skills
+    };
+
+    // NEW: Department-specific settings
+    @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+    departments: {
+        name: string;
+        requiredSkills: string[];
+        optionalSkills: string[];
+        skillWeights: Record<string, number>;   // Skill importance weights
+    }[];
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);
@@ -173,6 +291,9 @@ BusinessSchema.index({ clientId: 1 });
 BusinessSchema.index({ adminUserId: 1 });
 BusinessSchema.index({ stripeCustomerId: 1 });
 BusinessSchema.index({ subscriptionStatus: 1 });
+BusinessSchema.index({ industry: 1 });
+BusinessSchema.index({ subCategory: 1 });
+BusinessSchema.index({ 'skillRequirements.name': 1 });
 
 BusinessSchema.virtual('address', {
     ref: 'Address',
