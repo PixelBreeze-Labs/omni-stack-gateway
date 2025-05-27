@@ -173,9 +173,27 @@ export class StaffluentEmployeeService {
           logs.push(`Updated existing staff profile: ${staffProfile._id}`);
 
           // Check if PHP employee needs external ID update
-          const needsUpdate = !phpEmployee.external_ids || !JSON.parse(phpEmployee.external_ids || '{}').omnistackId;
-          logs.push(`PHP employee needs external ID update: ${needsUpdate}`);
+          let externalIds = {};
+          if (phpEmployee.external_ids) {
+            if (typeof phpEmployee.external_ids === 'string') {
+              externalIds = JSON.parse(phpEmployee.external_ids);
+            } else {
+              externalIds = phpEmployee.external_ids; // Already an object
+            }
+          }
           
+          // Check for BOTH possible property names
+          // @ts-ignore
+          const hasOmnistackId = externalIds.omnistackId || externalIds.omniStackGateway;
+          const needsUpdate = !hasOmnistackId;
+          
+          logs.push(`External IDs object: ${JSON.stringify(externalIds)}`);
+          // @ts-ignore
+          logs.push(`Has omnistackId: ${!!externalIds.omnistackId}`);
+          // @ts-ignore
+          logs.push(`Has omniStackGateway: ${!!externalIds.omniStackGateway}`);
+          logs.push(`PHP employee needs external ID update: ${needsUpdate}`);
+                    
           if (needsUpdate) {
             logs.push(`Calling updateEmployeeExternalId(${phpEmployee.id}, ${staffProfile._id.toString()})`);
             const updateSuccess = await this.updateEmployeeExternalId(phpEmployee.id, staffProfile._id.toString());
