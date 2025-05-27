@@ -38,6 +38,9 @@ export class StaffluentEmployeeService {
    */
   private async updateEmployeeExternalId(phpEmployeeId: number, omnistackStaffProfileId: string): Promise<boolean> {
     try {
+      this.logger.log(`Attempting to update employee ${phpEmployeeId} with OmniStack ID ${omnistackStaffProfileId}`);
+      this.logger.log(`Making POST request to: ${this.baseUrl}/employees-os/${phpEmployeeId}/external-id`);
+      
       const response$ = this.httpService.post(
         `${this.baseUrl}/employees-os/${phpEmployeeId}/external-id`,
         {
@@ -53,6 +56,9 @@ export class StaffluentEmployeeService {
 
       const response = await lastValueFrom(response$);
       
+      this.logger.log(`API Response Status: ${response.status}`);
+      this.logger.log(`API Response Data:`, JSON.stringify(response.data, null, 2));
+      
       if (response.status >= 400) {
         this.logger.error(`Failed to update employee ${phpEmployeeId} external ID: ${response.data.error || 'Unknown error'}`);
         return false;
@@ -61,7 +67,12 @@ export class StaffluentEmployeeService {
       this.logger.log(`Successfully updated employee ${phpEmployeeId} with OmniStack ID ${omnistackStaffProfileId}`);
       return true;
     } catch (error) {
-      this.logger.error(`Error updating employee external ID: ${error.message}`, error.stack);
+      this.logger.error(`Error updating employee external ID for ${phpEmployeeId}:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -69,8 +80,15 @@ export class StaffluentEmployeeService {
   /**
    * Sync employees from Staffluent to NestJS for a specific business
    */
-  async syncEmployeesFromVenueBoost(businessId: string): Promise<number> {
+  async syncEmployeesFromVenueBoost(businessId: string): Promise<{
+    totalSynced: number;
+    logs: string[];
+    summary: any;
+  }> {
     const startTime = new Date();
+    const logs: string[] = [];
+    
+    logs.push(`[SYNC START] Syncing employees from VenueBoost for business: ${businessId}`);
     this.logger.log(`[SYNC START] Syncing employees from VenueBoost for business: ${businessId}`);
     
     // Create a record for this job execution
@@ -88,8 +106,11 @@ export class StaffluentEmployeeService {
         throw new Error(`Business ${businessId} not found or not connected to VenueBoost`);
       }
 
+      logs.push(`Found business: ${business.name}, VenueBoost ID: ${business.externalIds.venueBoostId}`);
+
       // Get employees from VenueBoost API
       const venueBoostEmployees = await this.venueBoostService.getEmployees(business.externalIds.venueBoostId);
+      logs.push(`Retrieved ${venueBoostEmployees.length} employees from VenueBoost API`);
       
       const syncSummary = {
         added: 0,
@@ -102,10 +123,15 @@ export class StaffluentEmployeeService {
       
       for (const phpEmployee of venueBoostEmployees) {
         try {
+          logs.push(`\n--- Processing employee: ${phpEmployee.name} (ID: ${phpEmployee.id}) ---`);
+          
           // Check if employee already exists in our system
           let staffProfile = await this.staffProfileModel.findOne({
             'externalIds.venueBoostId': String(phpEmployee.id)
           });
+          
+          logs.push(`Staff profile exists: ${!!staffProfile}`);
+          logs.push(`PHP Employee external_ids: ${phpEmployee.external_ids || 'null'}`);
           
           // Map skills from PHP to MongoDB format (with fallback since skills may not exist)
           const skills = this.mapSkillsFromPhp(phpEmployee.skills || [], phpEmployee);
@@ -121,6 +147,9 @@ export class StaffluentEmployeeService {
                 venueBoostId: String(phpEmployee.user_id)
               }
             });
+            logs.push(`Created new user for employee: ${user._id}`);
+          } else if (user) {
+            logs.push(`Found existing user: ${user._id}`);
           }
           
           if (staffProfile) {
@@ -141,10 +170,17 @@ export class StaffluentEmployeeService {
               }
             });
             syncSummary.updated++;
+            logs.push(`Updated existing staff profile: ${staffProfile._id}`);
 
             // Check if PHP employee needs external ID update
-            if (!phpEmployee.external_ids || !JSON.parse(phpEmployee.external_ids || '{}').omnistackId) {
+            const needsUpdate = !phpEmployee.external_ids || !JSON.parse(phpEmployee.external_ids || '{}').omnistackId;
+            logs.push(`PHP employee needs external ID update: ${needsUpdate}`);
+            
+            if (needsUpdate) {
+              logs.push(`Calling updateEmployeeExternalId(${phpEmployee.id}, ${staffProfile._id.toString()})`);
               const updateSuccess = await this.updateEmployeeExternalId(phpEmployee.id, staffProfile._id.toString());
+              logs.push(`External ID update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
+              
               if (updateSuccess) {
                 syncSummary.externalIdUpdates++;
               } else {
@@ -172,9 +208,13 @@ export class StaffluentEmployeeService {
               }
             });
             syncSummary.added++;
+            logs.push(`Created new staff profile: ${staffProfile._id}`);
 
             // Update PHP employee with the new StaffProfile ID
+            logs.push(`Calling updateEmployeeExternalId(${phpEmployee.id}, ${staffProfile._id.toString()})`);
             const updateSuccess = await this.updateEmployeeExternalId(phpEmployee.id, staffProfile._id.toString());
+            logs.push(`External ID update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
+            
             if (updateSuccess) {
               syncSummary.externalIdUpdates++;
             } else {
@@ -182,7 +222,9 @@ export class StaffluentEmployeeService {
             }
           }
         } catch (employeeError) {
-          this.logger.error(`Failed to sync employee ${phpEmployee.id}: ${employeeError.message}`);
+          const errorMsg = `Failed to sync employee ${phpEmployee.id}: ${employeeError.message}`;
+          logs.push(`ERROR: ${errorMsg}`);
+          this.logger.error(errorMsg);
           syncSummary.failed++;
         }
       }
@@ -211,8 +253,15 @@ export class StaffluentEmployeeService {
         }
       });
       
-      this.logger.log(`[SYNC COMPLETE] Successfully synced ${totalSynced} employees for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`);
-      return totalSynced;
+      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} employees for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`;
+      logs.push(completionMsg);
+      this.logger.log(completionMsg);
+      
+      return {
+        totalSynced,
+        logs,
+        summary: syncSummary
+      };
     } catch (error) {
       // Update the job record on failure
       const endTime = new Date();
@@ -225,8 +274,15 @@ export class StaffluentEmployeeService {
         error: error.message
       });
       
-      this.logger.error(`[SYNC FAILED] Error syncing employees from VenueBoost: ${error.message}`, error.stack);
-      throw error;
+      const errorMsg = `[SYNC FAILED] Error syncing employees from VenueBoost: ${error.message}`;
+      logs.push(`ERROR: ${errorMsg}`);
+      this.logger.error(errorMsg, error.stack);
+      
+      throw {
+        message: error.message,
+        logs,
+        stack: error.stack
+      };
     }
   }
   
@@ -411,12 +467,12 @@ export class StaffluentEmployeeService {
       
       for (const business of businesses) {
         try {
-          const count = await this.syncEmployeesFromVenueBoost(business.id);
+          const syncResult = await this.syncEmployeesFromVenueBoost(business.id);
           
           businessResults.push({
             businessId: business.id,
             businessName: business.name,
-            employeesSynced: count,
+            employeesSynced: syncResult.totalSynced,
             success: true
           });
         } catch (error) {
@@ -477,19 +533,25 @@ export class StaffluentEmployeeService {
     message: string;
     syncedCount?: number;
     externalIdUpdates?: number;
+    logs?: string[];
+    summary?: any;
   }> {
     try {
-      const syncedCount = await this.syncEmployeesFromVenueBoost(businessId);
+      const syncResult = await this.syncEmployeesFromVenueBoost(businessId);
       return {
         success: true,
-        message: `Successfully synced ${syncedCount} employees`,
-        syncedCount
+        message: `Successfully synced ${syncResult.totalSynced} employees`,
+        syncedCount: syncResult.totalSynced,
+        externalIdUpdates: syncResult.summary.externalIdUpdates,
+        logs: syncResult.logs,
+        summary: syncResult.summary
       };
     } catch (error) {
       this.logger.error(`Manual sync failed for business ${businessId}: ${error.message}`);
       return {
         success: false,
-        message: `Sync failed: ${error.message}`
+        message: `Sync failed: ${error.message}`,
+        logs: error.logs || [`Error: ${error.message}`]
       };
     }
   }
