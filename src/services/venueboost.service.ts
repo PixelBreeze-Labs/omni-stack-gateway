@@ -398,6 +398,7 @@ export class VenueBoostService {
             id: number;
             name: string;
             email: string;
+            employee: any;
         };
         venue: {
             id: number;
@@ -441,7 +442,8 @@ export class VenueBoostService {
                 user: {
                     id: user.id,
                     name: user.name,
-                    email: user.email
+                    email: user.email,
+                    employee: user.employee
                 },
                 venue: {
                     id: venue.id,
