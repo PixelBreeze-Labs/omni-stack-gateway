@@ -174,6 +174,12 @@ import {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
+      metadata?: {
+        phpId?: string | null;
+        phpCreatedAt?: string;
+        shortCode?: string;
+        [key: string]: any;
+      };
     }
   ): Promise<{ success: boolean; departmentId: string; message: string }> {
     try {
@@ -219,6 +225,12 @@ import {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
+      metadata?: {
+        phpId?: string | null;
+        phpCreatedAt?: string;
+        shortCode?: string;
+        [key: string]: any;
+      };
     }
   ): Promise<{ success: boolean; message: string }> {
     try {
@@ -240,7 +252,7 @@ import {
       throw new InternalServerErrorException('Failed to update department');
     }
   }
-
+  
   @Delete('departments/:departmentId')
   @ApiOperation({ 
     summary: 'Remove a department',

@@ -266,6 +266,12 @@ export class BusinessGeneralService {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
+      metadata?: {
+        phpId?: string | null;
+        phpCreatedAt?: string;
+        shortCode?: string;
+        [key: string]: any;
+      };
     }
   ): Promise<{ success: boolean; departmentId: string; message: string }> {
     try {
@@ -276,7 +282,7 @@ export class BusinessGeneralService {
 
       // Check if department name already exists
       const existingDept = business.departments.find(
-        dept => dept.name.toLowerCase() === departmentData.name.toLowerCase()
+        (dept: any) => dept.name.toLowerCase() === departmentData.name.toLowerCase()
       );
       
       if (existingDept) {
@@ -285,14 +291,18 @@ export class BusinessGeneralService {
 
       // Generate a unique ID for the department
       const departmentId = new Date().getTime().toString();
+      const now = new Date();
       
-      // Create new department object
+      // Create new department object with all fields
       const newDepartment = {
         id: departmentId,
         name: departmentData.name,
         requiredSkills: departmentData.requiredSkills || [],
         optionalSkills: departmentData.optionalSkills || [],
-        skillWeights: departmentData.skillWeights || {}
+        skillWeights: departmentData.skillWeights || {},
+        metadata: departmentData.metadata || {},
+        createdAt: now,
+        updatedAt: now
       };
 
       // Add department to business
@@ -323,6 +333,12 @@ export class BusinessGeneralService {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
+      metadata?: {
+        phpId?: string | null;
+        phpCreatedAt?: string;
+        shortCode?: string;
+        [key: string]: any;
+      };
     }
   ): Promise<{ success: boolean; message: string }> {
     try {
@@ -333,8 +349,7 @@ export class BusinessGeneralService {
 
       // Find department by ID
       const departmentIndex = business.departments.findIndex(
-        // @ts-ignore
-        dept => dept.id === departmentId
+        (dept: any) => dept.id === departmentId
       );
 
       if (departmentIndex === -1) {
@@ -344,7 +359,7 @@ export class BusinessGeneralService {
       // Check if new name conflicts with existing departments (if name is being updated)
       if (updateData.name) {
         const nameConflict = business.departments.find(
-          (dept, index) => 
+          (dept: any, index: number) => 
             index !== departmentIndex && 
             dept.name.toLowerCase() === updateData.name.toLowerCase()
         );
@@ -355,14 +370,22 @@ export class BusinessGeneralService {
       }
 
       // Update department data
-      const department = business.departments[departmentIndex];
+      const department = business.departments[departmentIndex] as any;
       
-      if (updateData.name) department.name = updateData.name;
-      if (updateData.requiredSkills) department.requiredSkills = updateData.requiredSkills;
-      if (updateData.optionalSkills) department.optionalSkills = updateData.optionalSkills;
-      if (updateData.skillWeights) department.skillWeights = updateData.skillWeights;
+      if (updateData.name !== undefined) department.name = updateData.name;
+      if (updateData.requiredSkills !== undefined) department.requiredSkills = updateData.requiredSkills;
+      if (updateData.optionalSkills !== undefined) department.optionalSkills = updateData.optionalSkills;
+      if (updateData.skillWeights !== undefined) department.skillWeights = updateData.skillWeights;
+      if (updateData.metadata !== undefined) {
+        // Merge metadata instead of replacing
+        department.metadata = { ...department.metadata, ...updateData.metadata };
+      }
+      
+      // Always update the timestamp
+      department.updatedAt = new Date();
 
-      // Save the business
+      // Mark the departments array as modified for Mongoose
+      business.markModified('departments');
       await business.save();
 
       this.logger.log(`Updated department ${departmentId} for business ${businessId}`);
@@ -392,20 +415,20 @@ export class BusinessGeneralService {
 
       // Find department by ID
       const departmentIndex = business.departments.findIndex(
-        // @ts-ignore
-        dept => dept.id === departmentId
+        (dept: any) => dept.id === departmentId
       );
 
       if (departmentIndex === -1) {
         throw new NotFoundException('Department not found');
       }
 
-      const departmentName = business.departments[departmentIndex].name;
+      const departmentName = (business.departments[departmentIndex] as any).name;
 
       // Remove department from array
       business.departments.splice(departmentIndex, 1);
       
-      // Save the business
+      // Mark as modified and save
+      business.markModified('departments');
       await business.save();
 
       this.logger.log(`Removed department ${departmentName} (${departmentId}) from business ${businessId}`);
@@ -420,13 +443,16 @@ export class BusinessGeneralService {
     }
   }
 
+  /**
+   * Get all departments for a business
+   */
   async getDepartments(businessId: string): Promise<{ departments: any[] }> {
     try {
       const business = await this.businessModel.findById(businessId);
       if (!business) {
         throw new NotFoundException('Business not found');
       }
-  
+
       return {
         departments: business.departments || []
       };
