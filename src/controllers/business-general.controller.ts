@@ -9,7 +9,11 @@ import {
     NotFoundException, 
     Logger, 
     InternalServerErrorException,
-    BadRequestException
+    BadRequestException,
+    Post,
+    Delete,
+    Body,
+    Put
   } from '@nestjs/common';
   import { 
     ApiTags, 
@@ -143,4 +147,193 @@ import {
       
       return business;
     }
+
+
+  // ============================================================================
+  // DEPARTMENT MANAGEMENT ENDPOINTS
+  // ============================================================================
+
+  @Post('departments')
+  @ApiOperation({ 
+    summary: 'Create a new department',
+    description: 'Create a new department for the business with skill requirements'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Department created successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid data or department already exists' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async createDepartment(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() departmentData: {
+      name: string;
+      requiredSkills?: string[];
+      optionalSkills?: string[];
+      skillWeights?: Record<string, number>;
+    }
+  ): Promise<{ success: boolean; departmentId: string; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!departmentData.name) {
+        throw new BadRequestException('Department name is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.createDepartment(businessId, departmentData);
+    } catch (error) {
+      this.logger.error(`Error creating department: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create department');
+    }
   }
+
+  @Put('departments/:departmentId')
+  @ApiOperation({ 
+    summary: 'Update an existing department',
+    description: 'Update department information including skills and requirements'
+  })
+  @ApiParam({ name: 'departmentId', description: 'Department ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Department updated successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or department not found' })
+  async updateDepartment(
+    @Param('departmentId') departmentId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() updateData: {
+      name?: string;
+      requiredSkills?: string[];
+      optionalSkills?: string[];
+      skillWeights?: Record<string, number>;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!departmentId) {
+        throw new BadRequestException('Department ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.updateDepartment(businessId, departmentId, updateData);
+    } catch (error) {
+      this.logger.error(`Error updating department: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update department');
+    }
+  }
+
+  @Delete('departments/:departmentId')
+  @ApiOperation({ 
+    summary: 'Remove a department',
+    description: 'Remove a department from the business'
+  })
+  @ApiParam({ name: 'departmentId', description: 'Department ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Department removed successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or department not found' })
+  async removeDepartment(
+    @Param('departmentId') departmentId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!departmentId) {
+        throw new BadRequestException('Department ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.removeDepartment(businessId, departmentId);
+    } catch (error) {
+      this.logger.error(`Error removing department: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to remove department');
+    }
+  }
+
+  // ============================================================================
+  // SYNC OPERATION ENDPOINTS
+  // ============================================================================
+
+  @Post('sync/employees')
+  @ApiOperation({ 
+    summary: 'Sync employees from VenueBoost',
+    description: 'Trigger manual synchronization of employees from VenueBoost system'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Employee sync completed successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async syncEmployees(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    syncedCount?: number;
+    externalIdUpdates?: number;
+    externalIdFailures?: number;
+    logs: string[];
+    summary?: any;
+  }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.syncEmployeesFromVenueBoost(businessId);
+    } catch (error) {
+      this.logger.error(`Error syncing employees: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to sync employees');
+    }
+  }
+
+  // @Post('sync/tasks')
+  // @ApiOperation({ 
+  //   summary: 'Sync tasks from VenueBoost',
+  //   description: 'Trigger manual synchronization of tasks from VenueBoost system'
+  // })
+  // @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  // @ApiResponse({ 
+  //   status: 200, 
+  //   description: 'Task sync completed successfully'
+  // })
+  // @ApiResponse({ status: 401, description: 'Unauthori
+  //   }
+
+}

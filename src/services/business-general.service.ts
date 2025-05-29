@@ -9,6 +9,8 @@ import {
   SimpleStaffProfileResponse,
   FullStaffProfileResponse,
 } from '../dtos/business-general.dto';
+import { StaffluentEmployeeService } from './staffluent-employee.service';
+import { StaffluentTaskService } from './staffluent-task.service';
 
 @Injectable()
 export class BusinessGeneralService {
@@ -18,6 +20,8 @@ export class BusinessGeneralService {
     @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(User.name) private userModel: Model<User>,
+    private readonly staffluentEmployeeService: StaffluentEmployeeService,
+    private readonly staffluentTaskService: StaffluentTaskService,
   ) {}
 
   // ============================================================================
@@ -245,5 +249,228 @@ export class BusinessGeneralService {
         confidence: data.confidence || 0,
         yearsExperience: data.yearsExperience || 0
       }));
+  }
+
+
+  // ============================================================================
+  // DEPARTMENT MANAGEMENT
+  // ============================================================================
+
+  /**
+   * Create a new department for a business
+   */
+  async createDepartment(
+    businessId: string,
+    departmentData: {
+      name: string;
+      requiredSkills?: string[];
+      optionalSkills?: string[];
+      skillWeights?: Record<string, number>;
+    }
+  ): Promise<{ success: boolean; departmentId: string; message: string }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Check if department name already exists
+      const existingDept = business.departments.find(
+        dept => dept.name.toLowerCase() === departmentData.name.toLowerCase()
+      );
+      
+      if (existingDept) {
+        throw new Error('Department with this name already exists');
+      }
+
+      // Generate a unique ID for the department
+      const departmentId = new Date().getTime().toString();
+      
+      // Create new department object
+      const newDepartment = {
+        id: departmentId,
+        name: departmentData.name,
+        requiredSkills: departmentData.requiredSkills || [],
+        optionalSkills: departmentData.optionalSkills || [],
+        skillWeights: departmentData.skillWeights || {}
+      };
+
+      // Add department to business
+      business.departments.push(newDepartment);
+      await business.save();
+
+      this.logger.log(`Created department ${departmentData.name} for business ${businessId}`);
+
+      return {
+        success: true,
+        departmentId,
+        message: `Department '${departmentData.name}' created successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error creating department: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing department
+   */
+  async updateDepartment(
+    businessId: string,
+    departmentId: string,
+    updateData: {
+      name?: string;
+      requiredSkills?: string[];
+      optionalSkills?: string[];
+      skillWeights?: Record<string, number>;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Find department by ID
+      const departmentIndex = business.departments.findIndex(
+        // @ts-ignore
+        dept => dept.id === departmentId
+      );
+
+      if (departmentIndex === -1) {
+        throw new NotFoundException('Department not found');
+      }
+
+      // Check if new name conflicts with existing departments (if name is being updated)
+      if (updateData.name) {
+        const nameConflict = business.departments.find(
+          (dept, index) => 
+            index !== departmentIndex && 
+            dept.name.toLowerCase() === updateData.name.toLowerCase()
+        );
+        
+        if (nameConflict) {
+          throw new Error('Department with this name already exists');
+        }
+      }
+
+      // Update department data
+      const department = business.departments[departmentIndex];
+      
+      if (updateData.name) department.name = updateData.name;
+      if (updateData.requiredSkills) department.requiredSkills = updateData.requiredSkills;
+      if (updateData.optionalSkills) department.optionalSkills = updateData.optionalSkills;
+      if (updateData.skillWeights) department.skillWeights = updateData.skillWeights;
+
+      // Save the business
+      await business.save();
+
+      this.logger.log(`Updated department ${departmentId} for business ${businessId}`);
+
+      return {
+        success: true,
+        message: `Department updated successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error updating department: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a department from a business
+   */
+  async removeDepartment(
+    businessId: string,
+    departmentId: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Find department by ID
+      const departmentIndex = business.departments.findIndex(
+        // @ts-ignore
+        dept => dept.id === departmentId
+      );
+
+      if (departmentIndex === -1) {
+        throw new NotFoundException('Department not found');
+      }
+
+      const departmentName = business.departments[departmentIndex].name;
+
+      // Remove department from array
+      business.departments.splice(departmentIndex, 1);
+      
+      // Save the business
+      await business.save();
+
+      this.logger.log(`Removed department ${departmentName} (${departmentId}) from business ${businessId}`);
+
+      return {
+        success: true,
+        message: `Department '${departmentName}' removed successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error removing department: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SYNC OPERATIONS
+  // ============================================================================
+
+  /**
+   * Trigger employee sync from VenueBoost for this business
+   */
+  async syncEmployeesFromVenueBoost(businessId: string): Promise<{
+    success: boolean;
+    message: string;
+    syncedCount?: number;
+    externalIdUpdates?: number;
+    externalIdFailures?: number;
+    logs: string[];
+    summary?: any;
+  }> {
+    try {
+      this.logger.log(`Triggering employee sync for business ${businessId}`);
+      
+      const syncResult = await this.staffluentEmployeeService.triggerManualSync(businessId);
+      
+      this.logger.log(`Employee sync completed for business ${businessId}: ${syncResult.message}`);
+      
+      return syncResult;
+    } catch (error) {
+      this.logger.error(`Error syncing employees for business ${businessId}: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Trigger task sync from VenueBoost for this business
+   */
+  async syncTasksFromVenueBoost(businessId: string): Promise<{
+    success: boolean;
+    message: string;
+    syncedCount?: number;
+    logs: string[];
+    summary?: any;
+  }> {
+    try {
+      this.logger.log(`Triggering task sync for business ${businessId}`);
+      
+      const syncResult = await this.staffluentTaskService.triggerManualSync(businessId);
+      
+      this.logger.log(`Task sync completed for business ${businessId}: ${syncResult.message}`);
+      
+      return syncResult;
+    } catch (error) {
+      this.logger.error(`Error syncing tasks for business ${businessId}: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
