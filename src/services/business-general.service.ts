@@ -502,64 +502,69 @@ export class BusinessGeneralService {
   }
 
 
-  /**
- * Update department skill requirements
- */
-async updateDepartmentSkills(
-  businessId: string,
-  departmentId: string,
-  skillsData: {
-    requiredSkills?: string[];
-    optionalSkills?: string[];
-    skillWeights?: Record<string, number>;
+  async updateDepartmentSkills(
+    businessId: string,
+    departmentId: string,
+    skillsData: {
+      requiredSkills?: string[];
+      optionalSkills?: string[];
+      skillWeights?: Record<string, number>;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Find department by ID
+      const departmentIndex = business.departments.findIndex(
+        (dept: any) => dept.id === departmentId
+      );
+
+      if (departmentIndex === -1) {
+        throw new NotFoundException('Department not found');
+      }
+
+      // CRITICAL FIX: Create a completely new departments array
+      // This ensures Mongoose detects the change
+      const updatedDepartments = [...business.departments];
+      const updatedDepartment = { ...updatedDepartments[departmentIndex] };
+      
+      // Update the department skills
+      if (skillsData.requiredSkills !== undefined) {
+        updatedDepartment.requiredSkills = skillsData.requiredSkills;
+      }
+      if (skillsData.optionalSkills !== undefined) {
+        updatedDepartment.optionalSkills = skillsData.optionalSkills;
+      }
+      if (skillsData.skillWeights !== undefined) {
+        updatedDepartment.skillWeights = skillsData.skillWeights;
+      }
+      
+      // Update timestamp
+      updatedDepartment.updatedAt = new Date();
+
+      // Replace the department in the array
+      updatedDepartments[departmentIndex] = updatedDepartment;
+      
+      // Replace the entire departments array
+      business.departments = updatedDepartments;
+
+      // Save the business document
+      await business.save();
+
+      this.logger.log(`Updated skills for department ${departmentId} in business ${businessId}`);
+
+      return {
+        success: true,
+        message: `Department skills updated successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error updating department skills: ${error.message}`, error.stack);
+      throw error;
+    }
   }
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const business = await this.businessModel.findById(businessId);
-    if (!business) {
-      throw new NotFoundException('Business not found');
-    }
-
-    // Find department by ID
-    const departmentIndex = business.departments.findIndex(
-      (dept: any) => dept.id === departmentId
-    );
-
-    if (departmentIndex === -1) {
-      throw new NotFoundException('Department not found');
-    }
-
-    // Update department skills
-    const department = business.departments[departmentIndex] as any;
-    
-    if (skillsData.requiredSkills !== undefined) {
-      department.requiredSkills = skillsData.requiredSkills;
-    }
-    if (skillsData.optionalSkills !== undefined) {
-      department.optionalSkills = skillsData.optionalSkills;
-    }
-    if (skillsData.skillWeights !== undefined) {
-      department.skillWeights = skillsData.skillWeights;
-    }
-    
-    // Update timestamp
-    department.updatedAt = new Date();
-
-    // Save changes
-    business.markModified('departments');
-    await business.save();
-
-    this.logger.log(`Updated skills for department ${departmentId} in business ${businessId}`);
-
-    return {
-      success: true,
-      message: `Department skills updated successfully`
-    };
-  } catch (error) {
-    this.logger.error(`Error updating department skills: ${error.message}`, error.stack);
-    throw error;
-  }
-}
 
 /**
  * Get department with its skill requirements
