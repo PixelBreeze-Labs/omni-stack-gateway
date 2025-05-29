@@ -275,13 +275,43 @@ export class Business extends Document {
     };
 
     // NEW: Department-specific settings
-    @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
-    departments: {
-        name: string;
-        requiredSkills: string[];
-        optionalSkills: string[];
-        skillWeights: Record<string, number>;   // Skill importance weights
-    }[];
+    @Prop({ 
+        type: [{
+          id: { type: String, required: true },
+          name: { type: String, required: true },
+          requiredSkills: { type: [String], default: [] },
+          optionalSkills: { type: [String], default: [] },
+          skillWeights: { type: MongooseSchema.Types.Mixed, default: {} }, // Record<string, number>
+          metadata: {
+            type: {
+              phpId: { type: String, default: null },
+              phpCreatedAt: { type: String, default: null },
+              shortCode: { type: String, default: null },
+              // Allow additional metadata fields
+              type: MongooseSchema.Types.Mixed
+            },
+            default: {}
+          },
+          createdAt: { type: Date, default: Date.now },
+          updatedAt: { type: Date, default: Date.now }
+        }], 
+        default: [] 
+      })
+      departments: {
+        id: string;                                    // Unique identifier
+        name: string;                                  // Department name
+        requiredSkills: string[];                     // Must-have skills
+        optionalSkills: string[];                     // Nice-to-have skills  
+        skillWeights: Record<string, number>;         // Skill importance weights
+        metadata?: {                                  // Cross-system mapping data
+          phpId?: string | null;                      // PHP system department ID
+          phpCreatedAt?: string;                      // PHP creation timestamp
+          shortCode?: string;                         // Business short code
+          [key: string]: any;                         // Flexible additional fields
+        };
+        createdAt?: Date;                             // Creation timestamp
+        updatedAt?: Date;                             // Last update timestamp
+      }[];
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);

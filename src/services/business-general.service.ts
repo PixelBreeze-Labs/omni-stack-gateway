@@ -420,6 +420,22 @@ export class BusinessGeneralService {
     }
   }
 
+  async getDepartments(businessId: string): Promise<{ departments: any[] }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+  
+      return {
+        departments: business.departments || []
+      };
+    } catch (error) {
+      this.logger.error(`Error getting departments: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
   // ============================================================================
   // SYNC OPERATIONS
   // ============================================================================
