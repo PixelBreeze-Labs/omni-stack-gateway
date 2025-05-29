@@ -53,88 +53,11 @@ export class BusinessTaskAssignmentService {
    * Get all tasks pending approval for a business
    */
   async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
-    const tasks = await this.taskModel.aggregate([
-      {
-        $match: {
-          businessId,
-          'metadata.pendingAssignment': { $exists: true },
-          isDeleted: false
-        }
-      },
-      {
-        $addFields: {
-          // Convert the pendingAssignment.userId string to ObjectId for lookup
-          pendingAssigneeId: {
-            $cond: {
-              if: { $type: "$metadata.pendingAssignment.userId" },
-              then: { $toObjectId: "$metadata.pendingAssignment.userId" },
-              else: null
-            }
-          }
-        }
-      },
-      {
-        $lookup: {
-          from: 'users', // Make sure this matches your User collection name
-          localField: 'pendingAssigneeId',
-          foreignField: '_id',
-          as: 'pendingAssignee',
-          pipeline: [
-            {
-              $project: {
-                name: 1,
-                surname: 1,
-                email: 1
-              }
-            }
-          ]
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'assignedUserId',
-          foreignField: '_id',
-          as: 'assignedUser',
-          pipeline: [
-            {
-              $project: {
-                name: 1,
-                surname: 1,
-                email: 1
-              }
-            }
-          ]
-        }
-      },
-      {
-        $addFields: {
-          // Add the pending assignee info to the response
-          assignedUserId: {
-            $cond: {
-              if: { $gt: [{ $size: "$pendingAssignee" }, 0] },
-              then: { $arrayElemAt: ["$pendingAssignee", 0] },
-              else: {
-                $cond: {
-                  if: { $gt: [{ $size: "$assignedUser" }, 0] },
-                  then: { $arrayElemAt: ["$assignedUser", 0] },
-                  else: null
-                }
-              }
-            }
-          }
-        }
-      },
-      {
-        $project: {
-          pendingAssigneeId: 0,
-          pendingAssignee: 0,
-          assignedUser: 0
-        }
-      }
-    ]);
-
-    return tasks;
+    return this.taskModel.find({
+      businessId,
+      'metadata.pendingAssignment': { $exists: true },
+      isDeleted: false
+    }).populate('assignedUserId', 'name surname email');
   }
 
   /**
