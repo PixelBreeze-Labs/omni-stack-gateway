@@ -8,10 +8,15 @@ import { StaffProfile } from '../schemas/staff-profile.schema';
 import { Business } from '../schemas/business.schema';
 import { VenueBoostService } from './venueboost.service';
 import { CronJobHistory } from '../schemas/cron-job-history.schema';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class StaffluentTaskService {
   private readonly logger = new Logger(StaffluentTaskService.name);
+  private readonly baseUrl: string;
+  private readonly apiKey: string;
 
   constructor(
     @InjectModel(TaskAssignment.name) private taskModel: Model<TaskAssignment>,
@@ -19,7 +24,56 @@ export class StaffluentTaskService {
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(CronJobHistory.name) private cronJobHistoryModel: Model<CronJobHistory>,
     private readonly venueBoostService: VenueBoostService,
-  ) {}
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.baseUrl = this.configService.get<string>('venueboost.baseUrl');
+    this.apiKey = this.configService.get<string>('venueboost.apiKey');
+  }
+
+  /**
+   * Update Task external ID in PHP via VenueBoost API
+   */
+  private async updateTaskExternalId(phpTaskId: number, omnistackTaskId: string): Promise<boolean> {
+    try {
+      this.logger.log(`Attempting to update task ${phpTaskId} with OmniStack ID ${omnistackTaskId}`);
+      this.logger.log(`Making POST request to: ${this.baseUrl}/tasks-os/${phpTaskId}/external-id`);
+      
+      const response$ = this.httpService.post(
+        `${this.baseUrl}/tasks-os/${phpTaskId}/external-id`,
+        {
+          omnistack_id: omnistackTaskId
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+          }
+        }
+      );
+
+      const response = await lastValueFrom(response$);
+      
+      this.logger.log(`API Response Status: ${response.status}`);
+      this.logger.log(`API Response Data:`, JSON.stringify(response.data, null, 2));
+      
+      if (response.status >= 400) {
+        this.logger.error(`Failed to update task ${phpTaskId} external ID: ${response.data.error || 'Unknown error'}`);
+        return false;
+      }
+
+      this.logger.log(`Successfully updated task ${phpTaskId} with OmniStack ID ${omnistackTaskId}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error updating task external ID for ${phpTaskId}:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      });
+      return false;
+    }
+  }
 
    /**
    * Sync tasks from VenueBoost to NestJS for a specific business
@@ -79,7 +133,9 @@ export class StaffluentTaskService {
         added: 0,
         updated: 0,
         skipped: 0,
-        failed: 0
+        failed: 0,
+        externalIdUpdates: 0,
+        externalIdFailures: 0
       };
       
       for (const phpTask of venueBoostTasks.tasks) {
@@ -92,7 +148,7 @@ export class StaffluentTaskService {
           logs.push(`Mapped status: ${phpTask.status} -> ${status}`);
           
           // Check if task already exists in our system
-          const existingTask = await this.taskModel.findOne({
+          let existingTask = await this.taskModel.findOne({
             'externalIds.venueBoostTaskId': String(phpTask.id)
           });
           
@@ -112,7 +168,9 @@ export class StaffluentTaskService {
               metadata: {
                 ...existingTask.metadata,
                 requiredSkills: phpTask.required_skills || [],
-                lastSyncedAt: new Date()
+                lastSyncedAt: new Date(),
+                phpTaskId: phpTask.id,
+                syncSource: 'php_venue_boost'
               }
             };
             
@@ -121,6 +179,40 @@ export class StaffluentTaskService {
             await existingTask.updateOne(updateData);
             syncSummary.updated++;
             logs.push(`Successfully updated task: ${existingTask._id}`);
+
+            // Check if PHP task needs external ID update
+            let externalIds = {};
+            if (phpTask.external_ids) {
+              if (typeof phpTask.external_ids === 'string') {
+                externalIds = JSON.parse(phpTask.external_ids);
+              } else {
+                externalIds = phpTask.external_ids;
+              }
+            }
+            
+            // Check for BOTH possible property names
+            // @ts-ignore
+            const hasOmnistackId = externalIds.omnistackId || externalIds.omniStackGateway;
+            const needsUpdate = !hasOmnistackId;
+            
+            logs.push(`External IDs object: ${JSON.stringify(externalIds)}`);
+            // @ts-ignore
+            logs.push(`Has omnistackId: ${!!externalIds.omnistackId}`);
+            // @ts-ignore
+            logs.push(`Has omniStackGateway: ${!!externalIds.omniStackGateway}`);
+            logs.push(`PHP task needs external ID update: ${needsUpdate}`);
+                      
+            if (needsUpdate) {
+              logs.push(`Calling updateTaskExternalId(${phpTask.id}, ${existingTask._id.toString()})`);
+              const updateSuccess = await this.updateTaskExternalId(phpTask.id, existingTask._id.toString());
+              logs.push(`External ID update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
+              
+              if (updateSuccess) {
+                syncSummary.externalIdUpdates++;
+              } else {
+                syncSummary.externalIdFailures++;
+              }
+            }
           } else {
             // Create new task
             logs.push(`Creating new task...`);
@@ -139,7 +231,10 @@ export class StaffluentTaskService {
               metadata: {
                 requiredSkills: phpTask.required_skills || [],
                 projectId: phpTask.project_id ? String(phpTask.project_id) : null,
-                lastSyncedAt: new Date()
+                lastSyncedAt: new Date(),
+                phpTaskId: phpTask.id,
+                syncSource: 'php_venue_boost',
+                createdViaSync: true
               }
             };
             
@@ -148,6 +243,17 @@ export class StaffluentTaskService {
             const newTask = await this.taskModel.create(createData);
             syncSummary.added++;
             logs.push(`Successfully created task: ${newTask._id}`);
+
+            // Update PHP task with the new Task ID
+            logs.push(`Calling updateTaskExternalId(${phpTask.id}, ${newTask._id.toString()})`);
+            const updateSuccess = await this.updateTaskExternalId(phpTask.id, newTask._id.toString());
+            logs.push(`External ID update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
+            
+            if (updateSuccess) {
+              syncSummary.externalIdUpdates++;
+            } else {
+              syncSummary.externalIdFailures++;
+            }
           }
           
           // Handle task assignment if present
@@ -207,11 +313,13 @@ export class StaffluentTaskService {
           taskCount: venueBoostTasks.tasks.length,
           added: syncSummary.added,
           updated: syncSummary.updated,
-          failed: syncSummary.failed
+          failed: syncSummary.failed,
+          externalIdUpdates: syncSummary.externalIdUpdates,
+          externalIdFailures: syncSummary.externalIdFailures
         }
       });
       
-      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} tasks for business ${businessId}`;
+      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} tasks for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`;
       logs.push(completionMsg);
       this.logger.log(completionMsg);
       
@@ -389,7 +497,9 @@ export class StaffluentTaskService {
          added: 0,
          updated: 0,
          skipped: 0,
-         failed: 0
+         failed: 0,
+         externalIdUpdates: 0,
+         externalIdFailures: 0
        };
        
        const businessResults = [];
@@ -409,6 +519,8 @@ export class StaffluentTaskService {
            syncSummary.added += syncResult.summary.added;
            syncSummary.updated += syncResult.summary.updated;
            syncSummary.failed += syncResult.summary.failed;
+           syncSummary.externalIdUpdates += syncResult.summary.externalIdUpdates;
+           syncSummary.externalIdFailures += syncResult.summary.externalIdFailures;
          } catch (error) {
            this.logger.error(`Error syncing tasks for business ${business.id}: ${error.message}`);
            
@@ -438,11 +550,13 @@ export class StaffluentTaskService {
          syncSummary,
          details: { 
            businessResults,
-           totalBusinesses: businesses.length
+           totalBusinesses: businesses.length,
+           externalIdUpdates: syncSummary.externalIdUpdates,
+           externalIdFailures: syncSummary.externalIdFailures
          }
        });
        
-       this.logger.log(`[CRON COMPLETE] Task sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses`);
+       this.logger.log(`[CRON COMPLETE] Task sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`);
      } catch (error) {
        // Update the job record on failure
        const endTime = new Date();
@@ -466,6 +580,8 @@ export class StaffluentTaskService {
      success: boolean;
      message: string;
      syncedCount?: number;
+     externalIdUpdates?: number;
+     externalIdFailures?: number;
      logs: string[];
      summary?: any;
    }> {
@@ -473,8 +589,10 @@ export class StaffluentTaskService {
        const syncResult = await this.syncTasksFromVenueBoost(businessId);
        return {
          success: true,
-         message: `Successfully synced ${syncResult.totalSynced} tasks`,
+         message: `Successfully synced ${syncResult.totalSynced} tasks. External ID updates: ${syncResult.summary.externalIdUpdates}, failures: ${syncResult.summary.externalIdFailures}`,
          syncedCount: syncResult.totalSynced,
+         externalIdUpdates: syncResult.summary.externalIdUpdates,
+         externalIdFailures: syncResult.summary.externalIdFailures,
          logs: syncResult.logs,
          summary: syncResult.summary
        };
@@ -488,7 +606,9 @@ export class StaffluentTaskService {
          success: false,
          message: `Sync failed: ${error.message}`,
          logs: logs,
-         syncedCount: 0
+         syncedCount: 0,
+         externalIdUpdates: 0,
+         externalIdFailures: 0
        };
      }
    }
