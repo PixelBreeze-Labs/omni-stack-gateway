@@ -50,15 +50,106 @@ export class BusinessTaskAssignmentService {
   }
 
   /**
-   * Get all tasks pending approval for a business
-   */
-  async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
-    return this.taskModel.find({
-      businessId,
-      'metadata.pendingAssignment': { $exists: true },
-      isDeleted: false
-    }).populate('assignedUserId', 'name surname email');
+ * Get all tasks pending approval for a business
+ */
+async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
+  const tasks = await this.taskModel.aggregate([
+    {
+      $match: {
+        businessId,
+        'metadata.pendingAssignment': { $exists: true },
+        isDeleted: false
+      }
+    },
+    {
+      $addFields: {
+        // Convert the pendingAssignment.userId string to ObjectId for lookup
+        pendingAssigneeId: {
+          $cond: {
+            if: { 
+              $and: [
+                { $type: ["$metadata.pendingAssignment.userId", "string"] },
+                { $ne: ["$metadata.pendingAssignment.userId", ""] }
+              ]
+            },
+            then: { $toObjectId: "$metadata.pendingAssignment.userId" },
+            else: null
+          }
+        }
+      }
+    },
+    {
+      $lookup: {
+        from: 'users', // Make sure this matches your User collection name
+        localField: 'pendingAssigneeId',
+        foreignField: '_id',
+        as: 'pendingAssigneeInfo',
+        pipeline: [
+          {
+            $project: {
+              name: 1,
+              surname: 1,
+              email: 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'potentialAssignees',
+        foreignField: '_id',
+        as: 'potentialAssigneesInfo',
+        pipeline: [
+          {
+            $project: {
+              name: 1,
+              surname: 1,
+              email: 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      $addFields: {
+        // Set assignedUserId to the pending assignee info for frontend compatibility
+        assignedUserId: {
+          $cond: {
+            if: { $gt: [{ $size: "$pendingAssigneeInfo" }, 0] },
+            then: { $arrayElemAt: ["$pendingAssigneeInfo", 0] },
+            else: null
+          }
+        },
+        // Also populate the potentialAssignees field with user info
+        potentialAssignees: "$potentialAssigneesInfo"
+      }
+    },
+    {
+      $project: {
+        pendingAssigneeId: 0,
+        pendingAssigneeInfo: 0,
+        potentialAssigneesInfo: 0
+      }
+    }
+  ]);
+
+  this.logger.log(`Found ${tasks.length} pending approval tasks for business ${businessId}`);
+  
+  // Log the first task for debugging
+  if (tasks.length > 0) {
+    this.logger.log(`Sample task: ${JSON.stringify({
+      title: tasks[0].title,
+      hasPendingAssignment: !!tasks[0].metadata?.pendingAssignment,
+      pendingUserId: tasks[0].metadata?.pendingAssignment?.userId,
+      assignedUserIdPopulated: !!tasks[0].assignedUserId,
+      assignedUserName: tasks[0].assignedUserId?.name
+    })}`);
   }
+  
+  return tasks;
+}
 
   /**
    * Get approved and rejected task assignments with pagination
