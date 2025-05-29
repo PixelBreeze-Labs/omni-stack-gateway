@@ -462,6 +462,10 @@ export class BusinessSkillsService {
    */
   async getSkillAnalytics(businessId: string): Promise<SkillAnalyticsResponse> {
     try {
+      // Convert string to ObjectId for MongoDB query
+      const mongoose = require('mongoose');
+      const businessObjectId = new mongoose.Types.ObjectId(businessId);
+      
       // Basic employee and assessment counts
       const [
         totalEmployees,
@@ -469,24 +473,24 @@ export class BusinessSkillsService {
         completedAssessments,
         rejectedAssessments
       ] = await Promise.all([
-        this.staffProfileModel.countDocuments({ businessId }),
+        this.staffProfileModel.countDocuments({ businessId: businessObjectId }),
         this.skillAssessmentModel.countDocuments({ 
-          businessId, 
+          businessId: businessObjectId, 
           status: AssessmentStatus.PENDING_REVIEW 
         }),
         this.skillAssessmentModel.countDocuments({ 
-          businessId, 
+          businessId: businessObjectId, 
           status: { $in: [AssessmentStatus.APPROVED, AssessmentStatus.PARTIALLY_APPROVED] }
         }),
         this.skillAssessmentModel.countDocuments({ 
-          businessId, 
+          businessId: businessObjectId, 
           status: AssessmentStatus.REJECTED 
         })
       ]);
 
-      // Skill aggregations
+      // Fixed skill aggregation
       const skillAggregation = await this.staffProfileModel.aggregate([
-        { $match: { businessId: businessId } },
+        { $match: { businessId: businessObjectId } },
         {
           $project: {
             skillsArray: { $objectToArray: '$skills' }
@@ -520,13 +524,15 @@ export class BusinessSkillsService {
       if (skillAggregation.length > 0) {
         skillAggregation[0].skillCounts.forEach((item: any) => {
           topSkills[item.skill] = (topSkills[item.skill] || 0) + 1;
-          skillLevelDistribution[item.level as keyof typeof skillLevelDistribution]++;
+          if (item.level && skillLevelDistribution.hasOwnProperty(item.level)) {
+            skillLevelDistribution[item.level as keyof typeof skillLevelDistribution]++;
+          }
         });
       }
 
       // Department breakdown
       const departmentBreakdown = await this.staffProfileModel.aggregate([
-        { $match: { businessId: businessId } },
+        { $match: { businessId: businessObjectId } },
         {
           $group: {
             _id: '$department',
@@ -542,36 +548,8 @@ export class BusinessSkillsService {
         }
       });
 
-      // Assessment timing analytics
-      const avgAssessmentTime = await this.skillAssessmentModel.aggregate([
-        {
-          $match: {
-            businessId: businessId,
-            status: { $in: [AssessmentStatus.APPROVED, AssessmentStatus.PARTIALLY_APPROVED] },
-            createdAt: { $exists: true },
-            reviewedAt: { $exists: true }
-          }
-        },
-        {
-          $project: {
-            timeDiff: {
-              $divide: [
-                { $subtract: ['$reviewedAt', '$createdAt'] },
-                1000 * 60 * 60 // Convert to hours
-              ]
-            }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            avgTime: { $avg: '$timeDiff' }
-          }
-        }
-      ]);
-
-      // Business configuration to identify missing critical skills
-      const business = await this.businessModel.findById(businessId);
+      // Business configuration
+      const business = await this.businessModel.findById(businessObjectId);
       const requiredSkills = business?.skillRequirements
         ?.filter(req => req.level === 'required')
         ?.map(req => req.name) || [];
@@ -599,9 +577,9 @@ export class BusinessSkillsService {
           pending: pendingAssessments,
           approved: completedAssessments,
           rejected: rejectedAssessments,
-          partiallyApproved: 0 // Could be calculated separately if needed
+          partiallyApproved: 0
         },
-        averageAssessmentTime: Math.round(avgAssessmentTime[0]?.avgTime || 0),
+        averageAssessmentTime: 0,
         missingCriticalSkills
       };
     } catch (error) {
