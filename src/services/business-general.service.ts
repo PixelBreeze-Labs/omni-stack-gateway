@@ -266,12 +266,7 @@ export class BusinessGeneralService {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
-      metadata?: {
-        phpId?: string | null;
-        phpCreatedAt?: string;
-        shortCode?: string;
-        [key: string]: any;
-      };
+      metadata?: any;
     }
   ): Promise<{ success: boolean; departmentId: string; message: string }> {
     try {
@@ -307,9 +302,8 @@ export class BusinessGeneralService {
 
       // Add department to business
       business.departments.push(newDepartment);
+      business.markModified('departments');
       await business.save();
-
-      this.logger.log(`Created department ${departmentData.name} for business ${businessId}`);
 
       return {
         success: true,
@@ -333,12 +327,7 @@ export class BusinessGeneralService {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
-      metadata?: {
-        phpId?: string | null;
-        phpCreatedAt?: string;
-        shortCode?: string;
-        [key: string]: any;
-      };
+      metadata?: any;
     }
   ): Promise<{ success: boolean; message: string }> {
     try {
@@ -388,8 +377,6 @@ export class BusinessGeneralService {
       business.markModified('departments');
       await business.save();
 
-      this.logger.log(`Updated department ${departmentId} for business ${businessId}`);
-
       return {
         success: true,
         message: `Department updated successfully`
@@ -430,8 +417,6 @@ export class BusinessGeneralService {
       // Mark as modified and save
       business.markModified('departments');
       await business.save();
-
-      this.logger.log(`Removed department ${departmentName} (${departmentId}) from business ${businessId}`);
 
       return {
         success: true,
