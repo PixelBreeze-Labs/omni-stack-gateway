@@ -106,7 +106,7 @@ export class StaffluentTaskService {
               title: phpTask.name || phpTask.title,
               description: phpTask.description,
               status,
-              priority: phpTask.priority ? phpTask.priority.toUpperCase() : 'MEDIUM',
+              priority: phpTask.priority ? phpTask.priority.toLowerCase() : 'medium',
               dueDate: phpTask.due_date ? new Date(phpTask.due_date) : undefined,
               businessId,
               metadata: {
@@ -129,7 +129,7 @@ export class StaffluentTaskService {
               title: phpTask.name || phpTask.title,
               description: phpTask.description,
               status,
-              priority: phpTask.priority ? phpTask.priority.toUpperCase() : 'MEDIUM',
+              priority: phpTask.priority ? phpTask.priority.toLowerCase() : 'medium',
               dueDate: phpTask.due_date ? new Date(phpTask.due_date) : undefined,
               businessId,
               clientId: business.clientId,
