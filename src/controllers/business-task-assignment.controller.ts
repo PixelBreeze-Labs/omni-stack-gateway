@@ -1,6 +1,6 @@
 // src/controllers/business-task-assignment.controller.ts
-import { Controller, Get, Post, Put, Body, Param, Headers, UnauthorizedException, NotFoundException, Logger, InternalServerErrorException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Headers, UnauthorizedException, NotFoundException, Logger, InternalServerErrorException, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { BusinessTaskAssignmentService } from '../services/business-task-assignment.service';
 import { BusinessService } from '../services/business.service';
 import { TaskAssignment } from '../schemas/task-assignment.schema';
@@ -37,6 +37,105 @@ export class BusinessTaskAssignmentController {
         throw error;
       } else {
         throw new InternalServerErrorException('Failed to get pending approval tasks');
+      }
+    }
+  }
+
+  @Get('approved-rejected/:businessId')
+  @ApiOperation({ summary: 'Get approved and rejected task assignments for a business' })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiQuery({ name: 'status', required: false, description: 'Filter by status: approved or rejected' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number for pagination' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Number of items per page' })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'Filter from date (ISO string)' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'Filter to date (ISO string)' })
+  @ApiResponse({ status: 200, description: 'Returns approved and rejected task assignments' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async getApprovedRejectedTasks(
+    @Param('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Query('status') status?: 'approved' | 'rejected',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string
+  ): Promise<{
+    tasks: TaskAssignment[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    summary: {
+      approved: number;
+      rejected: number;
+      total: number;
+    };
+  }> {
+    try {
+      // Verify API key is valid for this business
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      const pageNum = parseInt(page) || 1;
+      const limitNum = parseInt(limit) || 10;
+      
+      const filters = {
+        status,
+        dateFrom: dateFrom ? new Date(dateFrom) : null,
+        dateTo: dateTo ? new Date(dateTo) : null,
+      };
+      
+      return this.businessTaskAssignmentService.getApprovedRejectedTasks(
+        businessId, 
+        pageNum, 
+        limitNum, 
+        filters
+      );
+    } catch (error) {
+      this.logger.error(`Error getting approved/rejected tasks: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+        throw error;
+      } else {
+        throw new InternalServerErrorException('Failed to get approved/rejected tasks');
+      }
+    }
+  }
+
+  @Get('assignment-stats/:businessId')
+  @ApiOperation({ summary: 'Get assignment statistics for a business' })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiQuery({ name: 'period', required: false, description: 'Time period: today, week, month' })
+  @ApiResponse({ status: 200, description: 'Returns assignment statistics' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async getAssignmentStats(
+    @Param('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Query('period') period?: 'today' | 'week' | 'month'
+  ): Promise<{
+    pending: number;
+    approved: number;
+    rejected: number;
+    approvedToday: number;
+    rejectedToday: number;
+    trends: {
+      approvedTrend: number;
+      rejectedTrend: number;
+    };
+  }> {
+    try {
+      // Verify API key is valid for this business
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      return this.businessTaskAssignmentService.getAssignmentStats(businessId, period || 'today');
+    } catch (error) {
+      this.logger.error(`Error getting assignment stats: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+        throw error;
+      } else {
+        throw new InternalServerErrorException('Failed to get assignment stats');
       }
     }
   }
