@@ -475,9 +475,11 @@ export class StaffluentEmployeeService {
     const industrySkills = this.getIndustryBasedSkills(businessIndustry, businessSubCategory, departmentName, baseLevel, baseExperience);
     Object.assign(skills, industrySkills);
     
-    // Department-specific skill inference
-    const departmentSkills = this.getDepartmentBasedSkills(departmentName, businessIndustry, baseLevel, baseExperience);
-    Object.assign(skills, departmentSkills);
+    // Department-specific skill inference (FIXED: pass business object, add await)
+    if (departmentName) {
+      const departmentSkills = await this.getDepartmentBasedSkills(departmentName, business, baseLevel, baseExperience);
+      Object.assign(skills, departmentSkills);
+    }
     
     // Add soft skills based on role level
     const softSkills = this.getSoftSkills(roleName, baseLevel, baseExperience);
@@ -604,7 +606,7 @@ export class StaffluentEmployeeService {
   /**
    * Get department-based skills
    */
-  private getDepartmentBasedSkills(
+  private getLegacyDepartmentBasedSkills(
     department: string, 
     industry: BusinessIndustry, 
     baseLevel: SkillLevel, 
@@ -652,6 +654,101 @@ export class StaffluentEmployeeService {
     return skills;
   }
 
+  /**
+ * Get department-based skills using business configuration
+ */
+private async getDepartmentBasedSkills(
+  departmentName: string, 
+  business: Business,
+  baseLevel: SkillLevel, 
+  baseExperience: number
+): Promise<Record<string, SkillData>> {
+  const skills: Record<string, SkillData> = {};
+
+  try {
+    // Find the department in business configuration
+    const department = business.departments?.find(
+      (dept: any) => dept.name.toLowerCase() === departmentName.toLowerCase()
+    );
+
+    if (department) {
+      // Use department-specific skill requirements
+      const dept = department as any;
+      
+      // Add required skills with higher proficiency
+      if (dept.requiredSkills?.length > 0) {
+        dept.requiredSkills.forEach((skillName: string) => {
+          const weight = dept.skillWeights?.[skillName] || 5;
+          const adjustedLevel = this.adjustSkillLevelByWeight(baseLevel, weight);
+          const adjustedExperience = Math.max(baseExperience, weight >= 8 ? baseExperience + 1 : baseExperience);
+          
+          skills[skillName] = this.createSkillData(
+            adjustedLevel, 
+            adjustedExperience, 
+            SkillSource.INFERRED,
+            85 // High confidence for required skills
+          );
+        });
+      }
+
+      // Add optional skills with standard proficiency
+      if (dept.optionalSkills?.length > 0) {
+        dept.optionalSkills.forEach((skillName: string) => {
+          if (!skills[skillName]) { // Don't override required skills
+            const weight = dept.skillWeights?.[skillName] || 3;
+            const adjustedLevel = this.adjustSkillLevelByWeight(baseLevel, weight);
+            
+            skills[skillName] = this.createSkillData(
+              adjustedLevel, 
+              Math.max(1, baseExperience - 1), 
+              SkillSource.INFERRED,
+              65 // Lower confidence for optional skills
+            );
+          }
+        });
+      }
+
+      this.logger.log(`Applied department-specific skills for ${departmentName}: ${Object.keys(skills).length} skills`);
+    } else {
+      // Fallback to legacy department-based inference if no department config found
+      this.logger.warn(`No department configuration found for ${departmentName}, using fallback inference`);
+      return this.getLegacyDepartmentBasedSkills(departmentName, business.industry, baseLevel, baseExperience);
+    }
+  } catch (error) {
+    this.logger.error(`Error getting department skills for ${departmentName}: ${error.message}`);
+    // Fallback to legacy method on error
+    return this.getLegacyDepartmentBasedSkills(departmentName, business.industry, baseLevel, baseExperience);
+  }
+
+  return skills;
+}
+
+// STEP 3: ADD these new helper methods
+/**
+ * Adjust skill level based on weight (1-10 scale)
+ */
+private adjustSkillLevelByWeight(baseLevel: SkillLevel, weight: number): SkillLevel {
+  if (weight >= 8) {
+    // High importance - upgrade skill level
+    switch (baseLevel) {
+      case SkillLevel.NOVICE: return SkillLevel.INTERMEDIATE;
+      case SkillLevel.INTERMEDIATE: return SkillLevel.ADVANCED;
+      case SkillLevel.ADVANCED: return SkillLevel.EXPERT;
+      default: return SkillLevel.EXPERT;
+    }
+  } else if (weight <= 3) {
+    // Low importance - downgrade skill level
+    switch (baseLevel) {
+      case SkillLevel.EXPERT: return SkillLevel.ADVANCED;
+      case SkillLevel.ADVANCED: return SkillLevel.INTERMEDIATE;
+      case SkillLevel.INTERMEDIATE: return SkillLevel.NOVICE;
+      default: return SkillLevel.NOVICE;
+    }
+  }
+  
+  // Medium importance - keep base level
+  return baseLevel;
+}
   /**
    * Get soft skills based on role
    */

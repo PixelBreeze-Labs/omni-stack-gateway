@@ -500,4 +500,179 @@ export class BusinessGeneralService {
       throw error;
     }
   }
+
+
+  /**
+ * Update department skill requirements
+ */
+async updateDepartmentSkills(
+  businessId: string,
+  departmentId: string,
+  skillsData: {
+    requiredSkills?: string[];
+    optionalSkills?: string[];
+    skillWeights?: Record<string, number>;
+  }
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find department by ID
+    const departmentIndex = business.departments.findIndex(
+      (dept: any) => dept.id === departmentId
+    );
+
+    if (departmentIndex === -1) {
+      throw new NotFoundException('Department not found');
+    }
+
+    // Update department skills
+    const department = business.departments[departmentIndex] as any;
+    
+    if (skillsData.requiredSkills !== undefined) {
+      department.requiredSkills = skillsData.requiredSkills;
+    }
+    if (skillsData.optionalSkills !== undefined) {
+      department.optionalSkills = skillsData.optionalSkills;
+    }
+    if (skillsData.skillWeights !== undefined) {
+      department.skillWeights = skillsData.skillWeights;
+    }
+    
+    // Update timestamp
+    department.updatedAt = new Date();
+
+    // Save changes
+    business.markModified('departments');
+    await business.save();
+
+    this.logger.log(`Updated skills for department ${departmentId} in business ${businessId}`);
+
+    return {
+      success: true,
+      message: `Department skills updated successfully`
+    };
+  } catch (error) {
+    this.logger.error(`Error updating department skills: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Get department with its skill requirements
+ */
+async getDepartmentSkills(
+  businessId: string,
+  departmentId: string
+): Promise<{
+  department: any;
+  skillRequirements: {
+    required: string[];
+    optional: string[];
+    weights: Record<string, number>;
+  };
+}> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const department = business.departments.find(
+      (dept: any) => dept.id === departmentId
+    );
+
+    if (!department) {
+      throw new NotFoundException('Department not found');
+    }
+
+    return {
+      department,
+      skillRequirements: {
+        required: department.requiredSkills || [],
+        optional: department.optionalSkills || [],
+        weights: department.skillWeights || {}
+      }
+    };
+  } catch (error) {
+    this.logger.error(`Error getting department skills: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Sync department skill requirements with business skill requirements
+ */
+async syncDepartmentSkills(businessId: string): Promise<{
+  success: boolean;
+  message: string;
+  syncedDepartments: number;
+}> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    let syncedDepartments = 0;
+
+    // Update each department with business-level skill requirements
+    for (const department of business.departments) {
+      const dept = department as any;
+      
+      // Find business skill requirements for this department
+      const departmentSkillReqs = business.skillRequirements?.filter(
+        req => req.department === dept.name || !req.department
+      ) || [];
+
+      const requiredSkills = departmentSkillReqs
+        .filter(req => req.level === 'required')
+        .map(req => req.name);
+
+      const optionalSkills = departmentSkillReqs
+        .filter(req => req.level === 'preferred' || req.level === 'optional')
+        .map(req => req.name);
+
+      const skillWeights: Record<string, number> = {};
+      departmentSkillReqs.forEach(req => {
+        if (req.customWeight) {
+          skillWeights[req.name] = req.customWeight;
+        }
+      });
+
+      // Update department if there are changes
+      const hasChanges = 
+        JSON.stringify(dept.requiredSkills || []) !== JSON.stringify(requiredSkills) ||
+        JSON.stringify(dept.optionalSkills || []) !== JSON.stringify(optionalSkills) ||
+        JSON.stringify(dept.skillWeights || {}) !== JSON.stringify(skillWeights);
+
+      if (hasChanges) {
+        dept.requiredSkills = requiredSkills;
+        dept.optionalSkills = optionalSkills;
+        dept.skillWeights = skillWeights;
+        dept.updatedAt = new Date();
+        syncedDepartments++;
+      }
+    }
+
+    if (syncedDepartments > 0) {
+      business.markModified('departments');
+      await business.save();
+    }
+
+    this.logger.log(`Synced skill requirements for ${syncedDepartments} departments in business ${businessId}`);
+
+    return {
+      success: true,
+      message: `Synced skill requirements for ${syncedDepartments} departments`,
+      syncedDepartments
+    };
+  } catch (error) {
+    this.logger.error(`Error syncing department skills: ${error.message}`, error.stack);
+    throw error;
+  }
+}
 }

@@ -393,4 +393,112 @@ import {
     }
   }
 
+  @Put('departments/:departmentId/skills')
+  @ApiOperation({ 
+    summary: 'Update department skill requirements',
+    description: 'Update skill requirements for a specific department'
+  })
+  @ApiParam({ name: 'departmentId', description: 'Department ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Department skills updated successfully'
+  })
+  async updateDepartmentSkills(
+    @Param('departmentId') departmentId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() skillsData: {
+      requiredSkills?: string[];
+      optionalSkills?: string[];
+      skillWeights?: Record<string, number>;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!departmentId) {
+        throw new BadRequestException('Department ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.updateDepartmentSkills(businessId, departmentId, skillsData);
+    } catch (error) {
+      this.logger.error(`Error updating department skills: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update department skills');
+    }
+  }
+
+  @Get('departments/:departmentId/skills')
+  @ApiOperation({ 
+    summary: 'Get department skill requirements',
+    description: 'Get skill requirements for a specific department'
+  })
+  @ApiParam({ name: 'departmentId', description: 'Department ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Department skills retrieved successfully'
+  })
+  async getDepartmentSkills(
+    @Param('departmentId') departmentId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<any> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!departmentId) {
+        throw new BadRequestException('Department ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getDepartmentSkills(businessId, departmentId);
+    } catch (error) {
+      this.logger.error(`Error getting department skills: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to get department skills');
+    }
+  }
+
+  @Post('departments/sync-skills')
+  @ApiOperation({ 
+    summary: 'Sync department skills with business requirements',
+    description: 'Sync all department skill requirements with business-level skill configuration'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Department skills synced successfully'
+  })
+  async syncDepartmentSkills(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ success: boolean; message: string; syncedDepartments: number }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.syncDepartmentSkills(businessId);
+    } catch (error) {
+      this.logger.error(`Error syncing department skills: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to sync department skills');
+    }
+  }
+
+
 }
