@@ -56,110 +56,69 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
   try {
     this.logger.log(`Getting pending approval tasks for business: ${businessId}`);
     
-    const tasks = await this.taskModel.aggregate([
-      {
-        $match: {
-          businessId,
-          'metadata.pendingAssignment': { $exists: true },
-          isDeleted: false
-        }
-      },
-      {
-        $addFields: {
-          // Safely convert pendingAssignment.userId to ObjectId
-          pendingUserObjectId: {
-            $cond: {
-              if: {
-                $and: [
-                  { $ne: ["$metadata.pendingAssignment.userId", null] },
-                  { $ne: ["$metadata.pendingAssignment.userId", ""] },
-                  { $type: ["$metadata.pendingAssignment.userId", "string"] }
-                ]
-              },
-              then: {
-                $cond: {
-                  if: { $regexMatch: { input: "$metadata.pendingAssignment.userId", regex: /^[0-9a-fA-F]{24}$/ } },
-                  then: { $toObjectId: "$metadata.pendingAssignment.userId" },
-                  else: null
-                }
-              },
-              else: null
-            }
-          }
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'pendingUserObjectId',
-          foreignField: '_id',
-          as: 'pendingUserInfo'
-        }
-      },
-      {
-        $addFields: {
-          // Set assignedUserId to the looked up user info for frontend compatibility
-          assignedUserId: {
-            $cond: {
-              if: { $gt: [{ $size: "$pendingUserInfo" }, 0] },
-              then: {
-                $let: {
-                  vars: { user: { $arrayElemAt: ["$pendingUserInfo", 0] } },
-                  in: {
-                    _id: "$$user._id",
-                    name: "$$user.name",
-                    surname: "$$user.surname",
-                    email: "$$user.email"
-                  }
-                }
-              },
-              else: null
-            }
-          }
-        }
-      },
-      {
-        $project: {
-          pendingUserObjectId: 0,
-          pendingUserInfo: 0
-        }
-      }
-    ]);
+    // Simple query with populate on potentialAssignees
+    const tasks = await this.taskModel
+      .find({
+        businessId,
+        'metadata.pendingAssignment': { $exists: true },
+        isDeleted: false
+      })
+      .populate('potentialAssignees', 'name surname email')
+      .lean();
 
     this.logger.log(`Found ${tasks.length} pending approval tasks`);
-    
-    if (tasks.length > 0) {
-      const sampleTask = tasks[0];
+
+    // Transform the data to set assignedUserId for frontend compatibility
+    const transformedTasks = tasks.map(task => {
+      // Find the user that matches the pending assignment userId
+      const pendingUserId = task.metadata?.pendingAssignment?.userId;
+      
+      if (pendingUserId && task.potentialAssignees) {
+        // Find the matching user from populated potentialAssignees
+        const matchingUser = Array.isArray(task.potentialAssignees) 
+          ? task.potentialAssignees.find(user => 
+               // @ts-ignore
+              user._id.toString() === pendingUserId.toString()
+            )
+          : null;
+
+        if (matchingUser) {
+          
+          // Set assignedUserId to the matching user for frontend compatibility
+          // @ts-ignore
+          task.assignedUserId = {
+              // @ts-ignore
+            _id: matchingUser._id,
+               // @ts-ignore
+            name: matchingUser.name,
+               // @ts-ignore
+            surname: matchingUser.surname,
+               // @ts-ignore
+            email: matchingUser.email
+          };
+        }
+      }
+
+      return task;
+    });
+
+    if (transformedTasks.length > 0) {
+      const sampleTask = transformedTasks[0];
       this.logger.log(`Sample task debug info:`, {
         title: sampleTask.title,
-        hasPendingAssignment: !!sampleTask.metadata?.pendingAssignment,
+        potentialAssigneesCount: Array.isArray(sampleTask.potentialAssignees) ? sampleTask.potentialAssignees.length : 0,
         pendingUserId: sampleTask.metadata?.pendingAssignment?.userId,
         assignedUserPopulated: !!sampleTask.assignedUserId,
+           // @ts-ignore
         assignedUserName: sampleTask.assignedUserId?.name
       });
     }
 
-    return tasks;
+    return transformedTasks as TaskAssignment[];
     
   } catch (error) {
     this.logger.error(`Error in getPendingApprovalTasks:`, error);
-    
-    // Fallback to simple query if aggregation fails
-    this.logger.warn('Falling back to simple query without user population');
-    try {
-      const simpleTasks = await this.taskModel.find({
-        businessId,
-        'metadata.pendingAssignment': { $exists: true },
-        isDeleted: false
-      }).lean();
-      
-      this.logger.log(`Fallback query returned ${simpleTasks.length} tasks`);
-      return simpleTasks as TaskAssignment[];
-      
-    } catch (fallbackError) {
-      this.logger.error(`Fallback query also failed:`, fallbackError);
-      throw new Error(`Failed to get pending approval tasks: ${fallbackError.message}`);
-    }
+    throw new Error(`Failed to get pending approval tasks: ${error.message}`);
   }
 }
 
