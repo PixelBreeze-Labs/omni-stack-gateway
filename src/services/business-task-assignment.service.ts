@@ -53,102 +53,114 @@ export class BusinessTaskAssignmentService {
  * Get all tasks pending approval for a business
  */
 async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
-  const tasks = await this.taskModel.aggregate([
-    {
-      $match: {
+  try {
+    this.logger.log(`Getting pending approval tasks for business: ${businessId}`);
+    
+    const tasks = await this.taskModel.aggregate([
+      {
+        $match: {
+          businessId,
+          'metadata.pendingAssignment': { $exists: true },
+          isDeleted: false
+        }
+      },
+      {
+        $addFields: {
+          // Safely convert pendingAssignment.userId to ObjectId
+          pendingUserObjectId: {
+            $cond: {
+              if: {
+                $and: [
+                  { $ne: ["$metadata.pendingAssignment.userId", null] },
+                  { $ne: ["$metadata.pendingAssignment.userId", ""] },
+                  { $type: ["$metadata.pendingAssignment.userId", "string"] }
+                ]
+              },
+              then: {
+                $cond: {
+                  if: { $regexMatch: { input: "$metadata.pendingAssignment.userId", regex: /^[0-9a-fA-F]{24}$/ } },
+                  then: { $toObjectId: "$metadata.pendingAssignment.userId" },
+                  else: null
+                }
+              },
+              else: null
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'pendingUserObjectId',
+          foreignField: '_id',
+          as: 'pendingUserInfo'
+        }
+      },
+      {
+        $addFields: {
+          // Set assignedUserId to the looked up user info for frontend compatibility
+          assignedUserId: {
+            $cond: {
+              if: { $gt: [{ $size: "$pendingUserInfo" }, 0] },
+              then: {
+                $let: {
+                  vars: { user: { $arrayElemAt: ["$pendingUserInfo", 0] } },
+                  in: {
+                    _id: "$$user._id",
+                    name: "$$user.name",
+                    surname: "$$user.surname",
+                    email: "$$user.email"
+                  }
+                }
+              },
+              else: null
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          pendingUserObjectId: 0,
+          pendingUserInfo: 0
+        }
+      }
+    ]);
+
+    this.logger.log(`Found ${tasks.length} pending approval tasks`);
+    
+    if (tasks.length > 0) {
+      const sampleTask = tasks[0];
+      this.logger.log(`Sample task debug info:`, {
+        title: sampleTask.title,
+        hasPendingAssignment: !!sampleTask.metadata?.pendingAssignment,
+        pendingUserId: sampleTask.metadata?.pendingAssignment?.userId,
+        assignedUserPopulated: !!sampleTask.assignedUserId,
+        assignedUserName: sampleTask.assignedUserId?.name
+      });
+    }
+
+    return tasks;
+    
+  } catch (error) {
+    this.logger.error(`Error in getPendingApprovalTasks:`, error);
+    
+    // Fallback to simple query if aggregation fails
+    this.logger.warn('Falling back to simple query without user population');
+    try {
+      const simpleTasks = await this.taskModel.find({
         businessId,
         'metadata.pendingAssignment': { $exists: true },
         isDeleted: false
-      }
-    },
-    {
-      $addFields: {
-        // Convert the pendingAssignment.userId string to ObjectId for lookup
-        pendingAssigneeId: {
-          $cond: {
-            if: { 
-              $and: [
-                { $type: ["$metadata.pendingAssignment.userId", "string"] },
-                { $ne: ["$metadata.pendingAssignment.userId", ""] }
-              ]
-            },
-            then: { $toObjectId: "$metadata.pendingAssignment.userId" },
-            else: null
-          }
-        }
-      }
-    },
-    {
-      $lookup: {
-        from: 'users', // Make sure this matches your User collection name
-        localField: 'pendingAssigneeId',
-        foreignField: '_id',
-        as: 'pendingAssigneeInfo',
-        pipeline: [
-          {
-            $project: {
-              name: 1,
-              surname: 1,
-              email: 1
-            }
-          }
-        ]
-      }
-    },
-    {
-      $lookup: {
-        from: 'users',
-        localField: 'potentialAssignees',
-        foreignField: '_id',
-        as: 'potentialAssigneesInfo',
-        pipeline: [
-          {
-            $project: {
-              name: 1,
-              surname: 1,
-              email: 1
-            }
-          }
-        ]
-      }
-    },
-    {
-      $addFields: {
-        // Set assignedUserId to the pending assignee info for frontend compatibility
-        assignedUserId: {
-          $cond: {
-            if: { $gt: [{ $size: "$pendingAssigneeInfo" }, 0] },
-            then: { $arrayElemAt: ["$pendingAssigneeInfo", 0] },
-            else: null
-          }
-        },
-        // Also populate the potentialAssignees field with user info
-        potentialAssignees: "$potentialAssigneesInfo"
-      }
-    },
-    {
-      $project: {
-        pendingAssigneeId: 0,
-        pendingAssigneeInfo: 0,
-        potentialAssigneesInfo: 0
-      }
+      }).lean();
+      
+      this.logger.log(`Fallback query returned ${simpleTasks.length} tasks`);
+      return simpleTasks as TaskAssignment[];
+      
+    } catch (fallbackError) {
+      this.logger.error(`Fallback query also failed:`, fallbackError);
+      throw new Error(`Failed to get pending approval tasks: ${fallbackError.message}`);
     }
-  ]);
-
-  this.logger.log(`Found ${tasks.length} pending approval tasks for business ${businessId}`);
-  
-  // Log the first task for debugging
-  if (tasks.length > 0) {
-    this.logger.log(`Sample task: ${JSON.stringify({
-      title: tasks[0].title,
-      hasPendingAssignment: !!tasks[0].metadata?.pendingAssignment,
-      pendingUserId: tasks[0].metadata?.pendingAssignment?.userId,
-      assignedUserIdPopulated: !!tasks[0].assignedUserId,
-      assignedUserName: tasks[0].assignedUserId?.name
-    })}`);
   }
-  
-  return tasks;
 }
 
   /**
