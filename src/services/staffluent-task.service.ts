@@ -132,6 +132,7 @@ export class StaffluentTaskService {
               priority: phpTask.priority ? phpTask.priority.toUpperCase() : 'MEDIUM',
               dueDate: phpTask.due_date ? new Date(phpTask.due_date) : undefined,
               businessId,
+              clientId: business.clientId,
               externalIds: {
                 venueBoostTaskId: String(phpTask.id)
               },
