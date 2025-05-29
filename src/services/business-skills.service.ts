@@ -7,7 +7,10 @@ import {
   BusinessIndustry,
   BusinessOperationType,
   BusinessSkillRequirement,
-  BusinessSubCategory
+  BusinessSubCategory,
+  BusinessType,
+  AgentFeatureFlag,
+  SubscriptionStatus
 } from '../schemas/business.schema';
 import { 
   StaffProfile,
@@ -32,13 +35,9 @@ import {
   SkillAssessmentItemDto,
   ConfigurationOptionsResponse,
   UpdateBusinessConfigDto,
-  BusinessConfigResponse
+  BusinessConfigResponse,
+  SkillsConfigurationDto
 } from '../dtos/business-skills.dto';
-import {
-    BusinessType,
-    AgentFeatureFlag,
-    SubscriptionStatus
-  } from '../schemas/business.schema';
 import { Currency } from 'src/enums/currency.enum';
 
 @Injectable()
@@ -66,6 +65,16 @@ export class BusinessSkillsService {
         throw new NotFoundException('Business not found');
       }
 
+      // Ensure skillsConfiguration has default values
+      const defaultSkillsConfig = {
+        enablePerformanceTracking: true,
+        enablePeerReviews: false,
+        enableSelfAssessment: true,
+        skillDecayMonths: 12,
+        mandatorySkillsReview: false,
+        reviewFrequencyMonths: 6
+      };
+
       return {
         businessId: business._id.toString(),
         name: business.name,
@@ -75,13 +84,9 @@ export class BusinessSkillsService {
         customSkills: business.customSkills || [],
         autoInferSkills: business.autoInferSkills ?? true,
         requireSkillApproval: business.requireSkillApproval ?? true,
-        skillsConfiguration: business.skillsConfiguration || {
-          enablePerformanceTracking: true,
-          enablePeerReviews: false,
-          enableSelfAssessment: true,
-          skillDecayMonths: 12,
-          mandatorySkillsReview: false,
-          reviewFrequencyMonths: 6
+        skillsConfiguration: {
+          ...defaultSkillsConfig,
+          ...business.skillsConfiguration
         },
         departments: business.departments || []
       };
@@ -103,6 +108,27 @@ export class BusinessSkillsService {
       
       if (!business) {
         throw new NotFoundException('Business not found');
+      }
+
+      // Validate custom skills if provided
+      if (updateDto.customSkills) {
+        // Remove duplicates and trim whitespace
+        updateDto.customSkills = [...new Set(updateDto.customSkills.map(skill => skill.trim()).filter(Boolean))];
+      }
+
+      // Validate skillsConfiguration if provided
+      if (updateDto.skillsConfiguration) {
+        const config = updateDto.skillsConfiguration;
+        
+        // Validate skillDecayMonths
+        if (config.skillDecayMonths !== undefined && (config.skillDecayMonths < 1 || config.skillDecayMonths > 60)) {
+          throw new BadRequestException('Skill decay months must be between 1 and 60');
+        }
+
+        // Validate reviewFrequencyMonths
+        if (config.reviewFrequencyMonths !== undefined && (config.reviewFrequencyMonths < 1 || config.reviewFrequencyMonths > 24)) {
+          throw new BadRequestException('Review frequency months must be between 1 and 24');
+        }
       }
 
       // Update business with new configuration
@@ -585,6 +611,119 @@ export class BusinessSkillsService {
   }
 
   // ============================================================================
+  // BUSINESS CONFIGURATION MANAGEMENT
+  // ============================================================================
+
+  /**
+   * Get complete business configuration
+   */
+  async getBusinessConfiguration(businessId: string): Promise<BusinessConfigResponse> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      return {
+        id: business._id.toString(),
+        name: business.name,
+        email: business.email,
+        phone: business.phone,
+        type: business.type,
+        industry: business.industry,
+        subCategory: business.subCategory,
+        operationType: business.operationType,
+        currency: business.currency,
+        taxId: business.taxId,
+        vatNumber: business.vatNumber,
+        includedFeatures: business.includedFeatures,
+        employeeCapabilities: {
+          allowClockInOut: business.allow_clockinout,
+          hasAppAccess: business.has_app_access,
+          allowCheckIn: business.allow_checkin
+        },
+        subscriptionInfo: {
+          status: business.subscriptionStatus,
+          endDate: business.subscriptionEndDate,
+          details: business.subscriptionDetails
+        },
+        departments: business.departments || [],
+        metadata: business.metadata || new Map()
+      };
+    } catch (error) {
+      this.logger.error(`Error getting business configuration: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Update business configuration
+   */
+  async updateBusinessConfiguration(
+    businessId: string, 
+    updateDto: UpdateBusinessConfigDto
+  ): Promise<BusinessConfigResponse> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Validate business type if provided
+      if (updateDto.type && !Object.values(BusinessType).includes(updateDto.type)) {
+        throw new BadRequestException('Invalid business type');
+      }
+
+      // Validate industry if provided
+      if (updateDto.industry && !Object.values(BusinessIndustry).includes(updateDto.industry)) {
+        throw new BadRequestException('Invalid business industry');
+      }
+
+      // Validate subcategory if provided
+      if (updateDto.subCategory && !Object.values(BusinessSubCategory).includes(updateDto.subCategory)) {
+        throw new BadRequestException('Invalid business subcategory');
+      }
+
+      // Update business with new configuration
+      const updatedBusiness = await this.businessModel.findByIdAndUpdate(
+        businessId,
+        {
+          ...updateDto,
+          updatedAt: new Date()
+        },
+        { new: true }
+      );
+
+      return this.getBusinessConfiguration(businessId);
+    } catch (error) {
+      this.logger.error(`Error updating business configuration: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Get configuration options for dropdowns
+   */
+  async getConfigurationOptions(): Promise<ConfigurationOptionsResponse> {
+    try {
+      return {
+        businessTypes: Object.values(BusinessType),
+        industries: Object.values(BusinessIndustry),
+        subCategories: Object.values(BusinessSubCategory),
+        operationTypes: Object.values(BusinessOperationType),
+        currencies: Object.values(Currency),
+        agentFeatures: Object.values(AgentFeatureFlag),
+        subscriptionStatuses: Object.values(SubscriptionStatus)
+      };
+    } catch (error) {
+      this.logger.error(`Error getting configuration options: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
   // HELPER METHODS
   // ============================================================================
 
@@ -655,115 +794,6 @@ export class BusinessSkillsService {
       
     } catch (error) {
       this.logger.error(`Error triggering skill re-assessment: ${error.message}`, error.stack);
-    }
-  }
-
-  /**
- * Get complete business configuration
- */
-async getBusinessConfiguration(businessId: string): Promise<BusinessConfigResponse> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
-  
-      return {
-        id: business._id.toString(),
-        name: business.name,
-        email: business.email,
-        phone: business.phone,
-        type: business.type,
-        industry: business.industry,
-        subCategory: business.subCategory,
-        operationType: business.operationType,
-        currency: business.currency,
-        taxId: business.taxId,
-        vatNumber: business.vatNumber,
-        includedFeatures: business.includedFeatures,
-        employeeCapabilities: {
-          allowClockInOut: business.allow_clockinout,
-          hasAppAccess: business.has_app_access,
-          allowCheckIn: business.allow_checkin
-        },
-        subscriptionInfo: {
-          status: business.subscriptionStatus,
-          endDate: business.subscriptionEndDate,
-          details: business.subscriptionDetails
-        },
-        departments: business.departments || [],
-        metadata: business.metadata || new Map()
-      };
-    } catch (error) {
-      this.logger.error(`Error getting business configuration: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-  
-  /**
-   * Update business configuration
-   */
-  async updateBusinessConfiguration(
-    businessId: string, 
-    updateDto: UpdateBusinessConfigDto
-  ): Promise<BusinessConfigResponse> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
-  
-      // Validate business type if provided
-      if (updateDto.type && !Object.values(BusinessType).includes(updateDto.type)) {
-        throw new BadRequestException('Invalid business type');
-      }
-  
-      // Validate industry if provided
-      if (updateDto.industry && !Object.values(BusinessIndustry).includes(updateDto.industry)) {
-        throw new BadRequestException('Invalid business industry');
-      }
-  
-      // Validate subcategory if provided
-      if (updateDto.subCategory && !Object.values(BusinessSubCategory).includes(updateDto.subCategory)) {
-        throw new BadRequestException('Invalid business subcategory');
-      }
-  
-      // Update business with new configuration
-      const updatedBusiness = await this.businessModel.findByIdAndUpdate(
-        businessId,
-        {
-          ...updateDto,
-          updatedAt: new Date()
-        },
-        { new: true }
-      );
-  
-      return this.getBusinessConfiguration(businessId);
-    } catch (error) {
-      this.logger.error(`Error updating business configuration: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-  
-  /**
-   * Get configuration options for dropdowns
-   */
-  async getConfigurationOptions(): Promise<ConfigurationOptionsResponse> {
-    try {
-      return {
-        businessTypes: Object.values(BusinessType),
-        industries: Object.values(BusinessIndustry),
-        subCategories: Object.values(BusinessSubCategory),
-        operationTypes: Object.values(BusinessOperationType),
-        currencies: Object.values(Currency),
-        agentFeatures: Object.values(AgentFeatureFlag),
-        subscriptionStatuses: Object.values(SubscriptionStatus)
-      };
-    } catch (error) {
-      this.logger.error(`Error getting configuration options: ${error.message}`, error.stack);
-      throw error;
     }
   }
 }
