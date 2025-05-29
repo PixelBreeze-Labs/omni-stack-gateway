@@ -16,6 +16,39 @@ export class BusinessTaskAssignmentController {
     private readonly businessService: BusinessService
   ) {}
 
+  @Get('debug/:businessId')
+  @ApiOperation({ summary: 'Debug endpoint to check task statuses (remove in production)' })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiResponse({ status: 200, description: 'Returns debug information about tasks' })
+  async debugTasks(
+    @Param('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<any> {
+    try {
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      // Get all tasks for debugging
+      const tasks = await this.businessTaskAssignmentService.debugTaskStatuses(businessId);
+      
+      return {
+        businessId,
+        totalTasks: tasks.length,
+        tasks: tasks.map(task => ({
+          id: task._id,
+          title: task.title,
+          status: task.status,
+          assignedUserId: task.assignedUserId,
+          metadata: task.metadata,
+          createdAt: task.createdAt,
+          updatedAt: task.updatedAt
+        }))
+      };
+    } catch (error) {
+      this.logger.error(`Error in debug endpoint: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
   @Get('pending-approval/:businessId')
   @ApiOperation({ summary: 'Get all tasks pending approval for a business' })
   @ApiParam({ name: 'businessId', description: 'Business ID' })

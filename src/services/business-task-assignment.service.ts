@@ -17,6 +17,32 @@ export class BusinessTaskAssignmentService {
   ) {}
 
   /**
+   * Debug method to check all tasks and their status fields
+   */
+  async debugTaskStatuses(businessId: string): Promise<any[]> {
+    const allTasks = await this.taskModel.find({
+      businessId,
+      isDeleted: false
+    }).select('title status metadata assignedUserId createdAt updatedAt').limit(20);
+    
+    this.logger.log(`Debug: Found ${allTasks.length} tasks for business ${businessId}`);
+    allTasks.forEach(task => {
+      this.logger.log({
+        id: task._id,
+        title: task.title,
+        status: task.status,
+        assignedUserId: !!task.assignedUserId,
+        hasPendingAssignment: !!task.metadata?.pendingAssignment,
+        hasRejectionReason: !!task.metadata?.rejectionReason,
+        assignmentStatus: task.metadata?.assignmentStatus,
+        metadataKeys: Object.keys(task.metadata || {})
+      });
+    });
+    
+    return allTasks;
+  }
+
+  /**
    * Get task by ID
    */
   async getTaskById(taskId: string): Promise<TaskAssignment> {
@@ -62,19 +88,43 @@ export class BusinessTaskAssignmentService {
   }> {
     const skip = (page - 1) * limit;
     
-    // Build query conditions
+    // Build query conditions - check multiple possible ways a task can be approved/rejected
     const baseQuery: any = {
       businessId,
       isDeleted: false,
       $or: [
+        // Check if task has been assigned (approved)
+        { 
+          assignedUserId: { $exists: true, $ne: null },
+          'metadata.pendingAssignment': { $exists: false } // No longer pending
+        },
+        // Check metadata status fields
         { 'metadata.assignmentStatus': 'approved' },
-        { 'metadata.assignmentStatus': 'rejected' }
+        { 'metadata.assignmentStatus': 'rejected' },
+        { 'metadata.status': 'approved' },
+        { 'metadata.status': 'rejected' },
+        // Check if rejection reason exists (rejected)
+        { 'metadata.rejectionReason': { $exists: true } }
       ]
     };
 
     // Apply status filter
-    if (filters.status) {
-      baseQuery['metadata.assignmentStatus'] = filters.status;
+    if (filters.status === 'approved') {
+      baseQuery.$or = [
+        { 
+          assignedUserId: { $exists: true, $ne: null },
+          'metadata.pendingAssignment': { $exists: false },
+          'metadata.rejectionReason': { $exists: false }
+        },
+        { 'metadata.assignmentStatus': 'approved' },
+        { 'metadata.status': 'approved' }
+      ];
+    } else if (filters.status === 'rejected') {
+      baseQuery.$or = [
+        { 'metadata.rejectionReason': { $exists: true } },
+        { 'metadata.assignmentStatus': 'rejected' },
+        { 'metadata.status': 'rejected' }
+      ];
     }
 
     // Apply date filters
@@ -101,17 +151,29 @@ export class BusinessTaskAssignmentService {
     // Get total count
     const total = await this.taskModel.countDocuments(baseQuery);
 
-    // Get summary counts
+    // Get summary counts with multiple conditions
     const [approvedCount, rejectedCount] = await Promise.all([
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'approved',
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 
+            assignedUserId: { $exists: true, $ne: null },
+            'metadata.pendingAssignment': { $exists: false },
+            'metadata.rejectionReason': { $exists: false }
+          },
+          { 'metadata.assignmentStatus': 'approved' },
+          { 'metadata.status': 'approved' }
+        ]
       }),
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'rejected',
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 'metadata.rejectionReason': { $exists: true } },
+          { 'metadata.assignmentStatus': 'rejected' },
+          { 'metadata.status': 'rejected' }
+        ]
       })
     ]);
 
@@ -159,17 +221,29 @@ export class BusinessTaskAssignmentService {
       isDeleted: false
     });
 
-    // Get total approved and rejected
+    // Get total approved and rejected with improved conditions
     const [approved, rejected] = await Promise.all([
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'approved',
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 
+            assignedUserId: { $exists: true, $ne: null },
+            'metadata.pendingAssignment': { $exists: false },
+            'metadata.rejectionReason': { $exists: false }
+          },
+          { 'metadata.assignmentStatus': 'approved' },
+          { 'metadata.status': 'approved' }
+        ]
       }),
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'rejected',
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 'metadata.rejectionReason': { $exists: true } },
+          { 'metadata.assignmentStatus': 'rejected' },
+          { 'metadata.status': 'rejected' }
+        ]
       })
     ]);
 
@@ -177,15 +251,27 @@ export class BusinessTaskAssignmentService {
     const [approvedToday, rejectedToday] = await Promise.all([
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'approved',
         updatedAt: { $gte: today },
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 
+            assignedUserId: { $exists: true, $ne: null },
+            'metadata.pendingAssignment': { $exists: false },
+            'metadata.rejectionReason': { $exists: false }
+          },
+          { 'metadata.assignmentStatus': 'approved' },
+          { 'metadata.status': 'approved' }
+        ]
       }),
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'rejected',
         updatedAt: { $gte: today },
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 'metadata.rejectionReason': { $exists: true } },
+          { 'metadata.assignmentStatus': 'rejected' },
+          { 'metadata.status': 'rejected' }
+        ]
       })
     ]);
 
@@ -193,15 +279,27 @@ export class BusinessTaskAssignmentService {
     const [approvedYesterday, rejectedYesterday] = await Promise.all([
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'approved',
         updatedAt: { $gte: yesterday, $lt: today },
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 
+            assignedUserId: { $exists: true, $ne: null },
+            'metadata.pendingAssignment': { $exists: false },
+            'metadata.rejectionReason': { $exists: false }
+          },
+          { 'metadata.assignmentStatus': 'approved' },
+          { 'metadata.status': 'approved' }
+        ]
       }),
       this.taskModel.countDocuments({
         businessId,
-        'metadata.assignmentStatus': 'rejected',
         updatedAt: { $gte: yesterday, $lt: today },
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { 'metadata.rejectionReason': { $exists: true } },
+          { 'metadata.assignmentStatus': 'rejected' },
+          { 'metadata.status': 'rejected' }
+        ]
       })
     ]);
 
