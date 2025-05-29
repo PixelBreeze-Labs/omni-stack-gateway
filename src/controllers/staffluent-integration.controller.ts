@@ -19,35 +19,45 @@ export class StaffluentIntegrationController {
     private readonly staffluentTaskService: StaffluentTaskService,
     private readonly staffluentEmployeeService: StaffluentEmployeeService,
     private readonly autoAssignmentService: AutoAssignmentAgentService,
-    @InjectModel(TaskAssignment.name) private readonly taskAssignmentModel: Model<TaskAssignment>, // Fixed this line
-
+    @InjectModel(TaskAssignment.name) private readonly taskAssignmentModel: Model<TaskAssignment>,
   ) {}
 
   // Cronjob
   @Post('tasks/sync/:businessId')
   @ApiOperation({ summary: 'Sync tasks from VenueBoost for a business' })
   async syncTasks(@Param('businessId') businessId: string) {
-    const count = await this.staffluentTaskService.syncTasksFromVenueBoost(businessId);
-    return {
-      success: true,
-      message: `Successfully synced ${count} tasks for business ${businessId}`
-    };
+    return await this.staffluentTaskService.triggerManualSync(businessId);
   }
 
   // Cronjob
   @Post('employees/sync/:businessId')
   @ApiOperation({ summary: 'Sync employees from VenueBoost for a business' })
   async syncEmployees(@Param('businessId') businessId: string) {
-    const syncResult = await this.staffluentEmployeeService.syncEmployeesFromVenueBoost(businessId);
-    return {
-      success: true,
-      message: `Successfully synced ${syncResult.totalSynced} employees for business ${businessId}. External ID updates: ${syncResult.summary.externalIdUpdates}, failures: ${syncResult.summary.externalIdFailures}`,
-      syncedCount: syncResult.totalSynced,
-      externalIdUpdates: syncResult.summary.externalIdUpdates,
-      externalIdFailures: syncResult.summary.externalIdFailures,
-      logs: syncResult.logs,
-      summary: syncResult.summary
-    };
+    try {
+      const syncResult = await this.staffluentEmployeeService.syncEmployeesFromVenueBoost(businessId);
+      return {
+        success: true,
+        message: `Successfully synced ${syncResult.totalSynced} employees for business ${businessId}. External ID updates: ${syncResult.summary.externalIdUpdates}, failures: ${syncResult.summary.externalIdFailures}`,
+        syncedCount: syncResult.totalSynced,
+        externalIdUpdates: syncResult.summary.externalIdUpdates,
+        externalIdFailures: syncResult.summary.externalIdFailures,
+        logs: syncResult.logs,
+        summary: syncResult.summary
+      };
+    } catch (error) {
+      // Handle both regular errors and our custom error objects with logs
+      const logs = error.logs || [`ERROR: Employee sync failed for business ${businessId}: ${error.message}`];
+      
+      return {
+        success: false,
+        message: `Sync failed: ${error.message}`,
+        logs: logs,
+        syncedCount: 0,
+        externalIdUpdates: 0,
+        externalIdFailures: 0,
+        error: error.message
+      };
+    }
   }
 
   // Auto Assignment Agent
@@ -107,16 +117,23 @@ export class StaffluentIntegrationController {
   async taskCreatedWebhook(@Body() body: { taskId: string, businessId: string }) {
     try {
       // Sync the specific task from VenueBoost
-      await this.staffluentTaskService.syncTasksFromVenueBoost(body.businessId);
+      const syncResult = await this.staffluentTaskService.syncTasksFromVenueBoost(body.businessId);
       
       return {
         success: true,
-        message: 'Task synced successfully'
+        message: 'Task synced successfully',
+        syncedCount: syncResult.totalSynced,
+        logs: syncResult.logs,
+        summary: syncResult.summary
       };
     } catch (error) {
+      const logs = error.logs || [`ERROR: Webhook task sync failed: ${error.message}`];
+      
       return {
         success: false,
-        message: `Failed to sync task: ${error.message}`
+        message: `Failed to sync task: ${error.message}`,
+        logs: logs,
+        error: error.message
       };
     }
   }
@@ -127,16 +144,23 @@ export class StaffluentIntegrationController {
   async taskUpdatedWebhook(@Body() body: { taskId: string, businessId: string }) {
     try {
       // Sync the specific task from VenueBoost
-      await this.staffluentTaskService.syncTasksFromVenueBoost(body.businessId);
+      const syncResult = await this.staffluentTaskService.syncTasksFromVenueBoost(body.businessId);
       
       return {
         success: true,
-        message: 'Task synced successfully'
+        message: 'Task synced successfully',
+        syncedCount: syncResult.totalSynced,
+        logs: syncResult.logs,
+        summary: syncResult.summary
       };
     } catch (error) {
+      const logs = error.logs || [`ERROR: Webhook task sync failed: ${error.message}`];
+      
       return {
         success: false,
-        message: `Failed to sync task: ${error.message}`
+        message: `Failed to sync task: ${error.message}`,
+        logs: logs,
+        error: error.message
       };
     }
   }
@@ -147,17 +171,29 @@ export class StaffluentIntegrationController {
   async employeeUpdatedWebhook(@Body() body: { employeeId: string, businessId: string }) {
     try {
       // Sync the specific employee from VenueBoost
-      await this.staffluentEmployeeService.syncEmployeesFromVenueBoost(body.businessId);
+      const syncResult = await this.staffluentEmployeeService.syncEmployeesFromVenueBoost(body.businessId);
       
       return {
         success: true,
-        message: 'Employee synced successfully'
+        message: 'Employee synced successfully',
+        syncedCount: syncResult.totalSynced,
+        externalIdUpdates: syncResult.summary.externalIdUpdates,
+        externalIdFailures: syncResult.summary.externalIdFailures,
+        logs: syncResult.logs,
+        summary: syncResult.summary
       };
     } catch (error) {
+      const logs = error.logs || [`ERROR: Webhook employee sync failed: ${error.message}`];
+      
       return {
         success: false,
-        message: `Failed to sync employee: ${error.message}`
+        message: `Failed to sync employee: ${error.message}`,
+        logs: logs,
+        syncedCount: 0,
+        externalIdUpdates: 0,
+        externalIdFailures: 0,
+        error: error.message
       };
     }
   }
- }
+}
