@@ -183,6 +183,7 @@ import { BusinessOnboardingController } from './controllers/business-onboarding.
 import { BusinessStorageController } from './controllers/business-storage.controller';
 import { BusinessMessagingController } from './controllers/business-messaging.controller';
 import { BusinessSkillsController } from './controllers/business-skills.controller';
+import { BusinessGeneralController } from './controllers/business-general.controller';
 
 // Service imports
 import { ReportsService } from './services/reports.service';
@@ -283,6 +284,7 @@ import { OshaStatsService } from './services/osha-stats.service';
 import { BusinessOnboardingService } from './services/business-onboarding.service';
 import { BusinessMessagingService } from './services/business-messaging.service';
 import { BusinessSkillsService } from './services/business-skills.service';
+import { BusinessGeneralService } from './services/business-general.service';
 
 // Others
 import {JwtModule} from "@nestjs/jwt";
@@ -568,7 +570,8 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     BusinessMessagingController,
     TicketController,
     SaasNotificationController,
-    BusinessSkillsController
+    BusinessSkillsController,
+    BusinessGeneralController,
   ],
   providers: [
     SnapfoodService,
@@ -678,7 +681,8 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     BusinessStorageService,
     BusinessMessagingService,
     TicketService,
-    BusinessSkillsService
+    BusinessSkillsService,
+    BusinessGeneralService,
   ],
 })
 export class AppModule implements NestModule {
