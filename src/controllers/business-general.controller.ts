@@ -174,12 +174,7 @@ import {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
-      metadata?: {
-        phpId?: string | null;
-        phpCreatedAt?: string;
-        shortCode?: string;
-        [key: string]: any;
-      };
+      metadata?: any;
     }
   ): Promise<{ success: boolean; departmentId: string; message: string }> {
     try {
@@ -225,12 +220,7 @@ import {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
-      metadata?: {
-        phpId?: string | null;
-        phpCreatedAt?: string;
-        shortCode?: string;
-        [key: string]: any;
-      };
+      metadata?: any;
     }
   ): Promise<{ success: boolean; message: string }> {
     try {
