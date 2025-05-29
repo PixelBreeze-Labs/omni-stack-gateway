@@ -174,6 +174,12 @@ import {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
+      metadata?: {
+        phpId?: string | null;
+        phpCreatedAt?: string;
+        shortCode?: string;
+        [key: string]: any;
+      };
     }
   ): Promise<{ success: boolean; departmentId: string; message: string }> {
     try {
@@ -219,6 +225,12 @@ import {
       requiredSkills?: string[];
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
+      metadata?: {
+        phpId?: string | null;
+        phpCreatedAt?: string;
+        shortCode?: string;
+        [key: string]: any;
+      };
     }
   ): Promise<{ success: boolean; message: string }> {
     try {
@@ -240,7 +252,7 @@ import {
       throw new InternalServerErrorException('Failed to update department');
     }
   }
-
+  
   @Delete('departments/:departmentId')
   @ApiOperation({ 
     summary: 'Remove a department',
@@ -276,6 +288,36 @@ import {
         throw error;
       }
       throw new InternalServerErrorException('Failed to remove department');
+    }
+  }
+
+  @Get('departments')
+  @ApiOperation({ 
+    summary: 'Get all departments',
+    description: 'Retrieve all departments for the business'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Departments retrieved successfully'
+  })
+  async getDepartments(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ departments: any[] }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getDepartments(businessId);
+    } catch (error) {
+      this.logger.error(`Error getting departments: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve departments');
     }
   }
 
