@@ -323,17 +323,42 @@ import {
     }
   }
 
-  // @Post('sync/tasks')
-  // @ApiOperation({ 
-  //   summary: 'Sync tasks from VenueBoost',
-  //   description: 'Trigger manual synchronization of tasks from VenueBoost system'
-  // })
-  // @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-  // @ApiResponse({ 
-  //   status: 200, 
-  //   description: 'Task sync completed successfully'
-  // })
-  // @ApiResponse({ status: 401, description: 'Unauthori
-  //   }
+  @Post('sync/tasks')
+  @ApiOperation({ 
+    summary: 'Sync tasks from VenueBoost',
+    description: 'Trigger manual synchronization of tasks from VenueBoost system'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Task sync completed successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async syncTasks(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    syncedCount?: number;
+    logs: string[];
+    summary?: any;
+  }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+  
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.syncTasksFromVenueBoost(businessId);
+    } catch (error) {
+      this.logger.error(`Error syncing tasks: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to sync tasks');
+    }
+  }
 
 }
