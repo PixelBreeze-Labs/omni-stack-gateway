@@ -35,6 +35,199 @@ export class BusinessTaskAssignmentService {
   }
 
   /**
+   * Get approved and rejected task assignments with pagination
+   */
+  async getApprovedRejectedTasks(
+    businessId: string,
+    page: number = 1,
+    limit: number = 10,
+    filters: {
+      status?: 'approved' | 'rejected';
+      dateFrom?: Date;
+      dateTo?: Date;
+    } = {}
+  ): Promise<{
+    tasks: TaskAssignment[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    summary: {
+      approved: number;
+      rejected: number;
+      total: number;
+    };
+  }> {
+    const skip = (page - 1) * limit;
+    
+    // Build query conditions
+    const baseQuery: any = {
+      businessId,
+      isDeleted: false,
+      $or: [
+        { 'metadata.assignmentStatus': 'approved' },
+        { 'metadata.assignmentStatus': 'rejected' }
+      ]
+    };
+
+    // Apply status filter
+    if (filters.status) {
+      baseQuery['metadata.assignmentStatus'] = filters.status;
+    }
+
+    // Apply date filters
+    if (filters.dateFrom || filters.dateTo) {
+      baseQuery.updatedAt = {};
+      if (filters.dateFrom) {
+        baseQuery.updatedAt.$gte = filters.dateFrom;
+      }
+      if (filters.dateTo) {
+        baseQuery.updatedAt.$lte = filters.dateTo;
+      }
+    }
+
+    // Get paginated results
+    const tasks = await this.taskModel
+      .find(baseQuery)
+      .populate('assignedUserId', 'name surname email')
+      .populate('clientId', 'name email')
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec();
+
+    // Get total count
+    const total = await this.taskModel.countDocuments(baseQuery);
+
+    // Get summary counts
+    const [approvedCount, rejectedCount] = await Promise.all([
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'approved',
+        isDeleted: false
+      }),
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'rejected',
+        isDeleted: false
+      })
+    ]);
+
+    return {
+      tasks,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      },
+      summary: {
+        approved: approvedCount,
+        rejected: rejectedCount,
+        total: approvedCount + rejectedCount
+      }
+    };
+  }
+
+  /**
+   * Get assignment statistics for a business
+   */
+  async getAssignmentStats(
+    businessId: string,
+    period: 'today' | 'week' | 'month' = 'today'
+  ): Promise<{
+    pending: number;
+    approved: number;
+    rejected: number;
+    approvedToday: number;
+    rejectedToday: number;
+    trends: {
+      approvedTrend: number;
+      rejectedTrend: number;
+    };
+  }> {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+
+    // Get pending count
+    const pending = await this.taskModel.countDocuments({
+      businessId,
+      'metadata.pendingAssignment': { $exists: true },
+      isDeleted: false
+    });
+
+    // Get total approved and rejected
+    const [approved, rejected] = await Promise.all([
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'approved',
+        isDeleted: false
+      }),
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'rejected',
+        isDeleted: false
+      })
+    ]);
+
+    // Get today's counts
+    const [approvedToday, rejectedToday] = await Promise.all([
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'approved',
+        updatedAt: { $gte: today },
+        isDeleted: false
+      }),
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'rejected',
+        updatedAt: { $gte: today },
+        isDeleted: false
+      })
+    ]);
+
+    // Get yesterday's counts for trend calculation
+    const [approvedYesterday, rejectedYesterday] = await Promise.all([
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'approved',
+        updatedAt: { $gte: yesterday, $lt: today },
+        isDeleted: false
+      }),
+      this.taskModel.countDocuments({
+        businessId,
+        'metadata.assignmentStatus': 'rejected',
+        updatedAt: { $gte: yesterday, $lt: today },
+        isDeleted: false
+      })
+    ]);
+
+    // Calculate trends (percentage change)
+    const approvedTrend = approvedYesterday === 0 
+      ? (approvedToday > 0 ? 100 : 0)
+      : ((approvedToday - approvedYesterday) / approvedYesterday) * 100;
+
+    const rejectedTrend = rejectedYesterday === 0 
+      ? (rejectedToday > 0 ? 100 : 0)
+      : ((rejectedToday - rejectedYesterday) / rejectedYesterday) * 100;
+
+    return {
+      pending,
+      approved,
+      rejected,
+      approvedToday,
+      rejectedToday,
+      trends: {
+        approvedTrend: Math.round(approvedTrend),
+        rejectedTrend: Math.round(rejectedTrend)
+      }
+    };
+  }
+
+  /**
    * Trigger auto-assignment for a specific task
    */
   async triggerAutoAssign(taskId: string): Promise<boolean> {
