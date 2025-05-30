@@ -3,18 +3,74 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { TaskAssignment } from '../schemas/task-assignment.schema';
+import { StaffProfile } from '../schemas/staff-profile.schema';
 import { AutoAssignmentAgentService } from './auto-assignment-agent.service';
 import { CronJobHistory } from '../schemas/cron-job-history.schema';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class BusinessTaskAssignmentService {
   private readonly logger = new Logger(BusinessTaskAssignmentService.name);
+  private readonly baseUrl: string;
+  private readonly apiKey: string;
 
   constructor(
     @InjectModel(TaskAssignment.name) private taskModel: Model<TaskAssignment>,
     @InjectModel(CronJobHistory.name) private cronJobHistoryModel: Model<CronJobHistory>,
-    private readonly autoAssignmentAgentService: AutoAssignmentAgentService
-  ) {}
+    @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
+    private readonly autoAssignmentAgentService: AutoAssignmentAgentService,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.baseUrl = this.configService.get<string>('venueboost.baseUrl');
+    this.apiKey = this.configService.get<string>('venueboost.apiKey');
+  }
+
+  /**
+   * Call external PHP API to assign employee to task
+   */
+  private async callExternalAssignEmployee(phpTaskId: string, phpEmployeeId: string): Promise<boolean> {
+    try {
+      this.logger.log(`Calling external assign-employee API for task ${phpTaskId} to employee ${phpEmployeeId}`);
+      this.logger.log(`Making POST request to: ${this.baseUrl}/tasks-os/${phpTaskId}/assign`);
+      
+      const response$ = this.httpService.post(
+        `${this.baseUrl}/tasks-os/${phpTaskId}/assign`,
+        {
+          employee_id: phpEmployeeId
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'SN-BOOST-CORE-OMNI-STACK-GATEWAY-API-KEY': this.apiKey
+          }
+        }
+      );
+
+      const response = await lastValueFrom(response$);
+      
+      this.logger.log(`External assign-employee API Response Status: ${response.status}`);
+      this.logger.log(`External assign-employee API Response Data:`, JSON.stringify(response.data, null, 2));
+      
+      if (response.status >= 400) {
+        this.logger.error(`Failed to assign employee ${phpEmployeeId} to task ${phpTaskId}: ${response.data.error || 'Unknown error'}`);
+        return false;
+      }
+
+      this.logger.log(`Successfully assigned employee ${phpEmployeeId} to task ${phpTaskId} via external API`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error calling external assign-employee API for task ${phpTaskId}:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      });
+      return false;
+    }
+  }
 
   /**
    * Debug method to check all tasks and their status fields
@@ -462,7 +518,47 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
     });
     
     try {
+      // Get task and staff profile info for external API call BEFORE approval
+      const task = await this.taskModel.findById(taskId);
+      if (!task) {
+        throw new Error('Task not found');
+      }
+      
+      if (!task.metadata?.pendingAssignment) {
+        throw new Error('No pending assignment found for this task');
+      }
+      
+      const userId = task.metadata.pendingAssignment.userId;
+      const staffProfile = await this.staffProfileModel.findOne({ userId });
+      
+      // Call external PHP API to assign employee if we have external IDs
+      let externalAssignSuccess = false;
+      if (task.externalIds?.venueBoostTaskId && staffProfile?.externalIds?.venueBoostId) {
+        this.logger.log(`Calling external assign-employee API for task ${task.externalIds.venueBoostTaskId} to employee ${staffProfile.externalIds.venueBoostId}`);
+        externalAssignSuccess = await this.callExternalAssignEmployee(
+          task.externalIds.venueBoostTaskId,
+          staffProfile.externalIds.venueBoostId
+        );
+        
+        if (!externalAssignSuccess) {
+          this.logger.warn(`External assign-employee API call failed for task ${taskId}, but continuing with internal assignment`);
+        }
+      } else {
+        this.logger.log(`Skipping external assign-employee API call - missing external IDs for task ${taskId} or staff ${userId}`);
+      }
+      
+      // Use the original auto assignment agent logic
       const result = await this.autoAssignmentAgentService.approveAssignment(taskId);
+      
+      // Update the task with external API success info
+      if (externalAssignSuccess) {
+        await this.taskModel.findByIdAndUpdate(taskId, {
+          $set: { 
+            'metadata.externalAssignSuccess': externalAssignSuccess,
+            'metadata.assignmentApprovedAt': new Date()
+          }
+        });
+      }
       
       // Update job record
       const endTime = new Date();
@@ -475,9 +571,14 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
           taskId,
           triggeredBy: 'business_api',
           success: true,
-          assignedUserId: result.assignedUserId
+          assignedUserId: userId,
+          externalAssignSuccess,
+          venueBoostTaskId: task.externalIds?.venueBoostTaskId,
+          venueBoostEmployeeId: staffProfile?.externalIds?.venueBoostId
         }
       });
+      
+      this.logger.log(`✅ Task assignment approved successfully for task ${taskId}, assigned to user ${userId}. External API call: ${externalAssignSuccess ? 'SUCCESS' : 'FAILED'}`);
       
       return result;
     } catch (error) {

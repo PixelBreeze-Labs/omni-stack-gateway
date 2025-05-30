@@ -75,14 +75,14 @@ export class StaffluentTaskService {
     }
   }
 
-   /**
+  /**
    * Sync tasks from VenueBoost to NestJS for a specific business
    */
-   async syncTasksFromVenueBoost(businessId: string): Promise<{
-     totalSynced: number;
-     logs: string[];
-     summary: any;
-   }> {
+  async syncTasksFromVenueBoost(businessId: string): Promise<{
+    totalSynced: number;
+    logs: string[];
+    summary: any;
+  }> {
     const startTime = new Date();
     const logs: string[] = [];
     
@@ -135,7 +135,8 @@ export class StaffluentTaskService {
         skipped: 0,
         failed: 0,
         externalIdUpdates: 0,
-        externalIdFailures: 0
+        externalIdFailures: 0,
+        assignmentChanges: 0
       };
       
       for (const phpTask of venueBoostTasks.tasks) {
@@ -256,34 +257,18 @@ export class StaffluentTaskService {
             }
           }
           
-          // Handle task assignment if present
-          if (phpTask.assignee && phpTask.assignee.id) {
-            logs.push(`Task has assignee: ${phpTask.assignee.id} (${phpTask.assignee.name || 'Unknown'})`);
-            
-            const staffProfile = await this.staffProfileModel.findOne({
-              'externalIds.venueBoostId': String(phpTask.assignee.id)
-            });
-            
-            if (staffProfile) {
-              logs.push(`Found staff profile for assignee: ${staffProfile._id}`);
-              
-              const task = existingTask || await this.taskModel.findOne({
-                'externalIds.venueBoostTaskId': String(phpTask.id)
-              });
-              
-              if (task) {
-                await task.updateOne({
-                  assignedUserId: staffProfile.userId,
-                  assignedAt: new Date(),
-                  status: TaskStatus.ASSIGNED
-                });
-                logs.push(`Updated task assignment to user: ${staffProfile.userId}`);
-              }
-            } else {
-              logs.push(`WARNING: Staff profile not found for assignee ID: ${phpTask.assignee.id}`);
+          // Handle task assignment changes (added, updated, removed)
+          const task = existingTask || await this.taskModel.findOne({
+            'externalIds.venueBoostTaskId': String(phpTask.id)
+          });
+          
+          if (task) {
+            const assignmentChanged = await this.syncTaskAssignment(task, phpTask, logs);
+            if (assignmentChanged) {
+              syncSummary.assignmentChanges++;
             }
           } else {
-            logs.push(`Task has no assignee`);
+            logs.push(`ERROR: Could not find task to sync assignment for PHP task ${phpTask.id}`);
           }
           
         } catch (taskError) {
@@ -315,11 +300,12 @@ export class StaffluentTaskService {
           updated: syncSummary.updated,
           failed: syncSummary.failed,
           externalIdUpdates: syncSummary.externalIdUpdates,
-          externalIdFailures: syncSummary.externalIdFailures
+          externalIdFailures: syncSummary.externalIdFailures,
+          assignmentChanges: syncSummary.assignmentChanges
         }
       });
       
-      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} tasks for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`;
+      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} tasks for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}, assignment changes: ${syncSummary.assignmentChanges}`;
       logs.push(completionMsg);
       this.logger.log(completionMsg);
       
@@ -352,10 +338,165 @@ export class StaffluentTaskService {
       };
     }
   }
-  
+
+  /**
+   * Sync task assignment changes - handles added, updated, removed assignments
+   * Returns true if assignment was changed, false if no change
+   */
+  private async syncTaskAssignment(task: any, phpTask: any, logs: string[]): Promise<boolean> {
+    try {
+      logs.push(`\n--- Syncing assignment for task ${task._id} ---`);
+      
+      // Get current assignment in our system
+      const currentAssignedUserId = task.assignedUserId;
+      logs.push(`Current assignment in our system: ${currentAssignedUserId || 'NONE'}`);
+      
+      // Get assignment from PHP system
+      const phpAssigneeId = phpTask.assignee?.id;
+      logs.push(`PHP system assignee ID: ${phpAssigneeId || 'NONE'}`);
+      
+      // Find staff profile for PHP assignee (if exists)
+      let newStaffProfile = null;
+      let newAssignedUserId = null;
+      
+      if (phpAssigneeId) {
+        newStaffProfile = await this.staffProfileModel.findOne({
+          'externalIds.venueBoostId': String(phpAssigneeId)
+        });
+        
+        if (newStaffProfile) {
+          newAssignedUserId = newStaffProfile.userId;
+          logs.push(`Found staff profile for PHP assignee: ${newStaffProfile._id} (userId: ${newAssignedUserId})`);
+        } else {
+          logs.push(`WARNING: Staff profile not found for PHP assignee ID: ${phpAssigneeId}`);
+        }
+      }
+      
+      // Compare current vs new assignment
+      const currentUserId = currentAssignedUserId?.toString();
+      const newUserId = newAssignedUserId?.toString();
+      
+      if (currentUserId === newUserId) {
+        logs.push(`✅ Assignment unchanged: ${currentUserId || 'NONE'}`);
+        return false;
+      }
+      
+      // Handle different assignment scenarios
+      if (!currentUserId && newUserId) {
+        // SCENARIO 1: Added assignment (was unassigned, now assigned)
+        logs.push(`📥 ADDED assignment: NONE -> ${newUserId}`);
+        await this.addTaskAssignment(task, newUserId, newStaffProfile, logs);
+        return true;
+        
+      } else if (currentUserId && !newUserId) {
+        // SCENARIO 2: Removed assignment (was assigned, now unassigned)
+        logs.push(`📤 REMOVED assignment: ${currentUserId} -> NONE`);
+        await this.removeTaskAssignment(task, currentUserId, logs);
+        return true;
+        
+      } else if (currentUserId && newUserId) {
+        // SCENARIO 3: Updated assignment (was assigned to A, now assigned to B)
+        logs.push(`🔄 UPDATED assignment: ${currentUserId} -> ${newUserId}`);
+        await this.updateTaskAssignment(task, currentUserId, newUserId, newStaffProfile, logs);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      logs.push(`ERROR syncing assignment for task ${task._id}: ${error.message}`);
+      this.logger.error(`Error syncing task assignment: ${error.message}`, error.stack);
+      return false;
+    }
+  }
   
   /**
-   * Push task assignment from NestJS to Staffluent
+   * Add new task assignment
+   */
+  private async addTaskAssignment(task: any, newUserId: string, staffProfile: any, logs: string[]): Promise<void> {
+    await task.updateOne({
+      assignedUserId: newUserId,
+      assignedAt: new Date(),
+      status: TaskStatus.ASSIGNED,
+      'metadata.lastAssignmentSync': new Date(),
+      'metadata.assignmentSyncAction': 'added'
+    });
+    
+    // Update staff workload
+    if (staffProfile) {
+      await this.staffProfileModel.findByIdAndUpdate(
+        staffProfile._id,
+        { $inc: { currentWorkload: 1 } }
+      );
+      logs.push(`Incremented workload for staff ${staffProfile._id}`);
+    }
+    
+    logs.push(`✅ Successfully added assignment to user: ${newUserId}`);
+  }
+  
+  /**
+   * Remove task assignment
+   */
+  private async removeTaskAssignment(task: any, currentUserId: string, logs: string[]): Promise<void> {
+    await task.updateOne({
+      $unset: { 
+        assignedUserId: 1,
+        assignedAt: 1
+      },
+      status: TaskStatus.UNASSIGNED,
+      'metadata.lastAssignmentSync': new Date(),
+      'metadata.assignmentSyncAction': 'removed',
+      'metadata.previousAssigneeId': currentUserId
+    });
+    
+    // Update staff workload
+    const staffProfile = await this.staffProfileModel.findOne({ userId: currentUserId });
+    if (staffProfile) {
+      await this.staffProfileModel.findByIdAndUpdate(
+        staffProfile._id,
+        { $inc: { currentWorkload: -1 } }
+      );
+      logs.push(`Decremented workload for staff ${staffProfile._id}`);
+    }
+    
+    logs.push(`✅ Successfully removed assignment from user: ${currentUserId}`);
+  }
+  
+  /**
+   * Update task assignment (reassign to different user)
+   */
+  private async updateTaskAssignment(task: any, currentUserId: string, newUserId: string, newStaffProfile: any, logs: string[]): Promise<void> {
+    await task.updateOne({
+      assignedUserId: newUserId,
+      assignedAt: new Date(),
+      status: TaskStatus.ASSIGNED,
+      'metadata.lastAssignmentSync': new Date(),
+      'metadata.assignmentSyncAction': 'updated',
+      'metadata.previousAssigneeId': currentUserId
+    });
+    
+    // Update workload for both users
+    const oldStaffProfile = await this.staffProfileModel.findOne({ userId: currentUserId });
+    if (oldStaffProfile) {
+      await this.staffProfileModel.findByIdAndUpdate(
+        oldStaffProfile._id,
+        { $inc: { currentWorkload: -1 } }
+      );
+      logs.push(`Decremented workload for old staff ${oldStaffProfile._id}`);
+    }
+    
+    if (newStaffProfile) {
+      await this.staffProfileModel.findByIdAndUpdate(
+        newStaffProfile._id,
+        { $inc: { currentWorkload: 1 } }
+      );
+      logs.push(`Incremented workload for new staff ${newStaffProfile._id}`);
+    }
+    
+    logs.push(`✅ Successfully updated assignment: ${currentUserId} -> ${newUserId}`);
+  }
+  
+  /**
+   * Push task assignment from NestJS to VenueBoost
    */
   async pushTaskAssignment(taskId: string, assigneeId: string): Promise<boolean> {
     const startTime = new Date();
@@ -472,144 +613,151 @@ export class StaffluentTaskService {
     }
   }
   
-   /**
+  /**
    * Scheduled job to sync tasks from VenueBoost for all businesses
    */
-   @Cron(CronExpression.EVERY_HOUR)
-   async scheduledTaskSync() {
-     const startTime = new Date();
-     this.logger.log(`[CRON START] Task sync job started at ${startTime.toISOString()}`);
-     
-     // Create a record for this job execution
-     const jobRecord = await this.cronJobHistoryModel.create({
-       jobName: 'scheduledTaskSync',
-       startTime,
-       status: 'started'
-     });
-     
-     try {
-       // Find all businesses with VenueBoost connection
-       const businesses = await this.businessModel.find({
-         'externalIds.venueBoostId': { $exists: true, $ne: null }
-       });
-       
-       const syncSummary = {
-         added: 0,
-         updated: 0,
-         skipped: 0,
-         failed: 0,
-         externalIdUpdates: 0,
-         externalIdFailures: 0
-       };
-       
-       const businessResults = [];
-       
-       for (const business of businesses) {
-         try {
-           const syncResult = await this.syncTasksFromVenueBoost(business.id);
-           
-           businessResults.push({
-             businessId: business.id,
-             businessName: business.name,
-             tasksSynced: syncResult.totalSynced,
-             success: true
-           });
-           
-           // Add to overall summary
-           syncSummary.added += syncResult.summary.added;
-           syncSummary.updated += syncResult.summary.updated;
-           syncSummary.failed += syncResult.summary.failed;
-           syncSummary.externalIdUpdates += syncResult.summary.externalIdUpdates;
-           syncSummary.externalIdFailures += syncResult.summary.externalIdFailures;
-         } catch (error) {
-           this.logger.error(`Error syncing tasks for business ${business.id}: ${error.message}`);
-           
-           businessResults.push({
-             businessId: business.id,
-             businessName: business.name,
-             error: error.message,
-             success: false
-           });
-           
-           syncSummary.failed++;
-         }
-       }
-       
-       // Update the job record on completion
-       const endTime = new Date();
-       const duration = (endTime.getTime() - startTime.getTime()) / 1000;
-       
-       await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
-         endTime,
-         duration,
-         status: 'completed',
-         businessIds: businesses.map(b => b.id),
-         targetCount: businesses.length,
-         processedCount: businesses.length - syncSummary.failed,
-         failedCount: syncSummary.failed,
-         syncSummary,
-         details: { 
-           businessResults,
-           totalBusinesses: businesses.length,
-           externalIdUpdates: syncSummary.externalIdUpdates,
-           externalIdFailures: syncSummary.externalIdFailures
-         }
-       });
-       
-       this.logger.log(`[CRON COMPLETE] Task sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`);
-     } catch (error) {
-       // Update the job record on failure
-       const endTime = new Date();
-       const duration = (endTime.getTime() - startTime.getTime()) / 1000;
-       
-       await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
-         endTime,
-         duration,
-         status: 'failed',
-         error: error.message
-       });
-       
-       this.logger.error(`[CRON FAILED] Error in task sync job: ${error.message}`, error.stack);
-     }
-   }
+  @Cron(CronExpression.EVERY_HOUR)
+  async scheduledTaskSync() {
+    const startTime = new Date();
+    this.logger.log(`[CRON START] Task sync job started at ${startTime.toISOString()}`);
+    
+    // Create a record for this job execution
+    const jobRecord = await this.cronJobHistoryModel.create({
+      jobName: 'scheduledTaskSync',
+      startTime,
+      status: 'started'
+    });
+    
+    try {
+      // Find all businesses with VenueBoost connection
+      const businesses = await this.businessModel.find({
+        'externalIds.venueBoostId': { $exists: true, $ne: null }
+      });
+      
+      const syncSummary = {
+        added: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        externalIdUpdates: 0,
+        externalIdFailures: 0,
+        assignmentChanges: 0
+      };
+      
+      const businessResults = [];
+      
+      for (const business of businesses) {
+        try {
+          const syncResult = await this.syncTasksFromVenueBoost(business.id);
+          
+          businessResults.push({
+            businessId: business.id,
+            businessName: business.name,
+            tasksSynced: syncResult.totalSynced,
+            assignmentChanges: syncResult.summary.assignmentChanges,
+            success: true
+          });
+          
+          // Add to overall summary
+          syncSummary.added += syncResult.summary.added;
+          syncSummary.updated += syncResult.summary.updated;
+          syncSummary.failed += syncResult.summary.failed;
+          syncSummary.externalIdUpdates += syncResult.summary.externalIdUpdates;
+          syncSummary.externalIdFailures += syncResult.summary.externalIdFailures;
+          syncSummary.assignmentChanges += syncResult.summary.assignmentChanges;
+        } catch (error) {
+          this.logger.error(`Error syncing tasks for business ${business.id}: ${error.message}`);
+          
+          businessResults.push({
+            businessId: business.id,
+            businessName: business.name,
+            error: error.message,
+            success: false
+          });
+          
+          syncSummary.failed++;
+        }
+      }
+      
+      // Update the job record on completion
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'completed',
+        businessIds: businesses.map(b => b.id),
+        targetCount: businesses.length,
+        processedCount: businesses.length - syncSummary.failed,
+        failedCount: syncSummary.failed,
+        syncSummary,
+        details: { 
+          businessResults,
+          totalBusinesses: businesses.length,
+          externalIdUpdates: syncSummary.externalIdUpdates,
+          externalIdFailures: syncSummary.externalIdFailures,
+          assignmentChanges: syncSummary.assignmentChanges
+        }
+      });
+      
+      this.logger.log(`[CRON COMPLETE] Task sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}, assignment changes: ${syncSummary.assignmentChanges}`);
+    } catch (error) {
+      // Update the job record on failure
+      const endTime = new Date();
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+        endTime,
+        duration,
+        status: 'failed',
+        error: error.message
+      });
+      
+      this.logger.error(`[CRON FAILED] Error in task sync job: ${error.message}`, error.stack);
+    }
+  }
 
-   /**
-    * Manual sync trigger for a specific business
-    */
-   async triggerManualSync(businessId: string): Promise<{
-     success: boolean;
-     message: string;
-     syncedCount?: number;
-     externalIdUpdates?: number;
-     externalIdFailures?: number;
-     logs: string[];
-     summary?: any;
-   }> {
-     try {
-       const syncResult = await this.syncTasksFromVenueBoost(businessId);
-       return {
-         success: true,
-         message: `Successfully synced ${syncResult.totalSynced} tasks. External ID updates: ${syncResult.summary.externalIdUpdates}, failures: ${syncResult.summary.externalIdFailures}`,
-         syncedCount: syncResult.totalSynced,
-         externalIdUpdates: syncResult.summary.externalIdUpdates,
-         externalIdFailures: syncResult.summary.externalIdFailures,
-         logs: syncResult.logs,
-         summary: syncResult.summary
-       };
-     } catch (error) {
-       this.logger.error(`Manual sync failed for business ${businessId}: ${error.message}`);
-       
-       // Handle both regular errors and our custom error objects with logs
-       const logs = error.logs || [`ERROR: Manual sync failed for business ${businessId}: ${error.message}`];
-       
-       return {
-         success: false,
-         message: `Sync failed: ${error.message}`,
-         logs: logs,
-         syncedCount: 0,
-         externalIdUpdates: 0,
-         externalIdFailures: 0
-       };
-     }
-   }
+  /**
+   * Manual sync trigger for a specific business
+   */
+  async triggerManualSync(businessId: string): Promise<{
+    success: boolean;
+    message: string;
+    syncedCount?: number;
+    externalIdUpdates?: number;
+    externalIdFailures?: number;
+    assignmentChanges?: number;
+    logs: string[];
+    summary?: any;
+  }> {
+    try {
+      const syncResult = await this.syncTasksFromVenueBoost(businessId);
+      return {
+        success: true,
+        message: `Successfully synced ${syncResult.totalSynced} tasks. External ID updates: ${syncResult.summary.externalIdUpdates}, failures: ${syncResult.summary.externalIdFailures}, assignment changes: ${syncResult.summary.assignmentChanges}`,
+        syncedCount: syncResult.totalSynced,
+        externalIdUpdates: syncResult.summary.externalIdUpdates,
+        externalIdFailures: syncResult.summary.externalIdFailures,
+        assignmentChanges: syncResult.summary.assignmentChanges,
+        logs: syncResult.logs,
+        summary: syncResult.summary
+      };
+    } catch (error) {
+      this.logger.error(`Manual sync failed for business ${businessId}: ${error.message}`);
+      
+      // Handle both regular errors and our custom error objects with logs
+      const logs = error.logs || [`ERROR: Manual sync failed for business ${businessId}: ${error.message}`];
+      
+      return {
+        success: false,
+        message: `Sync failed: ${error.message}`,
+        logs: logs,
+        syncedCount: 0,
+        externalIdUpdates: 0,
+        externalIdFailures: 0,
+        assignmentChanges: 0
+      };
+    }
+  }
 }
