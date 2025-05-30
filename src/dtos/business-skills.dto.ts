@@ -1,8 +1,84 @@
 // src/dtos/business-skills.dto.ts
-import { IsOptional, IsBoolean, IsArray, IsString, IsNumber, Min, Max, ValidateNested, IsEnum } from 'class-validator';
+import { IsOptional, IsBoolean, IsArray, IsString, IsNumber, Min, Max, ValidateNested, IsEnum, IsEmail } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
-import { BusinessIndustry, BusinessSubCategory, BusinessSkillRequirement } from '../schemas/business.schema';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BusinessIndustry, BusinessSubCategory, BusinessSkillRequirement, BusinessType, BusinessOperationType, AgentFeatureFlag, SubscriptionStatus } from '../schemas/business.schema';
+import { Currency } from '../enums/currency.enum';
+
+// ============================================================================
+// ADDRESS DTOs (NEW)
+// ============================================================================
+
+// Address DTO for business address management
+export class AddressDto {
+  @ApiPropertyOptional({ description: 'Street address' })
+  @IsOptional()
+  @IsString()
+  street?: string;
+
+  @ApiPropertyOptional({ description: 'City ID from location service' })
+  @IsOptional()
+  @IsString()
+  cityId?: string;
+
+  @ApiPropertyOptional({ description: 'State ID from location service' })
+  @IsOptional()
+  @IsString()
+  stateId?: string;
+
+  @ApiPropertyOptional({ description: 'Country ID from location service' })
+  @IsOptional()
+  @IsString()
+  countryId?: string;
+
+  @ApiPropertyOptional({ description: 'Postal/ZIP code' })
+  @IsOptional()
+  @IsString()
+  zip?: string;
+
+  @ApiPropertyOptional({ description: 'Additional address line' })
+  @IsOptional()
+  @IsString()
+  addressLine2?: string;
+}
+
+// Address Response DTO
+export class AddressResponse {
+  @ApiProperty({ description: 'Address ID' })
+  id?: string;
+
+  @ApiProperty({ description: 'Street address' })
+  street?: string;
+
+  @ApiProperty({ description: 'City information' })
+  city?: {
+    id: string;
+    name: string;
+  };
+
+  @ApiProperty({ description: 'State information' })
+  state?: {
+    id: string;
+    name: string;
+  };
+
+  @ApiProperty({ description: 'Country information' })
+  country?: {
+    id: string;
+    name: string;
+    code: string;
+  };
+
+  @ApiProperty({ description: 'Postal/ZIP code' })
+  zip?: string;
+
+  @ApiProperty({ description: 'Additional address line' })
+  addressLine2?: string;
+}
+
+// ============================================================================
+// SKILLS CONFIGURATION DTOs (EXISTING)
+// ============================================================================
 
 // Skills Configuration DTO for nested configuration
 export class SkillsConfigurationDto {
@@ -109,7 +185,10 @@ export class BusinessSkillConfigResponse {
   departments: any[];
 }
 
-// Existing DTOs (keeping for completeness)
+// ============================================================================
+// SKILL ASSESSMENT DTOs (EXISTING)
+// ============================================================================
+
 export class SkillAssessmentFilterDto {
   @ApiProperty({ description: 'Assessment status filter', required: false })
   @IsOptional()
@@ -296,9 +375,9 @@ export class SkillAnalyticsResponse {
   missingCriticalSkills: string[];
 }
 
-// Business Configuration DTOs
-import { BusinessType, BusinessOperationType, AgentFeatureFlag, SubscriptionStatus } from '../schemas/business.schema';
-import { Currency } from '../enums/currency.enum';
+// ============================================================================
+// BUSINESS CONFIGURATION DTOs (UPDATED WITH ADDRESS)
+// ============================================================================
 
 export class UpdateBusinessConfigDto {
   @ApiProperty({ description: 'Business name', required: false })
@@ -308,7 +387,7 @@ export class UpdateBusinessConfigDto {
 
   @ApiProperty({ description: 'Business email', required: false })
   @IsOptional()
-  @IsString()
+  @IsEmail()
   email?: string;
 
   @ApiProperty({ description: 'Business phone', required: false })
@@ -360,17 +439,23 @@ export class UpdateBusinessConfigDto {
   @ApiProperty({ description: 'Allow clock in/out', required: false })
   @IsOptional()
   @IsBoolean()
-  allow_clockinout?: boolean;
+  allowClockInOut?: boolean;
 
   @ApiProperty({ description: 'Has app access', required: false })
   @IsOptional()
   @IsBoolean()
-  has_app_access?: boolean;
+  hasAppAccess?: boolean;
 
   @ApiProperty({ description: 'Allow check in', required: false })
   @IsOptional()
   @IsBoolean()
-  allow_checkin?: boolean;
+  allowCheckIn?: boolean;
+
+  @ApiPropertyOptional({ description: 'Business address information' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AddressDto)
+  address?: AddressDto;
 
   @ApiProperty({ description: 'Business metadata', required: false })
   @IsOptional()
@@ -430,6 +515,9 @@ export class BusinessConfigResponse {
 
   @ApiProperty({ description: 'Department configurations', type: [Object] })
   departments: any[];
+
+  @ApiPropertyOptional({ description: 'Business address', type: AddressResponse })
+  address?: AddressResponse;
 
   @ApiProperty({ description: 'Business metadata' })
   metadata: Map<string, any>;
