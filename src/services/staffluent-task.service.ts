@@ -481,90 +481,103 @@ export class StaffluentTaskService {
   }
   
   /**
-   * Add new task assignment
-   */
-  private async addTaskAssignment(task: any, newUserId: string, staffProfile: any, logs: string[]): Promise<void> {
-    await task.updateOne({
-      assignedUserId: newUserId,
-      assignedAt: new Date(),
-      status: TaskStatus.ASSIGNED,
-      'metadata.lastAssignmentSync': new Date(),
-      'metadata.assignmentSyncAction': 'added'
-    });
-    
-    // Update staff workload
-    if (staffProfile) {
-      await this.staffProfileModel.findByIdAndUpdate(
-        staffProfile._id,
-        { $inc: { currentWorkload: 1 } }
-      );
-      logs.push(`Incremented workload for staff ${staffProfile._id}`);
+ * Add new task assignment
+ */
+private async addTaskAssignment(task: any, newUserId: string, staffProfile: any, logs: string[]): Promise<void> {
+  await task.updateOne({
+    assignedUserId: newUserId,
+    assignedAt: new Date(),
+    status: TaskStatus.ASSIGNED,
+    'metadata.lastAssignmentSync': new Date(),
+    'metadata.assignmentSyncAction': 'added',
+    // Clean up assignment-related metadata
+    $unset: { 
+      'metadata.pendingAssignment': 1,
+      potentialAssignees: 1
     }
-    
-    logs.push(`✅ Successfully added assignment to user: ${newUserId}`);
+  });
+  
+  // Update staff workload
+  if (staffProfile) {
+    await this.staffProfileModel.findByIdAndUpdate(
+      staffProfile._id,
+      { $inc: { currentWorkload: 1 } }
+    );
+    logs.push(`Incremented workload for staff ${staffProfile._id}`);
   }
   
-  /**
-   * Remove task assignment
-   */
-  private async removeTaskAssignment(task: any, currentUserId: string, logs: string[]): Promise<void> {
-    await task.updateOne({
-      $unset: { 
-        assignedUserId: 1,
-        assignedAt: 1
-      },
-      status: TaskStatus.UNASSIGNED,
-      'metadata.lastAssignmentSync': new Date(),
-      'metadata.assignmentSyncAction': 'removed',
-      'metadata.previousAssigneeId': currentUserId
-    });
-    
-    // Update staff workload
-    const staffProfile = await this.staffProfileModel.findOne({ userId: currentUserId });
-    if (staffProfile) {
-      await this.staffProfileModel.findByIdAndUpdate(
-        staffProfile._id,
-        { $inc: { currentWorkload: -1 } }
-      );
-      logs.push(`Decremented workload for staff ${staffProfile._id}`);
-    }
-    
-    logs.push(`✅ Successfully removed assignment from user: ${currentUserId}`);
-  }
+  logs.push(`✅ Successfully added assignment to user: ${newUserId} and cleaned up metadata`);
+}
   
   /**
-   * Update task assignment (reassign to different user)
-   */
-  private async updateTaskAssignment(task: any, currentUserId: string, newUserId: string, newStaffProfile: any, logs: string[]): Promise<void> {
-    await task.updateOne({
-      assignedUserId: newUserId,
-      assignedAt: new Date(),
-      status: TaskStatus.ASSIGNED,
-      'metadata.lastAssignmentSync': new Date(),
-      'metadata.assignmentSyncAction': 'updated',
-      'metadata.previousAssigneeId': currentUserId
-    });
-    
-    // Update workload for both users
-    const oldStaffProfile = await this.staffProfileModel.findOne({ userId: currentUserId });
-    if (oldStaffProfile) {
-      await this.staffProfileModel.findByIdAndUpdate(
-        oldStaffProfile._id,
-        { $inc: { currentWorkload: -1 } }
-      );
-      logs.push(`Decremented workload for old staff ${oldStaffProfile._id}`);
-    }
-    
-    if (newStaffProfile) {
-      await this.staffProfileModel.findByIdAndUpdate(
-        newStaffProfile._id,
-        { $inc: { currentWorkload: 1 } }
-      );
-      logs.push(`Incremented workload for new staff ${newStaffProfile._id}`);
-    }
-    
-    logs.push(`✅ Successfully updated assignment: ${currentUserId} -> ${newUserId}`);
+ * Remove task assignment
+ */
+private async removeTaskAssignment(task: any, currentUserId: string, logs: string[]): Promise<void> {
+  await task.updateOne({
+    $unset: { 
+      assignedUserId: 1,
+      assignedAt: 1,
+      'metadata.pendingAssignment': 1,
+      potentialAssignees: 1
+    },
+    status: TaskStatus.UNASSIGNED,
+    'metadata.lastAssignmentSync': new Date(),
+    'metadata.assignmentSyncAction': 'removed',
+    'metadata.previousAssigneeId': currentUserId
+  });
+  
+  // Update staff workload
+  const staffProfile = await this.staffProfileModel.findOne({ userId: currentUserId });
+  if (staffProfile) {
+    await this.staffProfileModel.findByIdAndUpdate(
+      staffProfile._id,
+      { $inc: { currentWorkload: -1 } }
+    );
+    logs.push(`Decremented workload for staff ${staffProfile._id}`);
   }
+  
+  logs.push(`✅ Successfully removed assignment from user: ${currentUserId} and cleaned up metadata`);
+}
+
+/**
+ * Update task assignment (reassign to different user)
+ */
+private async updateTaskAssignment(task: any, currentUserId: string, newUserId: string, newStaffProfile: any, logs: string[]): Promise<void> {
+  await task.updateOne({
+    assignedUserId: newUserId,
+    assignedAt: new Date(),
+    status: TaskStatus.ASSIGNED,
+    'metadata.lastAssignmentSync': new Date(),
+    'metadata.assignmentSyncAction': 'updated',
+    'metadata.previousAssigneeId': currentUserId,
+    // Clean up assignment-related metadata
+    $unset: { 
+      'metadata.pendingAssignment': 1,
+      potentialAssignees: 1
+    }
+  });
+  
+  // Update workload for both users
+  const oldStaffProfile = await this.staffProfileModel.findOne({ userId: currentUserId });
+  if (oldStaffProfile) {
+    await this.staffProfileModel.findByIdAndUpdate(
+      oldStaffProfile._id,
+      { $inc: { currentWorkload: -1 } }
+    );
+    logs.push(`Decremented workload for old staff ${oldStaffProfile._id}`);
+  }
+  
+  if (newStaffProfile) {
+    await this.staffProfileModel.findByIdAndUpdate(
+      newStaffProfile._id,
+      { $inc: { currentWorkload: 1 } }
+    );
+    logs.push(`Incremented workload for new staff ${newStaffProfile._id}`);
+  }
+  
+  logs.push(`✅ Successfully updated assignment: ${currentUserId} -> ${newUserId} and cleaned up metadata`);
+}
+  
   
   /**
    * Push task assignment from NestJS to VenueBoost

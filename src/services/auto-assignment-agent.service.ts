@@ -256,43 +256,52 @@ export class AutoAssignmentAgentService {
   }
 
   /**
-   * Approve a pending assignment
-   */
-  async approveAssignment(taskId: string): Promise<TaskAssignment> {
-    const task = await this.taskModel.findById(taskId);
-    
-    if (!task) {
-      throw new Error('Task not found');
-    }
-    
-    if (!task.metadata?.pendingAssignment) {
-      throw new Error('No pending assignment found for this task');
-    }
-    
-    const userId = task.metadata.pendingAssignment.userId;
-    
-    // Update task with assignment
-    const updatedTask = await this.taskModel.findByIdAndUpdate(
-      taskId,
-      {
-        assignedUserId: userId,
-        status: TaskStatus.ASSIGNED,
-        assignedAt: new Date(),
-        $unset: { 'metadata.pendingAssignment': 1 }
-      },
-      { new: true }
-    );
-    
-    // Update staff workload
-    await this.staffProfileModel.findOneAndUpdate(
-      { userId },
-      { $inc: { currentWorkload: 1 } }
-    );
-    
-    return updatedTask;
+ * Approve a pending assignment
+ */
+async approveAssignment(taskId: string): Promise<TaskAssignment> {
+  const task = await this.taskModel.findById(taskId);
+  
+  if (!task) {
+    throw new Error('Task not found');
   }
+  
+  if (!task.metadata?.pendingAssignment) {
+    throw new Error('No pending assignment found for this task');
+  }
+  
+  const userId = task.metadata.pendingAssignment.userId;
+  
+  // Update task with assignment and comprehensive metadata cleanup
+  const updatedTask = await this.taskModel.findByIdAndUpdate(
+    taskId,
+    {
+      assignedUserId: userId,
+      status: TaskStatus.ASSIGNED,
+      assignedAt: new Date(),
+      $unset: { 
+        'metadata.pendingAssignment': 1,
+        potentialAssignees: 1
+      },
+      $set: {
+        'metadata.assignmentCompletedAt': new Date(),
+        'metadata.assignmentMethod': 'approved'
+      }
+    },
+    { new: true }
+  );
+  
+  // Update staff workload
+  await this.staffProfileModel.findOneAndUpdate(
+    { userId },
+    { $inc: { currentWorkload: 1 } }
+  );
+  
+  this.logger.log(`✅ Assignment approved for task ${taskId}, metadata cleaned up`);
+  
+  return updatedTask;
+}
 
-  /**
+/**
  * Reject a pending assignment
  */
 async rejectAssignment(taskId: string, reason: string): Promise<TaskAssignment> {
@@ -306,24 +315,34 @@ async rejectAssignment(taskId: string, reason: string): Promise<TaskAssignment> 
     throw new Error('No pending assignment found for this task');
   }
   
-  // Update task to remove pending assignment
+  // Update task to remove pending assignment and clean up metadata
   const updatedTask = await this.taskModel.findByIdAndUpdate(
     taskId,
     {
-      $unset: { 'metadata.pendingAssignment': 1 },
+      $unset: { 
+        'metadata.pendingAssignment': 1,
+        potentialAssignees: 1
+      },
       $push: { 
         'metadata.rejectedAssignments': {
           userId: task.metadata.pendingAssignment.userId,
           rejectedAt: new Date(),
           reason
         }
+      },
+      $set: {
+        'metadata.lastRejectionAt': new Date(),
+        'metadata.rejectionReason': reason
       }
     },
     { new: true }
   );
   
+  this.logger.log(`❌ Assignment rejected for task ${taskId}, metadata cleaned up`);
+  
   return updatedTask;
 }
+
 
   /**
    * Process unassigned tasks for a specific business
@@ -377,171 +396,186 @@ async rejectAssignment(taskId: string, reason: string): Promise<TaskAssignment> 
   }
 
   /**
-   * Find the best assignee for a task based on multiple factors
-   * Now uses the business-specific configuration
-   */
-  async findOptimalAssignee(task: TaskAssignment, config?: AgentConfiguration): Promise<void> {
-    // If config not provided, fetch it
-    if (!config) {
-      config = await this.agentConfigModel.findOne({
-        businessId: task.businessId,
-        agentType: 'auto-assignment'
-      });
-      
-      // If still no config, use default weights
-      if (!config) {
-        config = {
-          weights: {
-            skillMatch: 0.4,
-            availability: 0.3,
-            proximity: 0.1,
-            workload: 0.2
-          },
-          requireApproval: true,
-          maxTasksPerStaff: 10,
-          respectMaxWorkload: true
-        } as any;
-      }
-    }
-    
-    // Get the configuration weights
-    const weights = config.weights;
-    
-    // Find all available staff for the business
-    let staffQuery = this.staffProfileModel.find({
-      businessId: task.businessId
+ * Find the best assignee for a task
+ */
+async findOptimalAssignee(task: TaskAssignment, config?: AgentConfiguration): Promise<void> {
+  // If config not provided, fetch it
+  if (!config) {
+    config = await this.agentConfigModel.findOne({
+      businessId: task.businessId,
+      agentType: 'auto-assignment'
     });
     
-    // Filter by specific roles if configured
-    if (config.autoAssignToRoles && config.autoAssignToRoles.length > 0) {
-      staffQuery = staffQuery.populate({
-        path: 'userId',
-        match: { role: { $in: config.autoAssignToRoles } }
-      });
-    } else {
-      staffQuery = staffQuery.populate('userId');
+    // If still no config, use default weights
+    if (!config) {
+      config = {
+        weights: {
+          skillMatch: 0.4,
+          availability: 0.3,
+          proximity: 0.1,
+          workload: 0.2
+        },
+        requireApproval: true,
+        maxTasksPerStaff: 10,
+        respectMaxWorkload: true
+      } as any;
     }
-    
-    const staffProfiles = await staffQuery.exec();
-    
-    // Filter out staff profiles where userId didn't match the role criteria
-    const validStaffProfiles = staffProfiles.filter(profile => profile.userId);
-    
-    if (validStaffProfiles.length === 0) {
-      this.logger.warn(`No suitable staff profiles found for business ${task.businessId}`);
-      return;
-    }
+  }
+  
+  // Get the configuration weights
+  const weights = config.weights;
+  
+  // Find all available staff for the business
+  let staffQuery = this.staffProfileModel.find({
+    businessId: task.businessId
+  });
+  
+  // Filter by specific roles if configured
+  if (config.autoAssignToRoles && config.autoAssignToRoles.length > 0) {
+    staffQuery = staffQuery.populate({
+      path: 'userId',
+      match: { role: { $in: config.autoAssignToRoles } }
+    });
+  } else {
+    staffQuery = staffQuery.populate('userId');
+  }
+  
+  const staffProfiles = await staffQuery.exec();
+  
+  // Filter out staff profiles where userId didn't match the role criteria
+  const validStaffProfiles = staffProfiles.filter(profile => profile.userId);
+  
+  if (validStaffProfiles.length === 0) {
+    this.logger.warn(`No suitable staff profiles found for business ${task.businessId}`);
+    return;
+  }
 
-    // Extract task requirements (assuming they're in metadata)
-    const requiredSkills = task.metadata?.requiredSkills || [];
-    // Prioritize skills if specified in configuration
-    const prioritizedSkills = config.skillPriorities && config.skillPriorities.length > 0 ? 
-      config.skillPriorities.filter(skill => requiredSkills.includes(skill)) : 
-      requiredSkills;
-    
-    const taskLocation = task.metadata?.location;
-    
-    // Calculate scores for each potential assignee
-    const scoredAssignees = await Promise.all(
-      validStaffProfiles.map(async staff => {
-        // Check max workload if configured
-        if (config.respectMaxWorkload && 
-            staff.currentWorkload >= config.maxTasksPerStaff) {
-          return {
-            staffProfile: staff,
-            userId: staff.userId,
-            metrics: {
-              skillMatch: 0,
-              availabilityScore: 0,
-              proximityScore: 0,
-              workloadBalance: 0,
-              finalScore: 0
-            }
-          };
-        }
-        
-        // Skill match score (0-100)
-        const skillMatchScore = this.calculateSkillMatch(staff, prioritizedSkills);
-        
-        // Availability score (0-100)
-        const availabilityScore = this.calculateAvailability(staff);
-        
-        // Proximity score if location is available (0-100)
-        const proximityScore = taskLocation ? 
-          this.calculateProximity(staff, taskLocation) : 100;
-        
-        // Workload balance score (0-100)
-        const workloadScore = this.calculateWorkloadBalance(staff, config.maxTasksPerStaff);
-        
-        // Calculate final score (weighted average)
-        const finalScore = 
-          (skillMatchScore * weights.skillMatch) + 
-          (availabilityScore * weights.availability) + 
-          (proximityScore * weights.proximity) + 
-          (workloadScore * weights.workload);
-        
+  // Extract task requirements (assuming they're in metadata)
+  const requiredSkills = task.metadata?.requiredSkills || [];
+  // Prioritize skills if specified in configuration
+  const prioritizedSkills = config.skillPriorities && config.skillPriorities.length > 0 ? 
+    config.skillPriorities.filter(skill => requiredSkills.includes(skill)) : 
+    requiredSkills;
+  
+  const taskLocation = task.metadata?.location;
+  
+  // Calculate scores for each potential assignee
+  const scoredAssignees = await Promise.all(
+    validStaffProfiles.map(async staff => {
+      // Check max workload if configured
+      if (config.respectMaxWorkload && 
+          staff.currentWorkload >= config.maxTasksPerStaff) {
         return {
           staffProfile: staff,
           userId: staff.userId,
           metrics: {
-            skillMatch: skillMatchScore,
-            availabilityScore,
-            proximityScore,
-            workloadBalance: workloadScore,
-            finalScore
+            skillMatch: 0,
+            availabilityScore: 0,
+            proximityScore: 0,
+            workloadBalance: 0,
+            finalScore: 0
           }
         };
-      })
-    );
-    
-    // Sort by final score (descending)
-    scoredAssignees.sort((a, b) => b.metrics.finalScore - a.metrics.finalScore);
-    
-    // Select top candidate
-    if (scoredAssignees.length > 0 && scoredAssignees[0].metrics.finalScore > 0) {
-      const bestMatch = scoredAssignees[0];
-      
-      // Update task with assignment or proposed assignment based on approval config
-      const updateData: Partial<TaskAssignment> = {
-        potentialAssignees: scoredAssignees.map(a => a.userId),
-        assignmentMetrics: bestMatch.metrics
-      };
-      
-      if (config.requireApproval) {
-        // Mark for approval
-        updateData.metadata = {
-          ...task.metadata,
-          pendingAssignment: {
-            userId: bestMatch.userId,
-            requires_approval: true,
-            proposed_at: new Date()
-          }
-        };
-        
-        // Send notification if configured
-        if (config.notificationSettings?.emailNotifications && 
-            config.notificationSettings?.notifyOnAssignment) {
-          await this.sendAssignmentNotification(task, bestMatch, config);
-        }
-      } else {
-        // Direct assignment
-        updateData.assignedUserId = bestMatch.userId;
-        updateData.status = TaskStatus.ASSIGNED;
-        updateData.assignedAt = new Date();
-        
-        // Update staff workload
-        await this.staffProfileModel.findByIdAndUpdate(bestMatch.staffProfile._id, {
-          $inc: { currentWorkload: 1 }
-        });
       }
       
-      await this.taskModel.findByIdAndUpdate(task._id, updateData);
+      // Skill match score (0-100)
+      const skillMatchScore = this.calculateSkillMatch(staff, prioritizedSkills);
       
-      this.logger.log(`Task ${task._id} ${config.requireApproval ? 'proposed for' : 'assigned to'} user ${bestMatch.userId} with score ${bestMatch.metrics.finalScore}`);
+      // Availability score (0-100)
+      const availabilityScore = this.calculateAvailability(staff);
+      
+      // Proximity score if location is available (0-100)
+      const proximityScore = taskLocation ? 
+        this.calculateProximity(staff, taskLocation) : 100;
+      
+      // Workload balance score (0-100)
+      const workloadScore = this.calculateWorkloadBalance(staff, config.maxTasksPerStaff);
+      
+      // Calculate final score (weighted average)
+      const finalScore = 
+        (skillMatchScore * weights.skillMatch) + 
+        (availabilityScore * weights.availability) + 
+        (proximityScore * weights.proximity) + 
+        (workloadScore * weights.workload);
+      
+      return {
+        staffProfile: staff,
+        userId: staff.userId,
+        metrics: {
+          skillMatch: skillMatchScore,
+          availabilityScore,
+          proximityScore,
+          workloadBalance: workloadScore,
+          finalScore
+        }
+      };
+    })
+  );
+  
+  // Sort by final score (descending)
+  scoredAssignees.sort((a, b) => b.metrics.finalScore - a.metrics.finalScore);
+  
+  // Select top candidate
+  if (scoredAssignees.length > 0 && scoredAssignees[0].metrics.finalScore > 0) {
+    const bestMatch = scoredAssignees[0];
+    
+    // Update task with assignment or proposed assignment based on approval config
+    const updateData: any = {
+      potentialAssignees: scoredAssignees.map(a => a.userId),
+      assignmentMetrics: bestMatch.metrics
+    };
+    
+    if (config.requireApproval) {
+      // Mark for approval - clean any existing assignment data
+      updateData.metadata = {
+        ...task.metadata,
+        pendingAssignment: {
+          userId: bestMatch.userId,
+          requires_approval: true,
+          proposed_at: new Date()
+        }
+      };
+      
+      // Ensure no conflicting assignment data if task was previously assigned
+      updateData.$unset = {
+        assignedUserId: 1,
+        assignedAt: 1
+      };
+      
+      // Send notification if configured
+      if (config.notificationSettings?.emailNotifications && 
+          config.notificationSettings?.notifyOnAssignment) {
+        await this.sendAssignmentNotification(task, bestMatch, config);
+      }
     } else {
-      this.logger.warn(`No suitable assignee found for task ${task._id}`);
+      // Direct assignment - clean pending assignment data
+      updateData.assignedUserId = bestMatch.userId;
+      updateData.status = TaskStatus.ASSIGNED;
+      updateData.assignedAt = new Date();
+      
+      updateData.$unset = {
+        'metadata.pendingAssignment': 1
+      };
+      
+      updateData.metadata = {
+        ...task.metadata,
+        assignmentCompletedAt: new Date(),
+        assignmentMethod: 'auto'
+      };
+      
+      // Update staff workload
+      await this.staffProfileModel.findByIdAndUpdate(bestMatch.staffProfile._id, {
+        $inc: { currentWorkload: 1 }
+      });
     }
+    
+    await this.taskModel.findByIdAndUpdate(task._id, updateData);
+    
+    this.logger.log(`Task ${task._id} ${config.requireApproval ? 'proposed for' : 'assigned to'} user ${bestMatch.userId} with score ${bestMatch.metrics.finalScore}, metadata properly managed`);
+  } else {
+    this.logger.warn(`No suitable assignee found for task ${task._id}`);
   }
+}
 
   /**
    * Calculate how well the staff's skills match the task requirements
