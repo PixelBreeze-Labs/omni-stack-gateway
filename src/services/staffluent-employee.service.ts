@@ -91,7 +91,7 @@ export class StaffluentEmployeeService {
     totalSynced: number;
     logs: string[];
     summary: any;
-  }> {
+    }> {
     const startTime = new Date();
     const logs: string[] = [];
     
@@ -124,9 +124,14 @@ export class StaffluentEmployeeService {
         updated: 0,
         skipped: 0,
         failed: 0,
+        deleted: 0, // Add deleted counter
         externalIdUpdates: 0,
         externalIdFailures: 0
       };
+      
+      // Get all PHP employee IDs from the response
+      const phpEmployeeIds = venueBoostEmployees.map(employee => String(employee.id));
+      logs.push(`PHP employee IDs: [${phpEmployeeIds.join(', ')}]`);
       
       for (const phpEmployee of venueBoostEmployees) {
         try {
@@ -302,6 +307,108 @@ export class StaffluentEmployeeService {
         }
       }
       
+      // Handle deletions - find employees in NestJS that no longer exist in PHP
+      logs.push(`\n--- Processing employee deletions ---`);
+      try {
+        const existingNestJSStaffProfiles = await this.staffProfileModel.find({
+          businessId,
+          'externalIds.venueBoostId': { $exists: true },
+          $or: [
+            { isDeleted: { $ne: true } }, // Not already marked as deleted
+            { isDeleted: { $exists: false } } // No isDeleted field
+          ]
+        });
+        
+        logs.push(`Found ${existingNestJSStaffProfiles.length} existing NestJS staff profiles for business`);
+        
+        const nestJSEmployeeIds = existingNestJSStaffProfiles.map(profile => profile.externalIds.venueBoostId);
+        logs.push(`NestJS employee IDs: [${nestJSEmployeeIds.join(', ')}]`);
+        
+        // Find employees that exist in NestJS but not in PHP (should be deleted)
+        const employeesToDelete = existingNestJSStaffProfiles.filter(profile => 
+          !phpEmployeeIds.includes(profile.externalIds.venueBoostId)
+        );
+        
+        logs.push(`Found ${employeesToDelete.length} employees to delete: [${employeesToDelete.map(p => p.externalIds.venueBoostId).join(', ')}]`);
+        
+        for (const employeeToDelete of employeesToDelete) {
+          try {
+            logs.push(`Deleting employee ${employeeToDelete._id} (PHP ID: ${employeeToDelete.externalIds.venueBoostId})`);
+            
+            // Update any assigned tasks first - unassign tasks and update workload
+            if (employeeToDelete.userId) {
+              const assignedTasks = await this.taskAssignmentModel.find({
+                assignedUserId: employeeToDelete.userId,
+                status: { $in: [TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS] }
+              });
+              
+              if (assignedTasks.length > 0) {
+                logs.push(`Found ${assignedTasks.length} assigned tasks to unassign`);
+                
+                // Unassign all tasks
+                await this.taskAssignmentModel.updateMany(
+                  { assignedUserId: employeeToDelete.userId },
+                  {
+                    $unset: { 
+                      assignedUserId: 1,
+                      assignedAt: 1
+                    },
+                    status: TaskStatus.UNASSIGNED,
+                    'metadata.lastAssignmentSync': new Date(),
+                    'metadata.assignmentSyncAction': 'removed_due_to_employee_deletion',
+                    'metadata.deletedEmployeeId': employeeToDelete.userId
+                  }
+                );
+                
+                logs.push(`Unassigned ${assignedTasks.length} tasks due to employee deletion`);
+              }
+            }
+            
+            // Soft delete the staff profile
+            await employeeToDelete.updateOne({
+              isDeleted: true,
+              deletedAt: new Date(),
+              'metadata.deletionReason': 'sync_not_found_in_php',
+              'metadata.deletedViaSync': true,
+              'metadata.lastSyncedAt': new Date()
+            });
+            
+            logs.push(`✅ Successfully marked staff profile ${employeeToDelete._id} as deleted`);
+            
+            // Soft delete the associated user if it exists
+            if (employeeToDelete.userId) {
+              const associatedUser = await this.userModel.findById(employeeToDelete.userId);
+              
+              if (associatedUser) {
+                await associatedUser.updateOne({
+                  isDeleted: true,
+                  deletedAt: new Date(),
+                  'metadata.deletionReason': 'sync_staff_profile_deleted',
+                  'metadata.deletedViaSync': true,
+                  'metadata.lastSyncedAt': new Date(),
+                  'metadata.deletedStaffProfileId': employeeToDelete._id
+                });
+                
+                logs.push(`✅ Successfully marked user ${associatedUser._id} as deleted`);
+              } else {
+                logs.push(`⚠️ User ${employeeToDelete.userId} not found for deletion`);
+              }
+            }
+            
+            syncSummary.deleted++;
+            logs.push(`✅ Successfully processed deletion for employee ${employeeToDelete._id}`);
+            
+          } catch (deleteError) {
+            logs.push(`ERROR deleting employee ${employeeToDelete._id}: ${deleteError.message}`);
+            this.logger.error(`Error deleting employee ${employeeToDelete._id}:`, deleteError);
+          }
+        }
+        
+      } catch (deletionError) {
+        logs.push(`ERROR processing employee deletions: ${deletionError.message}`);
+        this.logger.error(`Error processing employee deletions:`, deletionError);
+      }
+      
       const totalSynced = syncSummary.added + syncSummary.updated;
       
       // Update the job record on completion
@@ -320,13 +427,14 @@ export class StaffluentEmployeeService {
           employeeCount: venueBoostEmployees.length,
           added: syncSummary.added,
           updated: syncSummary.updated,
+          deleted: syncSummary.deleted,
           failed: syncSummary.failed,
           externalIdUpdates: syncSummary.externalIdUpdates,
           externalIdFailures: syncSummary.externalIdFailures
         }
       });
       
-      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} employees for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`;
+      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} employees for business ${businessId}. Added: ${syncSummary.added}, Updated: ${syncSummary.updated}, Deleted: ${syncSummary.deleted}, External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}`;
       logs.push(completionMsg);
       this.logger.log(completionMsg);
       
