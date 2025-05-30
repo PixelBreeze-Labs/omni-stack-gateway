@@ -1,4 +1,4 @@
-// src/services/business-skills.service.ts
+// src/services/business-skills.service.ts (Updated with Address Support)
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -12,6 +12,10 @@ import {
   AgentFeatureFlag,
   SubscriptionStatus
 } from '../schemas/business.schema';
+import { Address } from '../schemas/address.schema';
+import { Country } from '../schemas/country.schema';
+import { State } from '../schemas/state.schema';
+import { City } from '../schemas/city.schema';
 import { 
   StaffProfile,
   SkillData,
@@ -36,7 +40,9 @@ import {
   ConfigurationOptionsResponse,
   UpdateBusinessConfigDto,
   BusinessConfigResponse,
-  SkillsConfigurationDto
+  SkillsConfigurationDto,
+  AddressResponse,
+  AddressDto
 } from '../dtos/business-skills.dto';
 import { Currency } from 'src/enums/currency.enum';
 
@@ -46,6 +52,10 @@ export class BusinessSkillsService {
 
   constructor(
     @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(Address.name) private addressModel: Model<Address>,
+    @InjectModel(Country.name) private countryModel: Model<Country>,
+    @InjectModel(State.name) private stateModel: Model<State>,
+    @InjectModel(City.name) private cityModel: Model<City>,
     @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
     @InjectModel(SkillAssessment.name) private skillAssessmentModel: Model<SkillAssessment>,
   ) {}
@@ -154,7 +164,283 @@ export class BusinessSkillsService {
   }
 
   // ============================================================================
-  // SKILL ASSESSMENT MANAGEMENT
+  // ADDRESS MANAGEMENT
+  // ============================================================================
+
+  /**
+   * Get business address with populated location data
+   */
+  private async getBusinessAddress(addressId: string): Promise<AddressResponse | null> {
+    if (!addressId) return null;
+
+    try {
+      const address = await this.addressModel.findById(addressId);
+      if (!address) return null;
+
+      const addressResponse: AddressResponse = {
+        id: address._id.toString(),
+        street: address.addressLine1,
+        addressLine2: address.addressLine2,
+        // @ts-ignore
+        zip: address.zip
+      };
+
+      // Populate location data if available
+      if (address.cityId) {
+        const city = await this.cityModel.findById(address.cityId);
+        if (city) {
+          addressResponse.city = {
+            id: city._id.toString(),
+            name: city.name
+          };
+        }
+      }
+
+      if (address.stateId) {
+        const state = await this.stateModel.findById(address.stateId);
+        if (state) {
+          addressResponse.state = {
+            id: state._id.toString(),
+            name: state.name
+          };
+        }
+      }
+
+      if (address.countryId) {
+        const country = await this.countryModel.findById(address.countryId);
+        if (country) {
+          addressResponse.country = {
+            id: country._id.toString(),
+            name: country.name,
+            code: country.code
+          };
+        }
+      }
+
+      return addressResponse;
+    } catch (error) {
+      this.logger.error(`Error getting business address: ${error.message}`, error.stack);
+      return null;
+    }
+  }
+
+  /**
+   * Create or update business address
+   */
+  private async updateBusinessAddress(
+    businessId: string, 
+    addressData: AddressDto, 
+    existingAddressId?: string
+  ): Promise<string> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Validate location IDs if provided
+      if (addressData.countryId) {
+        const country = await this.countryModel.findById(addressData.countryId);
+        if (!country) {
+          throw new BadRequestException('Invalid country ID');
+        }
+      }
+
+      if (addressData.stateId) {
+        const state = await this.stateModel.findById(addressData.stateId);
+        if (!state) {
+          throw new BadRequestException('Invalid state ID');
+        }
+      }
+
+      if (addressData.cityId) {
+        const city = await this.cityModel.findById(addressData.cityId);
+        if (!city) {
+          throw new BadRequestException('Invalid city ID');
+        }
+      }
+
+      const addressUpdateData = {
+        addressLine1: addressData.street || '',
+        addressLine2: addressData.addressLine2 || '',
+        cityId: addressData.cityId || null,
+        stateId: addressData.stateId || null,
+        countryId: addressData.countryId || null,
+        zip: addressData.zip || '',
+        businessId: business._id,
+        clientId: business.clientId,
+        updatedAt: new Date()
+      };
+
+      let addressId: string;
+
+      if (existingAddressId) {
+        // Update existing address
+        const updatedAddress = await this.addressModel.findByIdAndUpdate(
+          existingAddressId,
+          addressUpdateData,
+          { new: true }
+        );
+        
+        if (!updatedAddress) {
+          throw new NotFoundException('Address not found');
+        }
+        
+        addressId = updatedAddress._id.toString();
+        this.logger.log(`Updated existing address ${addressId} for business ${businessId}`);
+      } else {
+        // Create new address
+        const newAddress = await this.addressModel.create(addressUpdateData);
+        addressId = newAddress._id.toString();
+        
+        // Link address to business
+        await this.businessModel.findByIdAndUpdate(
+          businessId,
+          { $set: { addressId: newAddress._id } }
+        );
+        
+        this.logger.log(`Created new address ${addressId} for business ${businessId}`);
+      }
+
+      return addressId;
+    } catch (error) {
+      this.logger.error(`Error updating business address: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // BUSINESS CONFIGURATION MANAGEMENT (Updated)
+  // ============================================================================
+
+  /**
+   * Get complete business configuration with address
+   */
+  async getBusinessConfiguration(businessId: string): Promise<BusinessConfigResponse> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Get address information
+      const address = await this.getBusinessAddress(business.addressId);
+
+      return {
+        id: business._id.toString(),
+        name: business.name,
+        email: business.email,
+        phone: business.phone,
+        type: business.type,
+        industry: business.industry,
+        subCategory: business.subCategory,
+        operationType: business.operationType,
+        currency: business.currency,
+        taxId: business.taxId,
+        vatNumber: business.vatNumber,
+        includedFeatures: business.includedFeatures,
+        employeeCapabilities: {
+          allowClockInOut: business.allow_clockinout,
+          hasAppAccess: business.has_app_access,
+          allowCheckIn: business.allow_checkin
+        },
+        subscriptionInfo: {
+          status: business.subscriptionStatus,
+          endDate: business.subscriptionEndDate,
+          details: business.subscriptionDetails
+        },
+        departments: business.departments || [],
+        address: address,
+        metadata: business.metadata || new Map()
+      };
+    } catch (error) {
+      this.logger.error(`Error getting business configuration: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Update business configuration with address support
+   */
+  async updateBusinessConfiguration(
+    businessId: string, 
+    updateDto: UpdateBusinessConfigDto
+  ): Promise<BusinessConfigResponse> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Validate business type if provided
+      if (updateDto.type && !Object.values(BusinessType).includes(updateDto.type)) {
+        throw new BadRequestException('Invalid business type');
+      }
+
+      // Validate industry if provided
+      if (updateDto.industry && !Object.values(BusinessIndustry).includes(updateDto.industry)) {
+        throw new BadRequestException('Invalid business industry');
+      }
+
+      // Validate subcategory if provided
+      if (updateDto.subCategory && !Object.values(BusinessSubCategory).includes(updateDto.subCategory)) {
+        throw new BadRequestException('Invalid business subcategory');
+      }
+
+      // Handle address update separately
+      let addressUpdated = false;
+      if (updateDto.address) {
+        // Check if any address fields are provided
+        const hasAddressData = Object.values(updateDto.address).some(value => value && value.trim() !== '');
+        
+        if (hasAddressData) {
+          await this.updateBusinessAddress(businessId, updateDto.address, business.addressId);
+          addressUpdated = true;
+          this.logger.log(`Address updated for business ${businessId}`);
+        }
+      }
+
+      // Prepare business update data (exclude address from main update)
+      const { address, ...businessUpdateData } = updateDto;
+
+      // Map field names for employee capabilities
+      const updateData: any = { ...businessUpdateData };
+      if (updateDto.allowClockInOut !== undefined) {
+        updateData.allow_clockinout = updateDto.allowClockInOut;
+        delete updateData.allowClockInOut;
+      }
+      if (updateDto.hasAppAccess !== undefined) {
+        updateData.has_app_access = updateDto.hasAppAccess;
+        delete updateData.hasAppAccess;
+      }
+      if (updateDto.allowCheckIn !== undefined) {
+        updateData.allow_checkin = updateDto.allowCheckIn;
+        delete updateData.allowCheckIn;
+      }
+
+      // Update business with new configuration
+      const updatedBusiness = await this.businessModel.findByIdAndUpdate(
+        businessId,
+        {
+          ...updateData,
+          updatedAt: new Date()
+        },
+        { new: true }
+      );
+
+      this.logger.log(`Business configuration updated for ${businessId}${addressUpdated ? ' (including address)' : ''}`);
+
+      return this.getBusinessConfiguration(businessId);
+    } catch (error) {
+      this.logger.error(`Error updating business configuration: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SKILL ASSESSMENT MANAGEMENT (Keeping existing methods)
   // ============================================================================
 
   /**
@@ -454,7 +740,7 @@ export class BusinessSkillsService {
   }
 
   // ============================================================================
-  // ANALYTICS AND REPORTING
+  // ANALYTICS AND REPORTING (Keeping existing methods)
   // ============================================================================
 
   /**
@@ -584,99 +870,6 @@ export class BusinessSkillsService {
       };
     } catch (error) {
       this.logger.error(`Error getting skill analytics: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
-  // ============================================================================
-  // BUSINESS CONFIGURATION MANAGEMENT
-  // ============================================================================
-
-  /**
-   * Get complete business configuration
-   */
-  async getBusinessConfiguration(businessId: string): Promise<BusinessConfigResponse> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
-
-      return {
-        id: business._id.toString(),
-        name: business.name,
-        email: business.email,
-        phone: business.phone,
-        type: business.type,
-        industry: business.industry,
-        subCategory: business.subCategory,
-        operationType: business.operationType,
-        currency: business.currency,
-        taxId: business.taxId,
-        vatNumber: business.vatNumber,
-        includedFeatures: business.includedFeatures,
-        employeeCapabilities: {
-          allowClockInOut: business.allow_clockinout,
-          hasAppAccess: business.has_app_access,
-          allowCheckIn: business.allow_checkin
-        },
-        subscriptionInfo: {
-          status: business.subscriptionStatus,
-          endDate: business.subscriptionEndDate,
-          details: business.subscriptionDetails
-        },
-        departments: business.departments || [],
-        metadata: business.metadata || new Map()
-      };
-    } catch (error) {
-      this.logger.error(`Error getting business configuration: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Update business configuration
-   */
-  async updateBusinessConfiguration(
-    businessId: string, 
-    updateDto: UpdateBusinessConfigDto
-  ): Promise<BusinessConfigResponse> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
-
-      // Validate business type if provided
-      if (updateDto.type && !Object.values(BusinessType).includes(updateDto.type)) {
-        throw new BadRequestException('Invalid business type');
-      }
-
-      // Validate industry if provided
-      if (updateDto.industry && !Object.values(BusinessIndustry).includes(updateDto.industry)) {
-        throw new BadRequestException('Invalid business industry');
-      }
-
-      // Validate subcategory if provided
-      if (updateDto.subCategory && !Object.values(BusinessSubCategory).includes(updateDto.subCategory)) {
-        throw new BadRequestException('Invalid business subcategory');
-      }
-
-      // Update business with new configuration
-      const updatedBusiness = await this.businessModel.findByIdAndUpdate(
-        businessId,
-        {
-          ...updateDto,
-          updatedAt: new Date()
-        },
-        { new: true }
-      );
-
-      return this.getBusinessConfiguration(businessId);
-    } catch (error) {
-      this.logger.error(`Error updating business configuration: ${error.message}`, error.stack);
       throw error;
     }
   }
