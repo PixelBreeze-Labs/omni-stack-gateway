@@ -184,74 +184,6 @@ export class BusinessGeneralService {
     }
   }
 
-
-  // ============================================================================
-  // PRIVATE HELPER METHODS
-  // ============================================================================
-
-  /**
-   * Process skills data for display
-   */
-  private processSkillsData(skills: Record<string, any>) {
-    return Object.entries(skills).map(([skillName, skillData]) => ({
-      name: skillName,
-      level: skillData.level,
-      yearsExperience: skillData.yearsExperience || 0,
-      monthsExperience: skillData.monthsExperience || 0,
-      lastUsed: skillData.lastUsed,
-      source: skillData.source,
-      confidence: skillData.confidence || 0,
-      verified: skillData.verified || false,
-      verifiedBy: skillData.verifiedBy,
-      verifiedAt: skillData.verifiedAt,
-      performanceRating: skillData.performanceRating || 0,
-      notes: skillData.notes,
-      trainingCompleted: skillData.trainingCompleted || []
-    }));
-  }
-
-  /**
-   * Get skills grouped by level
-   */
-  private getSkillsByLevel(skills: Record<string, any>) {
-    const skillsByLevel = {
-      novice: 0,
-      intermediate: 0,
-      advanced: 0,
-      expert: 0
-    };
-
-    Object.values(skills).forEach((skill: any) => {
-      if (skill.level && skillsByLevel.hasOwnProperty(skill.level)) {
-        skillsByLevel[skill.level as keyof typeof skillsByLevel]++;
-      }
-    });
-
-    return skillsByLevel;
-  }
-
-  /**
-   * Get top skills by performance or confidence
-   */
-  private getTopSkills(skills: Record<string, any>, limit: number = 5) {
-    return Object.entries(skills)
-      .sort(([,a], [,b]) => {
-        // Sort by performance rating, then confidence, then experience
-        const aScore = (a.performanceRating || 0) * 100 + (a.confidence || 0) + (a.yearsExperience || 0);
-        const bScore = (b.performanceRating || 0) * 100 + (b.confidence || 0) + (b.yearsExperience || 0);
-        return bScore - aScore;
-      })
-      .slice(0, limit)
-      .map(([name, data]) => ({
-        name,
-        level: data.level,
-        performanceRating: data.performanceRating || 0,
-        confidence: data.confidence || 0,
-        yearsExperience: data.yearsExperience || 0
-      }));
-  }
-
-
   // ============================================================================
   // DEPARTMENT MANAGEMENT
   // ============================================================================
@@ -448,6 +380,189 @@ export class BusinessGeneralService {
   }
 
   // ============================================================================
+  // TEAM MANAGEMENT (NEW)
+  // ============================================================================
+
+  /**
+   * Create a new team for a business
+   */
+  async createTeam(
+    businessId: string,
+    teamData: {
+      name: string;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; teamId: string; message: string }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Check if team name already exists
+      const existingTeam = business.teams.find(
+        (team: any) => team.name.toLowerCase() === teamData.name.toLowerCase()
+      );
+      
+      if (existingTeam) {
+        throw new Error('Team with this name already exists');
+      }
+
+      // Generate a unique ID for the team
+      const teamId = new Date().getTime().toString();
+      const now = new Date();
+      
+      // Create new team object
+      const newTeam = {
+        id: teamId,
+        name: teamData.name,
+        metadata: teamData.metadata || {},
+        createdAt: now,
+        updatedAt: now
+      };
+
+      // Add team to business
+      business.teams.push(newTeam);
+      business.markModified('teams');
+      await business.save();
+
+      return {
+        success: true,
+        teamId,
+        message: `Team '${teamData.name}' created successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error creating team: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing team
+   */
+  async updateTeam(
+    businessId: string,
+    teamId: string,
+    updateData: {
+      name?: string;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Find team by ID
+      const teamIndex = business.teams.findIndex(
+        (team: any) => team.id === teamId
+      );
+
+      if (teamIndex === -1) {
+        throw new NotFoundException('Team not found');
+      }
+
+      // Check if new name conflicts with existing teams (if name is being updated)
+      if (updateData.name) {
+        const nameConflict = business.teams.find(
+          (team: any, index: number) => 
+            index !== teamIndex && 
+            team.name.toLowerCase() === updateData.name.toLowerCase()
+        );
+        
+        if (nameConflict) {
+          throw new Error('Team with this name already exists');
+        }
+      }
+
+      // Update team data
+      const team = business.teams[teamIndex] as any;
+      
+      if (updateData.name !== undefined) team.name = updateData.name;
+      if (updateData.metadata !== undefined) {
+        // Merge metadata instead of replacing
+        team.metadata = { ...team.metadata, ...updateData.metadata };
+      }
+      
+      // Always update the timestamp
+      team.updatedAt = new Date();
+
+      // Mark the teams array as modified for Mongoose
+      business.markModified('teams');
+      await business.save();
+
+      return {
+        success: true,
+        message: `Team updated successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error updating team: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a team from a business
+   */
+  async removeTeam(
+    businessId: string,
+    teamId: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      // Find team by ID
+      const teamIndex = business.teams.findIndex(
+        (team: any) => team.id === teamId
+      );
+
+      if (teamIndex === -1) {
+        throw new NotFoundException('Team not found');
+      }
+
+      const teamName = (business.teams[teamIndex] as any).name;
+
+      // Remove team from array
+      business.teams.splice(teamIndex, 1);
+      
+      // Mark as modified and save
+      business.markModified('teams');
+      await business.save();
+
+      return {
+        success: true,
+        message: `Team '${teamName}' removed successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error removing team: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all teams for a business
+   */
+  async getTeams(businessId: string): Promise<{ teams: any[] }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      return {
+        teams: business.teams || []
+      };
+    } catch (error) {
+      this.logger.error(`Error getting teams: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
   // SYNC OPERATIONS
   // ============================================================================
 
@@ -501,167 +616,236 @@ export class BusinessGeneralService {
     }
   }
 
+  // ============================================================================
+  // DEPARTMENT SKILLS METHODS
+  // ============================================================================
 
-
-async updateDepartmentSkills(
-  businessId: string,
-  departmentId: string,
-  skillsData: {
-    requiredSkills?: string[];
-    optionalSkills?: string[];
-    skillWeights?: Record<string, number>;
-  }
-): Promise<{ success: boolean; message: string }> {
-  try {
-    // CRITICAL FIX: Use findByIdAndUpdate with arrayFilters
-    // This properly updates nested array elements in MongoDB
-    
-    const updateResult = await this.businessModel.findOneAndUpdate(
-      { 
-        _id: businessId,
-        'departments.id': departmentId 
-      },
-      {
-        $set: {
-          'departments.$.requiredSkills': skillsData.requiredSkills || [],
-          'departments.$.optionalSkills': skillsData.optionalSkills || [],
-          'departments.$.skillWeights': skillsData.skillWeights || {},
-          'departments.$.updatedAt': new Date()
-        }
-      },
-      { 
-        new: true,
-        runValidators: true 
-      }
-    );
-
-    if (!updateResult) {
-      throw new NotFoundException('Business or department not found');
+  async updateDepartmentSkills(
+    businessId: string,
+    departmentId: string,
+    skillsData: {
+      requiredSkills?: string[];
+      optionalSkills?: string[];
+      skillWeights?: Record<string, number>;
     }
-
-    this.logger.log(`Successfully updated skills for department ${departmentId} in business ${businessId}`);
-
-    return {
-      success: true,
-      message: `Department skills updated successfully`
-    };
-  } catch (error) {
-    this.logger.error(`Error updating department skills: ${error.message}`, error.stack);
-    throw error;
-  }
-}
-/**
- * Get department with its skill requirements
- */
-async getDepartmentSkills(
-  businessId: string,
-  departmentId: string
-): Promise<{
-  department: any;
-  skillRequirements: {
-    required: string[];
-    optional: string[];
-    weights: Record<string, number>;
-  };
-}> {
-  try {
-    const business = await this.businessModel.findById(businessId);
-    if (!business) {
-      throw new NotFoundException('Business not found');
-    }
-
-    const department = business.departments.find(
-      (dept: any) => dept.id === departmentId
-    );
-
-    if (!department) {
-      throw new NotFoundException('Department not found');
-    }
-
-    return {
-      department,
-      skillRequirements: {
-        required: department.requiredSkills || [],
-        optional: department.optionalSkills || [],
-        weights: department.skillWeights || {}
-      }
-    };
-  } catch (error) {
-    this.logger.error(`Error getting department skills: ${error.message}`, error.stack);
-    throw error;
-  }
-}
-
-/**
- * Sync department skill requirements with business skill requirements
- */
-async syncDepartmentSkills(businessId: string): Promise<{
-  success: boolean;
-  message: string;
-  syncedDepartments: number;
-}> {
-  try {
-    const business = await this.businessModel.findById(businessId);
-    if (!business) {
-      throw new NotFoundException('Business not found');
-    }
-
-    let syncedDepartments = 0;
-
-    // Update each department with business-level skill requirements
-    for (const department of business.departments) {
-      const dept = department as any;
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      // CRITICAL FIX: Use findByIdAndUpdate with arrayFilters
+      // This properly updates nested array elements in MongoDB
       
-      // Find business skill requirements for this department
-      const departmentSkillReqs = business.skillRequirements?.filter(
-        req => req.department === dept.name || !req.department
-      ) || [];
-
-      const requiredSkills = departmentSkillReqs
-        .filter(req => req.level === 'required')
-        .map(req => req.name);
-
-      const optionalSkills = departmentSkillReqs
-        .filter(req => req.level === 'preferred' || req.level === 'optional')
-        .map(req => req.name);
-
-      const skillWeights: Record<string, number> = {};
-      departmentSkillReqs.forEach(req => {
-        if (req.customWeight) {
-          skillWeights[req.name] = req.customWeight;
+      const updateResult = await this.businessModel.findOneAndUpdate(
+        { 
+          _id: businessId,
+          'departments.id': departmentId 
+        },
+        {
+          $set: {
+            'departments.$.requiredSkills': skillsData.requiredSkills || [],
+            'departments.$.optionalSkills': skillsData.optionalSkills || [],
+            'departments.$.skillWeights': skillsData.skillWeights || {},
+            'departments.$.updatedAt': new Date()
+          }
+        },
+        { 
+          new: true,
+          runValidators: true 
         }
-      });
+      );
 
-      // Update department if there are changes
-      const hasChanges = 
-        JSON.stringify(dept.requiredSkills || []) !== JSON.stringify(requiredSkills) ||
-        JSON.stringify(dept.optionalSkills || []) !== JSON.stringify(optionalSkills) ||
-        JSON.stringify(dept.skillWeights || {}) !== JSON.stringify(skillWeights);
-
-      if (hasChanges) {
-        dept.requiredSkills = requiredSkills;
-        dept.optionalSkills = optionalSkills;
-        dept.skillWeights = skillWeights;
-        dept.updatedAt = new Date();
-        syncedDepartments++;
+      if (!updateResult) {
+        throw new NotFoundException('Business or department not found');
       }
+
+      this.logger.log(`Successfully updated skills for department ${departmentId} in business ${businessId}`);
+
+      return {
+        success: true,
+        message: `Department skills updated successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error updating department skills: ${error.message}`, error.stack);
+      throw error;
     }
-
-    if (syncedDepartments > 0) {
-      business.markModified('departments');
-      await business.save();
-    }
-
-    this.logger.log(`Synced skill requirements for ${syncedDepartments} departments in business ${businessId}`);
-
-    return {
-      success: true,
-      message: `Synced skill requirements for ${syncedDepartments} departments`,
-      syncedDepartments
-    };
-  } catch (error) {
-    this.logger.error(`Error syncing department skills: ${error.message}`, error.stack);
-    throw error;
   }
-}
+
+  /**
+   * Get department with its skill requirements
+   */
+  async getDepartmentSkills(
+    businessId: string,
+    departmentId: string
+  ): Promise<{
+    department: any;
+    skillRequirements: {
+      required: string[];
+      optional: string[];
+      weights: Record<string, number>;
+    };
+  }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      const department = business.departments.find(
+        (dept: any) => dept.id === departmentId
+      );
+
+      if (!department) {
+        throw new NotFoundException('Department not found');
+      }
+
+      return {
+        department,
+        skillRequirements: {
+          required: department.requiredSkills || [],
+          optional: department.optionalSkills || [],
+          weights: department.skillWeights || {}
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Error getting department skills: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Sync department skill requirements with business skill requirements
+   */
+  async syncDepartmentSkills(businessId: string): Promise<{
+    success: boolean;
+    message: string;
+    syncedDepartments: number;
+  }> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+
+      let syncedDepartments = 0;
+
+      // Update each department with business-level skill requirements
+      for (const department of business.departments) {
+        const dept = department as any;
+        
+        // Find business skill requirements for this department
+        const departmentSkillReqs = business.skillRequirements?.filter(
+          req => req.department === dept.name || !req.department
+        ) || [];
+
+        const requiredSkills = departmentSkillReqs
+          .filter(req => req.level === 'required')
+          .map(req => req.name);
+
+        const optionalSkills = departmentSkillReqs
+          .filter(req => req.level === 'preferred' || req.level === 'optional')
+          .map(req => req.name);
+
+        const skillWeights: Record<string, number> = {};
+        departmentSkillReqs.forEach(req => {
+          if (req.customWeight) {
+            skillWeights[req.name] = req.customWeight;
+          }
+        });
+
+        // Update department if there are changes
+        const hasChanges = 
+          JSON.stringify(dept.requiredSkills || []) !== JSON.stringify(requiredSkills) ||
+          JSON.stringify(dept.optionalSkills || []) !== JSON.stringify(optionalSkills) ||
+          JSON.stringify(dept.skillWeights || {}) !== JSON.stringify(skillWeights);
+
+        if (hasChanges) {
+          dept.requiredSkills = requiredSkills;
+          dept.optionalSkills = optionalSkills;
+          dept.skillWeights = skillWeights;
+          dept.updatedAt = new Date();
+          syncedDepartments++;
+        }
+      }
+
+      if (syncedDepartments > 0) {
+        business.markModified('departments');
+        await business.save();
+      }
+
+      this.logger.log(`Synced skill requirements for ${syncedDepartments} departments in business ${businessId}`);
+
+      return {
+        success: true,
+        message: `Synced skill requirements for ${syncedDepartments} departments`,
+        syncedDepartments
+      };
+    } catch (error) {
+      this.logger.error(`Error syncing department skills: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // PRIVATE HELPER METHODS
+  // ============================================================================
+
+  /**
+   * Process skills data for display
+   */
+  private processSkillsData(skills: Record<string, any>) {
+    return Object.entries(skills).map(([skillName, skillData]) => ({
+      name: skillName,
+      level: skillData.level,
+      yearsExperience: skillData.yearsExperience || 0,
+      monthsExperience: skillData.monthsExperience || 0,
+      lastUsed: skillData.lastUsed,
+      source: skillData.source,
+      confidence: skillData.confidence || 0,
+      verified: skillData.verified || false,
+      verifiedBy: skillData.verifiedBy,
+      verifiedAt: skillData.verifiedAt,
+      performanceRating: skillData.performanceRating || 0,
+      notes: skillData.notes,
+      trainingCompleted: skillData.trainingCompleted || []
+    }));
+  }
+
+  /**
+   * Get skills grouped by level
+   */
+  private getSkillsByLevel(skills: Record<string, any>) {
+    const skillsByLevel = {
+      novice: 0,
+      intermediate: 0,
+      advanced: 0,
+      expert: 0
+    };
+
+    Object.values(skills).forEach((skill: any) => {
+      if (skill.level && skillsByLevel.hasOwnProperty(skill.level)) {
+        skillsByLevel[skill.level as keyof typeof skillsByLevel]++;
+      }
+    });
+
+    return skillsByLevel;
+  }
+
+  /**
+   * Get top skills by performance or confidence
+   */
+  private getTopSkills(skills: Record<string, any>, limit: number = 5) {
+    return Object.entries(skills)
+      .sort(([,a], [,b]) => {
+        // Sort by performance rating, then confidence, then experience
+        const aScore = (a.performanceRating || 0) * 100 + (a.confidence || 0) + (a.yearsExperience || 0);
+        const bScore = (b.performanceRating || 0) * 100 + (b.confidence || 0) + (b.yearsExperience || 0);
+        return bScore - aScore;
+      })
+      .slice(0, limit)
+      .map(([name, data]) => ({
+        name,
+        level: data.level,
+        performanceRating: data.performanceRating || 0,
+        confidence: data.confidence || 0,
+        yearsExperience: data.yearsExperience || 0
+      }));
+  }
 }

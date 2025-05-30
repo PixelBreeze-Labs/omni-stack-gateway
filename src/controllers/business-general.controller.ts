@@ -1,153 +1,131 @@
-// src/controllers/business-general.controller.ts
+// src/controllers/business-general.controller.ts (Updated with Team Endpoints)
 import { 
-    Controller, 
-    Get, 
-    Param, 
-    Query, 
-    Headers, 
-    UnauthorizedException, 
-    NotFoundException, 
-    Logger, 
-    InternalServerErrorException,
-    BadRequestException,
-    Post,
-    Delete,
-    Body,
-    Put
-  } from '@nestjs/common';
-  import { 
-    ApiTags, 
-    ApiOperation, 
-    ApiHeader, 
-    ApiParam, 
-    ApiResponse, 
-    ApiQuery 
-  } from '@nestjs/swagger';
-  import { BusinessGeneralService } from '../services/business-general.service';
-  import { BusinessService } from '../services/business.service';
-  import {
-    SimpleStaffProfileResponse,
-    FullStaffProfileResponse,
-  } from '../dtos/business-general.dto';
-  
-  @ApiTags('Business General Management')
-  @Controller('business/general')
-  @ApiHeader({ 
-    name: 'business-x-api-key', 
-    required: true, 
-    description: 'Business API key for authentication' 
-  })
-  export class BusinessGeneralController {
-    private readonly logger = new Logger(BusinessGeneralController.name);
-  
-    constructor(
-      private readonly businessGeneralService: BusinessGeneralService,
-      private readonly businessService: BusinessService
-    ) {}
-  
-  
-    // ============================================================================
-    // INDIVIDUAL STAFF PROFILE ENDPOINTS
-    // ============================================================================
-  
-    @Get(':staffId/profile/simple')
-    @ApiOperation({ 
-      summary: 'Get simple staff profile',
-      description: 'Retrieve basic staff profile information including contact details, role, and basic performance metrics'
-    })
-    @ApiParam({ name: 'staffId', description: 'Staff Profile ID' })
-    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiResponse({ 
-      status: 200, 
-      description: 'Simple staff profile retrieved successfully',
-      type: SimpleStaffProfileResponse
-    })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Staff profile not found' })
-    async getSimpleStaffProfile(
-      @Param('staffId') staffId: string,
-      @Query('businessId') businessId: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<SimpleStaffProfileResponse> {
-      try {
-        if (!businessId) {
-          throw new BadRequestException('Business ID is required');
-        }
-  
-        if (!staffId) {
-          throw new BadRequestException('Staff ID is required');
-        }
-  
-        await this.validateBusinessApiKey(businessId, apiKey);
-        return await this.businessGeneralService.getSimpleStaffProfile(staffId, businessId);
-      } catch (error) {
-        this.logger.error(`Error getting simple staff profile: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-          throw error;
-        }
-        throw new InternalServerErrorException('Failed to retrieve staff profile');
-      }
-    }
-  
-    @Get(':staffId/profile/full')
-    @ApiOperation({ 
-      summary: 'Get full staff profile',
-      description: 'Retrieve comprehensive staff profile including skills, work experience, performance history, goals, and all detailed information'
-    })
-    @ApiParam({ name: 'staffId', description: 'Staff Profile ID' })
-    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiResponse({ 
-      status: 200, 
-      description: 'Full staff profile retrieved successfully',
-      type: FullStaffProfileResponse
-    })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Staff profile not found' })
-    async getFullStaffProfile(
-      @Param('staffId') staffId: string,
-      @Query('businessId') businessId: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<FullStaffProfileResponse> {
-      try {
-        if (!businessId) {
-          throw new BadRequestException('Business ID is required');
-        }
-  
-        if (!staffId) {
-          throw new BadRequestException('Staff ID is required');
-        }
-  
-        await this.validateBusinessApiKey(businessId, apiKey);
-        return await this.businessGeneralService.getFullStaffProfile(staffId, businessId);
-      } catch (error) {
-        this.logger.error(`Error getting full staff profile: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-          throw error;
-        }
-        throw new InternalServerErrorException('Failed to retrieve full staff profile');
-      }
-    }
-  
-    // ============================================================================
-    // PRIVATE HELPER METHODS
-    // ============================================================================
-  
-    /**
-     * Validate business API key (reused from business-skills controller)
-     */
-    private async validateBusinessApiKey(businessId: string, apiKey: string) {
-      if (!apiKey) {
-        throw new UnauthorizedException('Business API key missing');
-      }
-      
-      const business = await this.businessService.findByIdAndApiKey(businessId, apiKey);
-      if (!business) {
-        throw new UnauthorizedException('Invalid API key for this business');
-      }
-      
-      return business;
-    }
+  Controller, 
+  Get, 
+  Param, 
+  Query, 
+  Headers, 
+  UnauthorizedException, 
+  NotFoundException, 
+  Logger, 
+  InternalServerErrorException,
+  BadRequestException,
+  Post,
+  Delete,
+  Body,
+  Put
+} from '@nestjs/common';
+import { 
+  ApiTags, 
+  ApiOperation, 
+  ApiHeader, 
+  ApiParam, 
+  ApiResponse, 
+  ApiQuery 
+} from '@nestjs/swagger';
+import { BusinessGeneralService } from '../services/business-general.service';
+import { BusinessService } from '../services/business.service';
+import {
+  SimpleStaffProfileResponse,
+  FullStaffProfileResponse,
+} from '../dtos/business-general.dto';
 
+@ApiTags('Business General Management')
+@Controller('business/general')
+@ApiHeader({ 
+  name: 'business-x-api-key', 
+  required: true, 
+  description: 'Business API key for authentication' 
+})
+export class BusinessGeneralController {
+  private readonly logger = new Logger(BusinessGeneralController.name);
+
+  constructor(
+    private readonly businessGeneralService: BusinessGeneralService,
+    private readonly businessService: BusinessService
+  ) {}
+
+  // ============================================================================
+  // INDIVIDUAL STAFF PROFILE ENDPOINTS
+  // ============================================================================
+
+  @Get(':staffId/profile/simple')
+  @ApiOperation({ 
+    summary: 'Get simple staff profile',
+    description: 'Retrieve basic staff profile information including contact details, role, and basic performance metrics'
+  })
+  @ApiParam({ name: 'staffId', description: 'Staff Profile ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Simple staff profile retrieved successfully',
+    type: SimpleStaffProfileResponse
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Staff profile not found' })
+  async getSimpleStaffProfile(
+    @Param('staffId') staffId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<SimpleStaffProfileResponse> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!staffId) {
+        throw new BadRequestException('Staff ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getSimpleStaffProfile(staffId, businessId);
+    } catch (error) {
+      this.logger.error(`Error getting simple staff profile: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve staff profile');
+    }
+  }
+
+  @Get(':staffId/profile/full')
+  @ApiOperation({ 
+    summary: 'Get full staff profile',
+    description: 'Retrieve comprehensive staff profile including skills, work experience, performance history, goals, and all detailed information'
+  })
+  @ApiParam({ name: 'staffId', description: 'Staff Profile ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Full staff profile retrieved successfully',
+    type: FullStaffProfileResponse
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Staff profile not found' })
+  async getFullStaffProfile(
+    @Param('staffId') staffId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<FullStaffProfileResponse> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!staffId) {
+        throw new BadRequestException('Staff ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getFullStaffProfile(staffId, businessId);
+    } catch (error) {
+      this.logger.error(`Error getting full staff profile: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve full staff profile');
+    }
+  }
 
   // ============================================================================
   // DEPARTMENT MANAGEMENT ENDPOINTS
@@ -312,6 +290,162 @@ import {
   }
 
   // ============================================================================
+  // TEAM MANAGEMENT ENDPOINTS (NEW)
+  // ============================================================================
+
+  @Post('teams')
+  @ApiOperation({ 
+    summary: 'Create a new team',
+    description: 'Create a new team for the business'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Team created successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid data or team already exists' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async createTeam(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() teamData: {
+      name: string;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; teamId: string; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!teamData.name) {
+        throw new BadRequestException('Team name is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.createTeam(businessId, teamData);
+    } catch (error) {
+      this.logger.error(`Error creating team: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create team');
+    }
+  }
+
+  @Put('teams/:teamId')
+  @ApiOperation({ 
+    summary: 'Update an existing team',
+    description: 'Update team information'
+  })
+  @ApiParam({ name: 'teamId', description: 'Team ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Team updated successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or team not found' })
+  async updateTeam(
+    @Param('teamId') teamId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() updateData: {
+      name?: string;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!teamId) {
+        throw new BadRequestException('Team ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.updateTeam(businessId, teamId, updateData);
+    } catch (error) {
+      this.logger.error(`Error updating team: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update team');
+    }
+  }
+  
+  @Delete('teams/:teamId')
+  @ApiOperation({ 
+    summary: 'Remove a team',
+    description: 'Remove a team from the business'
+  })
+  @ApiParam({ name: 'teamId', description: 'Team ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Team removed successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or team not found' })
+  async removeTeam(
+    @Param('teamId') teamId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!teamId) {
+        throw new BadRequestException('Team ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.removeTeam(businessId, teamId);
+    } catch (error) {
+      this.logger.error(`Error removing team: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to remove team');
+    }
+  }
+
+  @Get('teams')
+  @ApiOperation({ 
+    summary: 'Get all teams',
+    description: 'Retrieve all teams for the business'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Teams retrieved successfully'
+  })
+  async getTeams(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ teams: any[] }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getTeams(businessId);
+    } catch (error) {
+      this.logger.error(`Error getting teams: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve teams');
+    }
+  }
+
+  // ============================================================================
   // SYNC OPERATION ENDPOINTS
   // ============================================================================
 
@@ -392,6 +526,10 @@ import {
       throw new InternalServerErrorException('Failed to sync tasks');
     }
   }
+
+  // ============================================================================
+  // DEPARTMENT SKILLS ENDPOINTS (Existing - keeping as is)
+  // ============================================================================
 
   @Put('departments/:departmentId/skills')
   @ApiOperation({ 
@@ -500,5 +638,23 @@ import {
     }
   }
 
+  // ============================================================================
+  // PRIVATE HELPER METHODS
+  // ============================================================================
 
+  /**
+   * Validate business API key (reused from business-skills controller)
+   */
+  private async validateBusinessApiKey(businessId: string, apiKey: string) {
+    if (!apiKey) {
+      throw new UnauthorizedException('Business API key missing');
+    }
+    
+    const business = await this.businessService.findByIdAndApiKey(businessId, apiKey);
+    if (!business) {
+      throw new UnauthorizedException('Invalid API key for this business');
+    }
+    
+    return business;
+  }
 }

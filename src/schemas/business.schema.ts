@@ -1,4 +1,4 @@
-// src/schemas/business.schema.ts
+// src/schemas/business.schema.ts (Updated with Teams)
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Currency } from '../enums/currency.enum';
@@ -297,6 +297,25 @@ export class Business extends Document {
         createdAt?: Date;
         updatedAt?: Date;
       }[];
+
+    // NEW: Teams Management (simple structure - just name and metadata)
+    @Prop({ 
+        type: [{
+          id: { type: String, required: true },
+          name: { type: String, required: true },
+          metadata: { type: MongooseSchema.Types.Mixed, default: {} },
+          createdAt: { type: Date, default: Date.now },
+          updatedAt: { type: Date, default: Date.now }
+        }], 
+        default: [] 
+      })
+      teams: {
+        id: string;
+        name: string;
+        metadata: any;
+        createdAt?: Date;
+        updatedAt?: Date;
+      }[];
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);
@@ -309,6 +328,7 @@ BusinessSchema.index({ subscriptionStatus: 1 });
 BusinessSchema.index({ industry: 1 });
 BusinessSchema.index({ subCategory: 1 });
 BusinessSchema.index({ 'skillRequirements.name': 1 });
+BusinessSchema.index({ 'teams.name': 1 }); // Add team name index
 
 BusinessSchema.virtual('address', {
     ref: 'Address',
