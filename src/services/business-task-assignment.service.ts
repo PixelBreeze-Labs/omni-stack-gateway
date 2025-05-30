@@ -112,17 +112,22 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
   try {
     this.logger.log(`Getting pending approval tasks for business: ${businessId}`);
     
-    // Simple query with populate on potentialAssignees
+    // Enhanced query to exclude already assigned tasks
     const tasks = await this.taskModel
       .find({
         businessId,
         'metadata.pendingAssignment': { $exists: true },
-        isDeleted: false
+        isDeleted: false,
+        // Exclude tasks that are already assigned
+        $or: [
+          { assignedUserId: { $exists: false } },
+          { assignedUserId: null }
+        ]
       })
       .populate('potentialAssignees', 'name surname email')
       .lean();
 
-    this.logger.log(`Found ${tasks.length} pending approval tasks`);
+    this.logger.log(`Found ${tasks.length} pending approval tasks (excluding already assigned)`);
 
     // Transform the data to set assignedUserId for frontend compatibility
     const transformedTasks = tasks.map(task => {
@@ -139,7 +144,6 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
           : null;
 
         if (matchingUser) {
-          
           // Set assignedUserId to the matching user for frontend compatibility
           // @ts-ignore
           task.assignedUserId = {
@@ -504,97 +508,101 @@ async getPendingApprovalTasks(businessId: string): Promise<TaskAssignment[]> {
   }
 
   /**
-   * Approve a pending task assignment
-   */
-  async approveTaskAssignment(taskId: string): Promise<TaskAssignment> {
-    const startTime = new Date();
+ * Approve a pending task assignment
+ */
+async approveTaskAssignment(taskId: string): Promise<TaskAssignment> {
+  const startTime = new Date();
+  
+  // Create a record for this job execution
+  const jobRecord = await this.cronJobHistoryModel.create({
+    jobName: 'manuallyApproveAssignment',
+    startTime,
+    status: 'started',
+    details: { taskId, triggeredBy: 'business_api' }
+  });
+  
+  try {
+    // Get task and staff profile info for external API call BEFORE approval
+    const task = await this.taskModel.findById(taskId);
+    if (!task) {
+      throw new Error('Task not found');
+    }
     
-    // Create a record for this job execution
-    const jobRecord = await this.cronJobHistoryModel.create({
-      jobName: 'manuallyApproveAssignment',
-      startTime,
-      status: 'started',
-      details: { taskId, triggeredBy: 'business_api' }
+    if (!task.metadata?.pendingAssignment) {
+      throw new Error('No pending assignment found for this task');
+    }
+    
+    const userId = task.metadata.pendingAssignment.userId;
+    const staffProfile = await this.staffProfileModel.findOne({ userId });
+    
+    // Call external PHP API to assign employee if we have external IDs
+    let externalAssignSuccess = false;
+    if (task.externalIds?.venueBoostTaskId && staffProfile?.externalIds?.venueBoostId) {
+      this.logger.log(`Calling external assign-employee API for task ${task.externalIds.venueBoostTaskId} to employee ${staffProfile.externalIds.venueBoostId}`);
+      externalAssignSuccess = await this.callExternalAssignEmployee(
+        task.externalIds.venueBoostTaskId,
+        staffProfile.externalIds.venueBoostId
+      );
+      
+      if (!externalAssignSuccess) {
+        this.logger.warn(`External assign-employee API call failed for task ${taskId}, but continuing with internal assignment`);
+      }
+    } else {
+      this.logger.log(`Skipping external assign-employee API call - missing external IDs for task ${taskId} or staff ${userId}`);
+    }
+    
+    // Use the original auto assignment agent logic
+    const result = await this.autoAssignmentAgentService.approveAssignment(taskId);
+    
+    // Enhanced metadata cleanup - ensure all assignment-related metadata is cleaned
+    await this.taskModel.findByIdAndUpdate(taskId, {
+      $set: { 
+        'metadata.externalAssignSuccess': externalAssignSuccess,
+        'metadata.assignmentApprovedAt': new Date(),
+        'metadata.assignmentFinalizedAt': new Date()
+      },
+      $unset: {
+        'metadata.pendingAssignment': 1,
+        potentialAssignees: 1
+      }
     });
     
-    try {
-      // Get task and staff profile info for external API call BEFORE approval
-      const task = await this.taskModel.findById(taskId);
-      if (!task) {
-        throw new Error('Task not found');
+    // Update job record
+    const endTime = new Date();
+    await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+      endTime,
+      duration: (endTime.getTime() - startTime.getTime()) / 1000,
+      status: 'completed',
+      businessId: result.businessId,
+      details: { 
+        taskId,
+        triggeredBy: 'business_api',
+        success: true,
+        assignedUserId: userId,
+        externalAssignSuccess,
+        venueBoostTaskId: task.externalIds?.venueBoostTaskId,
+        venueBoostEmployeeId: staffProfile?.externalIds?.venueBoostId,
+        metadataCleanedUp: true
       }
-      
-      if (!task.metadata?.pendingAssignment) {
-        throw new Error('No pending assignment found for this task');
-      }
-      
-      const userId = task.metadata.pendingAssignment.userId;
-      const staffProfile = await this.staffProfileModel.findOne({ userId });
-      
-      // Call external PHP API to assign employee if we have external IDs
-      let externalAssignSuccess = false;
-      if (task.externalIds?.venueBoostTaskId && staffProfile?.externalIds?.venueBoostId) {
-        this.logger.log(`Calling external assign-employee API for task ${task.externalIds.venueBoostTaskId} to employee ${staffProfile.externalIds.venueBoostId}`);
-        externalAssignSuccess = await this.callExternalAssignEmployee(
-          task.externalIds.venueBoostTaskId,
-          staffProfile.externalIds.venueBoostId
-        );
-        
-        if (!externalAssignSuccess) {
-          this.logger.warn(`External assign-employee API call failed for task ${taskId}, but continuing with internal assignment`);
-        }
-      } else {
-        this.logger.log(`Skipping external assign-employee API call - missing external IDs for task ${taskId} or staff ${userId}`);
-      }
-      
-      // Use the original auto assignment agent logic
-      const result = await this.autoAssignmentAgentService.approveAssignment(taskId);
-      
-      // Update the task with external API success info
-      if (externalAssignSuccess) {
-        await this.taskModel.findByIdAndUpdate(taskId, {
-          $set: { 
-            'metadata.externalAssignSuccess': externalAssignSuccess,
-            'metadata.assignmentApprovedAt': new Date()
-          }
-        });
-      }
-      
-      // Update job record
-      const endTime = new Date();
-      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
-        endTime,
-        duration: (endTime.getTime() - startTime.getTime()) / 1000,
-        status: 'completed',
-        businessId: result.businessId,
-        details: { 
-          taskId,
-          triggeredBy: 'business_api',
-          success: true,
-          assignedUserId: userId,
-          externalAssignSuccess,
-          venueBoostTaskId: task.externalIds?.venueBoostTaskId,
-          venueBoostEmployeeId: staffProfile?.externalIds?.venueBoostId
-        }
-      });
-      
-      this.logger.log(`✅ Task assignment approved successfully for task ${taskId}, assigned to user ${userId}. External API call: ${externalAssignSuccess ? 'SUCCESS' : 'FAILED'}`);
-      
-      return result;
-    } catch (error) {
-      // Update job record on failure
-      const endTime = new Date();
-      await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
-        endTime,
-        duration: (endTime.getTime() - startTime.getTime()) / 1000,
-        status: 'failed',
-        error: error.message
-      });
-      
-      this.logger.error(`Error in manually approving assignment: ${error.message}`, error.stack);
-      throw error;
-    }
+    });
+    
+    this.logger.log(`✅ Task assignment approved successfully for task ${taskId}, assigned to user ${userId}. External API call: ${externalAssignSuccess ? 'SUCCESS' : 'FAILED'}. Metadata cleaned up.`);
+    
+    return result;
+  } catch (error) {
+    // Update job record on failure
+    const endTime = new Date();
+    await this.cronJobHistoryModel.findByIdAndUpdate(jobRecord._id, {
+      endTime,
+      duration: (endTime.getTime() - startTime.getTime()) / 1000,
+      status: 'failed',
+      error: error.message
+    });
+    
+    this.logger.error(`Error in manually approving assignment: ${error.message}`, error.stack);
+    throw error;
   }
+}
 
   /**
    * Reject a pending task assignment
