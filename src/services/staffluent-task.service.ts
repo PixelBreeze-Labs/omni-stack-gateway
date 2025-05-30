@@ -134,10 +134,15 @@ export class StaffluentTaskService {
         updated: 0,
         skipped: 0,
         failed: 0,
+        deleted: 0, // Add deleted counter
         externalIdUpdates: 0,
         externalIdFailures: 0,
         assignmentChanges: 0
       };
+      
+      // Get all PHP task IDs from the response
+      const phpTaskIds = venueBoostTasks.tasks.map(task => String(task.id));
+      logs.push(`PHP task IDs: [${phpTaskIds.join(', ')}]`);
       
       for (const phpTask of venueBoostTasks.tasks) {
         try {
@@ -280,6 +285,71 @@ export class StaffluentTaskService {
         }
       }
       
+      // Handle deletions - find tasks in NestJS that no longer exist in PHP
+      logs.push(`\n--- Processing deletions ---`);
+      try {
+        const existingNestJSTasks = await this.taskModel.find({
+          businessId,
+          'externalIds.venueBoostTaskId': { $exists: true },
+          $or: [
+            { isDeleted: { $ne: true } }, // Not already marked as deleted
+            { isDeleted: { $exists: false } } // No isDeleted field
+          ]
+        });
+        
+        logs.push(`Found ${existingNestJSTasks.length} existing NestJS tasks for business`);
+        
+        const nestJSTaskIds = existingNestJSTasks.map(task => task.externalIds.venueBoostTaskId);
+        logs.push(`NestJS task IDs: [${nestJSTaskIds.join(', ')}]`);
+        
+        // Find tasks that exist in NestJS but not in PHP (should be deleted)
+        const tasksToDelete = existingNestJSTasks.filter(task => 
+          !phpTaskIds.includes(task.externalIds.venueBoostTaskId)
+        );
+        
+        logs.push(`Found ${tasksToDelete.length} tasks to delete: [${tasksToDelete.map(t => t.externalIds.venueBoostTaskId).join(', ')}]`);
+        
+        for (const taskToDelete of tasksToDelete) {
+          try {
+            logs.push(`Deleting task ${taskToDelete._id} (PHP ID: ${taskToDelete.externalIds.venueBoostTaskId})`);
+            
+            // Update staff workload if task was assigned
+            if (taskToDelete.assignedUserId) {
+              const staffProfile = await this.staffProfileModel.findOne({ 
+                userId: taskToDelete.assignedUserId 
+              });
+              if (staffProfile) {
+                await this.staffProfileModel.findByIdAndUpdate(
+                  staffProfile._id,
+                  { $inc: { currentWorkload: -1 } }
+                );
+                logs.push(`Decremented workload for staff ${staffProfile._id} due to task deletion`);
+              }
+            }
+            
+            // Mark as deleted (soft delete) instead of hard delete to maintain audit trail
+            await taskToDelete.updateOne({
+              isDeleted: true,
+              deletedAt: new Date(),
+              'metadata.deletionReason': 'sync_not_found_in_php',
+              'metadata.deletedViaSync': true,
+              'metadata.lastSyncedAt': new Date()
+            });
+            
+            syncSummary.deleted++;
+            logs.push(`✅ Successfully marked task ${taskToDelete._id} as deleted`);
+            
+          } catch (deleteError) {
+            logs.push(`ERROR deleting task ${taskToDelete._id}: ${deleteError.message}`);
+            this.logger.error(`Error deleting task ${taskToDelete._id}:`, deleteError);
+          }
+        }
+        
+      } catch (deletionError) {
+        logs.push(`ERROR processing deletions: ${deletionError.message}`);
+        this.logger.error(`Error processing deletions:`, deletionError);
+      }
+      
       const totalSynced = syncSummary.added + syncSummary.updated;
       
       // Update the job record on completion
@@ -298,6 +368,7 @@ export class StaffluentTaskService {
           taskCount: venueBoostTasks.tasks.length,
           added: syncSummary.added,
           updated: syncSummary.updated,
+          deleted: syncSummary.deleted,
           failed: syncSummary.failed,
           externalIdUpdates: syncSummary.externalIdUpdates,
           externalIdFailures: syncSummary.externalIdFailures,
@@ -305,7 +376,7 @@ export class StaffluentTaskService {
         }
       });
       
-      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} tasks for business ${businessId}. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}, assignment changes: ${syncSummary.assignmentChanges}`;
+      const completionMsg = `[SYNC COMPLETE] Successfully synced ${totalSynced} tasks for business ${businessId}. Added: ${syncSummary.added}, Updated: ${syncSummary.updated}, Deleted: ${syncSummary.deleted}, External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}, assignment changes: ${syncSummary.assignmentChanges}`;
       logs.push(completionMsg);
       this.logger.log(completionMsg);
       
@@ -639,6 +710,7 @@ export class StaffluentTaskService {
         updated: 0,
         skipped: 0,
         failed: 0,
+        deleted: 0,
         externalIdUpdates: 0,
         externalIdFailures: 0,
         assignmentChanges: 0
@@ -654,6 +726,7 @@ export class StaffluentTaskService {
             businessId: business.id,
             businessName: business.name,
             tasksSynced: syncResult.totalSynced,
+            deleted: syncResult.summary.deleted,
             assignmentChanges: syncResult.summary.assignmentChanges,
             success: true
           });
@@ -661,6 +734,7 @@ export class StaffluentTaskService {
           // Add to overall summary
           syncSummary.added += syncResult.summary.added;
           syncSummary.updated += syncResult.summary.updated;
+          syncSummary.deleted += syncResult.summary.deleted;
           syncSummary.failed += syncResult.summary.failed;
           syncSummary.externalIdUpdates += syncResult.summary.externalIdUpdates;
           syncSummary.externalIdFailures += syncResult.summary.externalIdFailures;
@@ -701,7 +775,7 @@ export class StaffluentTaskService {
         }
       });
       
-      this.logger.log(`[CRON COMPLETE] Task sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses. External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}, assignment changes: ${syncSummary.assignmentChanges}`);
+             this.logger.log(`[CRON COMPLETE] Task sync job completed at ${endTime.toISOString()}, duration: ${duration}s, processed ${businesses.length} businesses. Added: ${syncSummary.added}, Updated: ${syncSummary.updated}, Deleted: ${syncSummary.deleted}, External ID updates: ${syncSummary.externalIdUpdates}, failures: ${syncSummary.externalIdFailures}, assignment changes: ${syncSummary.assignmentChanges}`);
     } catch (error) {
       // Update the job record on failure
       const endTime = new Date();
