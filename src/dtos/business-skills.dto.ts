@@ -34,7 +34,7 @@ export class AddressDto {
   @ApiPropertyOptional({ description: 'Postal/ZIP code' })
   @IsOptional()
   @IsString()
-  zip?: string;
+  postcode?: string;
 
   @ApiPropertyOptional({ description: 'Additional address line' })
   @IsOptional()
@@ -70,7 +70,7 @@ export class AddressResponse {
   };
 
   @ApiProperty({ description: 'Postal/ZIP code' })
-  zip?: string;
+  postcode?: string;
 
   @ApiProperty({ description: 'Additional address line' })
   addressLine2?: string;

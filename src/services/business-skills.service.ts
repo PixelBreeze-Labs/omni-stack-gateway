@@ -181,8 +181,7 @@ export class BusinessSkillsService {
         id: address._id.toString(),
         street: address.addressLine1,
         addressLine2: address.addressLine2,
-        // @ts-ignore
-        zip: address.zip
+        postcode: address.postcode
       };
 
       // Populate location data if available
@@ -266,7 +265,7 @@ export class BusinessSkillsService {
         cityId: addressData.cityId || null,
         stateId: addressData.stateId || null,
         countryId: addressData.countryId || null,
-        zip: addressData.zip || '',
+        postcode: addressData.postcode || '',
         businessId: business._id,
         clientId: business.clientId,
         updatedAt: new Date()
