@@ -152,6 +152,18 @@ export const teamLeaderLinks: SideLink[] = [
         ]
     },
     {
+        title: 'Team',
+        href: '/team-leader',
+        icon: null,
+        sub: [
+            {
+                title: 'Employees',
+                href: '/team-leader/employees',
+                icon: null,
+            }
+        ]
+    },
+    {
         title: 'Team Schedule',
         href: '/team-leader/team-schedule',
         icon: null,
