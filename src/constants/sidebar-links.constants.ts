@@ -209,50 +209,9 @@ export const operationsManagerLinks: SideLink[] = [
         ]
     },
     {
-        title: 'Tasks',
-        href: '/operations-manager/tasks',
-        icon: null,
-        sub: [
-            {
-                title: 'Manage',
-                href: '/operations-manager/tasks',
-                icon: null,
-            }
-        ]
-    },
-    {
-        title: 'Time Tracking',
-        href: '/operations-manager/time-tracking',
-        icon: null,
-        sub: [
-            {
-                title: 'Manage',
-                href: '/operations-manager/time-tracking',
-                icon: null,
-            }
-        ]
-    },
-    {
         title: 'Team Management',
         href: '/operations-manager/team',
         icon: null,
-        sub: [
-            {
-                title: 'Team Overview',
-                href: '/operations-manager/team',
-                icon: null,
-            },
-            {
-                title: 'Team Leaders',
-                href: '/operations-manager/team/leaders',
-                icon: null,
-            },
-            {
-                title: 'Staff Assignment',
-                href: '/operations-manager/team/assignments',
-                icon: null,
-            }
-        ]
     },
     {
         title: 'Resource Management',
@@ -299,43 +258,14 @@ export const operationsManagerLinks: SideLink[] = [
         icon: null,
     },
     {
-        title: 'Client Management',
-        href: '/operations-manager/clients',
-        icon: null,
-        sub: [
-            {
-                title: 'Clients',
-                href: '/operations-manager/clients',
-                icon: null,
-            },
-            {
-                title: 'Client Requests',
-                href: '/operations-manager/client-requests',
-                icon: null,
-            }
-        ]
-    },
-    {
         title: 'Analytics',
         href: '/operations-manager/analytics',
         icon: null,
-        sub: [
-            {
-                title: 'Performance Analytics',
-                href: '/operations-manager/analytics',
-                icon: null,
-            },
-            {
-                title: 'Operational Metrics',
-                href: '/operations-manager/analytics/metrics',
-                icon: null,
-            },
-            {
-                title: 'Compliance',
-                href: '/operations-manager/compliance',
-                icon: null,
-            }
-        ]
+    },
+    {
+        title: 'Client Management',
+        href: '/operations-manager/clients',
+        icon: null,
     },
     {
         title: 'Reports',
