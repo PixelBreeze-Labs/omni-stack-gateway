@@ -413,6 +413,7 @@ export class BusinessChatbotService {
     // Personalization variables
     const businessName = business?.name || 'your business';
     const userName = user ? `${user.name || 'there'}` : 'there';
+    const clientId = business?.clientId;
     
     // Extract key terms for better matching
     const keyTerms = this.extractKeyTerms(normalizedMessage);
@@ -423,13 +424,7 @@ export class BusinessChatbotService {
     // Determine if this is a casual conversational query
     const isConversational = this.isConversationalQuery(normalizedMessage);
     
-    // Determine if we should show feedback for this message
-    const FEEDBACK_FREQUENCY = 5;
-    const messageCount = context?.sessionData?.messageCount || 0;
-    let shouldShowFeedback = (messageCount % FEEDBACK_FREQUENCY === 0);
-    
-    // IMPORTANT: Get the clientId from the business object
-    const clientId = business?.clientId;
+    this.logger.log(`Processing query: "${normalizedMessage}" with terms: ${keyTerms.join(', ')}`);
   
     // PRIORITY 1: Handle closure messages first
     if (this.isClosureMessage(normalizedMessage)) {
@@ -470,29 +465,38 @@ export class BusinessChatbotService {
       }
     }
   
-    // PRIORITY 3: Try QueryResponsePair FIRST (with improved validation)
+    // PRIORITY 3: **FIXED** Query-Response Pairs (with improved search and validation)
     const matchingPairs = await this.knowledgeBaseService.searchQueryResponses(
       normalizedMessage,
       { 
         category: context.currentView || 'general',
-        limit: 5, // Get more candidates for better selection
+        limit: 10, // Increased limit to get more candidates
         clientId
       }
     );
     
+    this.logger.log(`Found ${matchingPairs.length} matching pairs for query: "${normalizedMessage}"`);
+    
     if (matchingPairs.length > 0) {
-      // Try each matching pair until we find a valid one
-      for (const pair of matchingPairs) {
-        if (this.validateLearnedResponseImproved(normalizedMessage, pair, keyTerms)) {
-          shouldShowFeedback = true;
-          
+      // **NEW**: Improved relevance scoring for query pairs
+      const scoredPairs = matchingPairs.map(pair => ({
+        pair,
+        relevanceScore: this.calculateQueryPairRelevance(normalizedMessage, pair, keyTerms)
+      }))
+      .filter(item => item.relevanceScore > 0.3) // Lower threshold
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
+  
+      this.logger.log(`After scoring: ${scoredPairs.length} pairs passed relevance threshold`);
+  
+      // Try the best scoring pairs
+      for (const { pair, relevanceScore } of scoredPairs.slice(0, 3)) {
+        if (this.validateLearnedResponseFixed(normalizedMessage, pair, keyTerms)) {
           let response = pair.response
             .replace(/{businessName}/g, businessName)
             .replace(/{userName}/g, userName)
             .replace(/{platformName}/g, platformName);
           
-          // Log successful learned response usage
-          this.logger.log(`Using learned response for query: "${normalizedMessage}"`);
+          this.logger.log(`✅ Using learned response (score: ${relevanceScore.toFixed(2)}) for: "${normalizedMessage}"`);
           
           return {
             text: response,
@@ -503,42 +507,39 @@ export class BusinessChatbotService {
               sourceId: pair._id.toString(),
               knowledgeUsed: true,
               responseSource: 'learned',
-              shouldShowFeedback,
-              matchScore: pair.similarity || 0,
+              shouldShowFeedback: true,
+              matchScore: relevanceScore,
               validatedMatch: true,
               originalQuery: pair.query
             }
           };
         }
       }
-      
-      // Log if no pairs passed validation
-      if (matchingPairs.length > 0) {
-        this.logger.log(`Found ${matchingPairs.length} learned responses but none passed validation for: "${normalizedMessage}"`);
-      }
     }
     
-    // PRIORITY 4: Try knowledge base documents
-    const relevantDocs = await this.knowledgeBaseService.searchDocuments(
+    // PRIORITY 4: **FIXED** Knowledge Base Search (with better targeting)
+    const relevantDocs = await this.searchKnowledgeBaseImproved(
       normalizedMessage,
+      keyTerms,
       {
         clientId,
         businessType: business?.operationType || 'default',
         features: business?.includedFeatures || [],
         currentView: context.currentView,
-        limit: 2
+        limit: 5
       }
     );
     
+    this.logger.log(`Found ${relevantDocs.length} relevant knowledge documents`);
+    
     if (relevantDocs.length > 0) {
-      shouldShowFeedback = true;
       const doc = relevantDocs[0];
       
       let response = this.formatKnowledgeResponse(
         doc.content, businessName, userName, platformName
       );
       
-      this.logger.log(`Using knowledge base document: "${doc.title}" for query: "${normalizedMessage}"`);
+      this.logger.log(`✅ Using knowledge document: "${doc.title}" for query: "${normalizedMessage}"`);
       
       return {
         text: response,
@@ -549,9 +550,10 @@ export class BusinessChatbotService {
           sourceId: doc._id.toString(),
           knowledgeUsed: true,
           responseSource: 'knowledge',
-          shouldShowFeedback,
+          shouldShowFeedback: true,
           documentTitle: doc.title || null,
-          documentCategories: doc.categories || []
+          documentCategories: doc.categories || [],
+          searchScore: doc.searchScore || 0
         }
       };
     }
@@ -561,11 +563,6 @@ export class BusinessChatbotService {
       normalizedMessage, keyTerms, isFollowup, context, 
       business, businessName, userName, platformName
     );
-    
-    // For conversational or high-confidence responses, show feedback more often
-    if (nlpResponse.confidence > 0.7 || normalizedMessage.length < 20) {
-      shouldShowFeedback = true;
-    }
     
     // If no good NLP response, log this as an unrecognized query
     if (nlpResponse.confidence < 0.3) {
@@ -581,7 +578,7 @@ export class BusinessChatbotService {
         }
       );
       
-      shouldShowFeedback = true;
+      this.logger.log(`❌ Query not recognized, logged as unrecognized: "${normalizedMessage}"`);
       
       return {
         ...nlpResponse,
@@ -593,7 +590,7 @@ export class BusinessChatbotService {
           knowledgeUsed: false,
           confidence: nlpResponse.confidence,
           unrecognized: true,
-          shouldShowFeedback
+          shouldShowFeedback: true
         }
       };
     }
@@ -606,11 +603,306 @@ export class BusinessChatbotService {
         responseSource: 'nlp',
         knowledgeUsed: false,
         confidence: nlpResponse.confidence,
-        shouldShowFeedback
+        shouldShowFeedback: true
       }
     };
   }
   
+  
+
+  // **NEW**: Improved query pair relevance calculation
+private calculateQueryPairRelevance(
+  userQuery: string, 
+  pair: any, 
+  queryTerms: string[]
+): number {
+  const pairQuery = (pair.query || '').toLowerCase();
+  const pairKeywords = pair.keywords || [];
+  
+  let score = 0;
+  
+  // 1. Exact query match (highest priority)
+  if (userQuery === pairQuery) {
+    return 1.0;
+  }
+  
+  // 2. High similarity for similar queries
+  const similarity = this.calculateStringSimilarity(userQuery, pairQuery);
+  score += similarity * 0.8;
+  
+  // 3. Keyword matching
+  const keywordMatches = queryTerms.filter(term => 
+    pairKeywords.some(keyword => 
+      keyword.toLowerCase().includes(term) || term.includes(keyword.toLowerCase())
+    )
+  ).length;
+  
+  if (queryTerms.length > 0) {
+    score += (keywordMatches / queryTerms.length) * 0.6;
+  }
+  
+  // 4. Common word matching (for phrase queries)
+  const userWords = userQuery.split(' ').filter(w => w.length > 2);
+  const pairWords = pairQuery.split(' ').filter(w => w.length > 2);
+  
+  const commonWords = userWords.filter(word => 
+    pairWords.some(pairWord => 
+      word.includes(pairWord) || pairWord.includes(word)
+    )
+  ).length;
+  
+  if (userWords.length > 0) {
+    score += (commonWords / userWords.length) * 0.4;
+  }
+  
+  // 5. Boost for high success rate pairs
+  if (pair.successRate > 70) {
+    score += 0.1;
+  }
+  
+  // 6. Boost for frequently used pairs
+  if (pair.useCount > 5) {
+    score += 0.05;
+  }
+  
+  return Math.min(1.0, score);
+}
+
+// **NEW**: Improved string similarity calculation
+private calculateStringSimilarity(str1: string, str2: string): number {
+  // Simple Levenshtein distance based similarity
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) {
+    return 1.0;
+  }
+  
+  const distance = this.levenshteinDistance(longer, shorter);
+  return (longer.length - distance) / longer.length;
+}
+
+// **NEW**: Levenshtein distance calculation
+private levenshteinDistance(str1: string, str2: string): number {
+  const matrix = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+}
+
+// **FIXED**: Much more permissive validation for learned responses
+private validateLearnedResponseFixed(
+  query: string, 
+  learnedResponse: any, 
+  queryTerms: string[]
+): boolean {
+  const response = learnedResponse.response?.toLowerCase() || '';
+  const originalQuery = learnedResponse.query?.toLowerCase() || '';
+  
+  // Only block obviously bad patterns (be very selective)
+  const obviouslyBadPatterns = [
+    /yes i know about sports.*but.*staffluent/i,
+    /purpose of this chat is to help only about.*and not/i,
+    /i don't know about (sports|weather|cooking|politics)/i
+  ];
+  
+  for (const pattern of obviouslyBadPatterns) {
+    if (pattern.test(response)) {
+      this.logger.warn(`❌ Blocking learned response for bad pattern: ${response.substring(0, 50)}...`);
+      return false;
+    }
+  }
+  
+  // Block empty or very short responses
+  if (!response || response.trim().length < 5) {
+    this.logger.warn(`❌ Blocking learned response for being too short: "${response}"`);
+    return false;
+  }
+  
+  // Allow everything else - be permissive!
+  this.logger.log(`✅ Learned response passed validation`);
+  return true;
+}
+
+// **NEW**: Improved knowledge base search with better targeting
+private async searchKnowledgeBaseImproved(
+  query: string,
+  keyTerms: string[],
+  options: {
+    clientId?: string;
+    businessType?: string;
+    features?: string[];
+    currentView?: string;
+    limit?: number;
+  } = {}
+): Promise<any[]> {
+  
+  // **IMPORTANT**: Use more specific search terms based on query intent
+  const searchQuery = this.buildTargetedSearchQuery(query, keyTerms);
+  
+  this.logger.log(`Searching knowledge base with targeted query: "${searchQuery}"`);
+  
+  const results = await this.knowledgeBaseService.searchDocuments(
+    searchQuery,
+    {
+      ...options,
+      limit: (options.limit || 3) * 2 // Get more candidates for better filtering
+    }
+  );
+  
+  // **NEW**: Re-rank results based on actual relevance to the user query
+  const rerankedResults = results.map(doc => ({
+    ...doc,
+    relevanceScore: this.calculateDocumentRelevance(query, keyTerms, doc)
+  }))
+  .filter(doc => doc.relevanceScore > 0.2) // Filter out irrelevant docs
+  .sort((a, b) => b.relevanceScore - a.relevanceScore)
+  .slice(0, options.limit || 3);
+  
+  this.logger.log(`Re-ranked ${results.length} -> ${rerankedResults.length} documents`);
+  
+  return rerankedResults;
+}
+
+// **NEW**: Build more targeted search queries
+private buildTargetedSearchQuery(originalQuery: string, keyTerms: string[]): string {
+  const query = originalQuery.toLowerCase();
+  
+  // For "what is staffluent" queries, search for overview/general content
+  if (query.includes('what is staffluent') || query.includes('about staffluent')) {
+    return 'staffluent overview platform workforce management what is';
+  }
+  
+  // For feature questions, be more specific
+  if (query.includes('chat') || query.includes('communication') || query.includes('messaging')) {
+    return 'communication chat messaging features team collaboration';
+  }
+  
+  if (query.includes('project')) {
+    return 'project management features create assign track';
+  }
+  
+  if (query.includes('task')) {
+    return 'task management create assign priority tracking';
+  }
+  
+  if (query.includes('team')) {
+    return 'team management members staff organization roles';
+  }
+  
+  if (query.includes('time')) {
+    return 'time tracking attendance timesheet clock';
+  }
+  
+  // Default: use key terms
+  return keyTerms.length > 0 ? keyTerms.join(' ') : originalQuery;
+}
+
+// **NEW**: Calculate document relevance to user query
+private calculateDocumentRelevance(
+  userQuery: string, 
+  keyTerms: string[], 
+  doc: any
+): number {
+  const title = (doc.title || '').toLowerCase();
+  const content = (doc.content || '').toLowerCase();
+  const categories = doc.categories || [];
+  const keywords = doc.keywords || [];
+  
+  let score = 0;
+  
+  // 1. Title relevance (highest weight)
+  for (const term of keyTerms) {
+    if (title.includes(term)) {
+      score += 0.4;
+    }
+  }
+  
+  // 2. Exact query match in title
+  if (title.includes(userQuery)) {
+    score += 0.3;
+  }
+  
+  // 3. Category relevance
+  const relevantCategories = this.getRelevantCategories(userQuery, keyTerms);
+  const categoryMatches = categories.filter(cat => relevantCategories.includes(cat)).length;
+  if (categoryMatches > 0) {
+    score += categoryMatches * 0.2;
+  }
+  
+  // 4. Keyword relevance
+  const keywordMatches = keyTerms.filter(term =>
+    keywords.some(keyword => keyword.toLowerCase().includes(term))
+  ).length;
+  if (keyTerms.length > 0) {
+    score += (keywordMatches / keyTerms.length) * 0.3;
+  }
+  
+  // 5. Content relevance (lower weight)
+  for (const term of keyTerms) {
+    const occurrences = (content.match(new RegExp(term, 'gi')) || []).length;
+    score += Math.min(occurrences * 0.05, 0.2); // Cap content score
+  }
+  
+  // 6. Document type bonuses
+  if (userQuery.includes('what is') && (title.includes('overview') || title.includes('guide'))) {
+    score += 0.3;
+  }
+  
+  return Math.min(1.0, score);
+}
+
+// **NEW**: Get relevant categories based on query
+private getRelevantCategories(query: string, keyTerms: string[]): string[] {
+  const categories = [];
+  
+  if (query.includes('chat') || query.includes('communication') || query.includes('messaging')) {
+    categories.push('communication', 'features');
+  }
+  
+  if (query.includes('project')) {
+    categories.push('project_management', 'features');
+  }
+  
+  if (query.includes('task')) {
+    categories.push('task_management', 'features');
+  }
+  
+  if (query.includes('team')) {
+    categories.push('team_management', 'features');
+  }
+  
+  if (query.includes('time')) {
+    categories.push('time_tracking', 'features');
+  }
+  
+  if (query.includes('what is') || query.includes('about') || query.includes('overview')) {
+    categories.push('general', 'overview');
+  }
+  
+  return categories;
+}
 
   /**
  * IMPROVED: Much more flexible validation for learned responses
