@@ -406,10 +406,24 @@ export class BusinessChatbotService {
       [key: string]: any;
     };
   }> {
+
+
+    
     
     const normalizedMessage = message.toLowerCase().trim();
     const platformName = 'Staffluent';
     
+    const specificResponse = this.getSpecificResponseForQuery(normalizedMessage);
+if (specificResponse) {
+  return {
+    ...specificResponse,
+    metadata: {
+      responseSource: 'specific',
+      knowledgeUsed: true,
+      shouldShowFeedback: true
+    }
+  };
+}
     // Personalization variables
     const businessName = business?.name || 'your business';
     const userName = user ? `${user.name || 'there'}` : 'there';
@@ -608,6 +622,41 @@ export class BusinessChatbotService {
     };
   }
   
+
+  private getSpecificResponseForQuery(query: string): any | null {
+    const lowerQuery = query.toLowerCase();
+    
+    if (lowerQuery.includes('chat') || lowerQuery.includes('communication') || 
+        lowerQuery.includes('messaging') || lowerQuery.includes('message')) {
+      return {
+        text: `Yes! Staffluent includes a comprehensive Communication Hub with team chat, project-specific channels, direct messaging, file sharing, real-time notifications, and client communication capabilities. You can collaborate with team members and communicate with clients directly through the platform.`,
+        suggestions: [
+          { id: 'team_chat', text: 'Team chat features' },
+          { id: 'project_channels', text: 'Project channels' },
+          { id: 'client_communication', text: 'Client communication' },
+          { id: 'file_sharing', text: 'File sharing' }
+        ],
+        responseSource: 'specific',
+        knowledgeUsed: true
+      };
+    }
+    
+    if (lowerQuery.includes('what is staffluent')) {
+      return {
+        text: `Staffluent is a comprehensive workforce management platform that helps businesses manage teams, projects, tasks, time tracking, field service operations, communication, and client relationships all in one place. It includes project management, team collaboration, communication hub, time & attendance, reporting & analytics, and mobile capabilities.`,
+        suggestions: [
+          { id: 'features', text: 'What features do you offer?' },
+          { id: 'communication', text: 'Communication features' },
+          { id: 'get_started', text: 'How do I get started?' },
+          { id: 'tour', text: 'Take a tour' }
+        ],
+        responseSource: 'specific',
+        knowledgeUsed: true
+      };
+    }
+    
+    return null;
+  }
   
 
   // **NEW**: Improved query pair relevance calculation
