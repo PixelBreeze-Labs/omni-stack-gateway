@@ -247,7 +247,7 @@ export class BusinessChatbotService {
       
       const messages = await this.chatbotMessageModel
         .find(query)
-        .sort({ createdAt: 1 }) // Chronological order
+        .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .exec();
