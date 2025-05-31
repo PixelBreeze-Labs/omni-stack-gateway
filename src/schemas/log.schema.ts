@@ -4,7 +4,8 @@ import { Document, Schema as MongooseSchema } from 'mongoose';
 export enum LogType {
     ERROR = 'ERROR',
     SUCCESS = 'SUCCESS',
-    INFO = 'INFO'
+    INFO = 'INFO',
+    WARNING = 'WARNING'
 }
 
 @Schema({ timestamps: true })
