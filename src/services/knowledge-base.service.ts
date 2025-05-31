@@ -1032,18 +1032,14 @@ private async searchQueryResponsesByExact(
   query: string,
   options: { category?: string; clientId?: string; limit?: number }
 ): Promise<any[]> {
+  const filter: any = { active: true };
   
-  // First try exact string match (no regex)
-  const exactFilter: any = {
-    active: true,
-    query: query // Exact string match
-  };
+  if (options.clientId) filter.clientId = options.clientId;
+  if (options.category) filter.category = options.category;
   
-  if (options.clientId) exactFilter.clientId = options.clientId;
-  if (options.category) exactFilter.category = options.category;
-  
+  // 1. Try exact match first
   const exactResults = await this.queryResponsePairModel
-    .find(exactFilter)
+    .find({ ...filter, query: query })
     .sort({ useCount: -1, successRate: -1 })
     .limit(5)
     .lean();
@@ -1052,22 +1048,75 @@ private async searchQueryResponsesByExact(
     return exactResults.map(result => ({ ...result, similarity: 1.0 }));
   }
   
-  // If no exact match, try case-insensitive
-  const caseInsensitiveFilter: any = {
-    active: true,
-    query: { $regex: `^${query}$`, $options: 'i' }
-  };
-  
-  if (options.clientId) caseInsensitiveFilter.clientId = options.clientId;
-  if (options.category) caseInsensitiveFilter.category = options.category;
-  
+  // 2. Try case-insensitive exact match
   const caseResults = await this.queryResponsePairModel
-    .find(caseInsensitiveFilter)
+    .find({ ...filter, query: { $regex: `^${this.escapeRegex(query)}$`, $options: 'i' } })
     .sort({ useCount: -1, successRate: -1 })
     .limit(5)
     .lean();
     
-  return caseResults.map(result => ({ ...result, similarity: 0.9 }));
+  if (caseResults.length > 0) {
+    return caseResults.map(result => ({ ...result, similarity: 0.95 }));
+  }
+  
+  // 3. Try fuzzy matching for common typos
+  const queryWords = query.toLowerCase().split(' ');
+  const fuzzyResults = await this.queryResponsePairModel
+    .find(filter)
+    .lean();
+    
+  const matches = fuzzyResults.filter(pair => {
+    const pairWords = pair.query.toLowerCase().split(' ');
+    if (Math.abs(queryWords.length - pairWords.length) > 1) return false;
+    
+    let matchCount = 0;
+    queryWords.forEach(qWord => {
+      if (pairWords.some(pWord => 
+        pWord === qWord || 
+        this.isTypoMatch(qWord, pWord) ||
+        this.isSimilarWord(qWord, pWord)
+      )) {
+        matchCount++;
+      }
+    });
+    
+    return matchCount >= Math.min(queryWords.length, pairWords.length) - 1;
+  });
+  
+  return matches
+    .sort((a, b) => b.useCount - a.useCount)
+    .slice(0, 5)
+    .map(result => ({ ...result, similarity: 0.8 }));
+}
+
+private escapeRegex(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+private isTypoMatch(word1: string, word2: string): boolean {
+  // Handle common typos
+  const typoMap = {
+    'browser': 'browse',
+    'browse': 'browser',
+    'center': 'centre',
+    'centre': 'center'
+  };
+  
+  return typoMap[word1] === word2 || typoMap[word2] === word1;
+}
+
+private isSimilarWord(word1: string, word2: string): boolean {
+  if (Math.abs(word1.length - word2.length) > 2) return false;
+  
+  // Simple similarity check - 80% of characters match
+  const minLength = Math.min(word1.length, word2.length);
+  let matches = 0;
+  
+  for (let i = 0; i < minLength; i++) {
+    if (word1[i] === word2[i]) matches++;
+  }
+  
+  return matches / minLength >= 0.8;
 }
 
 /**
