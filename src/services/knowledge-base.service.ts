@@ -91,108 +91,445 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Search knowledge documents by query and context with client ID filter
-   */
-  async searchDocuments(
-    query: string,
-    options: {
-      clientId?: string;
-      businessType?: string;
-      features?: string[];
-      categories?: string[];
-      currentView?: string;
-      limit?: number;
-    } = {}
-  ): Promise<KnowledgeDocument[]> {
-    const { 
+   * // COMPLETE FIX: Replace your searchDocuments method in KnowledgeBaseService
+
+/**
+ * FIXED: Enhanced document search with proper ranking and relevance scoring
+ */
+async searchDocuments(
+  query: string,
+  options: {
+    clientId?: string;
+    businessType?: string;
+    features?: string[];
+    currentView?: string;
+    categories?: string[];
+    limit?: number;
+  } = {}
+): Promise<any[]> {
+  try {
+    const {
       clientId,
       businessType = 'default',
-      features = [], 
-      categories = [], 
+      features = [],
       currentView,
       limit = 5
     } = options;
 
-    // Map view to category if needed
-    if (currentView && categories.length === 0) {
-      const categoryMap = {
-        'projects': 'project_management',
-        'tasks': 'task_management',
-        'team': 'team_management',
-        'time': 'time_tracking',
-        'clients': 'client_management',
-        'reports': 'reporting',
-        // Add more mappings as needed
-      };
-      
-      if (categoryMap[currentView]) {
-        categories.push(categoryMap[currentView]);
+    if (!query || query.trim().length === 0) {
+      return [];
+    }
+
+    const normalizedQuery = query.toLowerCase().trim();
+    
+    // Build base search criteria
+    const baseQuery: any = {
+      active: true
+    };
+
+    // Add clientId filter if provided
+    if (clientId) {
+      baseQuery.clientId = clientId;
+    }
+
+    // STRATEGY 1: Direct keyword/title matching (HIGHEST PRIORITY)
+    const keywordResults = await this.searchByKeywords(normalizedQuery, baseQuery, limit);
+    
+    // STRATEGY 2: Full-text search (MEDIUM PRIORITY)  
+    const textResults = await this.searchByFullText(normalizedQuery, baseQuery, limit);
+    
+    // STRATEGY 3: Category/content matching (LOWER PRIORITY)
+    const categoryResults = await this.searchByCategory(normalizedQuery, baseQuery, limit);
+
+    // Combine and rank results
+    const combinedResults = this.combineAndRankResults(
+      keywordResults,
+      textResults, 
+      categoryResults,
+      normalizedQuery,
+      limit
+    );
+
+    // Filter by business type and features if specified
+    const filteredResults = this.filterByBusinessContext(
+      combinedResults,
+      businessType,
+      features
+    );
+
+    this.logger.log(`Search for "${query}" returned ${filteredResults.length} results`);
+    
+    return filteredResults.slice(0, limit);
+
+  } catch (error) {
+    this.logger.error(`Error searching documents: ${error.message}`, error.stack);
+    return [];
+  }
+}
+
+
+private async searchByCategory(
+  query: string,
+  baseQuery: any,
+  limit: number
+): Promise<any[]> {
+  try {
+    const categoryMap: { [key: string]: string[] } = {
+      'chat': ['communication', 'features'],
+      'message': ['communication', 'features'],
+      'messaging': ['communication', 'features'],
+      'communication': ['communication', 'features'],
+      'project': ['project_management', 'features'],
+      'task': ['task_management', 'features'],
+      'time': ['time_tracking', 'features'],
+      'team': ['team_management', 'features'],
+      'report': ['reporting', 'features'],
+      'client': ['client_management', 'features']
+    };
+
+    const queryTerms = query.split(/\s+/);
+    const relevantCategories = new Set<string>();
+
+    queryTerms.forEach(term => {
+      const categories = categoryMap[term.toLowerCase()];
+      if (categories) {
+        categories.forEach(cat => relevantCategories.add(cat));
+      }
+    });
+
+    if (relevantCategories.size === 0) {
+      return [];
+    }
+
+    const categoryArray = Array.from(relevantCategories);
+    const categoryQuery = {
+      ...baseQuery,
+      categories: { $in: categoryArray }
+    };
+
+    const results = await this.knowledgeDocumentModel
+      .find(categoryQuery)
+      .lean()
+      .limit(limit * 2);
+
+    return results.map(doc => ({
+      ...doc,
+      searchScore: this.calculateCategoryScore(doc, categoryArray),
+      searchMethod: 'category'
+    }));
+
+  } catch (error) {
+    this.logger.error(`Error in category search: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+
+/**
+ * STRATEGY 1: Search by direct keyword and title matching
+ */
+private async searchByKeywords(
+  query: string,
+  baseQuery: any,
+  limit: number
+): Promise<any[]> {
+  try {
+    const searchTerms = query.split(/\s+/).filter(term => term.length > 2);
+    
+    const keywordConditions = searchTerms.map(term => ({
+      $or: [
+        { keywords: { $regex: term, $options: 'i' } },
+        { title: { $regex: term, $options: 'i' } }
+      ]
+    }));
+
+    if (keywordConditions.length === 0) {
+      return [];
+    }
+
+    const keywordQuery = {
+      ...baseQuery,
+      $and: keywordConditions
+    };
+
+    const results = await this.knowledgeDocumentModel
+      .find(keywordQuery)
+      .lean()
+      .limit(limit * 2);
+
+    return results.map(doc => ({
+      ...doc,
+      searchScore: this.calculateKeywordScore(doc, searchTerms),
+      searchMethod: 'keywords'
+    }));
+
+  } catch (error) {
+    this.logger.error(`Error in keyword search: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * STRATEGY 2: MongoDB full-text search
+ */
+private async searchByFullText(
+  query: string,
+  baseQuery: any,
+  limit: number
+): Promise<any[]> {
+  try {
+    const textQuery = {
+      ...baseQuery,
+      $text: { $search: query }
+    };
+
+    const results = await this.knowledgeDocumentModel
+      .find(textQuery, { 
+        score: { $meta: "textScore" },
+        title: 1,
+        content: 1,
+        keywords: 1,
+        categories: 1,
+        businessTypes: 1,
+        features: 1,
+        active: 1,
+        clientId: 1
+      })
+      .sort({ score: { $meta: "textScore" } })
+      .lean()
+      .limit(limit * 2);
+
+    return results.map(doc => ({
+      ...doc,
+      searchScore: (doc as any).score || 0, // Type assertion for score
+      searchMethod: 'fulltext'
+    }));
+
+  } catch (error) {
+    this.logger.warn(`Full-text search failed, using regex fallback: ${error.message}`);
+    return this.searchByRegexFallback(query, baseQuery, limit);
+  }
+}
+
+private async searchByRegexFallback(
+  query: string,
+  baseQuery: any,
+  limit: number
+): Promise<any[]> {
+  try {
+    const regexQuery = {
+      ...baseQuery,
+      $or: [
+        { content: { $regex: query, $options: 'i' } },
+        { title: { $regex: query, $options: 'i' } }
+      ]
+    };
+
+    const results = await this.knowledgeDocumentModel
+      .find(regexQuery)
+      .lean()
+      .limit(limit * 2);
+
+    return results.map(doc => ({
+      ...doc,
+      searchScore: this.calculateContentScore(doc, query),
+      searchMethod: 'regex'
+    }));
+
+  } catch (error) {
+    this.logger.error(`Error in regex fallback search: ${error.message}`);
+    return [];
+  }
+}
+
+
+
+
+/**
+ * Calculate relevance score for keyword matches
+ */
+private calculateKeywordScore(doc: any, searchTerms: string[]): number {
+  let score = 0;
+  const title = (doc.title || '').toLowerCase();
+  const keywords = (doc.keywords || []).map(k => k.toLowerCase());
+  const content = (doc.content || '').toLowerCase();
+
+  searchTerms.forEach(term => {
+    // Title exact match = highest score
+    if (title.includes(term)) {
+      score += 10;
+    }
+    
+    // Keyword exact match = high score
+    if (keywords.some(k => k.includes(term))) {
+      score += 8;
+    }
+    
+    // Content match = medium score
+    if (content.includes(term)) {
+      score += 3;
+    }
+    
+    // Partial matches get lower scores
+    if (title.includes(term.substring(0, Math.max(3, term.length - 1)))) {
+      score += 2;
+    }
+  });
+
+  return score;
+}
+
+/**
+ * Calculate relevance score for content matches
+ */
+private calculateContentScore(doc: any, query: string): number {
+  const title = (doc.title || '').toLowerCase();
+  const content = (doc.content || '').toLowerCase();
+  const keywords = (doc.keywords || []).join(' ').toLowerCase();
+  
+  let score = 0;
+  
+  // Count occurrences in different fields
+  const titleMatches = (title.match(new RegExp(query, 'gi')) || []).length;
+  const keywordMatches = (keywords.match(new RegExp(query, 'gi')) || []).length;
+  const contentMatches = (content.match(new RegExp(query, 'gi')) || []).length;
+  
+  score += titleMatches * 10;
+  score += keywordMatches * 8;
+  score += contentMatches * 2;
+  
+  return score;
+}
+
+/**
+ * Calculate relevance score for category matches
+ */
+private calculateCategoryScore(doc: any, relevantCategories: string[]): number {
+  const docCategories = doc.categories || [];
+  const matches = docCategories.filter(cat => relevantCategories.includes(cat));
+  return matches.length * 5;
+}
+
+/**
+ * Combine and rank results from all search strategies
+ */
+private combineAndRankResults(
+  keywordResults: any[],
+  textResults: any[],
+  categoryResults: any[],
+  query: string,
+  limit: number
+): any[] {
+  // Create a map to avoid duplicates
+  const resultsMap = new Map();
+
+  // Add keyword results (highest priority)
+  keywordResults.forEach(doc => {
+    const id = doc._id.toString();
+    if (!resultsMap.has(id) || resultsMap.get(id).searchScore < doc.searchScore) {
+      resultsMap.set(id, { ...doc, searchScore: doc.searchScore * 1.5 }); // Boost keyword matches
+    }
+  });
+
+  // Add text results (medium priority)
+  textResults.forEach(doc => {
+    const id = doc._id.toString();
+    const existing = resultsMap.get(id);
+    if (!existing) {
+      resultsMap.set(id, doc);
+    } else {
+      // Combine scores for documents found by multiple methods
+      existing.searchScore += doc.searchScore * 0.8;
+      existing.searchMethod += `, ${doc.searchMethod}`;
+    }
+  });
+
+  // Add category results (lower priority)
+  categoryResults.forEach(doc => {
+    const id = doc._id.toString();
+    const existing = resultsMap.get(id);
+    if (!existing) {
+      resultsMap.set(id, { ...doc, searchScore: doc.searchScore * 0.5 });
+    } else {
+      existing.searchScore += doc.searchScore * 0.3;
+      existing.searchMethod += `, ${doc.searchMethod}`;
+    }
+  });
+
+  // Convert to array and sort by score
+  const combinedResults = Array.from(resultsMap.values())
+    .sort((a, b) => b.searchScore - a.searchScore);
+
+  return combinedResults;
+}
+
+/**
+ * Filter results by business context
+ */
+private filterByBusinessContext(
+  results: any[],
+  businessType: string,
+  features: string[]
+): any[] {
+  return results.filter(doc => {
+    // Check business type compatibility
+    if (doc.businessTypes && doc.businessTypes.length > 0) {
+      const isBusinessTypeMatch = doc.businessTypes.includes(businessType) ||
+                                doc.businessTypes.includes('all') ||
+                                businessType === 'default';
+      if (!isBusinessTypeMatch) {
+        return false;
       }
     }
-    
-    // Build the query filter with client ID
-    const filter: any = {
-      active: true,
-      $or: [
-        { applicableBusinessTypes: 'all' },
-        { applicableBusinessTypes: businessType },
-        { applicableBusinessTypes: { $size: 0 } } // Empty array means applicable to all
-      ]
-    };
-    
-    // Add client ID filter if provided
-    if (clientId) {
-      filter.clientId = clientId;
+
+    // Check feature compatibility
+    if (features.length > 0 && doc.features && doc.features.length > 0) {
+      const hasFeatureMatch = doc.features.some(feature => features.includes(feature));
+      if (!hasFeatureMatch) {
+        return false;
+      }
     }
-    
-    // Add feature filter if we have enabled features
-    if (features.length > 0) {
-      filter.$or.push(
-        { applicableFeatures: 'all' },
-        { applicableFeatures: { $in: features } },
-        { applicableFeatures: { $size: 0 } } // Empty array means applicable to all
-      );
-    }
-    
-    // Add category filter if we have categories
-    if (categories.length > 0) {
-      filter.$or.push(
-        { categories: { $in: categories } }
-      );
-    }
-    
-    // Extract keywords from the query
-    const queryKeywords = this.extractKeywords(query);
-    
-    // Create the search filter for keywords and content
-    const searchFilter = {
-      $or: [
-        { $text: { $search: query } }, // Full-text search
-        { keywords: { $in: queryKeywords } } // Keyword match
-      ]
-    };
-    
-    // Combine filters
-    const finalFilter = { ...filter, ...searchFilter };
-    
-    // Perform search with text score sorting
-    const documents = await this.knowledgeDocumentModel
-      .find(finalFilter)
-      .sort({ score: { $meta: 'textScore' } })
-      .limit(limit)
-      .exec();
-    
-    // Update use count for found documents
-    if (documents.length > 0) {
-      await this.knowledgeDocumentModel.updateMany(
-        { _id: { $in: documents.map(d => d._id) } },
-        { $inc: { useCount: 1 } }
-      );
-    }
-    
-    return documents;
+
+    return true;
+  });
+}
+
+/**
+ * SETUP: Ensure proper database indexes exist
+ */
+async ensureSearchIndexes(): Promise<void> {
+  try {
+    // Create text search index
+    await this.knowledgeDocumentModel.collection.createIndex({
+      title: 'text',
+      content: 'text',
+      keywords: 'text'
+    }, {
+      name: 'knowledge_text_search',
+      weights: {
+        title: 10,
+        keywords: 8,
+        content: 1
+      }
+    });
+
+    // Create other necessary indexes
+    await this.knowledgeDocumentModel.collection.createIndex({ clientId: 1, active: 1 });
+    await this.knowledgeDocumentModel.collection.createIndex({ categories: 1, active: 1 });
+    await this.knowledgeDocumentModel.collection.createIndex({ keywords: 1, active: 1 });
+
+    this.logger.log('Search indexes created successfully');
+  } catch (error) {
+    this.logger.error(`Error creating search indexes: ${error.message}`);
   }
-  
+}
+
+// CALL THIS DURING SERVICE INITIALIZATION
+async onModuleInit() {
+  await this.ensureSearchIndexes();
+}
+
   /**
    * Get a single knowledge document by ID with client check
    */
