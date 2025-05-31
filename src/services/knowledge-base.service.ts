@@ -902,4 +902,15 @@ async getResponseStatistics(
         }
       };
   }
+
+  async cleanupBadResponses(patterns: RegExp[]): Promise<number> {
+     let totalDeleted = 0;
+     for (const pattern of patterns) {
+     const result = await this.queryResponsePairModel.deleteMany({
+       response: { $regex: pattern }
+     });
+     totalDeleted += result.deletedCount;
+   }
+    return totalDeleted;
+   }
 }

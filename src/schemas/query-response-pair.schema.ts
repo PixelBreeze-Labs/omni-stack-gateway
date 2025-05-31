@@ -26,6 +26,9 @@ export class QueryResponsePair extends Document {
   
   @Prop({ type: Number, default: 0 })
   successRate: number; // Track how successful this response is
+
+  @Prop({ type: Number, default: 0 })
+  similarity: number;
 }
 
 export const QueryResponsePairSchema = SchemaFactory.createForClass(QueryResponsePair);
