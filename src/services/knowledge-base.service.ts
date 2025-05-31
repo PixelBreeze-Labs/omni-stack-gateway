@@ -90,11 +90,8 @@ export class KnowledgeBaseService {
     return !!result;
   }
 
-  /**
-   * // COMPLETE FIX: Replace your searchDocuments method in KnowledgeBaseService
-
-/**
- * FIXED: Enhanced document search with proper ranking and relevance scoring
+ /**
+ * **COMPLETELY REWRITTEN** Enhanced document search with proper ranking and relevance scoring
  */
 async searchDocuments(
   query: string,
@@ -132,17 +129,23 @@ async searchDocuments(
       baseQuery.clientId = clientId;
     }
 
-    // STRATEGY 1: Direct keyword/title matching (HIGHEST PRIORITY)
-    const keywordResults = await this.searchByKeywords(normalizedQuery, baseQuery, limit);
-    
-    // STRATEGY 2: Full-text search (MEDIUM PRIORITY)  
-    const textResults = await this.searchByFullText(normalizedQuery, baseQuery, limit);
-    
-    // STRATEGY 3: Category/content matching (LOWER PRIORITY)
-    const categoryResults = await this.searchByCategory(normalizedQuery, baseQuery, limit);
+    this.logger.log(`🔍 Searching for: "${normalizedQuery}" with clientId: ${clientId}`);
 
-    // Combine and rank results
-    const combinedResults = this.combineAndRankResults(
+    // **NEW APPROACH**: Multi-strategy search with proper weighting
+    const searchStrategies = await Promise.all([
+      this.searchByExactMatch(normalizedQuery, baseQuery),
+      this.searchByKeywords(normalizedQuery, baseQuery, limit),
+      this.searchByFullText(normalizedQuery, baseQuery, limit),
+      this.searchByCategory(normalizedQuery, baseQuery, limit)
+    ]);
+
+    const [exactMatches, keywordResults, textResults, categoryResults] = searchStrategies;
+
+    this.logger.log(`Search results: exact=${exactMatches.length}, keywords=${keywordResults.length}, text=${textResults.length}, category=${categoryResults.length}`);
+
+    // **IMPROVED**: Combine and rank results with better scoring
+    const combinedResults = this.combineAndRankResultsImproved(
+      exactMatches,
       keywordResults,
       textResults, 
       categoryResults,
@@ -150,15 +153,21 @@ async searchDocuments(
       limit
     );
 
-    // Filter by business type and features if specified
+    // Filter by business context if specified
     const filteredResults = this.filterByBusinessContext(
       combinedResults,
       businessType,
       features
     );
 
-    this.logger.log(`Search for "${query}" returned ${filteredResults.length} results`);
+    this.logger.log(`Final results: ${filteredResults.length} documents for "${query}"`);
     
+    // Log top result for debugging
+    if (filteredResults.length > 0) {
+      const topResult = filteredResults[0];
+      this.logger.log(`🎯 Top result: "${topResult.title}" (score: ${topResult.searchScore?.toFixed(2)})`);
+    }
+
     return filteredResults.slice(0, limit);
 
   } catch (error) {
@@ -168,32 +177,193 @@ async searchDocuments(
 }
 
 
+/**
+ * **COMPLETELY REWRITTEN**: Better result combination and ranking
+ */
+private combineAndRankResultsImproved(
+  exactMatches: any[],
+  keywordResults: any[],
+  textResults: any[],
+  categoryResults: any[],
+  query: string,
+  limit: number
+): any[] {
+  const resultsMap = new Map();
+
+  // **PRIORITY 1**: Exact matches (highest weight)
+  exactMatches.forEach(doc => {
+    const id = doc._id.toString();
+    resultsMap.set(id, { 
+      ...doc, 
+      searchScore: doc.searchScore * 2.0, // Major boost for exact matches
+      searchMethods: ['exact']
+    });
+  });
+
+  // **PRIORITY 2**: Keyword results (high weight)
+  keywordResults.forEach(doc => {
+    const id = doc._id.toString();
+    const existing = resultsMap.get(id);
+    if (!existing) {
+      resultsMap.set(id, { 
+        ...doc, 
+        searchScore: doc.searchScore * 1.5, // Boost keyword matches
+        searchMethods: ['keywords']
+      });
+    } else {
+      // Combine scores for documents found by multiple methods
+      existing.searchScore += doc.searchScore * 1.2;
+      existing.searchMethods.push('keywords');
+    }
+  });
+
+  // **PRIORITY 3**: Text results (medium weight)
+  textResults.forEach(doc => {
+    const id = doc._id.toString();
+    const existing = resultsMap.get(id);
+    if (!existing) {
+      resultsMap.set(id, { 
+        ...doc,
+        searchMethods: ['fulltext']
+      });
+    } else {
+      existing.searchScore += doc.searchScore * 0.8;
+      existing.searchMethods.push('fulltext');
+    }
+  });
+
+  // **PRIORITY 4**: Category results (lower weight)
+  categoryResults.forEach(doc => {
+    const id = doc._id.toString();
+    const existing = resultsMap.get(id);
+    if (!existing) {
+      resultsMap.set(id, { 
+        ...doc, 
+        searchScore: doc.searchScore * 0.7,
+        searchMethods: ['category']
+      });
+    } else {
+      existing.searchScore += doc.searchScore * 0.5;
+      existing.searchMethods.push('category');
+    }
+  });
+
+  // Convert to array, apply final scoring, and sort
+  const combinedResults = Array.from(resultsMap.values())
+    .map(doc => ({
+      ...doc,
+      searchScore: this.applyFinalScoring(doc, query),
+      searchMethod: doc.searchMethods.join(', ')
+    }))
+    .sort((a, b) => b.searchScore - a.searchScore);
+
+  return combinedResults;
+}
+
+/**
+ * **NEW**: Calculate exact match score
+ */
+private calculateExactMatchScore(doc: any, query: string): number {
+  const title = (doc.title || '').toLowerCase();
+  const content = (doc.content || '').toLowerCase();
+  
+  let score = 0;
+  
+  // Perfect title match
+  if (title === query) {
+    score += 1.0;
+  } else if (title.includes(query)) {
+    score += 0.8;
+  }
+  
+  // Content relevance
+  if (content.includes(query)) {
+    score += 0.3;
+  }
+  
+  return score;
+}
+
+/**
+ * **NEW**: Search for exact or very close matches first
+ */
+private async searchByExactMatch(
+  query: string,
+  baseQuery: any
+): Promise<any[]> {
+  try {
+    // Look for exact title matches or very close title matches
+    const exactQuery = {
+      ...baseQuery,
+      $or: [
+        { title: { $regex: `^${query}`, $options: 'i' } },
+        { title: { $regex: query, $options: 'i' } },
+        { keywords: query }
+      ]
+    };
+
+    const results = await this.knowledgeDocumentModel
+      .find(exactQuery)
+      .lean()
+      .limit(5);
+
+    return results.map(doc => ({
+      ...doc,
+      searchScore: this.calculateExactMatchScore(doc, query),
+      searchMethod: 'exact'
+    }));
+
+  } catch (error) {
+    this.logger.error(`Error in exact match search: ${error.message}`);
+    return [];
+  }
+}
+
+
+/**
+ * **IMPROVED**: Enhanced category search
+ */
 private async searchByCategory(
   query: string,
   baseQuery: any,
   limit: number
 ): Promise<any[]> {
   try {
+    // **IMPROVED**: Better category mapping
     const categoryMap: { [key: string]: string[] } = {
+      'what is': ['general', 'overview'],
+      'about': ['general', 'overview'],
+      'overview': ['general', 'overview'],
       'chat': ['communication', 'features'],
-      'message': ['communication', 'features'],
-      'messaging': ['communication', 'features'],
       'communication': ['communication', 'features'],
+      'messaging': ['communication', 'features'],
+      'message': ['communication', 'features'],
       'project': ['project_management', 'features'],
       'task': ['task_management', 'features'],
       'time': ['time_tracking', 'features'],
       'team': ['team_management', 'features'],
       'report': ['reporting', 'features'],
-      'client': ['client_management', 'features']
+      'client': ['client_management', 'features'],
+      'dashboard': ['features', 'general'],
+      'management': ['features', 'general'],
+      'features': ['features']
     };
 
     const queryTerms = query.split(/\s+/);
     const relevantCategories = new Set<string>();
 
+    // Check each term and phrase
     queryTerms.forEach(term => {
       const categories = categoryMap[term.toLowerCase()];
       if (categories) {
         categories.forEach(cat => relevantCategories.add(cat));
+      }
+    });
+
+    // Check full query phrases
+    Object.keys(categoryMap).forEach(phrase => {
+      if (query.includes(phrase)) {
+        categoryMap[phrase].forEach(cat => relevantCategories.add(cat));
       }
     });
 
@@ -214,7 +384,7 @@ private async searchByCategory(
 
     return results.map(doc => ({
       ...doc,
-      searchScore: this.calculateCategoryScore(doc, categoryArray),
+      searchScore: this.calculateCategoryScoreImproved(doc, categoryArray, query),
       searchMethod: 'category'
     }));
 
@@ -225,9 +395,75 @@ private async searchByCategory(
 }
 
 /**
+ * **IMPROVED**: Better category scoring
+ */
+private calculateCategoryScoreImproved(doc: any, relevantCategories: string[], query: string): number {
+  const docCategories = doc.categories || [];
+  const title = (doc.title || '').toLowerCase();
+  
+  let score = 0;
+  
+  // Base category matching
+  const matches = docCategories.filter(cat => relevantCategories.includes(cat));
+  score += matches.length * 3;
+  
+  // **NEW**: Bonus for specific category-query combinations
+  if (query.includes('what is') && docCategories.includes('general')) {
+    score += 5;
+  }
+  
+  if (query.includes('chat') && docCategories.includes('communication')) {
+    score += 5;
+  }
+  
+  if (query.includes('project') && docCategories.includes('project_management')) {
+    score += 5;
+  }
+  
+  // Title relevance bonus
+  if (title.includes(query)) {
+    score += 3;
+  }
+  
+  return score;
+}
 
 /**
- * STRATEGY 1: Search by direct keyword and title matching
+ * **NEW**: Apply final scoring adjustments
+ */
+private applyFinalScoring(doc: any, query: string): number {
+  let finalScore = doc.searchScore || 0;
+  
+  const title = (doc.title || '').toLowerCase();
+  const searchMethods = doc.searchMethods || [];
+  
+  // **BOOST**: Documents found by multiple methods
+  if (searchMethods.length > 1) {
+    finalScore += searchMethods.length * 0.5;
+  }
+  
+  // **BOOST**: Recent or frequently accessed documents
+  if (doc.successRate > 80) {
+    finalScore += 1.0;
+  }
+  
+  // **BOOST**: Documents with comprehensive content
+  const contentLength = (doc.content || '').length;
+  if (contentLength > 500 && contentLength < 3000) { // Sweet spot for content length
+    finalScore += 0.5;
+  }
+  
+  // **PENALTY**: Very long documents that might be less specific
+  if (contentLength > 5000) {
+    finalScore -= 0.3;
+  }
+  
+  return Math.max(0, finalScore);
+}
+
+
+/**
+ * **IMPROVED**: Better keyword search with enhanced scoring
  */
 private async searchByKeywords(
   query: string,
@@ -237,16 +473,16 @@ private async searchByKeywords(
   try {
     const searchTerms = query.split(/\s+/).filter(term => term.length > 2);
     
+    if (searchTerms.length === 0) return [];
+
+    // **IMPROVED**: More flexible keyword matching
     const keywordConditions = searchTerms.map(term => ({
       $or: [
         { keywords: { $regex: term, $options: 'i' } },
-        { title: { $regex: term, $options: 'i' } }
+        { title: { $regex: term, $options: 'i' } },
+        { content: { $regex: `\\b${term}`, $options: 'i' } } // Word boundary for content
       ]
     }));
-
-    if (keywordConditions.length === 0) {
-      return [];
-    }
 
     const keywordQuery = {
       ...baseQuery,
@@ -256,11 +492,11 @@ private async searchByKeywords(
     const results = await this.knowledgeDocumentModel
       .find(keywordQuery)
       .lean()
-      .limit(limit * 2);
+      .limit(limit * 3); // Get more candidates
 
     return results.map(doc => ({
       ...doc,
-      searchScore: this.calculateKeywordScore(doc, searchTerms),
+      searchScore: this.calculateKeywordScoreImproved(doc, searchTerms, query),
       searchMethod: 'keywords'
     }));
 
@@ -270,8 +506,88 @@ private async searchByKeywords(
   }
 }
 
+
 /**
- * STRATEGY 2: MongoDB full-text search
+ * **IMPROVED**: Better keyword scoring
+ */
+private calculateKeywordScoreImproved(doc: any, searchTerms: string[], fullQuery: string): number {
+  const title = (doc.title || '').toLowerCase();
+  const keywords = (doc.keywords || []).map(k => k.toLowerCase());
+  const content = (doc.content || '').toLowerCase();
+  
+  let score = 0;
+  
+  // **IMPROVED**: Phrase matching gets highest score
+  if (title.includes(fullQuery)) {
+    score += 15; // Much higher score for phrase matches
+  }
+  if (content.includes(fullQuery)) {
+    score += 8;
+  }
+  
+  // Individual term scoring
+  searchTerms.forEach(term => {
+    // Title matches (highest value)
+    if (title.includes(term)) {
+      score += 10;
+    }
+    
+    // Keyword matches (high value)
+    if (keywords.some(k => k.includes(term))) {
+      score += 8;
+    }
+    
+    // Content matches (medium value)
+    const contentMatches = (content.match(new RegExp(term, 'gi')) || []).length;
+    score += Math.min(contentMatches * 2, 6); // Cap content contribution
+  });
+  
+  // **NEW**: Bonus for all terms found
+  const foundTerms = searchTerms.filter(term => 
+    title.includes(term) || keywords.some(k => k.includes(term)) || content.includes(term)
+  );
+  
+  if (foundTerms.length === searchTerms.length && searchTerms.length > 1) {
+    score += 5; // Bonus for finding all terms
+  }
+  
+  return score;
+}
+
+/**
+ * **NEW**: Normalize text search scores
+ */
+private normalizeTextScore(mongoScore: number, query: string, doc: any): number {
+  // MongoDB text scores can vary widely, normalize them
+  let normalizedScore = Math.min(mongoScore, 10) / 10; // Cap at 10 and normalize to 0-1
+  
+  // Apply additional relevance factors
+  const title = (doc.title || '').toLowerCase();
+  const content = (doc.content || '').toLowerCase();
+  
+  // Boost if query appears in title
+  if (title.includes(query.toLowerCase())) {
+    normalizedScore += 0.5;
+  }
+  
+  // Boost based on query term density in content
+  const queryTerms = query.toLowerCase().split(/\s+/);
+  const contentWords = content.split(/\s+/).length;
+  const queryTermMatches = queryTerms.reduce((count, term) => {
+    return count + (content.match(new RegExp(term, 'gi')) || []).length;
+  }, 0);
+  
+  if (contentWords > 0) {
+    const density = queryTermMatches / contentWords;
+    normalizedScore += density * 2; // Boost based on term density
+  }
+  
+  return Math.min(normalizedScore, 2.0); // Cap the final score
+}
+
+
+/**
+ * **IMPROVED**: Better full-text search
  */
 private async searchByFullText(
   query: string,
@@ -302,7 +618,7 @@ private async searchByFullText(
 
     return results.map(doc => ({
       ...doc,
-      searchScore: (doc as any).score || 0, // Type assertion for score
+      searchScore: this.normalizeTextScore((doc as any).score || 0, query, doc),
       searchMethod: 'fulltext'
     }));
 
@@ -611,52 +927,211 @@ async onModuleInit() {
   }
   
   /**
-   * Search query-response pairs for matches
-   */
-  async searchQueryResponses(
-    query: string,
-    options: {
-      category?: string;
-      limit?: number;
-      clientId?: string;
-    } = {}
-  ): Promise<QueryResponsePair[]> {
-    const { category, limit = 3, clientId } = options;
-    
-    // Extract keywords from the query
-    const queryKeywords = this.extractKeywords(query);
-    
-    // Build the search filter
+ * **IMPROVED**: Better query response search
+ */
+async searchQueryResponses(
+  query: string,
+  options: {
+    category?: string;
+    limit?: number;
+    clientId?: string;
+  } = {}
+): Promise<any[]> {
+  const { category, limit = 10, clientId } = options; // Increased default limit
+  
+  this.logger.log(`🔍 Searching query responses for: "${query}" with clientId: ${clientId}`);
+  
+  // **IMPROVED**: Multi-strategy search for query responses
+  const strategies = await Promise.all([
+    this.searchQueryResponsesByExact(query, options),
+    this.searchQueryResponsesByKeywords(query, options),
+    this.searchQueryResponsesByText(query, options)
+  ]);
+  
+  const [exactMatches, keywordMatches, textMatches] = strategies;
+  
+  // Combine and deduplicate
+  const allMatches = new Map();
+  
+  // Prioritize exact matches
+  exactMatches.forEach(pair => {
+    allMatches.set(pair._id.toString(), { ...pair, similarity: 1.0 });
+  });
+  
+  // Add keyword matches
+  keywordMatches.forEach(pair => {
+    const id = pair._id.toString();
+    if (!allMatches.has(id)) {
+      allMatches.set(id, pair);
+    }
+  });
+  
+  // Add text matches
+  textMatches.forEach(pair => {
+    const id = pair._id.toString();
+    if (!allMatches.has(id)) {
+      allMatches.set(id, pair);
+    }
+  });
+  
+  const results = Array.from(allMatches.values())
+    .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
+    .slice(0, limit);
+  
+  this.logger.log(`Found ${results.length} query response matches`);
+  
+  // Update use count for results
+  if (results.length > 0) {
+    await this.queryResponsePairModel.updateMany(
+      { _id: { $in: results.map(p => p._id) } },
+      { $inc: { useCount: 1 } }
+    );
+  }
+  
+  return results;
+}
+
+
+/**
+ * **NEW**: Search query responses by exact match
+ */
+private async searchQueryResponsesByExact(
+  query: string,
+  options: { category?: string; clientId?: string; limit?: number }
+): Promise<any[]> {
+  const filter: any = {
+    active: true,
+    query: { $regex: `^${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+  };
+  
+  if (options.clientId) filter.clientId = options.clientId;
+  if (options.category) filter.category = options.category;
+  
+  return await this.queryResponsePairModel
+    .find(filter)
+    .sort({ useCount: -1, successRate: -1 })
+    .limit(5)
+    .lean();
+}
+
+/**
+ * **NEW**: Search query responses by keywords
+ */
+private async searchQueryResponsesByKeywords(
+  query: string,
+  options: { category?: string; clientId?: string; limit?: number }
+): Promise<any[]> {
+  const queryKeywords = this.extractKeywords(query);
+  
+  if (queryKeywords.length === 0) return [];
+  
+  const filter: any = {
+    active: true,
+    keywords: { $in: queryKeywords }
+  };
+  
+  if (options.clientId) filter.clientId = options.clientId;
+  if (options.category) filter.category = options.category;
+  
+  const results = await this.queryResponsePairModel
+    .find(filter)
+    .sort({ useCount: -1, successRate: -1 })
+    .limit(options.limit || 10)
+    .lean();
+  
+  // Calculate similarity scores
+  return results.map(pair => ({
+    ...pair,
+    similarity: this.calculateQuerySimilarity(query, pair.query, queryKeywords, pair.keywords)
+  }));
+}
+
+/**
+ * **NEW**: Search query responses by full text
+ */
+private async searchQueryResponsesByText(
+  query: string,
+  options: { category?: string; clientId?: string; limit?: number }
+): Promise<any[]> {
+  try {
     const filter: any = {
       active: true,
-      $or: [
-        { $text: { $search: query } }, // Full-text search
-        { keywords: { $in: queryKeywords } } // Keyword match
-      ]
+      $text: { $search: query }
     };
     
-    // Add category filter if provided
-    if (category) {
-      filter.category = category;
-    }
+    if (options.clientId) filter.clientId = options.clientId;
+    if (options.category) filter.category = options.category;
     
-    // Execute search
-    const pairs = await this.queryResponsePairModel
-      .find(filter)
-      .sort({ score: { $meta: 'textScore' }, useCount: -1, successRate: -1 })
-      .limit(limit)
-      .exec();
+    const results = await this.queryResponsePairModel
+      .find(filter, { score: { $meta: "textScore" } })
+      .sort({ score: { $meta: "textScore" }, useCount: -1 })
+      .limit(options.limit || 10)
+      .lean();
     
-    // Update use count for results
-    if (pairs.length > 0) {
-      await this.queryResponsePairModel.updateMany(
-        { _id: { $in: pairs.map(p => p._id) } },
-        { $inc: { useCount: 1 } }
+    return results.map(pair => ({
+      ...pair,
+      similarity: Math.min((pair as any).score / 5, 1.0) // Normalize MongoDB text score
+    }));
+    
+  } catch (error) {
+    this.logger.warn(`Text search failed for query responses: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * **NEW**: Calculate similarity between queries
+ */
+private calculateQuerySimilarity(
+  userQuery: string, 
+  storedQuery: string, 
+  userKeywords: string[], 
+  storedKeywords: string[]
+): number {
+  // Exact match
+  if (userQuery.toLowerCase() === storedQuery.toLowerCase()) {
+    return 1.0;
+  }
+  
+  // Keyword overlap
+  const commonKeywords = userKeywords.filter(uk => 
+    storedKeywords.some(sk => sk.includes(uk) || uk.includes(sk))
+  );
+  
+  const keywordSimilarity = userKeywords.length > 0 ? 
+    commonKeywords.length / userKeywords.length : 0;
+  
+  // String similarity (basic)
+  const maxLength = Math.max(userQuery.length, storedQuery.length);
+  const editDistance = this.calculateEditDistance(userQuery.toLowerCase(), storedQuery.toLowerCase());
+  const stringSimilarity = (maxLength - editDistance) / maxLength;
+  
+  // Combine similarities
+  return (keywordSimilarity * 0.7) + (stringSimilarity * 0.3);
+}
+
+/**
+ * **NEW**: Calculate edit distance for string similarity
+ */
+private calculateEditDistance(str1: string, str2: string): number {
+  const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+  
+  for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+  for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+  
+  for (let j = 1; j <= str2.length; j++) {
+    for (let i = 1; i <= str1.length; i++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,     // insertion
+        matrix[j - 1][i] + 1,     // deletion
+        matrix[j - 1][i - 1] + cost // substitution
       );
     }
-    
-    return pairs;
   }
+  
+  return matrix[str2.length][str1.length];
+}
   
   /**
  * Log an unrecognized query with businessId or clientId support
