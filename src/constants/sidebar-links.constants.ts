@@ -117,7 +117,7 @@ export const teamLeaderLinks: SideLink[] = [
     },
     {
         title: 'Projects',
-        href: '/team-leader',
+        href: '/team-leader/projects',
         icon: null,
         sub: [
             {
@@ -129,7 +129,7 @@ export const teamLeaderLinks: SideLink[] = [
     },
     {
         title: 'Tasks',
-        href: '/team-leader',
+        href: '/team-leader/tasks',
         icon: null,
         sub: [
             {
@@ -141,7 +141,7 @@ export const teamLeaderLinks: SideLink[] = [
     },
     {
         title: 'Time Tracking',
-        href: '/team-leader',
+        href: '/team-leader/time-tracking',
         icon: null,
         sub: [
             {
