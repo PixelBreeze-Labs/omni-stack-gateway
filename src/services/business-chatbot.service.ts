@@ -386,9 +386,6 @@ export class BusinessChatbotService {
     return business;
   }
 
-  /**
-   * IMPROVED: Enhanced generateResponse function with better logic flow and cleanup
-   */
   private async generateResponse(
     message: string, 
     context: Record<string, any>,
@@ -409,8 +406,7 @@ export class BusinessChatbotService {
       [key: string]: any;
     };
   }> {
-    // Perform one-time cleanup of bad responses if not done yet
-    await this.cleanupBadResponses();
+    
     const normalizedMessage = message.toLowerCase().trim();
     const platformName = 'Staffluent';
     
@@ -428,14 +424,14 @@ export class BusinessChatbotService {
     const isConversational = this.isConversationalQuery(normalizedMessage);
     
     // Determine if we should show feedback for this message
-    const FEEDBACK_FREQUENCY = 5; // Show feedback every 5 messages
+    const FEEDBACK_FREQUENCY = 5;
     const messageCount = context?.sessionData?.messageCount || 0;
     let shouldShowFeedback = (messageCount % FEEDBACK_FREQUENCY === 0);
     
     // IMPORTANT: Get the clientId from the business object
     const clientId = business?.clientId;
-
-    // NEW: Check if this is a closure message ("That's all for now", etc.)
+  
+    // PRIORITY 1: Handle closure messages first
     if (this.isClosureMessage(normalizedMessage)) {
       const closureResponse = this.getClosureResponse(userName, businessName, platformName);
       
@@ -452,7 +448,7 @@ export class BusinessChatbotService {
       };
     }
     
-    // Handle casual conversation first
+    // PRIORITY 2: Handle casual conversation
     if (isConversational) {
       const conversationResponse = this.getConversationalResponse(
         normalizedMessage, userName, businessName, platformName
@@ -473,90 +469,56 @@ export class BusinessChatbotService {
         };
       }
     }
-
-    // NEW: Check if this question should go to knowledge base first
-    if (this.shouldUseKnowledgeFirst(normalizedMessage, keyTerms)) {
-      // Skip learned responses and go straight to knowledge base for feature questions
-      const relevantDocs = await this.knowledgeBaseService.searchDocuments(
-        normalizedMessage,
-        {
-          clientId,
-          businessType: business?.operationType || 'default',
-          features: business?.includedFeatures || [],
-          currentView: context.currentView,
-          limit: 2
-        }
-      );
-      
-      if (relevantDocs.length > 0) {
-        shouldShowFeedback = true;
-        const doc = relevantDocs[0];
-        
-        let response = this.formatKnowledgeResponse(
-          doc.content, businessName, userName, platformName
-        );
-        
-        return {
-          text: response,
-          suggestions: this.getSuggestionsFromDocument(doc),
-          responseSource: 'knowledge',
-          knowledgeUsed: true,
-          metadata: {
-            sourceId: doc._id.toString(),
-            knowledgeUsed: true,
-            responseSource: 'knowledge',
-            shouldShowFeedback,
-            documentTitle: doc.title || null,
-            documentCategories: doc.categories || []
-          }
-        };
-      }
-    }
-    
-    // 1. Try to find a matching query-response pair with STRICTER validation
+  
+    // PRIORITY 3: Try QueryResponsePair FIRST (with improved validation)
     const matchingPairs = await this.knowledgeBaseService.searchQueryResponses(
       normalizedMessage,
       { 
         category: context.currentView || 'general',
-        limit: 3, // Get top 3 instead of 1 for better validation
+        limit: 5, // Get more candidates for better selection
         clientId
-        // Note: minSimilarity removed as it's not supported by the interface
       }
     );
     
-    // IMPROVED: Validate the match quality before using learned response
     if (matchingPairs.length > 0) {
-      const bestMatch = matchingPairs[0];
-      
-      // Additional validation for learned responses
-      if (this.validateLearnedResponse(normalizedMessage, bestMatch, keyTerms)) {
-        shouldShowFeedback = true;
-        
-        let response = bestMatch.response
-          .replace(/{businessName}/g, businessName)
-          .replace(/{userName}/g, userName)
-          .replace(/{platformName}/g, platformName);
-        
-        return {
-          text: response,
-          responseSource: 'learned',
-          knowledgeUsed: true,
-          metadata: {
-            sourceId: bestMatch._id.toString(),
-            knowledgeUsed: true,
+      // Try each matching pair until we find a valid one
+      for (const pair of matchingPairs) {
+        if (this.validateLearnedResponseImproved(normalizedMessage, pair, keyTerms)) {
+          shouldShowFeedback = true;
+          
+          let response = pair.response
+            .replace(/{businessName}/g, businessName)
+            .replace(/{userName}/g, userName)
+            .replace(/{platformName}/g, platformName);
+          
+          // Log successful learned response usage
+          this.logger.log(`Using learned response for query: "${normalizedMessage}"`);
+          
+          return {
+            text: response,
+            suggestions: this.getSuggestionsFromLearnedResponse(pair),
             responseSource: 'learned',
-            shouldShowFeedback,
-            matchScore: bestMatch.similarity || 0,
-            validatedMatch: true
-          }
-        };
-      } else {
-        // Log failed validation for monitoring
-        this.logger.warn(`Learned response validation failed for query: "${normalizedMessage}". Response: "${bestMatch.response}"`);
+            knowledgeUsed: true,
+            metadata: {
+              sourceId: pair._id.toString(),
+              knowledgeUsed: true,
+              responseSource: 'learned',
+              shouldShowFeedback,
+              matchScore: pair.similarity || 0,
+              validatedMatch: true,
+              originalQuery: pair.query
+            }
+          };
+        }
+      }
+      
+      // Log if no pairs passed validation
+      if (matchingPairs.length > 0) {
+        this.logger.log(`Found ${matchingPairs.length} learned responses but none passed validation for: "${normalizedMessage}"`);
       }
     }
     
-    // 2. Try to find relevant knowledge documents
+    // PRIORITY 4: Try knowledge base documents
     const relevantDocs = await this.knowledgeBaseService.searchDocuments(
       normalizedMessage,
       {
@@ -576,6 +538,8 @@ export class BusinessChatbotService {
         doc.content, businessName, userName, platformName
       );
       
+      this.logger.log(`Using knowledge base document: "${doc.title}" for query: "${normalizedMessage}"`);
+      
       return {
         text: response,
         suggestions: this.getSuggestionsFromDocument(doc),
@@ -592,7 +556,7 @@ export class BusinessChatbotService {
       };
     }
     
-    // 3. Fall back to predefined NLP responses
+    // PRIORITY 5: Fall back to enhanced NLP responses
     const nlpResponse = await this.getNlpResponse(
       normalizedMessage, keyTerms, isFollowup, context, 
       business, businessName, userName, platformName
@@ -603,7 +567,7 @@ export class BusinessChatbotService {
       shouldShowFeedback = true;
     }
     
-    // 4. If no good NLP response, log this as an unrecognized query
+    // If no good NLP response, log this as an unrecognized query
     if (nlpResponse.confidence < 0.3) {
       const unrecognizedQuery = await this.knowledgeBaseService.logUnrecognizedQuery(
         message,
@@ -646,6 +610,158 @@ export class BusinessChatbotService {
       }
     };
   }
+  
+
+  /**
+ * IMPROVED: Much more flexible validation for learned responses
+ */
+private validateLearnedResponseImproved(
+  query: string, 
+  learnedResponse: any, 
+  queryTerms: string[]
+): boolean {
+  const response = learnedResponse.response?.toLowerCase() || '';
+  const originalQuery = learnedResponse.query?.toLowerCase() || '';
+  
+  // RULE 1: Block only obviously bad responses (the ones we specifically cleaned up)
+  const obviouslyBadPatterns = [
+    /yes i know about sports/i,
+    /purpose of this chat is to help only about.*staffluent/i,
+    /i don't know about.*but.*staffluent/i
+  ];
+  
+  for (const pattern of obviouslyBadPatterns) {
+    if (pattern.test(response)) {
+      this.logger.warn(`Blocking learned response for bad pattern: ${pattern.source}`);
+      return false;
+    }
+  }
+  
+  // RULE 2: Block responses that mention completely unrelated topics (but be more lenient)
+  const completelyUnrelatedTerms = ['sports', 'weather', 'cooking', 'politics'];
+  const hasUnrelatedTerm = completelyUnrelatedTerms.some(term => 
+    response.includes(term) && !query.includes(term) && !originalQuery.includes(term)
+  );
+  
+  if (hasUnrelatedTerm) {
+    this.logger.warn(`Blocking learned response for unrelated term in: "${response.substring(0, 50)}..."`);
+    return false;
+  }
+  
+  // RULE 3: Only block very low similarity scores (lowered threshold)
+  if (learnedResponse.similarity && learnedResponse.similarity < 0.25) {
+    this.logger.warn(`Blocking learned response for very low similarity: ${learnedResponse.similarity}`);
+    return false;
+  }
+  
+  // RULE 4: Block empty or very short responses
+  if (!response || response.trim().length < 10) {
+    this.logger.warn(`Blocking learned response for being too short: "${response}"`);
+    return false;
+  }
+  
+  // RULE 5: Allow responses that mention Staffluent or business features (be permissive)
+  const businessTerms = ['staffluent', 'project', 'task', 'team', 'time', 'communication', 'chat', 'report', 'dashboard'];
+  const mentionsBusinessTerms = businessTerms.some(term => 
+    response.includes(term) || originalQuery.includes(term)
+  );
+  
+  if (mentionsBusinessTerms) {
+    this.logger.log(`Allowing learned response that mentions business terms`);
+    return true;
+  }
+  
+  // RULE 6: For general queries, be more permissive about term matching
+  if (queryTerms.length <= 2) {
+    // Short queries get more leniency
+    return true;
+  }
+  
+  // RULE 7: Check if there's at least some relevance between queries
+  const originalQueryTerms = this.extractKeyTerms(originalQuery);
+  const sharedTerms = queryTerms.filter(term => 
+    originalQueryTerms.includes(term) && term.length > 2
+  );
+  
+  // Allow if there's any shared term or if it's a common conversational response
+  const isConversationalResponse = response.includes('help') || 
+                                  response.includes('assist') || 
+                                  response.includes('can') ||
+                                  response.includes('staffluent');
+  
+  if (sharedTerms.length > 0 || isConversationalResponse) {
+    return true;
+  }
+  
+  // Log rejected responses for debugging
+  this.logger.log(`Learned response validation details for query "${query}":`, {
+    originalQuery,
+    response: response.substring(0, 100),
+    similarity: learnedResponse.similarity,
+    sharedTerms,
+    queryTerms,
+    originalQueryTerms
+  });
+  
+  // Default to allowing (be permissive rather than restrictive)
+  return true;
+}
+
+/**
+ * NEW: Generate suggestions from learned responses
+ */
+private getSuggestionsFromLearnedResponse(learnedResponse: any): { id: string; text: string }[] {
+  const suggestions = [];
+  const response = learnedResponse.response?.toLowerCase() || '';
+  const category = learnedResponse.category || 'general';
+  
+  // Generate suggestions based on the response content
+  if (response.includes('project')) {
+    suggestions.push({ id: 'projects', text: 'More about projects' });
+  }
+  
+  if (response.includes('task')) {
+    suggestions.push({ id: 'tasks', text: 'Task management' });
+  }
+  
+  if (response.includes('team')) {
+    suggestions.push({ id: 'teams', text: 'Team features' });
+  }
+  
+  if (response.includes('time') || response.includes('track')) {
+    suggestions.push({ id: 'time', text: 'Time tracking' });
+  }
+  
+  if (response.includes('chat') || response.includes('communication') || response.includes('message')) {
+    suggestions.push({ id: 'communication', text: 'Communication features' });
+  }
+  
+  if (response.includes('report') || response.includes('analytics')) {
+    suggestions.push({ id: 'reports', text: 'Reports & analytics' });
+  }
+  
+  // Add category-based suggestions
+  const categoryMap = {
+    'projects': 'Project help',
+    'tasks': 'Task help', 
+    'teams': 'Team management',
+    'time': 'Time tracking',
+    'communication': 'Communication features',
+    'reports': 'Reports & analytics'
+  };
+  
+  if (categoryMap[category] && !suggestions.some(s => s.text === categoryMap[category])) {
+    suggestions.push({ id: category, text: categoryMap[category] });
+  }
+  
+  // Always add a help option if we don't have enough suggestions
+  if (suggestions.length < 3) {
+    suggestions.push({ id: 'help', text: 'Need more help?' });
+  }
+  
+  return suggestions.slice(0, 4); // Limit to 4 suggestions
+}
+
 
   /**
    * NEW: Determine if question should use knowledge base first
@@ -743,29 +859,38 @@ export class BusinessChatbotService {
   }
 
   /**
-   * NEW: Log response quality for monitoring
-   */
-  private async logResponseQuality(
-    query: string,
-    response: string,
-    source: string,
-    confidence: number
-  ): Promise<void> {
-    // Log suspicious responses
-    const suspiciousTerms = ['sports', 'weather', 'cooking', 'politics', 'entertainment'];
-    const hasSuspiciousTerm = suspiciousTerms.some(term => response.toLowerCase().includes(term));
-    
-    if (source === 'learned' && (hasSuspiciousTerm || confidence < 0.5)) {
-      this.logger.warn(`Suspicious learned response detected:`, {
-        query,
-        response: response.substring(0, 100),
-        source,
-        confidence,
-        suspicious: hasSuspiciousTerm
-      });
-    }
+ * ENHANCED: Better logging for response quality with learned responses
+ */
+private async logResponseQuality(
+  query: string,
+  response: string,
+  source: string,
+  confidence: number
+): Promise<void> {
+  // Log suspicious responses
+  const suspiciousTerms = ['sports', 'weather', 'cooking', 'politics', 'entertainment'];
+  const hasSuspiciousTerm = suspiciousTerms.some(term => response.toLowerCase().includes(term));
+  
+  if (source === 'learned' && hasSuspiciousTerm) {
+    this.logger.warn(`Suspicious learned response detected:`, {
+      query,
+      response: response.substring(0, 100),
+      source,
+      confidence,
+      suspicious: true
+    });
   }
-
+  
+  // Log successful learned responses
+  if (source === 'learned' && !hasSuspiciousTerm) {
+    this.logger.log(`Successful learned response used:`, {
+      query,
+      response: response.substring(0, 100),
+      source,
+      confidence
+    });
+  }
+}
   /**
    * ENHANCED: Get response using the NLP system with better chat handling
    */
