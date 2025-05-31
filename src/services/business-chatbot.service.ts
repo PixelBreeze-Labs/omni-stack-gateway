@@ -486,25 +486,25 @@ export class BusinessChatbotService {
         };
       }
       
-      // STEP 5: Generic built-in responses
-      const genericResponse = this.getGenericResponse(normalizedMessage, businessName, userName, platformName);
-      if (genericResponse && genericResponse.confidence > 0.6) {
-        this.logger.log(`✅ Generic response used (confidence: ${genericResponse.confidence})`);
+      // STEP 5: Enhanced NLP responses (your original system restored)
+      const nlpResponse = this.getEnhancedNlpResponse(normalizedMessage, businessName, userName, platformName, context);
+      if (nlpResponse && nlpResponse.confidence > 0.6) {
+        this.logger.log(`✅ NLP response used (confidence: ${nlpResponse.confidence})`);
         return {
-          text: genericResponse.text,
-          suggestions: genericResponse.suggestions,
-          responseSource: 'generic',
+          text: nlpResponse.text,
+          suggestions: nlpResponse.suggestions,
+          responseSource: 'nlp',
           knowledgeUsed: false,
           metadata: { 
-            responseSource: 'generic', 
-            confidence: genericResponse.confidence,
+            responseSource: 'nlp', 
+            confidence: nlpResponse.confidence,
             shouldShowFeedback: true 
           }
         };
       }
       
       // STEP 6: Log unrecognized query and return fallback
-      this.logger.log(`❌ No match found for: "${normalizedMessage}"`);
+      this.logger.log(`❌ No match found for: "${normalizedMessage}" (tried all methods)`);
       
       try {
         await this.knowledgeBaseService.logUnrecognizedQuery(message, {
@@ -522,14 +522,17 @@ export class BusinessChatbotService {
           { id: 'features', text: 'What features do you offer?' },
           { id: 'communication', text: 'Communication features' },
           { id: 'projects', text: 'Project management' },
-          { id: 'help', text: 'I need help' }
+          { id: 'help', text: 'I need help' },
+          { id: 'tasks', text: 'Task management' },
+          { id: 'time', text: 'Time tracking' }
         ],
         responseSource: 'fallback',
         knowledgeUsed: false,
         metadata: { 
           responseSource: 'fallback', 
           unrecognized: true,
-          shouldShowFeedback: true 
+          shouldShowFeedback: true,
+          confidence: 0.1
         }
       };
       
@@ -548,6 +551,7 @@ export class BusinessChatbotService {
       };
     }
   }
+  
   
 
   /**
@@ -672,6 +676,222 @@ private async searchQueryPairsImproved(
   }
 }
 
+
+/**
+ * STEP 5: Enhanced NLP responses (restored from original system)
+ */
+private getEnhancedNlpResponse(
+  message: string,
+  businessName: string,
+  userName: string,
+  platformName: string,
+  context: any
+): any | null {
+  
+  const keyTerms = this.extractKeyTerms(message);
+  
+  // Enhanced response templates with better categorization
+  const responseCategories = {
+    // Project management responses
+    projects: [
+      {
+        keywords: ['project', 'projects', 'project management'],
+        response: {
+          text: `${platformName} provides ${businessName} with comprehensive project management tools. You can create projects, assign teams, track progress, and manage tasks.`,
+          suggestions: [
+            { id: 'create_project', text: 'Create a new project' },
+            { id: 'view_projects', text: 'View my projects' },
+            { id: 'project_reports', text: 'Project reports' }
+          ]
+        }
+      },
+      {
+        keywords: ['create project', 'new project', 'add project', 'start project'],
+        response: {
+          text: `Creating a new project in ${platformName} is easy. Just go to the Projects section, click "Create Project", and fill in the details like name, description, start/end dates, and team members.`,
+          suggestions: [
+            { id: 'project_template', text: 'Use a project template' },
+            { id: 'project_settings', text: 'Project settings' },
+            { id: 'project_team', text: 'Assign team members' }
+          ]
+        }
+      }
+    ],
+    
+    // Task management responses
+    tasks: [
+      {
+        keywords: ['task', 'tasks', 'todo', 'assignment', 'assign'],
+        response: {
+          text: `With ${platformName}, tasks for ${businessName} can be created, assigned, prioritized, and tracked to completion.`,
+          suggestions: [
+            { id: 'create_task', text: 'Create a task' },
+            { id: 'assign_task', text: 'Assign tasks' },
+            { id: 'track_tasks', text: 'Track task completion' }
+          ]
+        }
+      },
+      {
+        keywords: ['create task', 'new task', 'add task', 'assign task'],
+        response: {
+          text: `To create a new task in ${platformName}, navigate to the Tasks section or a specific project, click "New Task", and enter details like name, description, due date, priority, and assignee.`,
+          suggestions: [
+            { id: 'task_priority', text: 'Set task priority' },
+            { id: 'recurring_tasks', text: 'Create recurring tasks' },
+            { id: 'task_dependencies', text: 'Set task dependencies' }
+          ]
+        }
+      }
+    ],
+    
+    // Time tracking responses
+    timeTracking: [
+      {
+        keywords: ['time', 'clock', 'hours', 'timesheet', 'tracking', 'attendance'],
+        response: {
+          text: `${platformName}'s time tracking system lets ${businessName} employees clock in/out, manage breaks, and review timesheets.`,
+          suggestions: [
+            { id: 'time_clock', text: 'Clock in/out' },
+            { id: 'breaks', text: 'Manage breaks' },
+            { id: 'timesheets', text: 'View timesheets' }
+          ]
+        }
+      },
+      {
+        keywords: ['clock in', 'clock out', 'time entry', 'log hours', 'record time'],
+        response: {
+          text: `With ${platformName}, you can easily clock in and out using the web app or mobile app. Your time entries are automatically logged and can be associated with specific projects or tasks.`,
+          suggestions: [
+            { id: 'timesheet_approval', text: 'Timesheet approval' },
+            { id: 'time_reports', text: 'Time reports' },
+            { id: 'overtime_tracking', text: 'Overtime tracking' }
+          ]
+        }
+      }
+    ],
+    
+    // Team management responses
+    teams: [
+      {
+        keywords: ['team', 'staff', 'employee', 'member', 'personnel'],
+        response: {
+          text: `Using ${platformName}, ${businessName} can organize staff into departments and teams, assign leaders, and monitor performance.`,
+          suggestions: [
+            { id: 'view_team', text: 'View my team' },
+            { id: 'add_member', text: 'Add team member' },
+            { id: 'team_schedule', text: 'Team scheduling' }
+          ]
+        }
+      },
+      {
+        keywords: ['add employee', 'new member', 'hire', 'add to team', 'invite team'],
+        response: {
+          text: `To add a new team member in ${platformName}, go to the Team Management section, click "Add Member", and enter their information. You can assign them to specific departments, teams, and roles.`,
+          suggestions: [
+            { id: 'team_roles', text: 'Define team roles' },
+            { id: 'team_permissions', text: 'Set permissions' },
+            { id: 'team_onboarding', text: 'Team onboarding' }
+          ]
+        }
+      }
+    ],
+    
+    // Features responses
+    features: [
+      {
+        keywords: ['features', 'capabilities', 'what can it do', 'functionality', 'tools', 'modules'],
+        response: {
+          text: `${platformName} offers comprehensive features for ${businessName}: project management, task tracking, time & attendance, team management, communication hub, field service operations, client management, reporting & analytics, quality control, and equipment management. Which feature interests you most?`,
+          suggestions: [
+            { id: 'projects', text: 'Project management' },
+            { id: 'communication', text: 'Communication features' },
+            { id: 'time', text: 'Time tracking' },
+            { id: 'teams', text: 'Team management' }
+          ]
+        }
+      }
+    ],
+    
+    // Help and support responses
+    help: [
+      {
+        keywords: ['help', 'support', 'assistance', 'guide', 'tutorial', 'how to', 'how do i'],
+        response: {
+          text: `I can help with how ${businessName} can use ${platformName} for managing projects, tracking time, organizing teams, communication, and more. What do you need help with?`,
+          suggestions: [
+            { id: 'projects_help', text: 'Projects help' },
+            { id: 'communication_help', text: 'Communication help' },
+            { id: 'time_help', text: 'Time tracking help' },
+            { id: 'teams_help', text: 'Team management help' }
+          ]
+        }
+      }
+    ]
+  };
+  
+  // Flatten all response rules from categories for processing
+  const allResponseRules = Object.values(responseCategories).flat();
+  
+  // Find best matching responses based on keyword relevance
+  const scoredResponses = allResponseRules.map(rule => ({
+    rule,
+    score: this.calculateNlpRelevanceScore(keyTerms, rule.keywords, message)
+  }))
+  .filter(item => item.score > 0.3) // Filter out low-scoring matches
+  .sort((a, b) => b.score - a.score); // Sort by score descending
+  
+  // Get top match
+  if (scoredResponses.length > 0 && scoredResponses[0].score > 0.5) {
+    const bestMatch = scoredResponses[0].rule;
+    
+    return {
+      ...bestMatch.response,
+      confidence: scoredResponses[0].score
+    };
+  }
+  
+  return null;
+}
+
+
+/**
+ * Calculate NLP relevance score
+ */
+private calculateNlpRelevanceScore(terms: string[], keywords: string[], fullMessage: string): number {
+  if (!terms.length || !keywords.length) return 0;
+  
+  let exactMatches = 0;
+  let partialMatches = 0;
+  let phraseMatches = 0;
+  
+  // Check for exact phrase matches
+  for (const keyword of keywords) {
+    if (keyword.includes(' ') && fullMessage.includes(keyword)) {
+      phraseMatches += 2; // High score for phrase matches
+    }
+  }
+  
+  // Check individual term matches
+  for (const term of terms) {
+    if (term.length < 3) continue;
+    
+    for (const keyword of keywords) {
+      if (keyword === term) {
+        exactMatches += 1;
+      } else if (keyword.includes(term) || term.includes(keyword)) {
+        partialMatches += 0.5;
+      }
+    }
+  }
+  
+  const totalMatches = exactMatches + partialMatches + phraseMatches;
+  const baseScore = totalMatches / Math.max(terms.length, keywords.length);
+  
+  // Boost for phrase matches
+  if (phraseMatches > 0) return Math.min(0.95, baseScore + 0.2);
+  
+  return Math.min(0.9, baseScore);
+}
 
 /**
  * Advanced similarity calculation with multiple strategies
@@ -2345,71 +2565,29 @@ private async logResponseQuality(
   }
 
   /**
-   * Enhanced method: Extract key terms from message for better matching
-   */
-  private extractKeyTerms(message: string): string[] {
-    // Business domain specific terms to prioritize
-    const businessTerms = new Set([
-      'project', 'task', 'team', 'time', 'track', 'management', 'client',
-      'report', 'schedule', 'staff', 'equipment', 'field', 'service',
-      'quality', 'inspection', 'analytics', 'dashboard', 'feature',
-      'assign', 'create', 'update', 'delete', 'view', 'employee',
-      'invoice', 'attendance', 'timesheet', 'break', 'overtime',
-      'compliance', 'billing', 'maintenance', 'workflow', 'chat',
-      'communication', 'message', 'messaging', 'talk', 'communicate'
-    ]);
-
-    // Enhanced stopwords list
-    const stopWords = new Set([
-      'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 
-      'and', 'or', 'but', 'if', 'then', 'else', 'when', 'where',  
-      'all', 'any', 'both', 'each', 'few', 'more', 'most', 'some', 'such', 
-      'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 
-      'can', 'will', 'just', 'should', 'now', 'about', 'which',
-      'i', 'me', 'my', 'mine', 'myself', 'we', 'our', 'ours', 'ourselves',
-      'you', 'your', 'yours', 'yourself', 'yourselves', 'it', 'its', 'itself',
-      'for', 'of', 'with', 'by', 'at', 'from', 'to', 'in', 'on', 'up', 'down',
-      'this', 'that', 'these', 'those', 'there', 'here', 'get', 'got', 'have',
-      'has', 'had', 'did', 'does', 'do', 'am', 'having', 'being', 'doing',
-      'could', 'would', 'should', 'may', 'might', 'must', 'shall'
-    ]);
-    
-    // Preserve important conversational keywords
-    const preserveWords = new Set([
-      'how', 'what', 'who', 'why', 'when', 'where', 'which', 'help', 'thanks', 
-      'thank', 'hi', 'hello', 'hey', 'create', 'add', 'new', 'set', 'update', 
-      'track', 'view', 'show', 'find', 'manage', 'offer', 'have', 'does'
-    ]);
-    
-    // Improved tokenization
-    const tokenized = message.toLowerCase()
-      .replace(/[^\w\s]/g, '') // Remove punctuation
-      .split(/\s+/); // Split by whitespace
-    
-    // Filter individual tokens using improved criteria
-    const filteredTokens = tokenized.filter(word => {
-      return preserveWords.has(word) || 
-             businessTerms.has(word) || 
-             (word.length > 3 && !stopWords.has(word));
-    });
-    
-    // Check for common action phrases
-    const actionPhrases = [
-      'how to', 'show me', 'help with', 'need to',
-      'want to', 'looking for', 'trying to',
-      'create new', 'set up', 'tell me about',
-      'do you offer', 'does staffluent have'
-    ];
-    
-    const normalizedMessage = message.toLowerCase();
-    for (const phrase of actionPhrases) {
-      if (normalizedMessage.includes(phrase)) {
-        filteredTokens.push(phrase);
-      }
-    }
-    
-    return [...new Set(filteredTokens)];
-  }
+ * Extract key terms for NLP matching
+ */
+private extractKeyTerms(message: string): string[] {
+  const stopWords = new Set([
+    'a', 'an', 'the', 'is', 'are', 'was', 'were', 'and', 'or', 'but', 
+    'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'i', 'you', 'it',
+    'that', 'this', 'he', 'she', 'we', 'they', 'my', 'your', 'his', 'her',
+    'can', 'will', 'would', 'could', 'should', 'do', 'does', 'did'
+  ]);
+  
+  const preserveWords = new Set([
+    'how', 'what', 'who', 'why', 'when', 'where', 'which', 'help', 
+    'create', 'add', 'new', 'set', 'update', 'track', 'view', 'show', 'find', 'manage'
+  ]);
+  
+  return message.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => 
+      preserveWords.has(word) || 
+      (word.length > 3 && !stopWords.has(word))
+    );
+}
 
   /**
    * Enhanced method: Calculate relevance score between message terms and rule keywords
