@@ -1499,24 +1499,23 @@ private async logResponseQuality(
     const allResponseRules = Object.values(responseCategories).flat();
     
     // Check if we're in a specific view context
-    if (context?.currentView) {
-      const viewResponses = this.getViewSpecificResponses(
-        context.currentView, 
-        business?.operationType, 
-        userName,
-        businessName
-      );
-      
-      // Only return view response for greeting or help requests
-      if (viewResponses && (normalizedMessage.includes('hello') || normalizedMessage.includes('hi') || 
-          normalizedMessage.includes('help') || normalizedMessage.length < 5)) {
-        return {
-          ...viewResponses,
-          confidence: 0.9
-        };
-      }
-    }
+  if (context?.currentView) {
+    const viewResponses = this.getViewSpecificResponses(
+      context.currentView, 
+      business?.operationType, 
+      userName,
+      businessName
+    );
     
+    // Only return view response for basic greetings, NOT help requests
+    if (viewResponses && (normalizedMessage.includes('hello') || normalizedMessage.includes('hi') || 
+        normalizedMessage.length < 5)) {
+      return {
+        ...viewResponses,
+        confidence: 0.9
+      };
+    }
+  }
     // Find best matching responses based on keyword relevance
     const scoredResponses = allResponseRules.map(rule => ({
       rule,
