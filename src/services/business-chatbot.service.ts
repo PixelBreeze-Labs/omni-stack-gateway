@@ -8,6 +8,7 @@ import { BusinessService } from './business.service';
 import { Business } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
 import { KnowledgeBaseService } from './knowledge-base.service';
+import { QueryResponsePair } from '../schemas/query-response-pair.schema';
 
 // Export interfaces for TypeScript
 export interface ChatResponse {
@@ -46,6 +47,7 @@ export class BusinessChatbotService {
   constructor(
     @InjectModel(ChatbotMessage.name) private chatbotMessageModel: Model<ChatbotMessage>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(QueryResponsePair.name) private queryResponsePairModel: Model<QueryResponsePair>,
     @InjectModel(User.name) private userModel: Model<User>,
     private readonly businessService: BusinessService,  
     private readonly knowledgeBaseService: KnowledgeBaseService
@@ -396,232 +398,576 @@ export class BusinessChatbotService {
     suggestions?: { id: string; text: string }[];
     knowledgeUsed?: boolean;
     responseSource?: string;
-    metadata?: {
-      sourceId?: string;
-      knowledgeUsed?: boolean;
-      responseSource?: string;
-      shouldShowFeedback?: boolean;
-      conversationalResponse?: boolean;
-      confidence?: number;
-      [key: string]: any;
-    };
+    metadata?: any;
   }> {
-
-
-    
     
     const normalizedMessage = message.toLowerCase().trim();
     const platformName = 'Staffluent';
-    
-    const specificResponse = this.getSpecificResponseForQuery(normalizedMessage);
-if (specificResponse) {
-  return {
-    ...specificResponse,
-    metadata: {
-      responseSource: 'specific',
-      knowledgeUsed: true,
-      shouldShowFeedback: true
-    }
-  };
-}
-    // Personalization variables
     const businessName = business?.name || 'your business';
     const userName = user ? `${user.name || 'there'}` : 'there';
     const clientId = business?.clientId;
     
-    // Extract key terms for better matching
-    const keyTerms = this.extractKeyTerms(normalizedMessage);
+    this.logger.log(`🔍 Processing: "${normalizedMessage}" for client: ${clientId}`);
     
-    // Check if this is a follow-up question
-    const isFollowup = this.isFollowupQuestion(context);
-    
-    // Determine if this is a casual conversational query
-    const isConversational = this.isConversationalQuery(normalizedMessage);
-    
-    this.logger.log(`Processing query: "${normalizedMessage}" with terms: ${keyTerms.join(', ')}`);
-  
-    // PRIORITY 1: Handle closure messages first
-    if (this.isClosureMessage(normalizedMessage)) {
-      const closureResponse = this.getClosureResponse(userName, businessName, platformName);
-      
-      return {
-        text: closureResponse.text,
-        suggestions: closureResponse.suggestions,
-        responseSource: 'closure',
-        knowledgeUsed: false,
-        metadata: {
-          responseSource: 'closure',
-          knowledgeUsed: false,
-          shouldShowFeedback: false
-        }
-      };
-    }
-    
-    // PRIORITY 2: Handle casual conversation
-    if (isConversational) {
-      const conversationResponse = this.getConversationalResponse(
-        normalizedMessage, userName, businessName, platformName
-      );
-      
-      if (conversationResponse) {
+    try {
+      // STEP 1: Handle basic conversational queries (highest priority)
+      const conversationalResponse = this.handleConversationalQueries(normalizedMessage, userName, businessName, platformName);
+      if (conversationalResponse) {
+        this.logger.log(`✅ Conversational response used`);
         return {
-          text: conversationResponse.text,
-          suggestions: conversationResponse.suggestions,
-          responseSource: 'conversation',
+          ...conversationalResponse,
+          responseSource: 'conversational',
           knowledgeUsed: false,
+          metadata: { responseSource: 'conversational', shouldShowFeedback: false }
+        };
+      }
+      
+      // STEP 2: Search query pairs FIRST (before knowledge base)
+      const queryPairResponse = await this.searchQueryPairsImproved(normalizedMessage, clientId);
+      if (queryPairResponse) {
+        this.logger.log(`✅ Query pair found: "${queryPairResponse.query}" (similarity: ${queryPairResponse.similarity})`);
+        
+        // Update usage stats
+        try {
+          await this.queryResponsePairModel.updateOne(
+            { _id: queryPairResponse._id },
+            { $inc: { useCount: 1 } }
+          );
+        } catch (updateError) {
+          this.logger.warn(`Failed to update usage count: ${updateError.message}`);
+        }
+        
+        return {
+          text: this.personalizeResponse(queryPairResponse.response, businessName, userName, platformName),
+          suggestions: this.generateSmartSuggestions(queryPairResponse),
+          responseSource: 'learned',
+          knowledgeUsed: true,
           metadata: {
-            conversationalResponse: true,
-            responseSource: 'conversation',
-            knowledgeUsed: false,
-            shouldShowFeedback: false
+            sourceId: queryPairResponse._id.toString(),
+            knowledgeUsed: true,
+            responseSource: 'learned',
+            shouldShowFeedback: true,
+            matchScore: queryPairResponse.similarity,
+            originalQuery: queryPairResponse.query
           }
         };
       }
-    }
-  
-    // PRIORITY 3: **FIXED** Query-Response Pairs (with improved search and validation)
-    const matchingPairs = await this.knowledgeBaseService.searchQueryResponses(
-      normalizedMessage,
-      { 
-        category: context.currentView || 'general',
-        limit: 10, // Increased limit to get more candidates
-        clientId
-      }
-    );
-    
-    this.logger.log(`Found ${matchingPairs.length} matching pairs for query: "${normalizedMessage}"`);
-    
-    if (matchingPairs.length > 0) {
-      // **NEW**: Improved relevance scoring for query pairs
-      const scoredPairs = matchingPairs.map(pair => ({
-        pair,
-        relevanceScore: this.calculateQueryPairRelevance(normalizedMessage, pair, keyTerms)
-      }))
-      .filter(item => item.relevanceScore > 0.3) // Lower threshold
-      .sort((a, b) => b.relevanceScore - a.relevanceScore);
-  
-      this.logger.log(`After scoring: ${scoredPairs.length} pairs passed relevance threshold`);
-  
-      // Try the best scoring pairs
-      for (const { pair, relevanceScore } of scoredPairs.slice(0, 3)) {
-        if (this.validateLearnedResponseFixed(normalizedMessage, pair, keyTerms)) {
-          let response = pair.response
-            .replace(/{businessName}/g, businessName)
-            .replace(/{userName}/g, userName)
-            .replace(/{platformName}/g, platformName);
-          
-          this.logger.log(`✅ Using learned response (score: ${relevanceScore.toFixed(2)}) for: "${normalizedMessage}"`);
-          
-          return {
-            text: response,
-            suggestions: this.getSuggestionsFromLearnedResponse(pair),
-            responseSource: 'learned',
-            knowledgeUsed: true,
-            metadata: {
-              sourceId: pair._id.toString(),
-              knowledgeUsed: true,
-              responseSource: 'learned',
-              shouldShowFeedback: true,
-              matchScore: relevanceScore,
-              validatedMatch: true,
-              originalQuery: pair.query
-            }
-          };
-        }
-      }
-    }
-    
-    // PRIORITY 4: **FIXED** Knowledge Base Search (with better targeting)
-    const relevantDocs = await this.searchKnowledgeBaseImproved(
-      normalizedMessage,
-      keyTerms,
-      {
-        clientId,
-        businessType: business?.operationType || 'default',
-        features: business?.includedFeatures || [],
-        currentView: context.currentView,
-        limit: 5
-      }
-    );
-    
-    this.logger.log(`Found ${relevantDocs.length} relevant knowledge documents`);
-    
-    if (relevantDocs.length > 0) {
-      const doc = relevantDocs[0];
       
-      let response = this.formatKnowledgeResponse(
-        doc.content, businessName, userName, platformName
-      );
-      
-      this.logger.log(`✅ Using knowledge document: "${doc.title}" for query: "${normalizedMessage}"`);
-      
-      return {
-        text: response,
-        suggestions: this.getSuggestionsFromDocument(doc),
-        responseSource: 'knowledge',
-        knowledgeUsed: true,
-        metadata: {
-          sourceId: doc._id.toString(),
+      // STEP 3: Built-in specific responses for common features
+      const specificResponse = this.getSpecificFeatureResponse(normalizedMessage, businessName, userName, platformName);
+      if (specificResponse) {
+        this.logger.log(`✅ Specific feature response used`);
+        return {
+          ...specificResponse,
+          responseSource: 'specific',
           knowledgeUsed: true,
+          metadata: { responseSource: 'specific', shouldShowFeedback: true }
+        };
+      }
+      
+      // STEP 4: Search knowledge base (only if query pairs and specific responses failed)
+      const knowledgeResponse = await this.searchKnowledgeBaseReliable(normalizedMessage, clientId, context);
+      if (knowledgeResponse) {
+        this.logger.log(`✅ Knowledge document found: "${knowledgeResponse.title}" (score: ${knowledgeResponse.searchScore})`);
+        
+        return {
+          text: this.formatKnowledgeResponse(knowledgeResponse.content, businessName, userName, platformName),
+          suggestions: this.generateKnowledgeSuggestions(knowledgeResponse),
           responseSource: 'knowledge',
-          shouldShowFeedback: true,
-          documentTitle: doc.title || null,
-          documentCategories: doc.categories || [],
-          searchScore: doc.searchScore || 0
-        }
-      };
-    }
-    
-    // PRIORITY 5: Fall back to enhanced NLP responses
-    const nlpResponse = await this.getNlpResponse(
-      normalizedMessage, keyTerms, isFollowup, context, 
-      business, businessName, userName, platformName
-    );
-    
-    // If no good NLP response, log this as an unrecognized query
-    if (nlpResponse.confidence < 0.3) {
-      const unrecognizedQuery = await this.knowledgeBaseService.logUnrecognizedQuery(
-        message,
-        {
+          knowledgeUsed: true,
+          metadata: {
+            sourceId: knowledgeResponse._id.toString(),
+            knowledgeUsed: true,
+            responseSource: 'knowledge',
+            shouldShowFeedback: true,
+            documentTitle: knowledgeResponse.title,
+            searchScore: knowledgeResponse.searchScore
+          }
+        };
+      }
+      
+      // STEP 5: Generic built-in responses
+      const genericResponse = this.getGenericResponse(normalizedMessage, businessName, userName, platformName);
+      if (genericResponse && genericResponse.confidence > 0.6) {
+        this.logger.log(`✅ Generic response used (confidence: ${genericResponse.confidence})`);
+        return {
+          text: genericResponse.text,
+          suggestions: genericResponse.suggestions,
+          responseSource: 'generic',
+          knowledgeUsed: false,
+          metadata: { 
+            responseSource: 'generic', 
+            confidence: genericResponse.confidence,
+            shouldShowFeedback: true 
+          }
+        };
+      }
+      
+      // STEP 6: Log unrecognized query and return fallback
+      this.logger.log(`❌ No match found for: "${normalizedMessage}"`);
+      
+      try {
+        await this.knowledgeBaseService.logUnrecognizedQuery(message, {
           clientId,
           businessId: business?._id?.toString(),
-          businessType: business?.operationType || 'default',
-          userId: user?._id?.toString(),
-          sessionId: context.sessionId,
           context
-        }
-      );
-      
-      this.logger.log(`❌ Query not recognized, logged as unrecognized: "${normalizedMessage}"`);
+        });
+      } catch (logError) {
+        this.logger.warn(`Failed to log unrecognized query: ${logError.message}`);
+      }
       
       return {
-        ...nlpResponse,
-        responseSource: 'nlp',
+        text: `I'm not sure I understand "${message}". Could you try rephrasing or select from these options?`,
+        suggestions: [
+          { id: 'features', text: 'What features do you offer?' },
+          { id: 'communication', text: 'Communication features' },
+          { id: 'projects', text: 'Project management' },
+          { id: 'help', text: 'I need help' }
+        ],
+        responseSource: 'fallback',
         knowledgeUsed: false,
-        metadata: {
-          sourceId: unrecognizedQuery._id.toString(),
-          responseSource: 'nlp',
-          knowledgeUsed: false,
-          confidence: nlpResponse.confidence,
+        metadata: { 
+          responseSource: 'fallback', 
           unrecognized: true,
-          shouldShowFeedback: true
+          shouldShowFeedback: true 
         }
       };
-    }
-    
-    return {
-      ...nlpResponse,
-      responseSource: 'nlp',
-      knowledgeUsed: false,
-      metadata: {
-        responseSource: 'nlp',
+      
+    } catch (error) {
+      this.logger.error(`Error in generateResponse: ${error.message}`, error.stack);
+      
+      return {
+        text: "I'm sorry, I encountered an error while processing your request. Please try again.",
+        suggestions: [
+          { id: 'help', text: 'I need help' },
+          { id: 'features', text: 'Show features' }
+        ],
+        responseSource: 'error',
         knowledgeUsed: false,
-        confidence: nlpResponse.confidence,
-        shouldShowFeedback: true
-      }
+        metadata: { error: true, shouldShowFeedback: false }
+      };
+    }
+  }
+  
+
+  /**
+ * STEP 1: Handle conversational queries (greetings, thanks, goodbye)
+ */
+private handleConversationalQueries(
+  message: string,
+  userName: string,
+  businessName: string,
+  platformName: string
+): any | null {
+  
+  // Simple greetings
+  if (/^(hi|hello|hey)(\s.*)?$/i.test(message) && message.length < 20) {
+    return {
+      text: `Hello ${userName}! I'm the ${platformName} assistant for ${businessName}. How can I help you today?`,
+      suggestions: [
+        { id: 'features', text: 'What features do you offer?' },
+        { id: 'communication', text: 'Communication features' },
+        { id: 'projects', text: 'About projects' },
+        { id: 'help', text: 'I need help' }
+      ]
     };
   }
   
+  // How are you
+  if (/^how are you/i.test(message) || /^how('s| is) it going/i.test(message)) {
+    return {
+      text: `I'm doing well, thanks for asking, ${userName}! I'm here to help you with anything related to ${platformName}. What would you like assistance with today?`,
+      suggestions: [
+        { id: 'features', text: 'Show me key features' },
+        { id: 'communication', text: 'Communication capabilities' },
+        { id: 'help', text: 'I need help with something' },
+        { id: 'learn', text: 'Learn about Staffluent' }
+      ]
+    };
+  }
+  
+  // Thank you
+  if (/^(thank you|thanks|thx)/i.test(message)) {
+    return {
+      text: `You're welcome, ${userName}! Is there anything else you'd like to know about ${platformName}?`,
+      suggestions: [
+        { id: 'more_help', text: 'I need more help' },
+        { id: 'features', text: 'Show me features' },
+        { id: 'done', text: 'That\'s all for now' }
+      ]
+    };
+  }
+  
+  // Goodbye
+  if (/^(bye|goodbye|that('s| is) all|no thanks?|nothing else)(\s.*)?$/i.test(message)) {
+    return {
+      text: `You're welcome, ${userName}! Feel free to reach out anytime you have questions about ${platformName}. Have a great day!`,
+      suggestions: [
+        { id: 'new_question', text: 'I have another question' }
+      ]
+    };
+  }
+  
+  return null;
+}
+
+
+/**
+ * STEP 2: Improved query pair searching with better matching
+ */
+private async searchQueryPairsImproved(
+  query: string,
+  clientId: string
+): Promise<any | null> {
+  
+  try {
+    if (!clientId) {
+      this.logger.warn('No clientId provided for query pair search');
+      return null;
+    }
+    
+    const allPairs = await this.queryResponsePairModel
+      .find({ 
+        clientId, 
+        active: true,
+        response: { $exists: true, $ne: '' }
+      })
+      .lean();
+    
+    if (allPairs.length === 0) {
+      this.logger.log('No query pairs found for client');
+      return null;
+    }
+    
+    this.logger.log(`Searching ${allPairs.length} query pairs`);
+    
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const pair of allPairs) {
+      if (!pair.query || !pair.response) continue;
+      
+      const score = this.calculateAdvancedSimilarity(query, pair.query);
+      
+      this.logger.log(`Query: "${pair.query}" | Score: ${score.toFixed(3)}`);
+      
+      // More permissive threshold - accept anything above 0.5
+      if (score > bestScore && score >= 0.5) {
+        bestMatch = { ...pair, similarity: score };
+        bestScore = score;
+      }
+    }
+    
+    if (bestMatch) {
+      this.logger.log(`Best match: "${bestMatch.query}" with score ${bestScore.toFixed(3)}`);
+      return bestMatch;
+    }
+    
+    this.logger.log('No query pair match found above threshold');
+    return null;
+    
+  } catch (error) {
+    this.logger.error(`Error in query pair search: ${error.message}`);
+    return null;
+  }
+}
+
+
+/**
+ * Advanced similarity calculation with multiple strategies
+ */
+private calculateAdvancedSimilarity(query1: string, query2: string): number {
+  const q1 = query1.toLowerCase().trim();
+  const q2 = query2.toLowerCase().trim();
+  
+  // Exact match
+  if (q1 === q2) return 1.0;
+  
+  // Case-insensitive exact match  
+  if (q1.toLowerCase() === q2.toLowerCase()) return 0.95;
+  
+  // Handle common typos and variations
+  const correctedQ1 = this.correctCommonTypos(q1);
+  const correctedQ2 = this.correctCommonTypos(q2);
+  if (correctedQ1 === correctedQ2) return 0.9;
+  
+  // Word-based matching
+  const words1 = this.extractMeaningfulWords(q1);
+  const words2 = this.extractMeaningfulWords(q2);
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  // Count exact word matches
+  let exactMatches = 0;
+  let fuzzyMatches = 0;
+  
+  for (const word1 of words1) {
+    let foundMatch = false;
+    
+    for (const word2 of words2) {
+      if (word1 === word2) {
+        exactMatches++;
+        foundMatch = true;
+        break;
+      } else if (this.areWordsSimilar(word1, word2)) {
+        fuzzyMatches++;
+        foundMatch = true;
+        break;
+      }
+    }
+  }
+  
+  const totalWords = Math.max(words1.length, words2.length);
+  const exactScore = exactMatches / totalWords;
+  const fuzzyScore = fuzzyMatches / totalWords;
+  
+  // Combine scores with weight preference for exact matches
+  const combinedScore = (exactScore * 0.8) + (fuzzyScore * 0.5);
+  
+  // Boost for high word coverage
+  const coverage = (exactMatches + fuzzyMatches) / totalWords;
+  if (coverage >= 0.8) return Math.min(0.85, combinedScore + 0.1);
+  if (coverage >= 0.6) return Math.min(0.75, combinedScore + 0.05);
+  
+  return combinedScore;
+}
+
+
+
+/**
+ * Extract meaningful words (filter out stop words)
+ */
+private extractMeaningfulWords(text: string): string[] {
+  const stopWords = new Set([
+    'a', 'an', 'the', 'is', 'are', 'was', 'were', 'and', 'or', 'but', 
+    'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'i', 'you', 'it',
+    'that', 'this', 'he', 'she', 'we', 'they', 'my', 'your', 'his', 'her',
+    'can', 'will', 'would', 'could', 'should', 'do', 'does', 'did', 'have', 'has', 'had'
+  ]);
+  
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !stopWords.has(word));
+}
+
+/**
+ * Correct common typos
+ */
+private correctCommonTypos(text: string): string {
+  const typoMap = {
+    'browser': 'browse',
+    'centre': 'center',
+    'colour': 'color',
+    'favour': 'favor',
+    'labour': 'labor'
+  };
+  
+  let corrected = text;
+  for (const [typo, correct] of Object.entries(typoMap)) {
+    corrected = corrected.replace(new RegExp(`\\b${typo}\\b`, 'gi'), correct);
+  }
+  
+  return corrected;
+}
+
+
+/**
+ * Check if two words are similar
+ */
+private areWordsSimilar(word1: string, word2: string): boolean {
+  // Handle plurals
+  if (word1 + 's' === word2 || word1 === word2 + 's') return true;
+  if (word1 + 'es' === word2 || word1 === word2 + 'es') return true;
+  
+  // Handle verb forms
+  if (word1 + 'ing' === word2 || word1 === word2 + 'ing') return true;
+  if (word1 + 'ed' === word2 || word1 === word2 + 'ed') return true;
+  
+  // Handle y -> ies
+  if (word1.endsWith('y') && word2 === word1.slice(0, -1) + 'ies') return true;
+  if (word2.endsWith('y') && word1 === word2.slice(0, -1) + 'ies') return true;
+  
+  // One character difference tolerance
+  if (Math.abs(word1.length - word2.length) <= 1) {
+    const longer = word1.length > word2.length ? word1 : word2;
+    const shorter = word1.length > word2.length ? word2 : word1;
+    
+    let differences = 0;
+    let i = 0, j = 0;
+    
+    while (i < longer.length && j < shorter.length) {
+      if (longer[i] !== shorter[j]) {
+        differences++;
+        if (differences > 1) return false;
+        
+        // Skip character in longer string
+        if (longer.length > shorter.length) {
+          i++;
+        } else {
+          i++;
+          j++;
+        }
+      } else {
+        i++;
+        j++;
+      }
+    }
+    
+    return differences <= 1;
+  }
+  
+  return false;
+}
+
+/**
+ * STEP 3: Specific feature responses
+ */
+private getSpecificFeatureResponse(
+  message: string,
+  businessName: string,
+  userName: string,
+  platformName: string
+): any | null {
+  
+  // Communication/Chat features
+  if (/chat|communication|messaging|message|talk|communicate/i.test(message)) {
+    return {
+      text: `Yes! ${platformName} includes a comprehensive Communication Hub with team chat, project-specific channels, direct messaging, file sharing, real-time notifications, and client communication capabilities. You can collaborate with team members and communicate with clients directly through the platform.`,
+      suggestions: [
+        { id: 'team_chat', text: 'Team chat features' },
+        { id: 'project_channels', text: 'Project channels' },
+        { id: 'client_communication', text: 'Client communication' },
+        { id: 'file_sharing', text: 'File sharing' }
+      ]
+    };
+  }
+  
+  // What is Staffluent
+  if (/what is staffluent|about staffluent|explain staffluent|tell me about staffluent/i.test(message)) {
+    return {
+      text: `${platformName} is a comprehensive workforce management platform that helps ${businessName} manage teams, projects, tasks, time tracking, field service operations, communication, and client relationships all in one place. It includes project management, team collaboration, communication hub, time & attendance, reporting & analytics, and mobile capabilities.`,
+      suggestions: [
+        { id: 'features', text: 'What features do you offer?' },
+        { id: 'communication', text: 'Communication features' },
+        { id: 'get_started', text: 'How do I get started?' },
+        { id: 'tour', text: 'Take a tour' }
+      ]
+    };
+  }
+  
+  // Features question
+  if (/what.*features|what.*offer|what.*capabilities|what.*do/i.test(message)) {
+    return {
+      text: `${platformName} offers comprehensive features for ${businessName}: project management, task tracking, time & attendance, team management, communication hub, field service operations, client management, reporting & analytics, quality control, and equipment management. Which feature interests you most?`,
+      suggestions: [
+        { id: 'projects', text: 'Project management' },
+        { id: 'communication', text: 'Communication features' },
+        { id: 'time', text: 'Time tracking' },
+        { id: 'teams', text: 'Team management' }
+      ]
+    };
+  }
+  
+  return null;
+}
+
+
+
+/**
+ * STEP 4: Reliable knowledge base search
+ */
+private async searchKnowledgeBaseReliable(
+  query: string,
+  clientId: string,
+  context: any
+): Promise<any | null> {
+  
+  try {
+    if (!clientId) {
+      this.logger.warn('No clientId for knowledge base search');
+      return null;
+    }
+    
+    const searchResults = await this.knowledgeBaseService.searchDocuments(
+      query,
+      {
+        clientId,
+        currentView: context?.currentView,
+        limit: 3
+      }
+    );
+    
+    if (searchResults.length === 0) {
+      this.logger.log('No knowledge documents found');
+      return null;
+    }
+    
+    // Only return if we have a decent match (score > 3)
+    const bestResult = searchResults[0];
+    if (bestResult.searchScore && bestResult.searchScore > 3) {
+      return bestResult;
+    }
+    
+    this.logger.log(`Knowledge base score too low: ${bestResult.searchScore}`);
+    return null;
+    
+  } catch (error) {
+    this.logger.error(`Error in knowledge base search: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * STEP 5: Generic responses for common patterns
+ */
+private getGenericResponse(
+  message: string,
+  businessName: string,
+  userName: string,
+  platformName: string
+): any | null {
+  
+  const patterns = [
+    {
+      regex: /help|support|assistance|guide/i,
+      response: {
+        text: `I can help ${userName} with ${platformName} features like projects, tasks, time tracking, team management, and communication. What specific area would you like help with?`,
+        suggestions: [
+          { id: 'projects', text: 'Project management' },
+          { id: 'tasks', text: 'Task management' },
+          { id: 'time', text: 'Time tracking' },
+          { id: 'communication', text: 'Communication' }
+        ],
+        confidence: 0.7
+      }
+    },
+    {
+      regex: /how.*work|how.*use|getting started|get started/i,
+      response: {
+        text: `Getting started with ${platformName} is easy! You can begin by exploring the dashboard, setting up your team, creating your first project, or taking a guided tour. What would you like to start with?`,
+        suggestions: [
+          { id: 'tour', text: 'Take a tour' },
+          { id: 'setup', text: 'Setup guide' },
+          { id: 'projects', text: 'Create first project' },
+          { id: 'team', text: 'Setup team' }
+        ],
+        confidence: 0.8
+      }
+    }
+  ];
+  
+  for (const pattern of patterns) {
+    if (pattern.regex.test(message)) {
+      return pattern.response;
+    }
+  }
+  
+  return null;
+}
+
+
 
   private getSpecificResponseForQuery(query: string): any | null {
     const lowerQuery = query.toLowerCase();
@@ -658,6 +1004,84 @@ if (specificResponse) {
     return null;
   }
   
+  /**
+ * Personalize response text with placeholders
+ */
+private personalizeResponse(
+  response: string,
+  businessName: string,
+  userName: string,
+  platformName: string
+): string {
+  return response
+    .replace(/{businessName}/g, businessName)
+    .replace(/{userName}/g, userName)
+    .replace(/{platformName}/g, platformName);
+}
+
+/**
+ * Generate smart suggestions based on query pair
+ */
+private generateSmartSuggestions(queryPair: any): { id: string; text: string }[] {
+  const suggestions = [];
+  const response = queryPair.response?.toLowerCase() || '';
+  const category = queryPair.category || 'general';
+  
+  // Generate suggestions based on response content
+  if (response.includes('project')) {
+    suggestions.push({ id: 'projects', text: 'More about projects' });
+  }
+  
+  if (response.includes('team')) {
+    suggestions.push({ id: 'teams', text: 'Team features' });
+  }
+  
+  if (response.includes('time') || response.includes('track')) {
+    suggestions.push({ id: 'time', text: 'Time tracking' });
+  }
+  
+  if (response.includes('communication') || response.includes('chat')) {
+    suggestions.push({ id: 'communication', text: 'Communication features' });
+  }
+  
+  // Add help if we don't have enough suggestions
+  if (suggestions.length < 2) {
+    suggestions.push({ id: 'help', text: 'Need more help?' });
+  }
+  
+  return suggestions.slice(0, 4);
+}
+
+/**
+ * Generate suggestions based on knowledge document
+ */
+private generateKnowledgeSuggestions(doc: any): { id: string; text: string }[] {
+  const suggestions = [];
+  const content = doc.content || '';
+  const title = doc.title || '';
+  
+  if (content.includes('create') || title.includes('create')) {
+    suggestions.push({ id: 'action_create', text: 'Create new' });
+  }
+  
+  if (content.includes('view') || title.includes('view')) {
+    suggestions.push({ id: 'action_view', text: 'View details' });
+  }
+  
+  if (content.includes('manage') || title.includes('manage')) {
+    suggestions.push({ id: 'action_manage', text: 'Management features' });
+  }
+  
+  // Default suggestions
+  if (suggestions.length === 0) {
+    suggestions.push(
+      { id: 'more_info', text: 'Tell me more' },
+      { id: 'related', text: 'Related topics' }
+    );
+  }
+  
+  return suggestions.slice(0, 4);
+}
 
   // **NEW**: Improved query pair relevance calculation
 private calculateQueryPairRelevance(
