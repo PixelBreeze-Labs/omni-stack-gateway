@@ -58,12 +58,7 @@ export const clientLinks: SideLink[] = [
                 title: 'Quality Reports',
                 href: '/client-portal/quality/reports',
                 icon: null,
-            },
-            {
-                title: 'Site Progress',
-                href: '/client-portal/quality/site-progress',
-                icon: null,
-            },
+            }
         ],
     },
     {
