@@ -15,11 +15,11 @@ export const clientLinks: SideLink[] = [
     {
         title: 'Dashboard',
         href: '/client-portal/dashboard',
-        icon: null, // Icons will be added by the frontend
+        icon: null,
     },
     {
         title: 'My Services',
-        href: '/client-portal',
+        href: '/client-portal/services', // Fixed: was '/client-portal'
         icon: null,
         sub: [
             {
@@ -46,7 +46,7 @@ export const clientLinks: SideLink[] = [
     },
     {
         title: 'Quality & Inspections',
-        href: '/client-portal',
+        href: '/client-portal/quality', // Fixed: was '/client-portal'
         icon: null,
         sub: [
             {
@@ -68,7 +68,7 @@ export const clientLinks: SideLink[] = [
     },
     {
         title: 'Documents',
-        href: '/client-portal',
+        href: '/client-portal/documents', // Fixed: was '/client-portal'
         icon: null,
         sub: [
             {
@@ -85,7 +85,7 @@ export const clientLinks: SideLink[] = [
     },
     {
         title: 'Invoices',
-        href: '/client-portal',
+        href: '/client-portal/invoices', // Fixed: was '/client-portal'
         icon: null,
         sub: [
             {
@@ -97,7 +97,7 @@ export const clientLinks: SideLink[] = [
     },
     {
         title: 'Support',
-        href: '/client-portal',
+        href: '/client-portal/support', // Fixed: was '/client-portal'
         icon: null,
         sub: [
             {
