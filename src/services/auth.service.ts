@@ -533,10 +533,21 @@ export class AuthService {
                 'app_client'
             );
 
-            // Get client-specific features
-            const featuresInfo = await this.getClientFeaturesForLogin(
-                appClient.businessId?.toString()
-            );
+            // Get client-specific features (without limits and subscription)
+            const clientFeatures = [
+                STAFFLUENT_FEATURES.CLIENT_PORTAL,
+                STAFFLUENT_FEATURES.CLIENT_COMMUNICATION,
+                STAFFLUENT_FEATURES.CLIENT_FEEDBACK,
+                STAFFLUENT_FEATURES.CLIENT_SIGN_OFFS,
+                STAFFLUENT_FEATURES.BASIC_REPORTS,
+                STAFFLUENT_FEATURES.FILE_SHARING,
+                STAFFLUENT_FEATURES.CLIENT_COMMUNICATION_CHANNELS,
+                STAFFLUENT_FEATURES.CLIENT_PROJECTS,
+                STAFFLUENT_FEATURES.DIGITAL_SIGNATURE_CAPTURE,
+                STAFFLUENT_FEATURES.PHOTO_VERIFICATION,
+                STAFFLUENT_FEATURES.WEATHER_MONITORING,
+                STAFFLUENT_FEATURES.BASIC_QUALITY_CONTROL
+            ];
 
             // Generate JWT token with appropriate claims
             const token = this.jwtService.sign({
@@ -547,7 +558,7 @@ export class AuthService {
                 role: 'app_client'
             });
 
-            // Construct final response
+            // Construct final response - REMOVED featureLimits and subscription
             return {
                 status: 'success',
                 message: 'Client authentication successful',
@@ -567,7 +578,8 @@ export class AuthService {
                 auth_response: clientConnectionData,
                 account_type: clientConnectionData?.account_type || 'client',
                 sidebarLinks,
-                ...featuresInfo
+                features: clientFeatures
+                // REMOVED: featureLimits, subscription
             };
         } catch (error) {
             this.logger.error(`Error in staffluentsClientLogin: ${error.message}`);
