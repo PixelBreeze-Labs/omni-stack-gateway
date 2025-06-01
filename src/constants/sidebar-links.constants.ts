@@ -200,11 +200,6 @@ export const operationsManagerLinks: SideLink[] = [
                 title: 'Overview',
                 href: '/operations-manager/projects',
                 icon: null,
-            },
-            {
-                title: 'Create Project',
-                href: '/operations-manager/projects/create',
-                icon: null,
             }
         ]
     },
