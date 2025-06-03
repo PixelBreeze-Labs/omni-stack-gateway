@@ -348,6 +348,18 @@ import { Ticket, TicketSchema } from './schemas/ticket.schema';
 // SaaS Notifications
 import { SaasNotificationController } from './controllers/saas-notification.controller';
 
+// Route Optimization
+import { RouteOptimizationController } from './controllers/route-optimization.controller';
+import { RouteOptimizationService } from './services/route-optimization.service';
+
+// Field Task
+import { FieldTaskController } from './controllers/field-task.controller';
+import { FieldTaskService } from './services/field-task.service';
+
+// Team Location
+import { TeamLocationController } from './controllers/team-location.controller';
+import { TeamLocationService } from './services/team-location.service';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -581,6 +593,9 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     SaasNotificationController,
     BusinessSkillsController,
     BusinessGeneralController,
+    RouteOptimizationController,
+    FieldTaskController,
+    TeamLocationController,
   ],
   providers: [
     SnapfoodService,
@@ -692,6 +707,9 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     TicketService,
     BusinessSkillsService,
     BusinessGeneralService,
+    RouteOptimizationService,
+    FieldTaskService,
+    TeamLocationService,
   ],
 })
 export class AppModule implements NestModule {
