@@ -407,10 +407,10 @@ export class WeatherRouteService {
     return locations;
   }
 
-  /**
+ /**
    * Generate route-specific weather alerts
    */
-  private async generateRouteSpecificAlerts(businessId: string): Promise<WeatherAlert[]> {
+ private async generateRouteSpecificAlerts(businessId: string): Promise<WeatherAlert[]> {
     const alerts: WeatherAlert[] = [];
     
     try {
@@ -458,7 +458,7 @@ export class WeatherRouteService {
               severity: 'medium',
               title: 'Heavy Rain Alert for Route',
               message: `Heavy rain expected to impact team route with ${teamTasks.length} tasks`,
-              affectedAreas: [...new Set(teamTasks.map(t => t.location.address))],
+              affectedAreas: [...new Set(teamTasks.map(t => t.location.address).filter(Boolean))] as string[],
               affectedRoutes: [teamId],
               recommendations: [
                 'Consider delaying non-urgent tasks',
@@ -479,7 +479,7 @@ export class WeatherRouteService {
               severity: 'high',
               title: 'High Wind Warning for Route',
               message: `Strong winds (${Math.round(weatherData.wind.speed * 3.6)} km/h) may affect team safety`,
-              affectedAreas: [...new Set(teamTasks.map(t => t.location.address))],
+              affectedAreas: [...new Set(teamTasks.map(t => t.location.address).filter(Boolean))] as string[],
               affectedRoutes: [teamId],
               recommendations: [
                 'Secure all equipment and materials',
