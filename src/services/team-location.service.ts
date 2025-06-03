@@ -743,7 +743,7 @@ export class TeamLocationService {
   }
 
   /**
-   * Calculate real response time from field tasks
+   * Calculate real response time from field tasks using actual duration
    */
   private async calculateRealResponseTime(businessId: string): Promise<number> {
     const thirtyDaysAgo = new Date();
@@ -753,16 +753,21 @@ export class TeamLocationService {
       businessId,
       status: FieldTaskStatus.COMPLETED,
       completedAt: { $gte: thirtyDaysAgo },
+      'actualPerformance.actualDuration': { $exists: true },
       isDeleted: false
     }).limit(50);
 
-    if (completedTasks.length === 0) return 25; // Default
+    if (completedTasks.length === 0) return 25; // Default 25 minutes
 
-    const responseTimes = completedTasks.map(task => 
-      task.actualPerformance?.responseTime || 25
-    );
+    // Calculate average actual duration as response time
+    const actualDurations = completedTasks
+      .map(task => task.actualPerformance?.actualDuration)
+      .filter(duration => duration !== undefined && duration > 0) as number[];
 
-    return Math.round(responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length);
+    if (actualDurations.length === 0) return 25;
+
+    const avgDuration = actualDurations.reduce((sum, duration) => sum + duration, 0) / actualDurations.length;
+    return Math.round(avgDuration);
   }
 
   /**

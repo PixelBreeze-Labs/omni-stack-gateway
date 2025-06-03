@@ -25,6 +25,7 @@ import {
   } from '@nestjs/swagger';
   import { TeamLocationService } from '../services/team-location.service';
   import { BusinessService } from '../services/business.service';
+  import { TeamLocationStatus, ConnectivityStatus } from '../schemas/team-location.schema';
   
   @ApiTags('Team Location Tracking')
   @Controller('business/team-locations')
@@ -62,7 +63,11 @@ import {
             properties: {
               lat: { type: 'number', example: 40.7128, description: 'Latitude coordinate' },
               lng: { type: 'number', example: -74.0060, description: 'Longitude coordinate' },
-              address: { type: 'string', example: '123 Main St, New York, NY', description: 'Human-readable address' }
+              address: { type: 'string', example: '123 Main St, New York, NY', description: 'Human-readable address' },
+              accuracy: { type: 'number', example: 5, description: 'GPS accuracy in meters' },
+              altitude: { type: 'number', example: 100, description: 'Altitude in meters' },
+              speed: { type: 'number', example: 25, description: 'Speed in km/h' },
+              heading: { type: 'number', example: 180, description: 'Direction in degrees' }
             },
             required: ['lat', 'lng']
           },
@@ -72,7 +77,7 @@ import {
             example: 'active',
             description: 'Current team status'
           },
-          currentTask: { 
+          currentTaskId: { 
             type: 'string', 
             example: 'task-123',
             description: 'ID of current task being worked on'
@@ -89,6 +94,16 @@ import {
             enum: ['online', 'offline', 'poor'],
             example: 'online',
             description: 'Device connectivity status'
+          },
+          deviceId: {
+            type: 'string',
+            example: 'device-12345',
+            description: 'Unique device identifier'
+          },
+          appVersion: {
+            type: 'string',
+            example: '1.2.3',
+            description: 'App version being used'
           },
           metadata: { 
             type: 'object', 
@@ -114,11 +129,17 @@ import {
           lat: number;
           lng: number;
           address?: string;
+          accuracy?: number;
+          altitude?: number;
+          speed?: number;
+          heading?: number;
         };
         status?: 'active' | 'inactive' | 'break' | 'offline';
-        currentTask?: string;
+        currentTaskId?: string;
         batteryLevel?: number;
         connectivity?: 'online' | 'offline' | 'poor';
+        deviceId?: string;
+        appVersion?: string;
         metadata?: any;
       }
     ): Promise<any> {
@@ -147,11 +168,57 @@ import {
         }
   
         await this.validateBusinessApiKey(businessId, apiKey);
+
+        // Convert string status to enum
+        let status: TeamLocationStatus | undefined;
+        if (locationData.status) {
+          switch (locationData.status) {
+            case 'active':
+              status = TeamLocationStatus.ACTIVE;
+              break;
+            case 'inactive':
+              status = TeamLocationStatus.INACTIVE;
+              break;
+            case 'break':
+              status = TeamLocationStatus.BREAK;
+              break;
+            case 'offline':
+              status = TeamLocationStatus.OFFLINE;
+              break;
+            default:
+              throw new BadRequestException('Invalid status value');
+          }
+        }
+
+        // Convert string connectivity to enum
+        let connectivity: ConnectivityStatus | undefined;
+        if (locationData.connectivity) {
+          switch (locationData.connectivity) {
+            case 'online':
+              connectivity = ConnectivityStatus.ONLINE;
+              break;
+            case 'offline':
+              connectivity = ConnectivityStatus.OFFLINE;
+              break;
+            case 'poor':
+              connectivity = ConnectivityStatus.POOR;
+              break;
+            default:
+              throw new BadRequestException('Invalid connectivity value');
+          }
+        }
   
         const result = await this.teamLocationService.updateTeamLocation({
           businessId,
           teamId,
-          ...locationData
+          location: locationData.location,
+          status,
+          currentTaskId: locationData.currentTaskId,
+          batteryLevel: locationData.batteryLevel,
+          connectivity,
+          deviceId: locationData.deviceId,
+          appVersion: locationData.appVersion,
+          metadata: locationData.metadata
         });
   
         return result;
@@ -173,6 +240,7 @@ import {
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
     @ApiQuery({ name: 'status', required: false, description: 'Filter by team status' })
     @ApiQuery({ name: 'project', required: false, description: 'Filter by project name' })
+    @ApiQuery({ name: 'lastUpdatedSince', required: false, description: 'Filter by last update time (ISO string)' })
     @ApiResponse({ 
       status: 200, 
       description: 'Team locations retrieved successfully'
@@ -183,6 +251,7 @@ import {
       @Query('businessId') businessId: string,
       @Query('status') status?: string,
       @Query('project') project?: string,
+      @Query('lastUpdatedSince') lastUpdatedSince?: string,
       @Headers('business-x-api-key') apiKey?: string
     ): Promise<any> {
       try {
@@ -194,7 +263,8 @@ import {
   
         const filters = {
           status,
-          project
+          project,
+          lastUpdatedSince
         };
   
         const teamLocations = await this.teamLocationService.getTeamLocations(businessId, filters);
@@ -280,6 +350,12 @@ import {
             type: 'number', 
             example: 1,
             description: 'Number of tasks completed'
+          },
+          routeDate: {
+            type: 'string',
+            format: 'date',
+            example: '2024-01-15',
+            description: 'Date of the route (optional, defaults to today)'
           }
         },
         required: ['taskIds', 'currentTaskIndex', 'completedTasks']
@@ -300,6 +376,7 @@ import {
         taskIds: string[];
         currentTaskIndex: number;
         completedTasks: number;
+        routeDate?: string;
       }
     ): Promise<any> {
       try {
@@ -332,11 +409,19 @@ import {
         }
   
         await this.validateBusinessApiKey(businessId, apiKey);
+
+        // Parse route date if provided
+        const routeDate = progressData.routeDate ? new Date(progressData.routeDate) : undefined;
   
         const result = await this.teamLocationService.trackRouteProgress(
           businessId,
           teamId,
-          progressData
+          {
+            taskIds: progressData.taskIds,
+            currentTaskIndex: progressData.currentTaskIndex,
+            completedTasks: progressData.completedTasks,
+            routeDate
+          }
         );
   
         return result;
@@ -484,7 +569,7 @@ import {
             address: legacyData.address
           },
           status: legacyData.status,
-          currentTask: legacyData.currentTask,
+          currentTaskId: legacyData.currentTask, // Note: mapped from currentTask to currentTaskId
           batteryLevel: legacyData.batteryLevel,
           connectivity: legacyData.connectivity
         };
