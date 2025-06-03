@@ -348,6 +348,10 @@ import { Ticket, TicketSchema } from './schemas/ticket.schema';
 // SaaS Notifications
 import { SaasNotificationController } from './controllers/saas-notification.controller';
 
+// Route Optimization
+import { RouteOptimizationController } from './controllers/route-optimization.controller';
+import { RouteOptimizationService } from './services/route-optimization.service';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -581,6 +585,7 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     SaasNotificationController,
     BusinessSkillsController,
     BusinessGeneralController,
+    RouteOptimizationController,
   ],
   providers: [
     SnapfoodService,
@@ -692,6 +697,7 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
     TicketService,
     BusinessSkillsService,
     BusinessGeneralService,
+    RouteOptimizationService,
   ],
 })
 export class AppModule implements NestModule {
