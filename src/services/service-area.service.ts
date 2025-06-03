@@ -234,7 +234,6 @@ export class ServiceAreaService {
           manager: request.manager,
           teams: [],
           noOfWorkers: request.coverage.population,
-          serviceAreaData: true, // Flag to identify this as a service area
           ...request.metadata
         }
       });
@@ -366,8 +365,7 @@ export class ServiceAreaService {
       // Get real construction sites from database
       const constructionSites = await this.constructionSiteModel.find({
         businessId,
-        isDeleted: false,
-        'metadata.serviceAreaData': true // Only get sites that are service areas
+        isDeleted: false
       });
       
       if (constructionSites.length === 0) {
@@ -406,7 +404,6 @@ export class ServiceAreaService {
       const constructionSites = await this.constructionSiteModel.find({
         businessId,
         isDeleted: false,
-        'metadata.serviceAreaData': true
       });
 
       const activeSites = constructionSites.filter(site => site.status === 'active');
