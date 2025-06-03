@@ -87,9 +87,6 @@ export class FieldTask extends Document {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'ConstructionSite' })
   siteId?: string;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client' })
-  clientId?: string;
-
 
   @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'AppClient' })
   appClientId: string;
@@ -221,7 +218,6 @@ FieldTaskSchema.index({ taskId: 1 }, { unique: true });
 FieldTaskSchema.index({ appClientId: 1 });
 FieldTaskSchema.index({ projectId: 1 });
 FieldTaskSchema.index({ siteId: 1 });
-FieldTaskSchema.index({ clientId: 1 });
 FieldTaskSchema.index({ assignedTeamId: 1 });
 FieldTaskSchema.index({ assignedRouteId: 1 });
 FieldTaskSchema.index({ status: 1 });

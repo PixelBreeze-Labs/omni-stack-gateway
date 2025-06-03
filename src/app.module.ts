@@ -364,6 +364,14 @@ import { TeamLocationService } from './services/team-location.service';
 import { ServiceAreaController } from './controllers/service-area.controller';
 import { ServiceAreaService } from './services/service-area.service';
 
+// Route Analytics
+import { RouteAnalyticsController } from './controllers/route-analytics.controller';
+import { RouteAnalyticsService } from './services/route-analytics.service';
+
+// Weather Route
+import { WeatherRouteController } from './controllers/weather-route.controller';
+import { WeatherRouteService } from './services/weather-route.service';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -601,6 +609,8 @@ import { ServiceAreaService } from './services/service-area.service';
     FieldTaskController,
     TeamLocationController,
     ServiceAreaController,
+    RouteAnalyticsController,
+    WeatherRouteController,
   ],
   providers: [
     SnapfoodService,
@@ -716,6 +726,8 @@ import { ServiceAreaService } from './services/service-area.service';
     FieldTaskService,
     TeamLocationService,
     ServiceAreaService,
+    RouteAnalyticsService,
+    WeatherRouteService,
   ],
 })
 export class AppModule implements NestModule {
