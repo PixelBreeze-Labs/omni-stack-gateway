@@ -28,7 +28,7 @@ export class TaskAssignment extends Document {
   @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Business' })
   businessId: string;
 
-  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Client' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'AppClient' })
   clientId: string;
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
@@ -37,10 +37,21 @@ export class TaskAssignment extends Document {
   @Prop({ type: [MongooseSchema.Types.ObjectId], ref: 'User' })
   potentialAssignees: string[];
 
+  // Field Task Integration
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'FieldTask' })
+  fieldTaskId?: string;
+
+  @Prop({ type: Boolean, default: false })
+  isFromFieldTask: boolean;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'ConstructionSite' })
+  constructionSiteId?: string;
+
   @Prop({ type: Object, default: {} })
   externalIds: {
-      venueBoostTaskId?: string;
-      [key: string]: string;
+    venueBoostTaskId?: string;
+    legacyTaskId?: string;
+    [key: string]: string;
   };
 
   @Prop({ 
@@ -81,6 +92,9 @@ export class TaskAssignment extends Document {
   @Prop({ default: false })
   isDeleted: boolean;
 
+  @Prop({ type: Date })
+  deletedAt?: Date;
+
   /**
     * external_ids: A JSON object to store various external IDs.
     * Example:
@@ -101,3 +115,6 @@ TaskAssignmentSchema.index({ clientId: 1 });
 TaskAssignmentSchema.index({ assignedUserId: 1 });
 TaskAssignmentSchema.index({ status: 1 });
 TaskAssignmentSchema.index({ dueDate: 1 });
+TaskAssignmentSchema.index({ fieldTaskId: 1 });
+TaskAssignmentSchema.index({ constructionSiteId: 1 });
+TaskAssignmentSchema.index({ isFromFieldTask: 1 });

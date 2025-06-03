@@ -1,4 +1,4 @@
-// src/services/team-location.service.ts - REAL IMPLEMENTATION USING YOUR SCHEMAS
+// src/services/team-location.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';

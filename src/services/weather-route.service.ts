@@ -1,4 +1,4 @@
-// src/services/weather-route.service.ts - REAL IMPLEMENTATION USING YOUR WEATHER SERVICE
+// src/services/weather-route.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';

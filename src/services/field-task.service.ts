@@ -1,15 +1,16 @@
-// src/services/field-task.service.ts - REAL IMPLEMENTATION
+// src/services/field-task.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
 import { FieldTask, FieldTaskType, FieldTaskStatus, FieldTaskPriority } from '../schemas/field-task.schema';
+import { TaskAssignment, TaskStatus, TaskPriority } from '../schemas/task-assignment.schema';
 
 interface CreateFieldTaskRequest {
   businessId: string;
   appClientId: string;
   projectId?: string;
-  siteId?: string;
+  siteId?: string; // Construction Site ID
   serviceOrderId?: string;
   name: string;
   description?: string;
@@ -38,13 +39,6 @@ interface CreateFieldTaskRequest {
   equipmentRequired: string[];
   specialInstructions?: string;
   difficultyLevel?: number; // 1-5 scale
-  customerInfo: {
-    name: string;
-    email?: string;
-    phone?: string;
-    contactPreference: 'email' | 'phone' | 'sms';
-    specialRequests?: string;
-  };
   metadata?: any;
 }
 
@@ -53,6 +47,7 @@ interface UpdateFieldTaskRequest {
   description?: string;
   type?: FieldTaskType;
   priority?: FieldTaskPriority;
+  siteId?: string;
   location?: Partial<{
     latitude: number;
     longitude: number;
@@ -76,13 +71,6 @@ interface UpdateFieldTaskRequest {
   equipmentRequired?: string[];
   specialInstructions?: string;
   difficultyLevel?: number;
-  customerInfo?: Partial<{
-    name: string;
-    email: string;
-    phone: string;
-    contactPreference: 'email' | 'phone' | 'sms';
-    specialRequests: string;
-  }>;
   metadata?: any;
 }
 
@@ -93,14 +81,15 @@ export class FieldTaskService {
   constructor(
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+    @InjectModel(TaskAssignment.name) private taskAssignmentModel: Model<TaskAssignment>,
   ) {}
 
   // ============================================================================
-  // REAL TASK CRUD OPERATIONS USING YOUR SCHEMA
+  // REAL TASK CRUD OPERATIONS WITH TASK ASSIGNMENT INTEGRATION
   // ============================================================================
 
   /**
-   * Create a new field task using real FieldTask schema
+   * Create a new field task and corresponding task assignment
    */
   async createTask(request: CreateFieldTaskRequest): Promise<{ success: boolean; taskId: string; message: string }> {
     try {
@@ -120,7 +109,7 @@ export class FieldTaskService {
         description: request.description,
         businessId: request.businessId,
         projectId: request.projectId,
-        siteId: request.siteId,
+        siteId: request.siteId, // Construction Site ID
         appClientId: request.appClientId,
         serviceOrderId: request.serviceOrderId,
         type: request.type,
@@ -144,12 +133,14 @@ export class FieldTaskService {
         equipmentRequired: request.equipmentRequired,
         specialInstructions: request.specialInstructions,
         difficultyLevel: request.difficultyLevel,
-        customerInfo: request.customerInfo,
         metadata: request.metadata || {},
-        createdBy: business.adminUserId, // Use business admin as creator
+        createdBy: business.adminUserId,
       });
 
       await fieldTask.save();
+
+      // Create corresponding TaskAssignment
+      await this.createTaskAssignment(fieldTask);
 
       this.logger.log(`Created field task ${taskId} for business ${request.businessId}`);
 
@@ -166,7 +157,7 @@ export class FieldTaskService {
   }
 
   /**
-   * Update existing field task
+   * Update existing field task and sync with task assignment
    */
   async updateTask(
     businessId: string,
@@ -194,8 +185,6 @@ export class FieldTaskService {
             task.location = { ...task.location, ...updateData.location };
           } else if (key === 'timeWindow' && updateData.timeWindow) {
             task.timeWindow = { ...task.timeWindow, ...updateData.timeWindow };
-          } else if (key === 'customerInfo' && updateData.customerInfo) {
-            task.customerInfo = { ...task.customerInfo, ...updateData.customerInfo };
           } else if (key === 'metadata' && updateData.metadata) {
             task.metadata = { ...task.metadata, ...updateData.metadata };
           } else {
@@ -205,6 +194,9 @@ export class FieldTaskService {
       });
 
       await task.save();
+
+      // Update corresponding TaskAssignment
+      await this.updateTaskAssignment(task);
 
       this.logger.log(`Updated field task ${taskId} for business ${businessId}`);
 
@@ -220,7 +212,7 @@ export class FieldTaskService {
   }
 
   /**
-   * Delete a field task (soft delete)
+   * Delete a field task and corresponding task assignment (soft delete)
    */
   async deleteTask(businessId: string, taskId: string): Promise<{ success: boolean; message: string }> {
     try {
@@ -236,10 +228,13 @@ export class FieldTaskService {
         throw new NotFoundException('Task not found');
       }
 
-      // Soft delete
+      // Soft delete FieldTask
       task.isDeleted = true;
       task.deletedAt = new Date();
       await task.save();
+
+      // Soft delete corresponding TaskAssignment
+      await this.deleteTaskAssignment(task._id.toString());
 
       this.logger.log(`Deleted field task ${taskId} for business ${businessId}`);
 
@@ -369,6 +364,9 @@ export class FieldTaskService {
       task.status = FieldTaskStatus.ASSIGNED;
       await task.save();
 
+      // Update TaskAssignment
+      await this.updateTaskAssignment(task);
+
       this.logger.log(`Assigned task ${taskId} to team ${teamId} for business ${businessId}`);
 
       return {
@@ -388,7 +386,7 @@ export class FieldTaskService {
   async updateTaskStatus(
     businessId: string,
     taskId: string,
-    status: FieldTaskStatus
+    status: string | FieldTaskStatus
   ): Promise<{ success: boolean; message: string }> {
     try {
       await this.validateBusiness(businessId);
@@ -403,23 +401,26 @@ export class FieldTaskService {
         throw new NotFoundException('Task not found');
       }
 
+      // Validate and convert status
+      const validStatus = this.validateAndConvertStatus(status);
+
       const previousStatus = task.status;
-      task.status = status;
+      task.status = validStatus;
 
       // Set completion date if completed
-      if (status === FieldTaskStatus.COMPLETED && previousStatus !== FieldTaskStatus.COMPLETED) {
+      if (validStatus === FieldTaskStatus.COMPLETED && previousStatus !== FieldTaskStatus.COMPLETED) {
         task.completedAt = new Date();
       }
 
       // Set actual performance data if status changes
-      if (status === FieldTaskStatus.IN_PROGRESS && !task.actualPerformance?.startTime) {
+      if (validStatus === FieldTaskStatus.IN_PROGRESS && !task.actualPerformance?.startTime) {
         task.actualPerformance = {
           startTime: new Date(),
           delays: []
         };
       }
 
-      if (status === FieldTaskStatus.COMPLETED && task.actualPerformance?.startTime && !task.actualPerformance?.endTime) {
+      if (validStatus === FieldTaskStatus.COMPLETED && task.actualPerformance?.startTime && !task.actualPerformance?.endTime) {
         task.actualPerformance.endTime = new Date();
         task.actualPerformance.actualDuration = Math.round(
           (new Date().getTime() - task.actualPerformance.startTime.getTime()) / (1000 * 60)
@@ -428,11 +429,14 @@ export class FieldTaskService {
 
       await task.save();
 
-      this.logger.log(`Updated task ${taskId} status from ${previousStatus} to ${status} for business ${businessId}`);
+      // Update TaskAssignment status
+      await this.updateTaskAssignment(task);
+
+      this.logger.log(`Updated task ${taskId} status from ${previousStatus} to ${validStatus} for business ${businessId}`);
 
       return {
         success: true,
-        message: `Task status updated to ${status}`
+        message: `Task status updated to ${validStatus}`
       };
 
     } catch (error) {
@@ -579,8 +583,180 @@ export class FieldTaskService {
   }
 
   // ============================================================================
+  // TASK ASSIGNMENT INTEGRATION METHODS
+  // ============================================================================
+
+  /**
+   * Create TaskAssignment when FieldTask is created
+   */
+  private async createTaskAssignment(fieldTask: FieldTask): Promise<void> {
+    try {
+      const taskAssignment = new this.taskAssignmentModel({
+        title: fieldTask.name,
+        description: fieldTask.description,
+        businessId: fieldTask.businessId,
+        clientId: fieldTask.appClientId,
+        fieldTaskId: fieldTask._id,
+        isFromFieldTask: true,
+        constructionSiteId: fieldTask.siteId,
+        status: this.mapFieldTaskStatusToTaskStatus(fieldTask.status),
+        priority: this.mapFieldTaskPriorityToTaskPriority(fieldTask.priority),
+        dueDate: fieldTask.scheduledDate,
+        metadata: {
+          ...fieldTask.metadata,
+          estimatedDuration: fieldTask.estimatedDuration,
+          skillsRequired: fieldTask.skillsRequired,
+          equipmentRequired: fieldTask.equipmentRequired,
+          location: fieldTask.location
+        },
+        legacySync: {
+          needsSync: true,
+          syncStatus: 'pending'
+        }
+      });
+
+      await taskAssignment.save();
+      this.logger.log(`Created TaskAssignment for FieldTask ${fieldTask._id}`);
+    } catch (error) {
+      this.logger.error(`Error creating TaskAssignment: ${error.message}`, error.stack);
+      // Don't throw - we don't want to fail FieldTask creation
+    }
+  }
+
+  /**
+   * Update TaskAssignment when FieldTask is updated
+   */
+  private async updateTaskAssignment(fieldTask: FieldTask): Promise<void> {
+    try {
+      const taskAssignment = await this.taskAssignmentModel.findOne({
+        fieldTaskId: fieldTask._id,
+        isDeleted: false
+      });
+
+      if (taskAssignment) {
+        taskAssignment.title = fieldTask.name;
+        taskAssignment.description = fieldTask.description;
+        taskAssignment.constructionSiteId = fieldTask.siteId;
+        taskAssignment.status = this.mapFieldTaskStatusToTaskStatus(fieldTask.status);
+        taskAssignment.priority = this.mapFieldTaskPriorityToTaskPriority(fieldTask.priority);
+        taskAssignment.dueDate = fieldTask.scheduledDate;
+        
+        if (fieldTask.assignedAt) {
+          taskAssignment.assignedAt = fieldTask.assignedAt;
+        }
+        
+        if (fieldTask.completedAt) {
+          taskAssignment.completedAt = fieldTask.completedAt;
+        }
+
+        taskAssignment.metadata = {
+          ...taskAssignment.metadata,
+          ...fieldTask.metadata,
+          estimatedDuration: fieldTask.estimatedDuration,
+          skillsRequired: fieldTask.skillsRequired,
+          equipmentRequired: fieldTask.equipmentRequired,
+          location: fieldTask.location
+        };
+
+        // TODO: Mark for sync with VenueBoost
+
+        await taskAssignment.save();
+        this.logger.log(`Updated TaskAssignment for FieldTask ${fieldTask._id}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error updating TaskAssignment: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+   * Delete TaskAssignment when FieldTask is deleted
+   */
+  private async deleteTaskAssignment(fieldTaskId: string): Promise<void> {
+    try {
+      const taskAssignment = await this.taskAssignmentModel.findOne({
+        fieldTaskId: fieldTaskId,
+        isDeleted: false
+      });
+
+      if (taskAssignment) {
+        taskAssignment.isDeleted = true;
+        taskAssignment.deletedAt = new Date();
+        taskAssignment.status = TaskStatus.CANCELLED;
+        
+        // TODO: legacySync with VenueBoost
+        
+
+        await taskAssignment.save();
+        this.logger.log(`Deleted TaskAssignment for FieldTask ${fieldTaskId}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error deleting TaskAssignment: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+   * Map FieldTaskStatus to TaskStatus
+   */
+  private mapFieldTaskStatusToTaskStatus(fieldTaskStatus: FieldTaskStatus): TaskStatus {
+    const statusMap: { [key in FieldTaskStatus]: TaskStatus } = {
+      [FieldTaskStatus.PENDING]: TaskStatus.UNASSIGNED,
+      [FieldTaskStatus.ASSIGNED]: TaskStatus.ASSIGNED,
+      [FieldTaskStatus.IN_PROGRESS]: TaskStatus.IN_PROGRESS,
+      [FieldTaskStatus.ON_HOLD]: TaskStatus.ASSIGNED, // Keep as assigned but could be extended
+      [FieldTaskStatus.COMPLETED]: TaskStatus.COMPLETED,
+      [FieldTaskStatus.CANCELLED]: TaskStatus.CANCELLED,
+      [FieldTaskStatus.RESCHEDULED]: TaskStatus.ASSIGNED,
+    };
+
+    return statusMap[fieldTaskStatus] || TaskStatus.UNASSIGNED;
+  }
+
+  /**
+   * Map FieldTaskPriority to TaskPriority
+   */
+  private mapFieldTaskPriorityToTaskPriority(fieldTaskPriority: FieldTaskPriority): TaskPriority {
+    const priorityMap: { [key in FieldTaskPriority]: TaskPriority } = {
+      [FieldTaskPriority.LOW]: TaskPriority.LOW,
+      [FieldTaskPriority.MEDIUM]: TaskPriority.MEDIUM,
+      [FieldTaskPriority.HIGH]: TaskPriority.HIGH,
+      [FieldTaskPriority.URGENT]: TaskPriority.URGENT,
+      [FieldTaskPriority.EMERGENCY]: TaskPriority.URGENT,
+    };
+
+    return priorityMap[fieldTaskPriority] || TaskPriority.MEDIUM;
+  }
+
+  // ============================================================================
   // PRIVATE HELPER METHODS
   // ============================================================================
+
+  /**
+   * Validate and convert status string to FieldTaskStatus enum
+   */
+  private validateAndConvertStatus(status: string | FieldTaskStatus): FieldTaskStatus {
+    // If it's already the enum type, return it
+    if (Object.values(FieldTaskStatus).includes(status as FieldTaskStatus)) {
+      return status as FieldTaskStatus;
+    }
+
+    // Convert string to enum
+    const statusMap: { [key: string]: FieldTaskStatus } = {
+      'pending': FieldTaskStatus.PENDING,
+      'assigned': FieldTaskStatus.ASSIGNED,
+      'in_progress': FieldTaskStatus.IN_PROGRESS,
+      'on_hold': FieldTaskStatus.ON_HOLD,
+      'completed': FieldTaskStatus.COMPLETED,
+      'cancelled': FieldTaskStatus.CANCELLED,
+      'rescheduled': FieldTaskStatus.RESCHEDULED,
+    };
+
+    const convertedStatus = statusMap[status as string];
+    if (!convertedStatus) {
+      throw new BadRequestException(`Invalid status: ${status}. Valid statuses are: ${Object.values(FieldTaskStatus).join(', ')}`);
+    }
+
+    return convertedStatus;
+  }
 
   /**
    * Validate business exists
@@ -631,10 +807,6 @@ export class FieldTaskService {
 
     if (!data.estimatedDuration || data.estimatedDuration <= 0) {
       throw new BadRequestException('Valid estimated duration is required');
-    }
-
-    if (!data.customerInfo?.name?.trim()) {
-      throw new BadRequestException('Customer name is required');
     }
 
     // Validate coordinates are reasonable
