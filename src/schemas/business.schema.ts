@@ -18,6 +18,154 @@ export enum BusinessOperationType {
     HYBRID = 'hybrid'
 }
 
+export interface RouteAeraConfiguration {
+    name: string;
+    type: 'circle' | 'polygon';
+    coordinates: Array<{ lat: number; lng: number }>;
+    radius?: number; // for circle type, in meters
+    allowedTeams?: string[]; // team IDs that can service this area
+  }
+
+  export interface RoutePlanningConfiguration {
+    enabled: boolean;
+    defaultOptimizationParams: {
+      prioritizeTime: boolean;
+      prioritizeFuel: boolean;
+      prioritizeCustomerPreference: boolean;
+      maxRouteTime: number; // minutes
+      maxStopsPerRoute: number;
+      allowOvertime: boolean;
+      considerTraffic: boolean;
+      considerWeather: boolean;
+      skillMatching: boolean;
+      balanceWorkload: boolean;
+    };
+    integrations: {
+      googleMaps: { 
+        apiKey?: string; 
+        enabled: boolean;
+        geocodingEnabled: boolean;
+        directionsEnabled: boolean;
+        trafficEnabled: boolean;
+      };
+      weatherApi: { 
+        enabled: boolean;
+        considerInRouting: boolean;
+        delayThresholds: {
+          rain: number; // mm
+          snow: number; // cm
+          wind: number; // km/h
+          temperature: { min: number; max: number }; // celsius
+        };
+      };
+    };
+    workingHours: { 
+      start: string; // HH:MM
+      end: string;   // HH:MM
+      timezone: string;
+      allowEarlyStart: boolean;
+      allowLateFinish: boolean;
+    };
+    serviceRadius: number; // km - maximum distance from base
+    allowOvertimeRoutes: boolean;
+    maxDailyTasksPerTeam: number;
+    automaticOptimization: {
+      enabled: boolean;
+      scheduleTime: string; // HH:MM - when to run daily optimization
+      advanceDays: number; // how many days ahead to optimize
+    };
+    notifications: {
+      routeAssigned: boolean;
+      routeStarted: boolean;
+      taskCompleted: boolean;
+      delays: boolean;
+      weatherAlerts: boolean;
+    };
+    serviceAreas: RouteAeraConfiguration[];
+  }
+  
+  // Enhanced Team interface for route planning
+  export interface EnhancedTeam {
+    id: string;
+    name: string;
+    
+    // Enhanced location and tracking
+    currentLocation?: { 
+      lat: number; 
+      lng: number; 
+      timestamp: Date;
+      accuracy?: number; // meters
+      isManualUpdate?: boolean;
+    };
+    
+    // Working schedule
+    workingHours: { 
+      start: string; // HH:MM
+      end: string;   // HH:MM
+      timezone: string;
+      breakDuration?: number; // minutes
+      lunchBreak?: {
+        start: string; // HH:MM
+        end: string;   // HH:MM
+      };
+    };
+    
+    // Vehicle information for route planning
+    vehicleInfo: {
+      type: string; // 'van', 'truck', 'car', 'motorcycle', 'bicycle'
+      licensePlate?: string;
+      capacity: number; // maximum items/weight
+      fuelType: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
+      avgFuelConsumption: number; // L/100km or kWh/100km
+      maxRange: number; // km
+      currentFuelLevel?: number; // percentage
+      maintenanceStatus: 'good' | 'needs_service' | 'out_of_service';
+      gpsEnabled: boolean;
+    };
+    
+    // Service capabilities
+    serviceAreas: Array<{
+      name: string;
+      type: 'circle' | 'polygon';
+      coordinates: Array<{ lat: number; lng: number }>;
+      radius?: number; // for circle type, in meters
+      priority: number; // 1-5, higher = preferred
+    }>;
+    
+    skills: string[];
+    equipment: string[];
+    certifications: string[];
+    
+    // Team status and availability
+    isActive: boolean;
+    isAvailableForRouting: boolean;
+    maxDailyTasks: number;
+    maxRouteDistance: number; // km
+    
+    // Performance metrics
+    performanceMetrics: {
+      averageTasksPerDay: number;
+      onTimePerformance: number; // percentage
+      customerRating: number; // 1-5
+      fuelEfficiency: number; // actual vs target
+      lastPerformanceUpdate: Date;
+    };
+    
+    // Emergency and contact info
+    emergencyContact: {
+      name: string;
+      phone: string;
+      relationship: string;
+    };
+    
+    lastLocationUpdate?: Date;
+    
+    // Metadata and creation info
+    metadata: any;
+    createdAt?: Date;
+    updatedAt?: Date;
+  }
+
 export enum BusinessType {
     // Companies
     CORPORATION = 'corporation',
@@ -168,6 +316,9 @@ export class Business extends Document {
     })
     subCategory: BusinessSubCategory;
 
+    @Prop({ type: MongooseSchema.Types.Mixed })
+    routePlanningConfig: RoutePlanningConfiguration;
+
     @Prop({ required: true })
     email: string;
 
@@ -309,13 +460,130 @@ export class Business extends Document {
         }], 
         default: [] 
       })
-      teams: {
-        id: string;
-        name: string;
-        metadata: any;
-        createdAt?: Date;
-        updatedAt?: Date;
-      }[];
+      @Prop({ 
+    type: [{
+      id: { type: String, required: true },
+      name: { type: String, required: true },
+      
+      // Enhanced location and tracking
+      currentLocation: {
+        lat: { type: Number },
+        lng: { type: Number },
+        timestamp: { type: Date },
+        accuracy: { type: Number },
+        isManualUpdate: { type: Boolean, default: false }
+      },
+      
+      // Working schedule
+      workingHours: {
+        start: { type: String, required: true }, // HH:MM
+        end: { type: String, required: true },   // HH:MM
+        timezone: { type: String, required: true },
+        breakDuration: { type: Number, default: 30 }, // minutes
+        lunchBreak: {
+          start: { type: String }, // HH:MM
+          end: { type: String }     // HH:MM
+        }
+      },
+      
+      // Vehicle information
+      vehicleInfo: {
+        type: { type: String, required: true },
+        licensePlate: { type: String },
+        capacity: { type: Number, required: true },
+        fuelType: { 
+          type: String, 
+          enum: ['gasoline', 'diesel', 'electric', 'hybrid'],
+          required: true 
+        },
+        avgFuelConsumption: { type: Number, required: true },
+        maxRange: { type: Number, required: true },
+        currentFuelLevel: { type: Number },
+        maintenanceStatus: { 
+          type: String, 
+          enum: ['good', 'needs_service', 'out_of_service'],
+          default: 'good'
+        },
+        gpsEnabled: { type: Boolean, default: true }
+      },
+      
+      // Service capabilities
+      serviceAreas: [{
+        name: { type: String, required: true },
+        type: { type: String, enum: ['circle', 'polygon'], required: true },
+        coordinates: [{ 
+          lat: { type: Number, required: true }, 
+          lng: { type: Number, required: true } 
+        }],
+        radius: { type: Number },
+        priority: { type: Number, min: 1, max: 5, default: 3 }
+      }],
+      
+      skills: { type: [String], default: [] },
+      equipment: { type: [String], default: [] },
+      certifications: { type: [String], default: [] },
+      
+      // Team status
+      isActive: { type: Boolean, default: true },
+      isAvailableForRouting: { type: Boolean, default: true },
+      maxDailyTasks: { type: Number, default: 8 },
+      maxRouteDistance: { type: Number, default: 200 }, // km
+      
+      // Performance metrics
+      performanceMetrics: {
+        averageTasksPerDay: { type: Number, default: 0 },
+        onTimePerformance: { type: Number, default: 100 },
+        customerRating: { type: Number, default: 5 },
+        fuelEfficiency: { type: Number, default: 100 },
+        lastPerformanceUpdate: { type: Date, default: Date.now }
+      },
+      
+      // Emergency contact
+      emergencyContact: {
+        name: { type: String },
+        phone: { type: String },
+        relationship: { type: String }
+      },
+      
+      lastLocationUpdate: { type: Date },
+      metadata: { type: MongooseSchema.Types.Mixed, default: {} },
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }], 
+    default: [] 
+  })
+  teams: EnhancedTeam[];
+
+  // NEW: Route Planning Statistics and Caching
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  routePlanningStats: {
+    totalRoutesCreated: number;
+    totalTasksOptimized: number;
+    totalDistanceSaved: number; // km
+    totalTimeSaved: number; // hours
+    totalFuelSaved: number; // liters or kWh
+    averageOptimizationScore: number;
+    lastOptimizationDate: Date;
+    monthlyStats: Array<{
+      month: string; // YYYY-MM
+      routesCreated: number;
+      tasksCompleted: number;
+      distanceSaved: number;
+      timeSaved: number;
+      fuelSaved: number;
+    }>;
+  };
+
+  // NEW: Base Location for Distance Calculations
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  baseLocation: {
+    latitude: number;
+    longitude: number;
+    address: string;
+    name: string; // e.g., "Main Office", "Warehouse"
+    timezone: string;
+  };
+
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);
@@ -328,7 +596,13 @@ BusinessSchema.index({ subscriptionStatus: 1 });
 BusinessSchema.index({ industry: 1 });
 BusinessSchema.index({ subCategory: 1 });
 BusinessSchema.index({ 'skillRequirements.name': 1 });
-BusinessSchema.index({ 'teams.name': 1 }); // Add team name index
+BusinessSchema.index({ 'teams.name': 1 });
+BusinessSchema.index({ 'routePlanningConfig.enabled': 1 });
+BusinessSchema.index({ 'teams.isAvailableForRouting': 1 });
+BusinessSchema.index({ 'teams.currentLocation.lat': 1, 'teams.currentLocation.lng': 1 });
+BusinessSchema.index({ 'teams.skills': 1 });
+BusinessSchema.index({ 'teams.vehicleInfo.type': 1 });
+BusinessSchema.index({ 'baseLocation.latitude': 1, 'baseLocation.longitude': 1 });
 
 BusinessSchema.virtual('address', {
     ref: 'Address',
