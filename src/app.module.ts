@@ -356,6 +356,10 @@ import { RouteOptimizationService } from './services/route-optimization.service'
 import { FieldTaskController } from './controllers/field-task.controller';
 import { FieldTaskService } from './services/field-task.service';
 
+// Team Location
+import { TeamLocationController } from './controllers/team-location.controller';
+import { TeamLocationService } from './services/team-location.service';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -591,6 +595,7 @@ import { FieldTaskService } from './services/field-task.service';
     BusinessGeneralController,
     RouteOptimizationController,
     FieldTaskController,
+    TeamLocationController,
   ],
   providers: [
     SnapfoodService,
@@ -704,6 +709,7 @@ import { FieldTaskService } from './services/field-task.service';
     BusinessGeneralService,
     RouteOptimizationService,
     FieldTaskService,
+    TeamLocationService,
   ],
 })
 export class AppModule implements NestModule {
