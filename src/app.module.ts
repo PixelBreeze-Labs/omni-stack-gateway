@@ -99,6 +99,11 @@ import { BusinessClientMessage, BusinessClientMessageSchema } from './schemas/bu
 import { SkillAssessment, SkillAssessmentSchema } from './schemas/skill-assessment.schema';
 import { SkillTemplate, SkillTemplateSchema } from './schemas/skill-assessment.schema';
 import { SkillDevelopmentPlan, SkillDevelopmentPlanSchema } from './schemas/skill-assessment.schema';
+import { RouteOptimizationRequest, RouteOptimizationRequestSchema } from './schemas/route-optimization-request.schema';
+import { TeamLocation, TeamLocationSchema } from './schemas/team-location.schema';
+import { Route, RouteSchema } from './schemas/route.schema';
+import { FieldTask, FieldTaskSchema } from './schemas/field-task.schema';
+
 
 // Controller imports
 import { ReportsController } from './controllers/reports.controller';
@@ -462,6 +467,10 @@ import { SaasNotificationController } from './controllers/saas-notification.cont
       { name: SkillAssessment.name, schema: SkillAssessmentSchema },
       { name: SkillTemplate.name, schema: SkillTemplateSchema },
       { name: SkillDevelopmentPlan.name, schema: SkillDevelopmentPlanSchema },
+      { name: RouteOptimizationRequest.name, schema: RouteOptimizationRequestSchema },
+      { name: TeamLocation.name, schema: TeamLocationSchema },
+      { name: Route.name, schema: RouteSchema },
+      { name: FieldTask.name, schema: FieldTaskSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
