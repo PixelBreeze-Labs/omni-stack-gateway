@@ -372,6 +372,14 @@ import { RouteAnalyticsService } from './services/route-analytics.service';
 import { WeatherRouteController } from './controllers/weather-route.controller';
 import { WeatherRouteService } from './services/weather-route.service';
 
+// Google Maps
+import { GoogleMapsService } from './services/google-maps.service';
+
+// Route Progress Schema
+import { RouteProgress, RouteProgressSchema } from './schemas/route-progress.schema';
+import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availability.schema';
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -495,6 +503,8 @@ import { WeatherRouteService } from './services/weather-route.service';
       { name: TeamLocation.name, schema: TeamLocationSchema },
       { name: Route.name, schema: RouteSchema },
       { name: FieldTask.name, schema: FieldTaskSchema },
+      { name: RouteProgress.name, schema: RouteProgressSchema },
+      { name: TeamAvailability.name, schema: TeamAvailabilitySchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -728,6 +738,7 @@ import { WeatherRouteService } from './services/weather-route.service';
     ServiceAreaService,
     RouteAnalyticsService,
     WeatherRouteService,
+    GoogleMapsService,
   ],
 })
 export class AppModule implements NestModule {

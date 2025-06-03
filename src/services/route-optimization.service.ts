@@ -4,8 +4,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
+import { AppClient } from '../schemas/app-client.schema';
 import { FieldTaskService } from './field-task.service';
 import { WeatherService } from './weather.service';
+import { GoogleMapsService } from './google-maps.service';
 
 interface OptimizeRoutesRequest {
   businessId: string;
@@ -38,7 +40,12 @@ interface OptimizedRoute {
     location: { latitude: number; longitude: number; address: string };
     estimatedDuration: number;
     priority: string;
-    customerInfo: any;
+    customerInfo: {
+      name: string;
+      email?: string;
+      phone?: string;
+      type: string;
+    };
   }>;
   metrics: RouteMetrics;
   route: Array<{
@@ -61,6 +68,16 @@ interface RouteStats {
   teamsWithRoutes: number;
 }
 
+interface RouteValidation {
+  isValid: boolean;
+  violations: Array<{
+    type: 'time_window' | 'skill_mismatch' | 'capacity' | 'distance' | 'equipment';
+    message: string;
+    severity: 'warning' | 'error';
+  }>;
+  recommendations: string[];
+}
+
 @Injectable()
 export class RouteOptimizationService {
   private readonly logger = new Logger(RouteOptimizationService.name);
@@ -68,8 +85,10 @@ export class RouteOptimizationService {
   constructor(
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+    @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
     private readonly fieldTaskService: FieldTaskService,
     private readonly weatherService: WeatherService,
+    private readonly googleMapsService: GoogleMapsService,
   ) {}
 
   // ============================================================================
@@ -94,7 +113,7 @@ export class RouteOptimizationService {
           _id: { $in: request.taskIds },
           businessId: request.businessId,
           isDeleted: false
-        });
+        }).populate('appClientId');
       } else {
         // Get all tasks for the date
         tasks = await this.fieldTaskService.getTasksForRouting(
@@ -102,6 +121,9 @@ export class RouteOptimizationService {
           request.date,
           request.teamIds
         );
+        
+        // Populate customer info for all tasks
+        await this.fieldTaskModel.populate(tasks, { path: 'appClientId' });
       }
 
       if (tasks.length === 0) {
@@ -133,6 +155,211 @@ export class RouteOptimizationService {
 
     } catch (error) {
       this.logger.error(`Error optimizing routes: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Re-optimize existing route with optional additional tasks
+   */
+  async reoptimizeRoute(
+    businessId: string,
+    teamId: string,
+    additionalTaskIds?: string[]
+  ): Promise<OptimizedRoute> {
+    try {
+      const business = await this.validateBusiness(businessId);
+
+      // Get current tasks assigned to this team
+      const currentTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: teamId,
+        status: { $in: [FieldTaskStatus.ASSIGNED, FieldTaskStatus.IN_PROGRESS] },
+        isDeleted: false
+      }).populate('appClientId');
+
+      // Get additional tasks if provided
+      let additionalTasks: FieldTask[] = [];
+      if (additionalTaskIds && additionalTaskIds.length > 0) {
+        additionalTasks = await this.fieldTaskModel.find({
+          _id: { $in: additionalTaskIds },
+          businessId,
+          isDeleted: false,
+          assignedTeamId: { $exists: false } // Only unassigned tasks
+        }).populate('appClientId');
+      }
+
+      const allTasks = [...currentTasks, ...additionalTasks];
+      
+      if (allTasks.length === 0) {
+        throw new BadRequestException('No tasks found for re-optimization');
+      }
+
+      // Get the specific team
+      const team = business.teams?.find((t: any) => t.id === teamId);
+      if (!team) {
+        throw new NotFoundException('Team not found');
+      }
+
+      // Re-optimize the tasks for this team
+      const optimizedTasks = this.optimizeTaskOrder(allTasks, team);
+      const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks);
+
+      const reoptimizedRoute: OptimizedRoute = {
+        teamId,
+        teamName: team.name,
+        tasks: optimizedTasks.map(task => ({
+          taskId: task._id.toString(),
+          name: task.name,
+          location: {
+            latitude: task.location.latitude,
+            longitude: task.location.longitude,
+            address: task.location.address
+          },
+          estimatedDuration: task.estimatedDuration,
+          priority: task.priority,
+          customerInfo: this.extractCustomerInfo(task)
+        })),
+        metrics,
+        route: this.generateRouteSequence(optimizedTasks)
+      };
+
+      // Update task assignments
+      if (additionalTasks.length > 0) {
+        await this.fieldTaskModel.updateMany(
+          { _id: { $in: additionalTaskIds } },
+          { 
+            assignedTeamId: teamId,
+            assignedAt: new Date(),
+            status: FieldTaskStatus.ASSIGNED
+          }
+        );
+      }
+
+      this.logger.log(`Re-optimized route for team ${teamId} with ${allTasks.length} tasks`);
+      return reoptimizedRoute;
+
+    } catch (error) {
+      this.logger.error(`Error re-optimizing route: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Validate route constraints
+   */
+  async validateRouteConstraints(
+    businessId: string,
+    teamId: string,
+    taskIds: string[]
+  ): Promise<RouteValidation> {
+    try {
+      const business = await this.validateBusiness(businessId);
+      
+      const team = business.teams?.find((t: any) => t.id === teamId);
+      if (!team) {
+        throw new NotFoundException('Team not found');
+      }
+
+      const tasks = await this.fieldTaskModel.find({
+        _id: { $in: taskIds },
+        businessId,
+        isDeleted: false
+      });
+
+      if (tasks.length !== taskIds.length) {
+        throw new BadRequestException('Some tasks not found');
+      }
+
+      const violations: RouteValidation['violations'] = [];
+      const recommendations: string[] = [];
+
+      // Check team capacity
+      if (tasks.length > team.maxDailyTasks) {
+        violations.push({
+          type: 'capacity',
+          message: `Team can handle max ${team.maxDailyTasks} tasks, but ${tasks.length} assigned`,
+          severity: 'error'
+        });
+      }
+
+      // Check skill requirements
+      const teamSkills = team.skills || [];
+      for (const task of tasks) {
+        const missingSkills = (task.skillsRequired || []).filter(skill => !teamSkills.includes(skill));
+        if (missingSkills.length > 0) {
+          violations.push({
+            type: 'skill_mismatch',
+            message: `Task "${task.name}" requires skills: ${missingSkills.join(', ')}`,
+            severity: 'error'
+          });
+        }
+      }
+
+      // Check equipment requirements
+      const teamEquipment = team.equipment || [];
+      for (const task of tasks) {
+        const missingEquipment = (task.equipmentRequired || []).filter(eq => !teamEquipment.includes(eq));
+        if (missingEquipment.length > 0) {
+          violations.push({
+            type: 'equipment',
+            message: `Task "${task.name}" requires equipment: ${missingEquipment.join(', ')}`,
+            severity: 'error'
+          });
+        }
+      }
+
+      // Check total route distance
+      const coordinates = tasks.map(task => ({
+        lat: task.location.latitude,
+        lng: task.location.longitude
+      }));
+      const { totalDistance } = this.calculateRealDistances(coordinates);
+      
+      if (totalDistance > team.maxRouteDistance) {
+        violations.push({
+          type: 'distance',
+          message: `Route distance (${Math.round(totalDistance)}km) exceeds team limit (${team.maxRouteDistance}km)`,
+          severity: 'warning'
+        });
+      }
+
+      // Check time windows
+      const totalDuration = tasks.reduce((sum, task) => sum + task.estimatedDuration, 0);
+      const workingHours = team.workingHours;
+      const maxWorkingMinutes = this.calculateWorkingMinutes(workingHours.start, workingHours.end);
+      
+      if (totalDuration > maxWorkingMinutes) {
+        violations.push({
+          type: 'time_window',
+          message: `Estimated work time (${Math.round(totalDuration/60)}h) exceeds working hours`,
+          severity: 'warning'
+        });
+      }
+
+      // Generate recommendations
+      if (violations.length === 0) {
+        recommendations.push('Route assignment looks good!');
+      } else {
+        if (violations.some(v => v.type === 'skill_mismatch')) {
+          recommendations.push('Consider training team members or reassigning tasks requiring specific skills');
+        }
+        if (violations.some(v => v.type === 'capacity')) {
+          recommendations.push('Split tasks across multiple teams or days');
+        }
+        if (violations.some(v => v.type === 'distance')) {
+          recommendations.push('Consider regional task assignments to reduce travel distance');
+        }
+      }
+
+      return {
+        isValid: violations.filter(v => v.severity === 'error').length === 0,
+        violations,
+        recommendations
+      };
+
+    } catch (error) {
+      this.logger.error(`Error validating route constraints: ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -316,7 +543,7 @@ export class RouteOptimizationService {
         scheduledDate: { $gte: startOfDay, $lte: endOfDay },
         assignedTeamId: { $exists: true },
         isDeleted: false
-      }).populate('assignedTeamId');
+      }).populate('appClientId');
 
       // Group tasks by team
       const tasksByTeam = new Map();
@@ -352,7 +579,7 @@ export class RouteOptimizationService {
             },
             estimatedDuration: task.estimatedDuration,
             priority: task.priority,
-            customerInfo: task.customerInfo
+            customerInfo: this.extractCustomerInfo(task)
           })),
           metrics,
           route: this.generateRouteSequence(teamTasks)
@@ -435,6 +662,40 @@ export class RouteOptimizationService {
   // ============================================================================
 
   /**
+   * Extract customer info from populated task
+   */
+  private extractCustomerInfo(task: any): { name: string; email?: string; phone?: string; type: string } {
+    if (task.appClientId && typeof task.appClientId === 'object') {
+      const client = task.appClientId;
+      return {
+        name: client.name || 'Unknown Customer',
+        email: client.email,
+        phone: client.phone,
+        type: client.type || 'individual'
+      };
+    }
+    
+    // Fallback if not populated
+    return {
+      name: 'Unknown Customer',
+      type: 'individual'
+    };
+  }
+
+  /**
+   * Calculate working minutes from time strings
+   */
+  private calculateWorkingMinutes(startTime: string, endTime: string): number {
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+    
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    
+    return endMinutes - startMinutes;
+  }
+
+  /**
    * Validate business exists
    */
   private async validateBusiness(businessId: string): Promise<any> {
@@ -490,7 +751,7 @@ export class RouteOptimizationService {
       while (teamTasks.length < maxTasks && taskIndex < sortedTasks.length) {
         const task = sortedTasks[taskIndex];
         
-        // Check if team has required skills
+        // Check if team can handle task
         if (this.teamCanHandleTask(team, task)) {
           teamTasks.push(task);
         }
@@ -515,7 +776,7 @@ export class RouteOptimizationService {
             },
             estimatedDuration: task.estimatedDuration,
             priority: task.priority,
-            customerInfo: task.customerInfo
+            customerInfo: this.extractCustomerInfo(task)
           })),
           metrics,
           route: this.generateRouteSequence(optimizedTasks)
@@ -765,5 +1026,144 @@ export class RouteOptimizationService {
     const unoptimizedDistance = optimizedDistance * 1.3;
     const distanceSaved = unoptimizedDistance - optimizedDistance;
     return this.calculateFuelCost(distanceSaved);
+  }
+
+  /**
+   * Enhanced distance calculation using Google Maps API if available
+   */
+  private async calculateDistanceWithGoogleMaps(
+    business: any,
+    origin: { lat: number; lng: number },
+    destination: { lat: number; lng: number }
+  ): Promise<{ distance: number; duration: number }> {
+    // Check if Google Maps is configured and enabled
+    const googleMapsConfig = business.routePlanningConfig?.integrations?.googleMaps;
+    
+    if (!googleMapsConfig?.enabled || !googleMapsConfig?.apiKey || !googleMapsConfig?.directionsEnabled) {
+      // Fallback to Haversine calculation
+      const distance = this.calculateDistance(origin, destination);
+      const duration = Math.round((distance / 50) * 60); // Assume 50 km/h average speed
+      return { distance, duration };
+    }
+
+    try {
+      // Use Google Maps API for more accurate distance and duration
+      const result = await this.googleMapsService.getDirections(
+        origin,
+        destination,
+        googleMapsConfig,
+        {
+          departureTime: new Date(), // Current time for traffic data
+          avoidTolls: false,
+          avoidHighways: false
+        }
+      );
+
+      return {
+        distance: result.distance,
+        duration: result.duration
+      };
+    } catch (error) {
+      this.logger.warn(`Google Maps API call failed, using fallback: ${error.message}`);
+      const distance = this.calculateDistance(origin, destination);
+      const duration = Math.round((distance / 50) * 60);
+      return { distance, duration };
+    }
+  }
+
+  /**
+   * Enhanced route optimization using Google Maps for real distances
+   */
+  private async optimizeRouteWithGoogleMaps(
+    business: any,
+    tasks: FieldTask[],
+    team: any
+  ): Promise<FieldTask[]> {
+    const googleMapsConfig = business.routePlanningConfig?.integrations?.googleMaps;
+    
+    if (!googleMapsConfig?.enabled || !googleMapsConfig?.apiKey || tasks.length <= 1) {
+      // Fallback to simple nearest neighbor algorithm
+      return this.optimizeTaskOrder(tasks, team);
+    }
+
+    try {
+      // Prepare waypoints for Google Maps optimization
+      const startLocation = team.currentLocation || business.baseLocation || {
+        lat: tasks[0].location.latitude,
+        lng: tasks[0].location.longitude
+      };
+
+      const waypoints = tasks.slice(1).map(task => ({
+        lat: task.location.latitude,
+        lng: task.location.longitude
+      }));
+
+      const destination = {
+        lat: tasks[0].location.latitude,
+        lng: tasks[0].location.longitude
+      };
+
+      // Get optimized route from Google Maps
+      const optimizedRoute = await this.googleMapsService.getOptimizedRoute(
+        startLocation,
+        destination,
+        waypoints,
+        googleMapsConfig
+      );
+
+      // Reorder tasks based on Google Maps optimization
+      const optimizedTasks = [tasks[0]]; // First task stays first
+      optimizedRoute.optimizedOrder.forEach(index => {
+        optimizedTasks.push(tasks[index + 1]); // +1 because we excluded first task from waypoints
+      });
+
+      this.logger.log(`Google Maps optimized route: saved ${optimizedRoute.distance}km total distance`);
+      return optimizedTasks;
+
+    } catch (error) {
+      this.logger.warn(`Google Maps route optimization failed, using fallback: ${error.message}`);
+      return this.optimizeTaskOrder(tasks, team);
+    }
+  }
+
+  /**
+   * Enhanced distance calculation for route metrics using Google Maps
+   */
+  private async calculateRealDistancesEnhanced(
+    business: any,
+    coordinates: Array<{ lat: number; lng: number }>
+  ): Promise<{ totalDistance: number; totalTravelTime: number }> {
+    if (coordinates.length <= 1) {
+      return { totalDistance: 0, totalTravelTime: 0 };
+    }
+
+    const googleMapsConfig = business.routePlanningConfig?.integrations?.googleMaps;
+    
+    if (!googleMapsConfig?.enabled || !googleMapsConfig?.apiKey) {
+      // Fallback to Haversine calculation
+      return this.calculateRealDistances(coordinates);
+    }
+
+    try {
+      let totalDistance = 0;
+      let totalTravelTime = 0;
+
+      // Calculate distance between consecutive points using Google Maps
+      for (let i = 0; i < coordinates.length - 1; i++) {
+        const result = await this.calculateDistanceWithGoogleMaps(
+          business,
+          coordinates[i],
+          coordinates[i + 1]
+        );
+        totalDistance += result.distance;
+        totalTravelTime += result.duration;
+      }
+
+      return { totalDistance, totalTravelTime };
+
+    } catch (error) {
+      this.logger.warn(`Enhanced distance calculation failed, using fallback: ${error.message}`);
+      return this.calculateRealDistances(coordinates);
+    }
   }
 }

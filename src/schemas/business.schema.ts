@@ -18,13 +18,6 @@ export enum BusinessOperationType {
     HYBRID = 'hybrid'
 }
 
-export interface RouteAeraConfiguration {
-    name: string;
-    type: 'circle' | 'polygon';
-    coordinates: Array<{ lat: number; lng: number }>;
-    radius?: number; // for circle type, in meters
-    allowedTeams?: string[]; // team IDs that can service this area
-  }
 
   export interface RoutePlanningConfiguration {
     enabled: boolean;
@@ -81,7 +74,6 @@ export interface RouteAeraConfiguration {
       delays: boolean;
       weatherAlerts: boolean;
     };
-    serviceAreas: RouteAeraConfiguration[];
   }
   
   // Enhanced Team interface for route planning
