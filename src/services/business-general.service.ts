@@ -3,7 +3,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { StaffProfile } from '../schemas/staff-profile.schema';
-import { Business } from '../schemas/business.schema';
+import { Business, EnhancedTeam } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
 import {
   SimpleStaffProfileResponse,
@@ -422,7 +422,7 @@ export class BusinessGeneralService {
       };
 
       // Add team to business
-      business.teams.push(newTeam);
+      business.teams.push(newTeam as EnhancedTeam);
       business.markModified('teams');
       await business.save();
 
