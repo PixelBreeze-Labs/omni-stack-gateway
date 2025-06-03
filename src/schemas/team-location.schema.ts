@@ -1,131 +1,130 @@
 // src/schemas/team-location.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema } from 'mongoose';
+import { Document } from 'mongoose';
 
 export enum TeamLocationStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
   BREAK = 'break',
+  OFFLINE = 'offline'
+}
+
+export enum ConnectivityStatus {
+  ONLINE = 'online',
   OFFLINE = 'offline',
-  EMERGENCY = 'emergency'
+  POOR = 'poor'
 }
 
-export interface LocationHistory {
-  timestamp: Date;
-  latitude: number;
-  longitude: number;
-  accuracy?: number; // meters
-  speed?: number; // km/h
-  heading?: number; // degrees
-}
-
-export interface GeofenceArea {
-  name: string;
-  type: 'circle' | 'polygon';
-  coordinates: Array<{ lat: number; lng: number }>;
-  radius?: number; // for circle type, in meters
-}
-
-@Schema({ timestamps: true })
+@Schema({
+  timestamps: true,
+  collection: 'team_locations'
+})
 export class TeamLocation extends Document {
-  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Business' })
+  @Prop({ required: true, index: true })
   businessId: string;
 
-  @Prop({ required: true })
-  teamId: string; // Reference to team in Business.teams
+  @Prop({ required: true, index: true })
+  teamId: string;
 
-  @Prop({ type: Object })
-  currentLocation: {
+  @Prop({ required: true })
+  teamName: string;
+
+  @Prop({
+    type: {
+      latitude: { type: Number, required: true },
+      longitude: { type: Number, required: true },
+      address: { type: String },
+      accuracy: { type: Number }, // GPS accuracy in meters
+      altitude: { type: Number },
+      speed: { type: Number }, // Speed in km/h
+      heading: { type: Number } // Direction in degrees
+    },
+    required: true
+  })
+  location: {
     latitude: number;
     longitude: number;
-    accuracy?: number; // meters
-    timestamp: Date;
     address?: string;
-    isManualUpdate?: boolean;
+    accuracy?: number;
+    altitude?: number;
+    speed?: number;
+    heading?: number;
   };
 
-  @Prop({ 
-    type: String, 
-    enum: TeamLocationStatus, 
-    default: TeamLocationStatus.OFFLINE 
-  })
+  @Prop({ enum: TeamLocationStatus, default: TeamLocationStatus.ACTIVE })
   status: TeamLocationStatus;
+
+  @Prop({ enum: ConnectivityStatus, default: ConnectivityStatus.ONLINE })
+  connectivity: ConnectivityStatus;
 
   @Prop()
   currentTaskId?: string;
 
-  @Prop()
-  currentRouteId?: string;
-
-  @Prop({ type: Number }) // percentage
+  @Prop({ min: 0, max: 100 })
   batteryLevel?: number;
 
-  @Prop({ 
-    type: String, 
-    enum: ['online', 'offline', 'poor'], 
-    default: 'offline' 
+  @Prop()
+  deviceId?: string;
+
+  @Prop()
+  appVersion?: string;
+
+  @Prop({ type: Date, default: Date.now })
+  lastLocationUpdate: Date;
+
+  @Prop({ type: Date })
+  statusChangedAt?: Date;
+
+  @Prop({
+    type: {
+      checkInTime: Date,
+      breakStartTime: Date,
+      shiftStartTime: Date,
+      expectedShiftEnd: Date
+    }
   })
-  connectivity: string;
+  workingHours?: {
+    checkInTime?: Date;
+    breakStartTime?: Date;
+    shiftStartTime?: Date;
+    expectedShiftEnd?: Date;
+  };
+
+  @Prop({
+    type: [{
+      timestamp: { type: Date, required: true },
+      latitude: { type: Number, required: true },
+      longitude: { type: Number, required: true },
+      accuracy: { type: Number }
+    }]
+  })
+  locationHistory: Array<{
+    timestamp: Date;
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  }>;
+
+  @Prop({ type: Object })
+  metadata?: Record<string, any>;
+
+  @Prop({ default: false })
+  isDeleted: boolean;
+
+  @Prop({ type: Date })
+  deletedAt?: Date;
 
   @Prop()
-  lastActivity?: Date;
-
-  @Prop({ type: [Object], default: [] })
-  locationHistory: LocationHistory[];
-
-  @Prop({ type: [Object], default: [] })
-  serviceAreas: GeofenceArea[];
-
-  @Prop({ type: Object })
-  workingHours: {
-    start: string; // HH:MM
-    end: string;   // HH:MM
-    timezone: string;
-    breakDuration: number; // minutes
-    lunchStart?: string; // HH:MM
-    lunchEnd?: string;   // HH:MM
-  };
-
-  @Prop({ type: Object })
-  vehicleInfo: {
-    type: string;
-    licensePlate?: string;
-    capacity: number;
-    fuelType: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
-    avgFuelConsumption: number; // L/100km or kWh/100km
-    maxRange: number; // km
-    currentFuelLevel?: number; // percentage
-  };
-
-  @Prop({ type: [String], default: [] })
-  skills: string[];
-
-  @Prop({ type: [String], default: [] })
-  equipment: string[];
-
-  @Prop({ type: Boolean, default: true })
-  isActive: boolean;
+  createdBy: string;
 
   @Prop()
-  lastLocationUpdate?: Date;
-
-  @Prop({ type: Object })
-  emergencyContact: {
-    name: string;
-    phone: string;
-    relationship: string;
-  };
-
-  @Prop({ type: MongooseSchema.Types.Mixed })
-  metadata: Record<string, any>;
+  updatedBy?: string;
 }
 
 export const TeamLocationSchema = SchemaFactory.createForClass(TeamLocation);
 
-// Add indexes
-TeamLocationSchema.index({ businessId: 1, teamId: 1 }, { unique: true });
-TeamLocationSchema.index({ 'currentLocation.latitude': 1, 'currentLocation.longitude': 1 });
-TeamLocationSchema.index({ status: 1 });
-TeamLocationSchema.index({ lastLocationUpdate: 1 });
-TeamLocationSchema.index({ currentRouteId: 1 });
-TeamLocationSchema.index({ currentTaskId: 1 });
+// Create indexes for performance
+TeamLocationSchema.index({ businessId: 1, teamId: 1 });
+TeamLocationSchema.index({ businessId: 1, status: 1 });
+TeamLocationSchema.index({ lastLocationUpdate: -1 });
+TeamLocationSchema.index({ 'location.latitude': 1, 'location.longitude': 1 });

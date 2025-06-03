@@ -3,103 +3,76 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
+import { FieldTask, FieldTaskType, FieldTaskStatus, FieldTaskPriority } from '../schemas/field-task.schema';
+import { TaskAssignment, TaskStatus, TaskPriority } from '../schemas/task-assignment.schema';
 
 interface CreateFieldTaskRequest {
   businessId: string;
+  appClientId: string;
+  projectId?: string;
+  siteId?: string; // Construction Site ID
+  serviceOrderId?: string;
   name: string;
   description?: string;
-  type: 'installation' | 'maintenance' | 'inspection' | 'delivery' | 'pickup';
-  priority: 'high' | 'medium' | 'low';
+  type: FieldTaskType;
+  priority: FieldTaskPriority;
   location: {
+    latitude: number;
+    longitude: number;
     address: string;
-    coordinates: { lat: number; lng: number };
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
     accessInstructions?: string;
+    parkingNotes?: string;
   };
-  schedule: {
-    scheduledDate: Date;
-    timeWindow: { start: string; end: string; isFlexible?: boolean };
-    estimatedDuration: number; // in minutes
+  scheduledDate: Date;
+  timeWindow: {
+    start: string; // HH:MM format
+    end: string;   // HH:MM format
+    isFlexible: boolean;
+    preferredTime?: string;
   };
-  requirements: {
-    skillsRequired?: string[];
-    equipmentRequired?: string[];
-  };
-  customer?: {
-    name: string;
-    email?: string;
-    phone?: string;
-    contactPreference?: 'email' | 'phone' | 'sms';
-  };
+  estimatedDuration: number; // in minutes
+  skillsRequired: string[];
+  equipmentRequired: string[];
+  specialInstructions?: string;
+  difficultyLevel?: number; // 1-5 scale
   metadata?: any;
 }
 
 interface UpdateFieldTaskRequest {
   name?: string;
   description?: string;
-  type?: 'installation' | 'maintenance' | 'inspection' | 'delivery' | 'pickup';
-  priority?: 'high' | 'medium' | 'low';
-  location?: {
-    address?: string;
-    coordinates?: { lat: number; lng: number };
-    accessInstructions?: string;
-  };
-  schedule?: {
-    scheduledDate?: Date;
-    timeWindow?: { start: string; end: string; isFlexible?: boolean };
-    estimatedDuration?: number;
-  };
-  requirements?: {
-    skillsRequired?: string[];
-    equipmentRequired?: string[];
-  };
-  customer?: {
-    name?: string;
-    email?: string;
-    phone?: string;
-    contactPreference?: 'email' | 'phone' | 'sms';
-  };
+  type?: FieldTaskType;
+  priority?: FieldTaskPriority;
+  siteId?: string;
+  location?: Partial<{
+    latitude: number;
+    longitude: number;
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    accessInstructions: string;
+    parkingNotes: string;
+  }>;
+  scheduledDate?: Date;
+  timeWindow?: Partial<{
+    start: string;
+    end: string;
+    isFlexible: boolean;
+    preferredTime: string;
+  }>;
+  estimatedDuration?: number;
+  skillsRequired?: string[];
+  equipmentRequired?: string[];
+  specialInstructions?: string;
+  difficultyLevel?: number;
   metadata?: any;
 }
-
-interface FieldTask {
-  id: string;
-  businessId: string;
-  name: string;
-  description?: string;
-  type: string;
-  priority: string;
-  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
-  location: any;
-  schedule: any;
-  requirements: any;
-  customer?: any;
-  assignedTeam?: string;
-  assignedDate?: Date;
-  completedDate?: Date;
-  metadata?: any;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/**
- * TODO: FUTURE IMPROVEMENTS FOR FIELD TASK MANAGEMENT
- * 
- * Current Implementation: Basic task CRUD operations with business validation
- * 
- * Planned Enhancements:
- * - Integration with existing TaskAssignment schema for unified task management
- * - Real-time task status synchronization across teams
- * - Customer notification system integration (email/SMS)
- * - Photo/document attachment support for task completion
- * - Recurring task scheduling and template management
- * - Integration with calendar systems for automatic scheduling
- * - Mobile app synchronization for offline task access
- * - Advanced filtering and search capabilities
- * - Task dependency management (prerequisite tasks)
- * - Integration with inventory management for equipment tracking
- * - Performance analytics and task completion reporting
- * - Integration with customer feedback and rating systems
- */
 
 @Injectable()
 export class FieldTaskService {
@@ -107,14 +80,16 @@ export class FieldTaskService {
 
   constructor(
     @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+    @InjectModel(TaskAssignment.name) private taskAssignmentModel: Model<TaskAssignment>,
   ) {}
 
   // ============================================================================
-  // TASK CRUD OPERATIONS
+  // REAL TASK CRUD OPERATIONS WITH TASK ASSIGNMENT INTEGRATION
   // ============================================================================
 
   /**
-   * Create a new field task
+   * Create a new field task and corresponding task assignment
    */
   async createTask(request: CreateFieldTaskRequest): Promise<{ success: boolean; taskId: string; message: string }> {
     try {
@@ -124,52 +99,54 @@ export class FieldTaskService {
       // Validate required fields
       this.validateTaskData(request);
 
-      // Generate task ID
-      const taskId = new Date().getTime().toString();
-      const now = new Date();
+      // Generate unique task ID
+      const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      // Create task object
-      const newTask = {
-        id: taskId,
-        businessId: request.businessId,
+      // Create real FieldTask document
+      const fieldTask = new this.fieldTaskModel({
+        taskId,
         name: request.name,
         description: request.description,
+        businessId: request.businessId,
+        projectId: request.projectId,
+        siteId: request.siteId, // Construction Site ID
+        appClientId: request.appClientId,
+        serviceOrderId: request.serviceOrderId,
         type: request.type,
         priority: request.priority,
-        status: 'pending',
+        status: FieldTaskStatus.PENDING,
         location: {
+          latitude: request.location.latitude,
+          longitude: request.location.longitude,
           address: request.location.address,
-          coordinates: request.location.coordinates,
-          accessInstructions: request.location.accessInstructions
+          city: request.location.city,
+          state: request.location.state,
+          zipCode: request.location.zipCode,
+          country: request.location.country,
+          accessInstructions: request.location.accessInstructions,
+          parkingNotes: request.location.parkingNotes,
         },
-        schedule: {
-          scheduledDate: request.schedule.scheduledDate,
-          timeWindow: request.schedule.timeWindow,
-          estimatedDuration: request.schedule.estimatedDuration
-        },
-        requirements: {
-          skillsRequired: request.requirements.skillsRequired || [],
-          equipmentRequired: request.requirements.equipmentRequired || []
-        },
-        customer: request.customer,
+        scheduledDate: request.scheduledDate,
+        timeWindow: request.timeWindow,
+        estimatedDuration: request.estimatedDuration,
+        skillsRequired: request.skillsRequired,
+        equipmentRequired: request.equipmentRequired,
+        specialInstructions: request.specialInstructions,
+        difficultyLevel: request.difficultyLevel,
         metadata: request.metadata || {},
-        createdAt: now,
-        updatedAt: now
-      };
+        createdBy: business.adminUserId,
+      });
 
-      // Store in business metadata (for now - TODO: create dedicated schema)
-      if (!business.metadata) business.metadata = {};
-      if (!business.metadata.fieldTasks) business.metadata.fieldTasks = [];
-      
-      business.metadata.fieldTasks.push(newTask);
-      business.markModified('metadata');
-      await business.save();
+      await fieldTask.save();
+
+      // Create corresponding TaskAssignment
+      await this.createTaskAssignment(fieldTask);
 
       this.logger.log(`Created field task ${taskId} for business ${request.businessId}`);
 
       return {
         success: true,
-        taskId,
+        taskId: fieldTask._id.toString(),
         message: `Task '${request.name}' created successfully`
       };
 
@@ -180,7 +157,7 @@ export class FieldTaskService {
   }
 
   /**
-   * Update an existing field task
+   * Update existing field task and sync with task assignment
    */
   async updateTask(
     businessId: string,
@@ -188,48 +165,38 @@ export class FieldTaskService {
     updateData: UpdateFieldTaskRequest
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const business = await this.validateBusiness(businessId);
+      await this.validateBusiness(businessId);
 
-      // Find task in business metadata
-      const tasks = business.metadata?.fieldTasks || [];
-      const taskIndex = tasks.findIndex((task: any) => task.id === taskId);
+      // Find and update the task
+      const task = await this.fieldTaskModel.findOne({
+        _id: taskId,
+        businessId,
+        isDeleted: false
+      });
 
-      if (taskIndex === -1) {
+      if (!task) {
         throw new NotFoundException('Task not found');
       }
 
-      const task = tasks[taskIndex];
+      // Update fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] !== undefined) {
+          if (key === 'location' && updateData.location) {
+            task.location = { ...task.location, ...updateData.location };
+          } else if (key === 'timeWindow' && updateData.timeWindow) {
+            task.timeWindow = { ...task.timeWindow, ...updateData.timeWindow };
+          } else if (key === 'metadata' && updateData.metadata) {
+            task.metadata = { ...task.metadata, ...updateData.metadata };
+          } else {
+            task[key] = updateData[key];
+          }
+        }
+      });
 
-      // Update task fields
-      if (updateData.name !== undefined) task.name = updateData.name;
-      if (updateData.description !== undefined) task.description = updateData.description;
-      if (updateData.type !== undefined) task.type = updateData.type;
-      if (updateData.priority !== undefined) task.priority = updateData.priority;
-      
-      if (updateData.location) {
-        task.location = { ...task.location, ...updateData.location };
-      }
-      
-      if (updateData.schedule) {
-        task.schedule = { ...task.schedule, ...updateData.schedule };
-      }
-      
-      if (updateData.requirements) {
-        task.requirements = { ...task.requirements, ...updateData.requirements };
-      }
-      
-      if (updateData.customer) {
-        task.customer = { ...task.customer, ...updateData.customer };
-      }
-      
-      if (updateData.metadata) {
-        task.metadata = { ...task.metadata, ...updateData.metadata };
-      }
+      await task.save();
 
-      task.updatedAt = new Date();
-
-      business.markModified('metadata');
-      await business.save();
+      // Update corresponding TaskAssignment
+      await this.updateTaskAssignment(task);
 
       this.logger.log(`Updated field task ${taskId} for business ${businessId}`);
 
@@ -245,31 +212,35 @@ export class FieldTaskService {
   }
 
   /**
-   * Delete a field task
+   * Delete a field task and corresponding task assignment (soft delete)
    */
   async deleteTask(businessId: string, taskId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const business = await this.validateBusiness(businessId);
+      await this.validateBusiness(businessId);
 
-      // Find and remove task
-      const tasks = business.metadata?.fieldTasks || [];
-      const taskIndex = tasks.findIndex((task: any) => task.id === taskId);
+      const task = await this.fieldTaskModel.findOne({
+        _id: taskId,
+        businessId,
+        isDeleted: false
+      });
 
-      if (taskIndex === -1) {
+      if (!task) {
         throw new NotFoundException('Task not found');
       }
 
-      const taskName = tasks[taskIndex].name;
-      tasks.splice(taskIndex, 1);
+      // Soft delete FieldTask
+      task.isDeleted = true;
+      task.deletedAt = new Date();
+      await task.save();
 
-      business.markModified('metadata');
-      await business.save();
+      // Soft delete corresponding TaskAssignment
+      await this.deleteTaskAssignment(task._id.toString());
 
       this.logger.log(`Deleted field task ${taskId} for business ${businessId}`);
 
       return {
         success: true,
-        message: `Task '${taskName}' deleted successfully`
+        message: `Task '${task.name}' deleted successfully`
       };
 
     } catch (error) {
@@ -279,7 +250,7 @@ export class FieldTaskService {
   }
 
   /**
-   * Get field tasks with filters
+   * Get field tasks with real database queries and filters
    */
   async getTasks(
     businessId: string,
@@ -289,49 +260,65 @@ export class FieldTaskService {
       priority?: string;
       assignedTeam?: string;
       date?: string;
+      projectId?: string;
+      siteId?: string;
     }
   ): Promise<{ tasks: FieldTask[]; total: number }> {
     try {
-      const business = await this.validateBusiness(businessId);
+      await this.validateBusiness(businessId);
 
-      let tasks = business.metadata?.fieldTasks || [];
+      // Build query
+      const query: any = {
+        businessId,
+        isDeleted: false
+      };
 
       // Apply filters
       if (filters?.status && filters.status !== 'all') {
-        tasks = tasks.filter((task: any) => task.status === filters.status);
+        query.status = filters.status;
       }
       
       if (filters?.type && filters.type !== 'all') {
-        tasks = tasks.filter((task: any) => task.type === filters.type);
+        query.type = filters.type;
       }
       
       if (filters?.priority && filters.priority !== 'all') {
-        tasks = tasks.filter((task: any) => task.priority === filters.priority);
+        query.priority = filters.priority;
       }
       
       if (filters?.assignedTeam && filters.assignedTeam !== 'all') {
-        tasks = tasks.filter((task: any) => task.assignedTeam === filters.assignedTeam);
+        query.assignedTeamId = filters.assignedTeam;
+      }
+
+      if (filters?.projectId) {
+        query.projectId = filters.projectId;
+      }
+
+      if (filters?.siteId) {
+        query.siteId = filters.siteId;
       }
       
       if (filters?.date) {
-        const filterDate = new Date(filters.date).toISOString().split('T')[0];
-        tasks = tasks.filter((task: any) => {
-          const taskDate = new Date(task.schedule.scheduledDate).toISOString().split('T')[0];
-          return taskDate === filterDate;
-        });
+        const startOfDay = new Date(filters.date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(filters.date);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        query.scheduledDate = {
+          $gte: startOfDay,
+          $lte: endOfDay
+        };
       }
 
-      // Sort by scheduled date and priority
-      tasks.sort((a: any, b: any) => {
-        const dateA = new Date(a.schedule.scheduledDate);
-        const dateB = new Date(b.schedule.scheduledDate);
-        if (dateA.getTime() !== dateB.getTime()) {
-          return dateA.getTime() - dateB.getTime();
-        }
-        // Secondary sort by priority
-        const priorityOrder = { high: 3, medium: 2, low: 1 };
-        return priorityOrder[b.priority as keyof typeof priorityOrder] - priorityOrder[a.priority as keyof typeof priorityOrder];
-      });
+      // Execute query with sorting
+      const tasks = await this.fieldTaskModel
+        .find(query)
+        .sort({ 
+          scheduledDate: 1, 
+          priority: -1, // High priority first
+          createdAt: -1 
+        })
+        .exec();
 
       return {
         tasks,
@@ -362,20 +349,23 @@ export class FieldTaskService {
       }
 
       // Find and update task
-      const tasks = business.metadata?.fieldTasks || [];
-      const task = tasks.find((t: any) => t.id === taskId);
+      const task = await this.fieldTaskModel.findOne({
+        _id: taskId,
+        businessId,
+        isDeleted: false
+      });
 
       if (!task) {
         throw new NotFoundException('Task not found');
       }
 
-      task.assignedTeam = teamId;
-      task.assignedDate = new Date();
-      task.status = 'assigned';
-      task.updatedAt = new Date();
+      task.assignedTeamId = teamId;
+      task.assignedAt = new Date();
+      task.status = FieldTaskStatus.ASSIGNED;
+      await task.save();
 
-      business.markModified('metadata');
-      await business.save();
+      // Update TaskAssignment
+      await this.updateTaskAssignment(task);
 
       this.logger.log(`Assigned task ${taskId} to team ${teamId} for business ${businessId}`);
 
@@ -396,36 +386,57 @@ export class FieldTaskService {
   async updateTaskStatus(
     businessId: string,
     taskId: string,
-    status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
+    status: string | FieldTaskStatus
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const business = await this.validateBusiness(businessId);
+      await this.validateBusiness(businessId);
 
-      // Find and update task
-      const tasks = business.metadata?.fieldTasks || [];
-      const task = tasks.find((t: any) => t.id === taskId);
+      const task = await this.fieldTaskModel.findOne({
+        _id: taskId,
+        businessId,
+        isDeleted: false
+      });
 
       if (!task) {
         throw new NotFoundException('Task not found');
       }
 
+      // Validate and convert status
+      const validStatus = this.validateAndConvertStatus(status);
+
       const previousStatus = task.status;
-      task.status = status;
-      task.updatedAt = new Date();
+      task.status = validStatus;
 
       // Set completion date if completed
-      if (status === 'completed' && previousStatus !== 'completed') {
-        task.completedDate = new Date();
+      if (validStatus === FieldTaskStatus.COMPLETED && previousStatus !== FieldTaskStatus.COMPLETED) {
+        task.completedAt = new Date();
       }
 
-      business.markModified('metadata');
-      await business.save();
+      // Set actual performance data if status changes
+      if (validStatus === FieldTaskStatus.IN_PROGRESS && !task.actualPerformance?.startTime) {
+        task.actualPerformance = {
+          startTime: new Date(),
+          delays: []
+        };
+      }
 
-      this.logger.log(`Updated task ${taskId} status from ${previousStatus} to ${status} for business ${businessId}`);
+      if (validStatus === FieldTaskStatus.COMPLETED && task.actualPerformance?.startTime && !task.actualPerformance?.endTime) {
+        task.actualPerformance.endTime = new Date();
+        task.actualPerformance.actualDuration = Math.round(
+          (new Date().getTime() - task.actualPerformance.startTime.getTime()) / (1000 * 60)
+        );
+      }
+
+      await task.save();
+
+      // Update TaskAssignment status
+      await this.updateTaskAssignment(task);
+
+      this.logger.log(`Updated task ${taskId} status from ${previousStatus} to ${validStatus} for business ${businessId}`);
 
       return {
         success: true,
-        message: `Task status updated to ${status}`
+        message: `Task status updated to ${validStatus}`
       };
 
     } catch (error) {
@@ -435,7 +446,7 @@ export class FieldTaskService {
   }
 
   /**
-   * Get tasks by date range
+   * Get tasks by date range using real database query
    */
   async getTasksByDateRange(
     businessId: string,
@@ -443,23 +454,23 @@ export class FieldTaskService {
     endDate: string
   ): Promise<{ tasks: FieldTask[]; total: number }> {
     try {
-      const business = await this.validateBusiness(businessId);
+      await this.validateBusiness(businessId);
 
-      let tasks = business.metadata?.fieldTasks || [];
-
-      // Filter by date range
       const start = new Date(startDate);
       const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999); // Include full end date
 
-      tasks = tasks.filter((task: any) => {
-        const taskDate = new Date(task.schedule.scheduledDate);
-        return taskDate >= start && taskDate <= end;
-      });
-
-      // Sort by scheduled date
-      tasks.sort((a: any, b: any) => {
-        return new Date(a.schedule.scheduledDate).getTime() - new Date(b.schedule.scheduledDate).getTime();
-      });
+      const tasks = await this.fieldTaskModel
+        .find({
+          businessId,
+          isDeleted: false,
+          scheduledDate: {
+            $gte: start,
+            $lte: end
+          }
+        })
+        .sort({ scheduledDate: 1, priority: -1 })
+        .exec();
 
       return {
         tasks,
@@ -472,9 +483,280 @@ export class FieldTaskService {
     }
   }
 
+  /**
+   * Get tasks for route optimization (return tasks that need routing)
+   */
+  async getTasksForRouting(
+    businessId: string,
+    date: string,
+    teamIds?: string[]
+  ): Promise<FieldTask[]> {
+    try {
+      await this.validateBusiness(businessId);
+
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const query: any = {
+        businessId,
+        isDeleted: false,
+        scheduledDate: {
+          $gte: startOfDay,
+          $lte: endOfDay
+        },
+        status: { $in: [FieldTaskStatus.PENDING, FieldTaskStatus.ASSIGNED] }
+      };
+
+      if (teamIds && teamIds.length > 0) {
+        query.$or = [
+          { assignedTeamId: { $in: teamIds } },
+          { assignedTeamId: { $exists: false } }
+        ];
+      }
+
+      const tasks = await this.fieldTaskModel
+        .find(query)
+        .sort({ priority: -1, scheduledDate: 1 })
+        .exec();
+
+      return tasks;
+
+    } catch (error) {
+      this.logger.error(`Error getting tasks for routing: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Get task analytics/statistics
+   */
+  async getTaskStatistics(businessId: string, timeframe: string = '30d'): Promise<any> {
+    try {
+      await this.validateBusiness(businessId);
+
+      const days = parseInt(timeframe.replace('d', '')) || 30;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const pipeline = [
+        {
+          $match: {
+            businessId,
+            isDeleted: false,
+            createdAt: { $gte: startDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalTasks: { $sum: 1 },
+            completedTasks: { $sum: { $cond: [{ $eq: ['$status', FieldTaskStatus.COMPLETED] }, 1, 0] } },
+            pendingTasks: { $sum: { $cond: [{ $eq: ['$status', FieldTaskStatus.PENDING] }, 1, 0] } },
+            inProgressTasks: { $sum: { $cond: [{ $eq: ['$status', FieldTaskStatus.IN_PROGRESS] }, 1, 0] } },
+            avgEstimatedDuration: { $avg: '$estimatedDuration' },
+            highPriorityTasks: { $sum: { $cond: [{ $eq: ['$priority', FieldTaskPriority.HIGH] }, 1, 0] } },
+          }
+        }
+      ];
+
+      const result = await this.fieldTaskModel.aggregate(pipeline);
+      const stats = result[0] || {
+        totalTasks: 0,
+        completedTasks: 0,
+        pendingTasks: 0,
+        inProgressTasks: 0,
+        avgEstimatedDuration: 0,
+        highPriorityTasks: 0,
+      };
+
+      // Calculate completion rate
+      stats.completionRate = stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0;
+
+      return stats;
+
+    } catch (error) {
+      this.logger.error(`Error getting task statistics: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // TASK ASSIGNMENT INTEGRATION METHODS
+  // ============================================================================
+
+  /**
+   * Create TaskAssignment when FieldTask is created
+   */
+  private async createTaskAssignment(fieldTask: FieldTask): Promise<void> {
+    try {
+      const taskAssignment = new this.taskAssignmentModel({
+        title: fieldTask.name,
+        description: fieldTask.description,
+        businessId: fieldTask.businessId,
+        clientId: fieldTask.appClientId,
+        fieldTaskId: fieldTask._id,
+        isFromFieldTask: true,
+        constructionSiteId: fieldTask.siteId,
+        status: this.mapFieldTaskStatusToTaskStatus(fieldTask.status),
+        priority: this.mapFieldTaskPriorityToTaskPriority(fieldTask.priority),
+        dueDate: fieldTask.scheduledDate,
+        metadata: {
+          ...fieldTask.metadata,
+          estimatedDuration: fieldTask.estimatedDuration,
+          skillsRequired: fieldTask.skillsRequired,
+          equipmentRequired: fieldTask.equipmentRequired,
+          location: fieldTask.location
+        },
+        legacySync: {
+          needsSync: true,
+          syncStatus: 'pending'
+        }
+      });
+
+      await taskAssignment.save();
+      this.logger.log(`Created TaskAssignment for FieldTask ${fieldTask._id}`);
+    } catch (error) {
+      this.logger.error(`Error creating TaskAssignment: ${error.message}`, error.stack);
+      // Don't throw - we don't want to fail FieldTask creation
+    }
+  }
+
+  /**
+   * Update TaskAssignment when FieldTask is updated
+   */
+  private async updateTaskAssignment(fieldTask: FieldTask): Promise<void> {
+    try {
+      const taskAssignment = await this.taskAssignmentModel.findOne({
+        fieldTaskId: fieldTask._id,
+        isDeleted: false
+      });
+
+      if (taskAssignment) {
+        taskAssignment.title = fieldTask.name;
+        taskAssignment.description = fieldTask.description;
+        taskAssignment.constructionSiteId = fieldTask.siteId;
+        taskAssignment.status = this.mapFieldTaskStatusToTaskStatus(fieldTask.status);
+        taskAssignment.priority = this.mapFieldTaskPriorityToTaskPriority(fieldTask.priority);
+        taskAssignment.dueDate = fieldTask.scheduledDate;
+        
+        if (fieldTask.assignedAt) {
+          taskAssignment.assignedAt = fieldTask.assignedAt;
+        }
+        
+        if (fieldTask.completedAt) {
+          taskAssignment.completedAt = fieldTask.completedAt;
+        }
+
+        taskAssignment.metadata = {
+          ...taskAssignment.metadata,
+          ...fieldTask.metadata,
+          estimatedDuration: fieldTask.estimatedDuration,
+          skillsRequired: fieldTask.skillsRequired,
+          equipmentRequired: fieldTask.equipmentRequired,
+          location: fieldTask.location
+        };
+
+        // TODO: Mark for sync with VenueBoost
+
+        await taskAssignment.save();
+        this.logger.log(`Updated TaskAssignment for FieldTask ${fieldTask._id}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error updating TaskAssignment: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+   * Delete TaskAssignment when FieldTask is deleted
+   */
+  private async deleteTaskAssignment(fieldTaskId: string): Promise<void> {
+    try {
+      const taskAssignment = await this.taskAssignmentModel.findOne({
+        fieldTaskId: fieldTaskId,
+        isDeleted: false
+      });
+
+      if (taskAssignment) {
+        taskAssignment.isDeleted = true;
+        taskAssignment.deletedAt = new Date();
+        taskAssignment.status = TaskStatus.CANCELLED;
+        
+        // TODO: legacySync with VenueBoost
+        
+
+        await taskAssignment.save();
+        this.logger.log(`Deleted TaskAssignment for FieldTask ${fieldTaskId}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error deleting TaskAssignment: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+   * Map FieldTaskStatus to TaskStatus
+   */
+  private mapFieldTaskStatusToTaskStatus(fieldTaskStatus: FieldTaskStatus): TaskStatus {
+    const statusMap: { [key in FieldTaskStatus]: TaskStatus } = {
+      [FieldTaskStatus.PENDING]: TaskStatus.UNASSIGNED,
+      [FieldTaskStatus.ASSIGNED]: TaskStatus.ASSIGNED,
+      [FieldTaskStatus.IN_PROGRESS]: TaskStatus.IN_PROGRESS,
+      [FieldTaskStatus.ON_HOLD]: TaskStatus.ASSIGNED, // Keep as assigned but could be extended
+      [FieldTaskStatus.COMPLETED]: TaskStatus.COMPLETED,
+      [FieldTaskStatus.CANCELLED]: TaskStatus.CANCELLED,
+      [FieldTaskStatus.RESCHEDULED]: TaskStatus.ASSIGNED,
+    };
+
+    return statusMap[fieldTaskStatus] || TaskStatus.UNASSIGNED;
+  }
+
+  /**
+   * Map FieldTaskPriority to TaskPriority
+   */
+  private mapFieldTaskPriorityToTaskPriority(fieldTaskPriority: FieldTaskPriority): TaskPriority {
+    const priorityMap: { [key in FieldTaskPriority]: TaskPriority } = {
+      [FieldTaskPriority.LOW]: TaskPriority.LOW,
+      [FieldTaskPriority.MEDIUM]: TaskPriority.MEDIUM,
+      [FieldTaskPriority.HIGH]: TaskPriority.HIGH,
+      [FieldTaskPriority.URGENT]: TaskPriority.URGENT,
+      [FieldTaskPriority.EMERGENCY]: TaskPriority.URGENT,
+    };
+
+    return priorityMap[fieldTaskPriority] || TaskPriority.MEDIUM;
+  }
+
   // ============================================================================
   // PRIVATE HELPER METHODS
   // ============================================================================
+
+  /**
+   * Validate and convert status string to FieldTaskStatus enum
+   */
+  private validateAndConvertStatus(status: string | FieldTaskStatus): FieldTaskStatus {
+    // If it's already the enum type, return it
+    if (Object.values(FieldTaskStatus).includes(status as FieldTaskStatus)) {
+      return status as FieldTaskStatus;
+    }
+
+    // Convert string to enum
+    const statusMap: { [key: string]: FieldTaskStatus } = {
+      'pending': FieldTaskStatus.PENDING,
+      'assigned': FieldTaskStatus.ASSIGNED,
+      'in_progress': FieldTaskStatus.IN_PROGRESS,
+      'on_hold': FieldTaskStatus.ON_HOLD,
+      'completed': FieldTaskStatus.COMPLETED,
+      'cancelled': FieldTaskStatus.CANCELLED,
+      'rescheduled': FieldTaskStatus.RESCHEDULED,
+    };
+
+    const convertedStatus = statusMap[status as string];
+    if (!convertedStatus) {
+      throw new BadRequestException(`Invalid status: ${status}. Valid statuses are: ${Object.values(FieldTaskStatus).join(', ')}`);
+    }
+
+    return convertedStatus;
+  }
 
   /**
    * Validate business exists
@@ -503,35 +785,39 @@ export class FieldTaskService {
       throw new BadRequestException('Task priority is required');
     }
 
+    if (!data.appClientId) {
+      throw new BadRequestException('App Client ID is required');
+    }
+
     if (!data.location?.address?.trim()) {
       throw new BadRequestException('Task address is required');
     }
 
-    if (!data.location?.coordinates?.lat || !data.location?.coordinates?.lng) {
+    if (!data.location?.latitude || !data.location?.longitude) {
       throw new BadRequestException('Task coordinates are required');
     }
 
-    if (!data.schedule?.scheduledDate) {
+    if (!data.scheduledDate) {
       throw new BadRequestException('Scheduled date is required');
     }
 
-    if (!data.schedule?.timeWindow?.start || !data.schedule?.timeWindow?.end) {
+    if (!data.timeWindow?.start || !data.timeWindow?.end) {
       throw new BadRequestException('Time window is required');
     }
 
-    if (!data.schedule?.estimatedDuration || data.schedule.estimatedDuration <= 0) {
+    if (!data.estimatedDuration || data.estimatedDuration <= 0) {
       throw new BadRequestException('Valid estimated duration is required');
     }
 
     // Validate coordinates are reasonable
-    const { lat, lng } = data.location.coordinates;
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    const { latitude, longitude } = data.location;
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
       throw new BadRequestException('Invalid coordinates provided');
     }
 
     // Validate time window
-    const startTime = data.schedule.timeWindow.start;
-    const endTime = data.schedule.timeWindow.end;
+    const startTime = data.timeWindow.start;
+    const endTime = data.timeWindow.end;
     if (startTime >= endTime) {
       throw new BadRequestException('End time must be after start time');
     }

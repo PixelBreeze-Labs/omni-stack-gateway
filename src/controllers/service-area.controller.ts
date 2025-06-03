@@ -12,7 +12,7 @@ import {
     Logger, 
     InternalServerErrorException,
     BadRequestException,
-    Body
+    Body,
   } from '@nestjs/common';
   import { 
     ApiTags, 
@@ -25,6 +25,11 @@ import {
   } from '@nestjs/swagger';
   import { ServiceAreaService } from '../services/service-area.service';
   import { BusinessService } from '../services/business.service';
+  import { FieldTaskService } from '../services/field-task.service';
+  import { InjectModel } from '@nestjs/mongoose';
+  import { Model } from 'mongoose';
+  import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
+  import { ConstructionSite } from '../schemas/construction-site.schema';
   
   @ApiTags('Service Area Management')
   @Controller('business/service-areas')
@@ -38,7 +43,10 @@ import {
   
     constructor(
       private readonly serviceAreaService: ServiceAreaService,
-      private readonly businessService: BusinessService
+      private readonly businessService: BusinessService,
+      private readonly fieldTaskService: FieldTaskService,
+      @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+      @InjectModel(ConstructionSite.name) private constructionSiteModel: Model<ConstructionSite>,
     ) {}
   
     // ============================================================================
@@ -501,21 +509,29 @@ import {
         const filters = { region };
         const serviceAreas = await this.serviceAreaService.getServiceAreas(businessId, filters);
   
-        // Format performance data
-        const performance = serviceAreas.map(area => ({
-          areaId: area.id,
-          name: area.name,
-          region: area.region,
-          status: area.status,
-          priority: area.priority,
-          metrics: area.metrics,
-          coverage: area.coverage,
-          teamsCount: area.teams_count,
-          efficiency: this.calculateEfficiency(area.metrics),
-          trend: this.calculateTrend(area, timeframe || '30d')
-        }));
+        // Calculate real performance data with trends
+        const performance = await Promise.all(
+          serviceAreas.map(async (area) => {
+            const trend = await this.calculateRealTrend(area.id, businessId, timeframe || '30d');
+            const historicalMetrics = await this.getHistoricalMetrics(area.id, businessId, timeframe || '30d');
+            
+            return {
+              areaId: area.id,
+              name: area.name,
+              region: area.region,
+              status: area.status,
+              priority: area.priority,
+              metrics: area.metrics,
+              coverage: area.coverage,
+              teamsCount: area.teams_count,
+              efficiency: this.calculateEfficiency(area.metrics),
+              trend,
+              historicalData: historicalMetrics
+            };
+          })
+        );
   
-        // Calculate regional summaries
+        // Calculate regional summaries using real data
         const regions = [...new Set(serviceAreas.map(area => area.region))];
         const regionalSummary = regions.map(regionName => {
           const regionAreas = serviceAreas.filter(area => area.region === regionName);
@@ -525,8 +541,10 @@ import {
             activeAreas: regionAreas.filter(area => area.status === 'active').length,
             totalCustomers: regionAreas.reduce((sum, area) => sum + area.metrics.active_customers, 0),
             totalRevenue: regionAreas.reduce((sum, area) => sum + area.metrics.monthly_revenue, 0),
-            avgSatisfaction: Math.round(regionAreas.reduce((sum, area) => sum + area.metrics.satisfaction_score, 0) / regionAreas.length),
-            avgResponseTime: Math.round(regionAreas.reduce((sum, area) => sum + area.metrics.response_time, 0) / regionAreas.length)
+            avgSatisfaction: regionAreas.length > 0 ? 
+              Math.round(regionAreas.reduce((sum, area) => sum + area.metrics.satisfaction_score, 0) / regionAreas.length) : 0,
+            avgResponseTime: regionAreas.length > 0 ?
+              Math.round(regionAreas.reduce((sum, area) => sum + area.metrics.response_time, 0) / regionAreas.length) : 0
           };
         });
   
@@ -539,7 +557,8 @@ import {
             totalAreas: serviceAreas.length,
             totalCustomers: serviceAreas.reduce((sum, area) => sum + area.metrics.active_customers, 0),
             totalRevenue: serviceAreas.reduce((sum, area) => sum + area.metrics.monthly_revenue, 0),
-            avgEfficiency: Math.round(performance.reduce((sum, area) => sum + area.efficiency, 0) / performance.length)
+            avgEfficiency: performance.length > 0 ? 
+              Math.round(performance.reduce((sum, area) => sum + area.efficiency, 0) / performance.length) : 0
           }
         };
   
@@ -597,7 +616,7 @@ import {
     }
   
     // ============================================================================
-    // PRIVATE HELPER METHODS
+    // PRIVATE HELPER METHODS - REAL DATA CALCULATIONS
     // ============================================================================
   
     /**
@@ -629,14 +648,169 @@ import {
     }
   
     /**
-     * Calculate trend for a service area (mock implementation)
+     * Calculate real trend for a service area using historical data
      */
-    private calculateTrend(area: any, timeframe: string): string {
-      // Mock trend calculation - in real implementation, this would use historical data
-      const efficiency = this.calculateEfficiency(area.metrics);
-      
-      if (efficiency >= 85) return 'improving';
-      if (efficiency >= 70) return 'stable';
-      return 'declining';
+    private async calculateRealTrend(areaId: string, businessId: string, timeframe: string): Promise<string> {
+      try {
+        const days = parseInt(timeframe.replace('d', '')) || 30;
+        const currentPeriodStart = new Date();
+        currentPeriodStart.setDate(currentPeriodStart.getDate() - days);
+        
+        const previousPeriodStart = new Date();
+        previousPeriodStart.setDate(previousPeriodStart.getDate() - (days * 2));
+        const previousPeriodEnd = new Date();
+        previousPeriodEnd.setDate(previousPeriodEnd.getDate() - days);
+  
+        // Get current period metrics
+        const currentTasks = await this.fieldTaskModel.find({
+          businessId,
+          siteId: areaId,
+          scheduledDate: { $gte: currentPeriodStart },
+          isDeleted: false
+        });
+  
+        // Get previous period metrics
+        const previousTasks = await this.fieldTaskModel.find({
+          businessId,
+          siteId: areaId,
+          scheduledDate: { $gte: previousPeriodStart, $lte: previousPeriodEnd },
+          isDeleted: false
+        });
+  
+        if (previousTasks.length === 0) {
+          return 'stable'; // Not enough historical data
+        }
+  
+        // Calculate completion rates
+        const currentCompletionRate = currentTasks.length > 0 ? 
+          (currentTasks.filter(t => t.status === FieldTaskStatus.COMPLETED).length / currentTasks.length) * 100 : 0;
+        
+        const previousCompletionRate = previousTasks.length > 0 ?
+          (previousTasks.filter(t => t.status === FieldTaskStatus.COMPLETED).length / previousTasks.length) * 100 : 0;
+  
+        // Calculate satisfaction trends
+        const currentCompletedTasks = currentTasks.filter(t => t.status === FieldTaskStatus.COMPLETED && t.clientSignoff?.satisfactionRating);
+        const previousCompletedTasks = previousTasks.filter(t => t.status === FieldTaskStatus.COMPLETED && t.clientSignoff?.satisfactionRating);
+  
+        const currentSatisfaction = currentCompletedTasks.length > 0 ?
+          currentCompletedTasks.reduce((sum, t) => sum + (t.clientSignoff?.satisfactionRating || 0), 0) / currentCompletedTasks.length : 0;
+        
+        const previousSatisfaction = previousCompletedTasks.length > 0 ?
+          previousCompletedTasks.reduce((sum, t) => sum + (t.clientSignoff?.satisfactionRating || 0), 0) / previousCompletedTasks.length : 0;
+  
+        // Calculate response time trends
+        const currentResponseTime = currentCompletedTasks.length > 0 ?
+          currentCompletedTasks.reduce((sum, t) => sum + (t.actualPerformance?.actualDuration || 0), 0) / currentCompletedTasks.length : 0;
+        
+        const previousResponseTime = previousCompletedTasks.length > 0 ?
+          previousCompletedTasks.reduce((sum, t) => sum + (t.actualPerformance?.actualDuration || 0), 0) / previousCompletedTasks.length : 0;
+  
+        // Determine trend based on multiple factors
+        let improvementScore = 0;
+        
+        // Completion rate improvement (30% weight)
+        if (currentCompletionRate > previousCompletionRate + 5) improvementScore += 3;
+        else if (currentCompletionRate > previousCompletionRate) improvementScore += 1;
+        else if (currentCompletionRate < previousCompletionRate - 5) improvementScore -= 3;
+        else if (currentCompletionRate < previousCompletionRate) improvementScore -= 1;
+        
+        // Satisfaction improvement (40% weight)
+        if (currentSatisfaction > previousSatisfaction + 0.3) improvementScore += 4;
+        else if (currentSatisfaction > previousSatisfaction) improvementScore += 2;
+        else if (currentSatisfaction < previousSatisfaction - 0.3) improvementScore -= 4;
+        else if (currentSatisfaction < previousSatisfaction) improvementScore -= 2;
+        
+        // Response time improvement (30% weight) - lower is better
+        if (currentResponseTime < previousResponseTime - 5) improvementScore += 3;
+        else if (currentResponseTime < previousResponseTime) improvementScore += 1;
+        else if (currentResponseTime > previousResponseTime + 5) improvementScore -= 3;
+        else if (currentResponseTime > previousResponseTime) improvementScore -= 1;
+  
+        // Determine trend
+        if (improvementScore >= 3) return 'improving';
+        if (improvementScore <= -3) return 'declining';
+        return 'stable';
+  
+      } catch (error) {
+        this.logger.error(`Error calculating trend for area ${areaId}: ${error.message}`);
+        return 'stable'; // Default fallback
+      }
+    }
+  
+    /**
+     * Get historical metrics for a service area
+     */
+    private async getHistoricalMetrics(areaId: string, businessId: string, timeframe: string): Promise<any> {
+      try {
+        const days = parseInt(timeframe.replace('d', '')) || 30;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+  
+        // Get tasks for the period
+        const tasks = await this.fieldTaskModel.find({
+          businessId,
+          siteId: areaId,
+          scheduledDate: { $gte: startDate },
+          isDeleted: false
+        });
+  
+        // Group by weeks to show trend data
+        const weeklyData = [];
+        const weeksCount = Math.ceil(days / 7);
+        
+        for (let i = 0; i < weeksCount; i++) {
+          const weekStart = new Date();
+          weekStart.setDate(weekStart.getDate() - ((i + 1) * 7));
+          const weekEnd = new Date();
+          weekEnd.setDate(weekEnd.getDate() - (i * 7));
+          
+          const weekTasks = tasks.filter(t => 
+            t.scheduledDate >= weekStart && t.scheduledDate < weekEnd
+          );
+          
+          const completedTasks = weekTasks.filter(t => t.status === FieldTaskStatus.COMPLETED);
+          
+          const weekMetrics = {
+            week: `Week ${weeksCount - i}`,
+            startDate: weekStart.toISOString().split('T')[0],
+            totalTasks: weekTasks.length,
+            completedTasks: completedTasks.length,
+            completionRate: weekTasks.length > 0 ? Math.round((completedTasks.length / weekTasks.length) * 100) : 0,
+            avgSatisfaction: completedTasks.length > 0 ? 
+              Math.round((completedTasks.reduce((sum, t) => sum + (t.clientSignoff?.satisfactionRating || 0), 0) / completedTasks.length) * 20) : 0,
+            avgResponseTime: completedTasks.length > 0 ?
+              Math.round(completedTasks.reduce((sum, t) => sum + (t.actualPerformance?.actualDuration || 0), 0) / completedTasks.length) : 0
+          };
+          
+          weeklyData.unshift(weekMetrics); // Add to beginning to maintain chronological order
+        }
+  
+        return {
+          weeklyTrends: weeklyData,
+          summary: {
+            totalTasks: tasks.length,
+            totalCompleted: tasks.filter(t => t.status === FieldTaskStatus.COMPLETED).length,
+            avgCompletionRate: weeklyData.length > 0 ? 
+              Math.round(weeklyData.reduce((sum, w) => sum + w.completionRate, 0) / weeklyData.length) : 0,
+            avgSatisfaction: weeklyData.length > 0 ?
+              Math.round(weeklyData.reduce((sum, w) => sum + w.avgSatisfaction, 0) / weeklyData.length) : 0,
+            avgResponseTime: weeklyData.length > 0 ?
+              Math.round(weeklyData.reduce((sum, w) => sum + w.avgResponseTime, 0) / weeklyData.length) : 0
+          }
+        };
+  
+      } catch (error) {
+        this.logger.error(`Error getting historical metrics for area ${areaId}: ${error.message}`);
+        return {
+          weeklyTrends: [],
+          summary: {
+            totalTasks: 0,
+            totalCompleted: 0,
+            avgCompletionRate: 0,
+            avgSatisfaction: 0,
+            avgResponseTime: 0
+          }
+        };
+      }
     }
   }

@@ -3,38 +3,8 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
-
-interface WeatherData {
-  location: {
-    lat: number;
-    lng: number;
-    name: string;
-  };
-  current: {
-    temperature: number; // Celsius
-    condition: string;
-    humidity: number; // percentage
-    windSpeed: number; // km/h
-    precipitation: number; // mm
-    visibility: number; // km
-    uvIndex: number;
-  };
-  forecast: Array<{
-    date: string;
-    maxTemp: number;
-    minTemp: number;
-    condition: string;
-    precipitationChance: number; // percentage
-    windSpeed: number;
-  }>;
-  alerts: Array<{
-    type: 'severe' | 'moderate' | 'minor';
-    title: string;
-    description: string;
-    startTime: string;
-    endTime: string;
-  }>;
-}
+import { FieldTask } from '../schemas/field-task.schema';
+import { WeatherService } from './weather.service';
 
 interface WeatherImpact {
   riskLevel: 'low' | 'medium' | 'high' | 'extreme';
@@ -92,42 +62,22 @@ interface WeatherAlert {
   createdAt: string;
 }
 
-/**
- * TODO: FUTURE IMPROVEMENTS FOR WEATHER ROUTE INTEGRATION
- * 
- * Current Implementation: Basic weather data simulation with route impact analysis
- * 
- * Planned Enhancements:
- * - Integration with real weather APIs (OpenWeatherMap, AccuWeather, NOAA)
- * - Real-time weather alerts and push notifications
- * - Historical weather pattern analysis for predictive routing
- * - Machine learning models for weather impact prediction
- * - Integration with traffic systems for weather-related delays
- * - Seasonal route optimization based on weather patterns
- * - Equipment and vehicle recommendations based on weather conditions
- * - Customer communication automation for weather delays
- * - Insurance and liability considerations for weather-related incidents
- * - Integration with IoT sensors for real-time environmental monitoring
- * - Climate change adaptation strategies for long-term planning
- * - Multi-location weather tracking for service area coverage
- * - Weather-based pricing and scheduling optimization
- * - Integration with emergency response systems
- */
-
 @Injectable()
 export class WeatherRouteService {
   private readonly logger = new Logger(WeatherRouteService.name);
 
   constructor(
     @InjectModel(Business.name) private businessModel: Model<Business>,
+    @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+    private readonly weatherService: WeatherService,
   ) {}
 
   // ============================================================================
-  // WEATHER DATA AND IMPACT ANALYSIS
+  // REAL WEATHER DATA AND IMPACT ANALYSIS USING YOUR WEATHER SERVICE
   // ============================================================================
 
   /**
-   * Get weather impact for routes
+   * Get weather impact for routes using your weather service
    */
   async getWeatherImpact(
     businessId: string,
@@ -140,11 +90,11 @@ export class WeatherRouteService {
       // Validate coordinates
       this.validateCoordinates(coordinates.lat, coordinates.lng);
 
-      // Get weather data (mock implementation)
-      const weatherData = await this.getWeatherData(coordinates, date);
+      // Get real weather data using your weather service
+      const weatherData = await this.weatherService.getOneCallWeather(coordinates.lat, coordinates.lng);
       
-      // Analyze impact on routes
-      const impact = this.analyzeWeatherImpact(weatherData);
+      // Analyze impact on routes using real data
+      const impact = this.analyzeRealWeatherImpact(weatherData);
 
       this.logger.log(`Analyzed weather impact for business ${businessId} at coordinates ${coordinates.lat}, ${coordinates.lng}`);
 
@@ -157,7 +107,7 @@ export class WeatherRouteService {
   }
 
   /**
-   * Adjust route for weather conditions
+   * Adjust route for weather conditions using real weather data
    */
   async adjustRouteForWeather(
     businessId: string,
@@ -180,13 +130,13 @@ export class WeatherRouteService {
         throw new BadRequestException('Route coordinates are required');
       }
 
-      // Get weather conditions for route area
+      // Get weather conditions for route area using your weather service
       const centerCoordinates = this.calculateCenterCoordinates(routeData.coordinates);
-      const weatherData = await this.getWeatherData(centerCoordinates, date);
-      const weatherImpact = this.analyzeWeatherImpact(weatherData);
+      const weatherData = await this.weatherService.getOneCallWeather(centerCoordinates.lat, centerCoordinates.lng);
+      const weatherImpact = this.analyzeRealWeatherImpact(weatherData);
 
-      // Calculate route adjustments
-      const adjustment = this.calculateRouteAdjustment(routeData, weatherData, weatherImpact);
+      // Calculate route adjustments based on real weather
+      const adjustment = this.calculateRealRouteAdjustment(routeData, weatherData, weatherImpact);
 
       this.logger.log(`Adjusted route for weather conditions: ${adjustment.adjustedRoute.weatherDelay} minutes delay added`);
 
@@ -199,25 +149,34 @@ export class WeatherRouteService {
   }
 
   /**
-   * Get weather alerts for business areas
+   * Get weather alerts using your weather service and real business data
    */
   async getWeatherAlerts(businessId: string): Promise<WeatherAlert[]> {
     try {
       const business = await this.validateBusiness(businessId);
 
-      // Get service areas from business metadata
-      const serviceAreas = business.metadata?.serviceAreas || [];
-      const alerts: WeatherAlert[] = [];
+      // Get real weather alerts from your weather service
+      const realWeatherAlerts = await this.weatherService.getAllBusinessAlerts(businessId, false);
+      
+      // Convert to our interface format
+      const alerts: WeatherAlert[] = realWeatherAlerts.map(alert => ({
+        id: alert.id,
+        businessId,
+        alertType: this.mapWeatherTypeToAlertType(alert.weatherType),
+        severity: this.mapSeverityLevel(alert.severity),
+        title: alert.title,
+        message: alert.description,
+        affectedAreas: alert.affectedProjects?.map(p => p.name) || [],
+        affectedRoutes: [], // Would be populated with route data if available
+        recommendations: this.generateRouteRecommendations(alert),
+        validFrom: alert.startTime.toISOString(),
+        validUntil: alert.endTime.toISOString(),
+        createdAt: new Date().toISOString()
+      }));
 
-      // Generate weather alerts for each service area
-      for (const area of serviceAreas) {
-        const areaAlerts = await this.generateAreaWeatherAlerts(businessId, area);
-        alerts.push(...areaAlerts);
-      }
-
-      // Add general business-wide alerts
-      const generalAlerts = await this.generateGeneralWeatherAlerts(businessId);
-      alerts.push(...generalAlerts);
+      // Add route-specific alerts for tasks scheduled today
+      const routeAlerts = await this.generateRouteSpecificAlerts(businessId);
+      alerts.push(...routeAlerts);
 
       // Sort by severity and time
       alerts.sort((a, b) => {
@@ -236,25 +195,50 @@ export class WeatherRouteService {
   }
 
   /**
-   * Update weather data for business
+   * Update weather data for business using your weather service
    */
   async updateWeatherData(businessId: string): Promise<{ success: boolean; message: string; lastUpdated: string }> {
     try {
       const business = await this.validateBusiness(businessId);
 
-      // Get all relevant locations (service areas, active routes)
-      const locations = this.extractBusinessLocations(business);
+      // Get all locations from tasks scheduled for today and tomorrow
+      const locations = await this.extractBusinessLocations(businessId);
       
-      // Fetch weather data for all locations
+      if (locations.length === 0) {
+        return {
+          success: true,
+          message: 'No locations found for weather updates',
+          lastUpdated: new Date().toISOString()
+        };
+      }
+
+      // Update weather data for all locations using your weather service
       const weatherUpdates = [];
       for (const location of locations) {
-        const weatherData = await this.getWeatherData(location.coordinates);
-        weatherUpdates.push({
-          locationId: location.id,
-          locationName: location.name,
-          weatherData,
-          updatedAt: new Date().toISOString()
-        });
+        try {
+          const weatherData = await this.weatherService.getOneCallWeather(
+            location.coordinates.lat, 
+            location.coordinates.lng
+          );
+          
+          weatherUpdates.push({
+            locationId: location.id,
+            locationName: location.name,
+            coordinates: location.coordinates,
+            weatherData: {
+              current: weatherData.current,
+              hourly: weatherData.hourly.slice(0, 24), // Next 24 hours
+              daily: weatherData.daily.slice(0, 3), // Next 3 days
+              alerts: weatherData.alerts || []
+            },
+            updatedAt: new Date().toISOString()
+          });
+
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          this.logger.warn(`Failed to update weather for location ${location.name}: ${error.message}`);
+        }
       }
 
       // Store weather data in business metadata
@@ -267,11 +251,11 @@ export class WeatherRouteService {
       business.markModified('metadata');
       await business.save();
 
-      this.logger.log(`Updated weather data for ${locations.length} locations for business ${businessId}`);
+      this.logger.log(`Updated weather data for ${weatherUpdates.length} locations for business ${businessId}`);
 
       return {
         success: true,
-        message: `Weather data updated for ${locations.length} locations`,
+        message: `Weather data updated for ${weatherUpdates.length} locations`,
         lastUpdated: new Date().toISOString()
       };
 
@@ -314,161 +298,31 @@ export class WeatherRouteService {
   }
 
   /**
-   * Get weather data (mock implementation)
+   * Analyze weather impact using real weather data from your service
    */
-  private async getWeatherData(
-    coordinates: { lat: number; lng: number },
-    date?: string
-  ): Promise<WeatherData> {
-    // Mock weather data - replace with real API integration
-    const conditions = ['Sunny', 'Partly Cloudy', 'Cloudy', 'Light Rain', 'Heavy Rain', 'Snow', 'Fog'];
-    const currentCondition = conditions[Math.floor(Math.random() * conditions.length)];
-
-    // Simulate weather conditions based on condition
-    let temperature = 20 + Math.random() * 15; // 20-35°C
-    let precipitation = 0;
-    let windSpeed = 5 + Math.random() * 15; // 5-20 km/h
-    let visibility = 10;
-
-    if (currentCondition.includes('Rain')) {
-      precipitation = currentCondition.includes('Heavy') ? 10 + Math.random() * 20 : 2 + Math.random() * 8;
-      visibility = currentCondition.includes('Heavy') ? 2 + Math.random() * 3 : 5 + Math.random() * 5;
-      windSpeed += 5;
-    }
-
-    if (currentCondition === 'Snow') {
-      temperature = -5 + Math.random() * 10; // -5 to 5°C
-      precipitation = 5 + Math.random() * 15;
-      visibility = 1 + Math.random() * 4;
-      windSpeed += 10;
-    }
-
-    if (currentCondition === 'Fog') {
-      visibility = 0.5 + Math.random() * 2;
-      temperature -= 5;
-    }
-
-    const weatherData: WeatherData = {
-      location: {
-        lat: coordinates.lat,
-        lng: coordinates.lng,
-        name: `Location ${coordinates.lat.toFixed(2)}, ${coordinates.lng.toFixed(2)}`
-      },
-      current: {
-        temperature: Math.round(temperature),
-        condition: currentCondition,
-        humidity: Math.round(40 + Math.random() * 40), // 40-80%
-        windSpeed: Math.round(windSpeed),
-        precipitation: Math.round(precipitation * 10) / 10,
-        visibility: Math.round(visibility * 10) / 10,
-        uvIndex: Math.floor(Math.random() * 11) // 0-10
-      },
-      forecast: this.generateWeatherForecast(currentCondition, temperature),
-      alerts: this.generateWeatherAlerts(currentCondition, windSpeed, precipitation)
-    };
-
-    return weatherData;
-  }
-
-  /**
-   * Generate weather forecast
-   */
-  private generateWeatherForecast(currentCondition: string, currentTemp: number): any[] {
-    const forecast = [];
-    const conditions = ['Sunny', 'Partly Cloudy', 'Cloudy', 'Light Rain', 'Heavy Rain'];
-    
-    for (let i = 1; i <= 5; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      
-      forecast.push({
-        date: date.toISOString().split('T')[0],
-        maxTemp: Math.round(currentTemp + (Math.random() - 0.5) * 8),
-        minTemp: Math.round(currentTemp - 5 + (Math.random() - 0.5) * 6),
-        condition: conditions[Math.floor(Math.random() * conditions.length)],
-        precipitationChance: Math.floor(Math.random() * 100),
-        windSpeed: Math.round(5 + Math.random() * 15)
-      });
-    }
-    
-    return forecast;
-  }
-
-  /**
-   * Generate weather alerts
-   */
-  private generateWeatherAlerts(condition: string, windSpeed: number, precipitation: number): any[] {
-    const alerts = [];
-
-    if (condition.includes('Heavy Rain') || precipitation > 15) {
-      alerts.push({
-        type: 'severe',
-        title: 'Heavy Rain Warning',
-        description: 'Heavy rainfall may cause flooding and reduced visibility',
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() // 4 hours
-      });
-    }
-
-    if (windSpeed > 25) {
-      alerts.push({
-        type: 'moderate',
-        title: 'High Wind Advisory',
-        description: 'Strong winds may affect vehicle stability and safety',
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 hours
-      });
-    }
-
-    if (condition === 'Snow') {
-      alerts.push({
-        type: 'severe',
-        title: 'Snow Warning',
-        description: 'Snow conditions may make roads impassable',
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString() // 12 hours
-      });
-    }
-
-    if (condition === 'Fog') {
-      alerts.push({
-        type: 'moderate',
-        title: 'Dense Fog Advisory',
-        description: 'Severely reduced visibility conditions',
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString() // 3 hours
-      });
-    }
-
-    return alerts;
-  }
-
-  /**
-   * Analyze weather impact on routes
-   */
-  private analyzeWeatherImpact(weatherData: WeatherData): WeatherImpact {
+  private analyzeRealWeatherImpact(weatherData: any): WeatherImpact {
     const current = weatherData.current;
     let riskLevel: 'low' | 'medium' | 'high' | 'extreme' = 'low';
     let safetyScore = 100;
 
-    // Analyze visibility impact
-    const visibilityImpact = this.analyzeVisibilityImpact(current.visibility);
+    // Analyze visibility impact using real data
+    const visibilityImpact = this.analyzeVisibilityImpact(current.visibility / 1000); // Convert to km
     
-    // Analyze precipitation impact
-    const precipitationImpact = this.analyzePrecipitationImpact(current.precipitation, current.condition);
+    // Analyze precipitation impact using real data
+    const precipitationImpact = this.analyzePrecipitationImpact(current.rain?.['1h'] || 0, current.weather[0].main);
     
-    // Analyze wind impact
-    const windImpact = this.analyzeWindImpact(current.windSpeed);
+    // Analyze wind impact using real data
+    const windImpact = this.analyzeWindImpact(current.wind_speed * 3.6); // Convert m/s to km/h
     
-    // Analyze temperature impact
-    const temperatureImpact = this.analyzeTemperatureImpact(current.temperature);
+    // Analyze temperature impact using real data
+    const temperatureImpact = this.analyzeTemperatureImpact(current.temp);
 
     // Calculate overall risk level
     const impacts = [visibilityImpact, precipitationImpact, windImpact, temperatureImpact];
     const highImpacts = impacts.filter(impact => impact.level === 'high').length;
     const mediumImpacts = impacts.filter(impact => impact.level === 'medium').length;
 
-    if (highImpacts >= 2 || current.condition === 'Snow') {
+    if (highImpacts >= 2 || current.weather[0].main === 'Snow') {
       riskLevel = 'extreme';
       safetyScore = 20;
     } else if (highImpacts >= 1 || mediumImpacts >= 3) {
@@ -500,175 +354,160 @@ export class WeatherRouteService {
   }
 
   /**
-   * Analyze visibility impact
+   * Extract business locations from real field tasks
    */
-  private analyzeVisibilityImpact(visibility: number): { level: string; impact: string } {
-    if (visibility < 1) {
-      return { level: 'high', impact: 'Severely reduced visibility - routes may be unsafe' };
-    } else if (visibility < 3) {
-      return { level: 'medium', impact: 'Reduced visibility - slower speeds required' };
-    } else if (visibility < 5) {
-      return { level: 'low', impact: 'Slightly reduced visibility - exercise caution' };
-    } else {
-      return { level: 'none', impact: 'Clear visibility - no impact on routes' };
-    }
-  }
+  private async extractBusinessLocations(businessId: string): Promise<Array<{ id: string; name: string; coordinates: { lat: number; lng: number } }>> {
+    const locations = [];
+    
+    // Get tasks scheduled for today and tomorrow
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    
+    const tasks = await this.fieldTaskModel.find({
+      businessId,
+      isDeleted: false,
+      scheduledDate: {
+        $gte: today,
+        $lte: tomorrow
+      }
+    });
 
-  /**
-   * Analyze precipitation impact
-   */
-  private analyzePrecipitationImpact(precipitation: number, condition: string): { level: string; impact: string } {
-    if (condition === 'Snow' || precipitation > 15) {
-      return { level: 'high', impact: 'Heavy precipitation - significant delays expected' };
-    } else if (condition.includes('Heavy Rain') || precipitation > 8) {
-      return { level: 'medium', impact: 'Moderate precipitation - some delays possible' };
-    } else if (precipitation > 2) {
-      return { level: 'low', impact: 'Light precipitation - minimal impact' };
-    } else {
-      return { level: 'none', impact: 'No precipitation - no impact on routes' };
-    }
-  }
+    // Extract unique locations from tasks
+    const locationMap = new Map();
+    tasks.forEach(task => {
+      const key = `${task.location.latitude.toFixed(4)},${task.location.longitude.toFixed(4)}`;
+      if (!locationMap.has(key)) {
+        locationMap.set(key, {
+          id: task._id.toString(),
+          name: task.location.address,
+          coordinates: {
+            lat: task.location.latitude,
+            lng: task.location.longitude
+          }
+        });
+      }
+    });
 
-  /**
-   * Analyze wind impact
-   */
-  private analyzeWindImpact(windSpeed: number): { level: string; impact: string } {
-    if (windSpeed > 30) {
-      return { level: 'high', impact: 'Strong winds - vehicle stability concerns' };
-    } else if (windSpeed > 20) {
-      return { level: 'medium', impact: 'Moderate winds - increased fuel consumption' };
-    } else if (windSpeed > 15) {
-      return { level: 'low', impact: 'Light winds - minimal impact' };
-    } else {
-      return { level: 'none', impact: 'Calm conditions - no wind impact' };
-    }
-  }
+    locations.push(...locationMap.values());
 
-  /**
-   * Analyze temperature impact
-   */
-  private analyzeTemperatureImpact(temperature: number): { level: string; impact: string } {
-    if (temperature < -10 || temperature > 40) {
-      return { level: 'high', impact: 'Extreme temperature - equipment and safety concerns' };
-    } else if (temperature < 0 || temperature > 35) {
-      return { level: 'medium', impact: 'Challenging temperature - increased precautions needed' };
-    } else if (temperature < 5 || temperature > 30) {
-      return { level: 'low', impact: 'Mild temperature impact - minor adjustments' };
-    } else {
-      return { level: 'none', impact: 'Comfortable temperature - no impact' };
-    }
-  }
-
-  /**
-   * Generate weather recommendations
-   */
-  private generateWeatherRecommendations(weatherData: WeatherData, riskLevel: string): string[] {
-    const recommendations = [];
-    const current = weatherData.current;
-
-    if (riskLevel === 'extreme') {
-      recommendations.push('Consider postponing non-critical routes');
-      recommendations.push('Ensure all vehicles have emergency equipment');
-      recommendations.push('Maintain constant communication with field teams');
-    }
-
-    if (current.condition.includes('Rain') || current.precipitation > 5) {
-      recommendations.push('Reduce driving speeds by 20-30%');
-      recommendations.push('Increase following distances');
-      recommendations.push('Check vehicle tire conditions');
-    }
-
-    if (current.condition === 'Snow') {
-      recommendations.push('Use winter tires or chains where required');
-      recommendations.push('Carry emergency supplies (blankets, food, water)');
-      recommendations.push('Allow extra time for all routes');
-    }
-
-    if (current.visibility < 3) {
-      recommendations.push('Use fog lights and hazard lights when necessary');
-      recommendations.push('Reduce speeds significantly');
-      recommendations.push('Consider alternate routes with better visibility');
-    }
-
-    if (current.windSpeed > 25) {
-      recommendations.push('Secure all loose equipment and materials');
-      recommendations.push('Be cautious of high-sided vehicles');
-      recommendations.push('Avoid exposed routes where possible');
-    }
-
-    recommendations.push('Monitor weather updates regularly');
-    recommendations.push('Inform customers of potential delays');
-
-    return recommendations.slice(0, 8); // Limit to 8 recommendations
-  }
-
-  /**
-   * Generate route adjustments
-   */
-  private generateRouteAdjustments(weatherData: WeatherData, riskLevel: string): any {
-    let suggestedDelays = 0;
-    const alternativeTimeWindows = [];
-    const equipmentRecommendations = [];
-
-    // Calculate delays based on conditions
-    if (weatherData.current.condition.includes('Rain')) {
-      suggestedDelays += weatherData.current.condition.includes('Heavy') ? 30 : 15;
-    }
-
-    if (weatherData.current.condition === 'Snow') {
-      suggestedDelays += 60;
-    }
-
-    if (weatherData.current.visibility < 3) {
-      suggestedDelays += 20;
-    }
-
-    if (weatherData.current.windSpeed > 25) {
-      suggestedDelays += 15;
-    }
-
-    // Generate alternative time windows
-    const now = new Date();
-    for (let i = 2; i <= 6; i += 2) {
-      const startTime = new Date(now.getTime() + i * 60 * 60 * 1000);
-      const endTime = new Date(startTime.getTime() + 4 * 60 * 60 * 1000);
-      
-      alternativeTimeWindows.push({
-        start: startTime.toTimeString().slice(0, 5),
-        end: endTime.toTimeString().slice(0, 5)
+    // Add business base location if available
+    const business = await this.businessModel.findById(businessId);
+    if (business.baseLocation?.latitude && business.baseLocation?.longitude) {
+      locations.push({
+        id: 'headquarters',
+        name: business.baseLocation.name || 'Business Headquarters',
+        coordinates: {
+          lat: business.baseLocation.latitude,
+          lng: business.baseLocation.longitude
+        }
       });
     }
 
-    // Equipment recommendations
-    if (weatherData.current.condition.includes('Rain')) {
-      equipmentRecommendations.push('Waterproof equipment covers');
-      equipmentRecommendations.push('Non-slip footwear');
+    return locations;
+  }
+
+ /**
+   * Generate route-specific weather alerts
+   */
+ private async generateRouteSpecificAlerts(businessId: string): Promise<WeatherAlert[]> {
+    const alerts: WeatherAlert[] = [];
+    
+    try {
+      // Get tasks scheduled for today
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const tasks = await this.fieldTaskModel.find({
+        businessId,
+        isDeleted: false,
+        scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+        assignedTeamId: { $exists: true }
+      });
+
+      // Group tasks by team to check route-level weather
+      const tasksByTeam = new Map();
+      tasks.forEach(task => {
+        const teamId = task.assignedTeamId;
+        if (!tasksByTeam.has(teamId)) {
+          tasksByTeam.set(teamId, []);
+        }
+        tasksByTeam.get(teamId).push(task);
+      });
+
+      // Check weather for each team's route
+      for (const [teamId, teamTasks] of tasksByTeam) {
+        if (teamTasks.length === 0) continue;
+
+        // Get weather for route center
+        const coordinates = teamTasks.map(t => ({ lat: t.location.latitude, lng: t.location.longitude }));
+        const centerCoords = this.calculateCenterCoordinates(coordinates);
+        
+        try {
+          const weatherData = await this.weatherService.getCurrentWeather(centerCoords.lat, centerCoords.lng);
+          
+          // Check for route-impacting conditions
+          if (weatherData.weather[0].main === 'Rain' && (weatherData.rain?.['1h'] || 0) > 5) {
+            alerts.push({
+              id: `route-rain-${teamId}-${Date.now()}`,
+              businessId,
+              alertType: 'route_impact',
+              severity: 'medium',
+              title: 'Heavy Rain Alert for Route',
+              message: `Heavy rain expected to impact team route with ${teamTasks.length} tasks`,
+              affectedAreas: [...new Set(teamTasks.map(t => t.location.address).filter(Boolean))] as string[],
+              affectedRoutes: [teamId],
+              recommendations: [
+                'Consider delaying non-urgent tasks',
+                'Ensure waterproof equipment',
+                'Allow extra travel time'
+              ],
+              validFrom: new Date().toISOString(),
+              validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+              createdAt: new Date().toISOString()
+            });
+          }
+
+          if (weatherData.wind.speed > 8) { // > 8 m/s
+            alerts.push({
+              id: `route-wind-${teamId}-${Date.now()}`,
+              businessId,
+              alertType: 'safety_concern',
+              severity: 'high',
+              title: 'High Wind Warning for Route',
+              message: `Strong winds (${Math.round(weatherData.wind.speed * 3.6)} km/h) may affect team safety`,
+              affectedAreas: [...new Set(teamTasks.map(t => t.location.address).filter(Boolean))] as string[],
+              affectedRoutes: [teamId],
+              recommendations: [
+                'Secure all equipment and materials',
+                'Exercise extra caution with elevated work',
+                'Consider postponing outdoor tasks'
+              ],
+              validFrom: new Date().toISOString(),
+              validUntil: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+              createdAt: new Date().toISOString()
+            });
+          }
+        } catch (error) {
+          this.logger.warn(`Could not get weather for team ${teamId} route: ${error.message}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error generating route-specific alerts: ${error.message}`);
     }
 
-    if (weatherData.current.condition === 'Snow') {
-      equipmentRecommendations.push('Winter tires or chains');
-      equipmentRecommendations.push('De-icing equipment');
-      equipmentRecommendations.push('Emergency warming supplies');
-    }
-
-    if (weatherData.current.visibility < 5) {
-      equipmentRecommendations.push('High-visibility safety vests');
-      equipmentRecommendations.push('Portable lighting equipment');
-    }
-
-    return {
-      suggestedDelays,
-      alternativeTimeWindows: alternativeTimeWindows.slice(0, 3),
-      equipmentRecommendations: equipmentRecommendations.slice(0, 5)
-    };
+    return alerts;
   }
 
   /**
-   * Calculate route adjustment
+   * Calculate route adjustment based on real weather data
    */
-  private calculateRouteAdjustment(
+  private calculateRealRouteAdjustment(
     routeData: any,
-    weatherData: WeatherData,
+    weatherData: any,
     weatherImpact: WeatherImpact
   ): RouteWeatherAdjustment {
     const weatherDelay = weatherImpact.routeAdjustments.suggestedDelays;
@@ -689,7 +528,7 @@ export class WeatherRouteService {
         estimatedDistance: routeData.originalDistance
       },
       adjustedRoute: {
-        taskIds: routeData.taskIds, // Same tasks, adjusted timing
+        taskIds: routeData.taskIds,
         estimatedTime: adjustedTime,
         estimatedDistance: adjustedDistance,
         weatherDelay
@@ -697,7 +536,7 @@ export class WeatherRouteService {
       weatherFactors: {
         primaryConcern: this.getPrimaryConcern(weatherData),
         impactLevel: weatherImpact.riskLevel,
-        adjustmentReason: `${weatherDelay} minute delay due to ${weatherData.current.condition.toLowerCase()} conditions`
+        adjustmentReason: `${weatherDelay} minute delay due to ${weatherData.current.weather[0].description}`
       },
       alternativeOptions: [
         {
@@ -719,25 +558,168 @@ export class WeatherRouteService {
     };
   }
 
-  /**
-   * Get primary weather concern
-   */
-  private getPrimaryConcern(weatherData: WeatherData): string {
+  // Weather analysis helper methods (implement the same logic as before but using real data)
+  private analyzeVisibilityImpact(visibility: number): { level: string; impact: string } {
+    if (visibility < 1) {
+      return { level: 'high', impact: 'Severely reduced visibility - routes may be unsafe' };
+    } else if (visibility < 3) {
+      return { level: 'medium', impact: 'Reduced visibility - slower speeds required' };
+    } else if (visibility < 5) {
+      return { level: 'low', impact: 'Slightly reduced visibility - exercise caution' };
+    } else {
+      return { level: 'none', impact: 'Clear visibility - no impact on routes' };
+    }
+  }
+
+  private analyzePrecipitationImpact(precipitation: number, condition: string): { level: string; impact: string } {
+    if (condition === 'Snow' || precipitation > 15) {
+      return { level: 'high', impact: 'Heavy precipitation - significant delays expected' };
+    } else if (condition.includes('Rain') || precipitation > 8) {
+      return { level: 'medium', impact: 'Moderate precipitation - some delays possible' };
+    } else if (precipitation > 2) {
+      return { level: 'low', impact: 'Light precipitation - minimal impact' };
+    } else {
+      return { level: 'none', impact: 'No precipitation - no impact on routes' };
+    }
+  }
+
+  private analyzeWindImpact(windSpeed: number): { level: string; impact: string } {
+    if (windSpeed > 30) {
+      return { level: 'high', impact: 'Strong winds - vehicle stability concerns' };
+    } else if (windSpeed > 20) {
+      return { level: 'medium', impact: 'Moderate winds - increased fuel consumption' };
+    } else if (windSpeed > 15) {
+      return { level: 'low', impact: 'Light winds - minimal impact' };
+    } else {
+      return { level: 'none', impact: 'Calm conditions - no wind impact' };
+    }
+  }
+
+  private analyzeTemperatureImpact(temperature: number): { level: string; impact: string } {
+    if (temperature < -10 || temperature > 40) {
+      return { level: 'high', impact: 'Extreme temperature - equipment and safety concerns' };
+    } else if (temperature < 0 || temperature > 35) {
+      return { level: 'medium', impact: 'Challenging temperature - increased precautions needed' };
+    } else if (temperature < 5 || temperature > 30) {
+      return { level: 'low', impact: 'Mild temperature impact - minor adjustments' };
+    } else {
+      return { level: 'none', impact: 'Comfortable temperature - no impact' };
+    }
+  }
+
+  private generateWeatherRecommendations(weatherData: any, riskLevel: string): string[] {
+    const recommendations = [];
+    const current = weatherData.current;
+
+    if (riskLevel === 'extreme') {
+      recommendations.push('Consider postponing non-critical routes');
+      recommendations.push('Ensure all vehicles have emergency equipment');
+      recommendations.push('Maintain constant communication with field teams');
+    }
+
+    if (current.weather[0].main.includes('Rain') || (current.rain?.['1h'] || 0) > 5) {
+      recommendations.push('Reduce driving speeds by 20-30%');
+      recommendations.push('Increase following distances');
+      recommendations.push('Check vehicle tire conditions');
+    }
+
+    if (current.weather[0].main === 'Snow') {
+      recommendations.push('Use winter tires or chains where required');
+      recommendations.push('Carry emergency supplies');
+      recommendations.push('Allow extra time for all routes');
+    }
+
+    if (current.visibility < 3000) {
+      recommendations.push('Use fog lights when necessary');
+      recommendations.push('Reduce speeds significantly');
+      recommendations.push('Consider alternate routes with better visibility');
+    }
+
+    if (current.wind_speed > 7) { // > 7 m/s
+      recommendations.push('Secure all loose equipment and materials');
+      recommendations.push('Be cautious of high-sided vehicles');
+      recommendations.push('Avoid exposed routes where possible');
+    }
+
+    recommendations.push('Monitor weather updates regularly');
+    recommendations.push('Inform customers of potential delays');
+
+    return recommendations.slice(0, 8);
+  }
+
+  private generateRouteAdjustments(weatherData: any, riskLevel: string): any {
+    let suggestedDelays = 0;
+    const alternativeTimeWindows = [];
+    const equipmentRecommendations = [];
+
+    const current = weatherData.current;
+
+    // Calculate delays based on real conditions
+    if (current.weather[0].main.includes('Rain')) {
+      suggestedDelays += (current.rain?.['1h'] || 0) > 10 ? 30 : 15;
+    }
+
+    if (current.weather[0].main === 'Snow') {
+      suggestedDelays += 60;
+    }
+
+    if (current.visibility < 3000) {
+      suggestedDelays += 20;
+    }
+
+    if (current.wind_speed > 7) {
+      suggestedDelays += 15;
+    }
+
+    // Generate alternative time windows
+    const now = new Date();
+    for (let i = 2; i <= 6; i += 2) {
+      const startTime = new Date(now.getTime() + i * 60 * 60 * 1000);
+      const endTime = new Date(startTime.getTime() + 4 * 60 * 60 * 1000);
+      
+      alternativeTimeWindows.push({
+        start: startTime.toTimeString().slice(0, 5),
+        end: endTime.toTimeString().slice(0, 5)
+      });
+    }
+
+    // Equipment recommendations based on real weather
+    if (current.weather[0].main.includes('Rain')) {
+      equipmentRecommendations.push('Waterproof equipment covers');
+      equipmentRecommendations.push('Non-slip footwear');
+    }
+
+    if (current.weather[0].main === 'Snow') {
+      equipmentRecommendations.push('Winter tires or chains');
+      equipmentRecommendations.push('De-icing equipment');
+      equipmentRecommendations.push('Emergency warming supplies');
+    }
+
+    if (current.visibility < 5000) {
+      equipmentRecommendations.push('High-visibility safety vests');
+      equipmentRecommendations.push('Portable lighting equipment');
+    }
+
+    return {
+      suggestedDelays,
+      alternativeTimeWindows: alternativeTimeWindows.slice(0, 3),
+      equipmentRecommendations: equipmentRecommendations.slice(0, 5)
+    };
+  }
+
+  private getPrimaryConcern(weatherData: any): string {
     const current = weatherData.current;
     
-    if (current.condition === 'Snow') return 'Snow conditions';
-    if (current.condition.includes('Heavy Rain')) return 'Heavy rainfall';
-    if (current.visibility < 3) return 'Poor visibility';
-    if (current.windSpeed > 25) return 'Strong winds';
-    if (current.precipitation > 10) return 'Heavy precipitation';
-    if (current.condition.includes('Rain')) return 'Wet conditions';
+    if (current.weather[0].main === 'Snow') return 'Snow conditions';
+    if (current.weather[0].main.includes('Rain') && (current.rain?.['1h'] || 0) > 10) return 'Heavy rainfall';
+    if (current.visibility < 3000) return 'Poor visibility';
+    if (current.wind_speed > 7) return 'Strong winds';
+    if (current.rain?.['1h'] || 0 > 5) return 'Heavy precipitation';
+    if (current.weather[0].main.includes('Rain')) return 'Wet conditions';
     
     return 'Weather conditions';
   }
 
-  /**
-   * Calculate center coordinates
-   */
   private calculateCenterCoordinates(coordinates: Array<{ lat: number; lng: number }>): { lat: number; lng: number } {
     const sumLat = coordinates.reduce((sum, coord) => sum + coord.lat, 0);
     const sumLng = coordinates.reduce((sum, coord) => sum + coord.lng, 0);
@@ -748,98 +730,57 @@ export class WeatherRouteService {
     };
   }
 
-  /**
-   * Generate area weather alerts
-   */
-  private async generateAreaWeatherAlerts(businessId: string, area: any): Promise<WeatherAlert[]> {
-    // Mock implementation - would get real weather data for area
-    const alerts: WeatherAlert[] = [];
-    
-    // Simulate random weather events
-    if (Math.random() < 0.3) { // 30% chance of weather alert per area
-      const alertTypes = ['weather_warning', 'route_impact', 'safety_concern'];
-      const severities = ['low', 'medium', 'high'];
-      
-      alerts.push({
-        id: `alert-${Date.now()}-${area.id}`,
-        businessId,
-        alertType: alertTypes[Math.floor(Math.random() * alertTypes.length)] as any,
-        severity: severities[Math.floor(Math.random() * severities.length)] as any,
-        title: `Weather Alert for ${area.name}`,
-        message: 'Potential weather impact detected in service area',
-        affectedAreas: [area.id],
-        affectedRoutes: [], // Would be populated with actual route data
-        recommendations: ['Monitor conditions closely', 'Consider route adjustments'],
-        validFrom: new Date().toISOString(),
-        validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours
-        createdAt: new Date().toISOString()
-      });
+  private mapWeatherTypeToAlertType(weatherType: string): 'weather_warning' | 'route_impact' | 'safety_concern' {
+    switch (weatherType.toLowerCase()) {
+      case 'storm':
+      case 'wind':
+        return 'safety_concern';
+      case 'rain':
+      case 'snow':
+        return 'route_impact';
+      default:
+        return 'weather_warning';
     }
-    
-    return alerts;
   }
 
-  /**
-   * Generate general weather alerts
-   */
-  private async generateGeneralWeatherAlerts(businessId: string): Promise<WeatherAlert[]> {
-    const alerts: WeatherAlert[] = [];
-    
-    // Add seasonal or general alerts
-    const currentMonth = new Date().getMonth();
-    
-    if (currentMonth >= 11 || currentMonth <= 2) { // Winter months
-      alerts.push({
-        id: `general-winter-${Date.now()}`,
-        businessId,
-        alertType: 'safety_concern',
-        severity: 'medium',
-        title: 'Winter Weather Advisory',
-        message: 'Winter conditions may affect route safety and timing',
-        affectedAreas: ['all'],
-        affectedRoutes: ['all'],
-        recommendations: [
-          'Ensure vehicles have winter equipment',
-          'Allow extra time for routes',
-          'Monitor weather forecasts daily'
-        ],
-        validFrom: new Date().toISOString(),
-        validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-        createdAt: new Date().toISOString()
-      });
+  private mapSeverityLevel(severity: string): 'low' | 'medium' | 'high' | 'critical' {
+    switch (severity.toLowerCase()) {
+      case 'emergency':
+        return 'critical';
+      case 'warning':
+        return 'high';
+      case 'watch':
+        return 'medium';
+      default:
+        return 'low';
     }
-    
-    return alerts;
   }
 
-  /**
-   * Extract business locations for weather monitoring
-   */
-  private extractBusinessLocations(business: any): Array<{ id: string; name: string; coordinates: { lat: number; lng: number } }> {
-    const locations = [];
+  private generateRouteRecommendations(alert: any): string[] {
+    const recommendations = [];
     
-    // Add service areas
-    const serviceAreas = business.metadata?.serviceAreas || [];
-    serviceAreas.forEach((area: any) => {
-      if (area.coverage?.boundaries?.coordinates?.length > 0) {
-        const centerCoords = this.calculateCenterCoordinates(area.coverage.boundaries.coordinates);
-        locations.push({
-          id: area.id,
-          name: area.name,
-          coordinates: centerCoords
-        });
-      }
-    });
-    
-    // Add headquarters location (default)
-    if (locations.length === 0) {
-      locations.push({
-        id: 'headquarters',
-        name: 'Business Headquarters',
-        coordinates: { lat: 40.7128, lng: -74.0060 } // Default to NYC
-      });
+    switch (alert.weatherType?.toLowerCase()) {
+      case 'rain':
+        recommendations.push('Allow extra travel time');
+        recommendations.push('Use waterproof equipment');
+        break;
+      case 'wind':
+        recommendations.push('Secure loose materials');
+        recommendations.push('Avoid outdoor work at height');
+        break;
+      case 'heat':
+        recommendations.push('Schedule work during cooler hours');
+        recommendations.push('Ensure adequate hydration');
+        break;
+      case 'cold':
+        recommendations.push('Allow vehicles to warm up');
+        recommendations.push('Check for ice on equipment');
+        break;
+      default:
+        recommendations.push('Monitor conditions closely');
+        recommendations.push('Follow safety protocols');
     }
     
-    return locations;
+    return recommendations;
   }
 }

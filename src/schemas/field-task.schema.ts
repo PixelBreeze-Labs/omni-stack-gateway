@@ -50,12 +50,23 @@ export interface LocationData {
   parkingNotes?: string;
 }
 
-export interface CustomerSignoff {
+export interface ClientSignoff {
   signatureUrl: string;
   signedBy: string;
   signedAt: Date;
-  customerNotes?: string;
+  clientNotes?: string;
   satisfactionRating?: number; // 1-5
+}
+
+export interface BillingInfo {
+  totalAmount: number;
+  currency?: string;
+  paymentStatus?: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  invoiceId?: string;
+  paymentMethod?: string;
+  billedAt?: Date;
+  paidAt?: Date;
+  notes?: string;
 }
 
 export interface WeatherImpact {
@@ -86,7 +97,6 @@ export class FieldTask extends Document {
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'ConstructionSite' })
   siteId?: string;
-
 
   @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'AppClient' })
   appClientId: string;
@@ -145,20 +155,14 @@ export class FieldTask extends Document {
   @Prop({ type: Number }) // 1-5 scale
   difficultyLevel?: number;
 
-  @Prop({ type: Object })
-  customerInfo: {
-    name: string;
-    email?: string;
-    phone?: string;
-    contactPreference: 'email' | 'phone' | 'sms';
-    specialRequests?: string;
-  };
-
   @Prop({ type: Date })
   completedAt?: Date;
 
   @Prop({ type: Object })
-  customerSignoff?: CustomerSignoff;
+  clientSignoff?: ClientSignoff;
+
+  @Prop({ type: Object })
+  billingInfo?: BillingInfo;
 
   @Prop({ type: [String], default: [] })
   photos: string[]; // URLs to uploaded photos
@@ -226,3 +230,5 @@ FieldTaskSchema.index({ type: 1 });
 FieldTaskSchema.index({ 'location.latitude': 1, 'location.longitude': 1 });
 FieldTaskSchema.index({ skillsRequired: 1 });
 FieldTaskSchema.index({ equipmentRequired: 1 });
+FieldTaskSchema.index({ 'billingInfo.paymentStatus': 1 });
+FieldTaskSchema.index({ 'billingInfo.invoiceId': 1 });
