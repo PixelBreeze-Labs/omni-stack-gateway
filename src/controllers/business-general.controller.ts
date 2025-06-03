@@ -29,6 +29,7 @@ import {
   SimpleStaffProfileResponse,
   FullStaffProfileResponse,
 } from '../dtos/business-general.dto';
+import { RoutePlanningConfiguration } from '../schemas/business.schema';
 
 @ApiTags('Business General Management')
 @Controller('business/general')
@@ -657,4 +658,237 @@ export class BusinessGeneralController {
     
     return business;
   }
+
+  @Get('route-planning/config')
+@ApiOperation({ 
+  summary: 'Get route planning configuration',
+  description: 'Retrieve current route planning configuration for the business'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Route planning configuration retrieved successfully'
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async getRoutePlanningConfig(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<{ config: RoutePlanningConfiguration | null }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    const business = await this.validateBusinessApiKey(businessId, apiKey);
+    return { config: business.routePlanningConfig || null };
+  } catch (error) {
+    this.logger.error(`Error getting route planning config: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve route planning configuration');
+  }
+}
+
+@Put('route-planning/config')
+@ApiOperation({ 
+  summary: 'Update route planning configuration',
+  description: 'Update route planning configuration for the business'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Route planning configuration updated successfully'
+})
+@ApiResponse({ status: 400, description: 'Bad request - Invalid configuration data' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async updateRoutePlanningConfig(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Body() configData: Partial<RoutePlanningConfiguration>
+): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (!configData || Object.keys(configData).length === 0) {
+      throw new BadRequestException('Configuration data is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.updateRoutePlanningConfig(businessId, configData);
+  } catch (error) {
+    this.logger.error(`Error updating route planning config: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to update route planning configuration');
+  }
+}
+
+@Post('route-planning/config/reset')
+@ApiOperation({ 
+  summary: 'Reset route planning configuration to defaults',
+  description: 'Reset route planning configuration to default values'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Route planning configuration reset successfully'
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async resetRoutePlanningConfig(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<{ success: boolean; message: string; config: RoutePlanningConfiguration }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.resetRoutePlanningConfig(businessId);
+  } catch (error) {
+    this.logger.error(`Error resetting route planning config: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to reset route planning configuration');
+  }
+}
+
+@Put('route-planning/config/integrations/google-maps')
+@ApiOperation({ 
+  summary: 'Update Google Maps integration settings',
+  description: 'Update Google Maps API integration configuration'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Google Maps integration updated successfully'
+})
+@ApiResponse({ status: 400, description: 'Bad request - Invalid Google Maps configuration' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async updateGoogleMapsConfig(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Body() googleMapsConfig: {
+    apiKey?: string;
+    enabled: boolean;
+    geocodingEnabled?: boolean;
+    directionsEnabled?: boolean;
+    trafficEnabled?: boolean;
+  }
+): Promise<{ success: boolean; message: string; isValid?: boolean; errors?: string[] }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (googleMapsConfig.enabled === undefined) {
+      throw new BadRequestException('Enabled status is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.updateGoogleMapsConfig(businessId, googleMapsConfig);
+  } catch (error) {
+    this.logger.error(`Error updating Google Maps config: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to update Google Maps configuration');
+  }
+}
+
+@Put('route-planning/config/integrations/weather')
+@ApiOperation({ 
+  summary: 'Update weather integration settings',
+  description: 'Update weather API integration configuration'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Weather integration updated successfully'
+})
+@ApiResponse({ status: 400, description: 'Bad request - Invalid weather configuration' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async updateWeatherConfig(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Body() weatherConfig: {
+    enabled: boolean;
+    considerInRouting?: boolean;
+    delayThresholds?: {
+      rain?: number;
+      snow?: number;
+      wind?: number;
+      temperature?: { min: number; max: number };
+    };
+  }
+): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (weatherConfig.enabled === undefined) {
+      throw new BadRequestException('Enabled status is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.updateWeatherConfig(businessId, weatherConfig);
+  } catch (error) {
+    this.logger.error(`Error updating weather config: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to update weather configuration');
+  }
+}
+
+@Post('route-planning/config/validate')
+@ApiOperation({ 
+  summary: 'Validate route planning configuration',
+  description: 'Validate current route planning configuration and integrations'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Configuration validation completed'
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async validateRoutePlanningConfig(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<{
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  integrationStatus: {
+    googleMaps: { enabled: boolean; valid: boolean; errors?: string[] };
+    weather: { enabled: boolean; valid: boolean; errors?: string[] };
+  };
+}> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.validateRoutePlanningConfig(businessId);
+  } catch (error) {
+    this.logger.error(`Error validating route planning config: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to validate route planning configuration');
+  }
+}
 }

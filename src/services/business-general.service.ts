@@ -1,5 +1,5 @@
 // src/services/business-general.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { StaffProfile } from '../schemas/staff-profile.schema';
@@ -11,6 +11,9 @@ import {
 } from '../dtos/business-general.dto';
 import { StaffluentEmployeeService } from './staffluent-employee.service';
 import { StaffluentTaskService } from './staffluent-task.service';
+import { GoogleMapsService } from './google-maps.service';
+import { RoutePlanningConfiguration } from '../schemas/business.schema';
+
 
 @Injectable()
 export class BusinessGeneralService {
@@ -20,6 +23,7 @@ export class BusinessGeneralService {
     @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(User.name) private userModel: Model<User>,
+    private readonly googleMapsService: GoogleMapsService,
     private readonly staffluentEmployeeService: StaffluentEmployeeService,
     private readonly staffluentTaskService: StaffluentTaskService,
   ) {}
@@ -848,4 +852,504 @@ export class BusinessGeneralService {
         yearsExperience: data.yearsExperience || 0
       }));
   }
+
+  // ============================================================================
+// ROUTE PLANNING CONFIGURATION METHODS (NEW)
+// ============================================================================
+
+/**
+ * Update route planning configuration
+ */
+async updateRoutePlanningConfig(
+  businessId: string,
+  configData: Partial<RoutePlanningConfiguration>
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Get current config or create default
+    const currentConfig = business.routePlanningConfig || this.getDefaultRoutePlanningConfig();
+
+    // Deep merge the configuration
+    const updatedConfig: RoutePlanningConfiguration = {
+      enabled: configData.enabled !== undefined ? configData.enabled : currentConfig.enabled,
+      defaultOptimizationParams: {
+        ...currentConfig.defaultOptimizationParams,
+        ...(configData.defaultOptimizationParams || {})
+      },
+      integrations: {
+        googleMaps: {
+          ...currentConfig.integrations.googleMaps,
+          ...(configData.integrations?.googleMaps || {})
+        },
+        weatherApi: {
+          ...currentConfig.integrations.weatherApi,
+          ...(configData.integrations?.weatherApi || {})
+        }
+      },
+      workingHours: {
+        ...currentConfig.workingHours,
+        ...(configData.workingHours || {})
+      },
+      serviceRadius: configData.serviceRadius !== undefined ? configData.serviceRadius : currentConfig.serviceRadius,
+      allowOvertimeRoutes: configData.allowOvertimeRoutes !== undefined ? configData.allowOvertimeRoutes : currentConfig.allowOvertimeRoutes,
+      maxDailyTasksPerTeam: configData.maxDailyTasksPerTeam !== undefined ? configData.maxDailyTasksPerTeam : currentConfig.maxDailyTasksPerTeam,
+      automaticOptimization: {
+        ...currentConfig.automaticOptimization,
+        ...(configData.automaticOptimization || {})
+      },
+      notifications: {
+        ...currentConfig.notifications,
+        ...(configData.notifications || {})
+      }
+    };
+
+    // Validate the configuration
+    const validation = this.validateConfigData(updatedConfig);
+    if (!validation.isValid) {
+      throw new BadRequestException(`Invalid configuration: ${validation.errors.join(', ')}`);
+    }
+
+    // Update business with new config
+    business.routePlanningConfig = updatedConfig;
+    business.markModified('routePlanningConfig');
+    await business.save();
+
+    this.logger.log(`Updated route planning configuration for business ${businessId}`);
+
+    return {
+      success: true,
+      message: 'Route planning configuration updated successfully'
+    };
+  } catch (error) {
+    this.logger.error(`Error updating route planning config: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Reset route planning configuration to defaults
+ */
+async resetRoutePlanningConfig(
+  businessId: string
+): Promise<{ success: boolean; message: string; config: RoutePlanningConfiguration }> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const defaultConfig = this.getDefaultRoutePlanningConfig();
+    
+    business.routePlanningConfig = defaultConfig;
+    business.markModified('routePlanningConfig');
+    await business.save();
+
+    this.logger.log(`Reset route planning configuration to defaults for business ${businessId}`);
+
+    return {
+      success: true,
+      message: 'Route planning configuration reset to defaults',
+      config: defaultConfig
+    };
+  } catch (error) {
+    this.logger.error(`Error resetting route planning config: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Update Google Maps integration configuration
+ */
+async updateGoogleMapsConfig(
+  businessId: string,
+  googleMapsConfig: {
+    apiKey?: string;
+    enabled: boolean;
+    geocodingEnabled?: boolean;
+    directionsEnabled?: boolean;
+    trafficEnabled?: boolean;
+  }
+): Promise<{ success: boolean; message: string; isValid?: boolean; errors?: string[] }> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Get current config or create default
+    const currentConfig = business.routePlanningConfig || this.getDefaultRoutePlanningConfig();
+
+    // Update Google Maps configuration
+    const updatedGoogleMapsConfig = {
+      ...currentConfig.integrations.googleMaps,
+      enabled: googleMapsConfig.enabled,
+      ...(googleMapsConfig.apiKey !== undefined && { apiKey: googleMapsConfig.apiKey }),
+      ...(googleMapsConfig.geocodingEnabled !== undefined && { geocodingEnabled: googleMapsConfig.geocodingEnabled }),
+      ...(googleMapsConfig.directionsEnabled !== undefined && { directionsEnabled: googleMapsConfig.directionsEnabled }),
+      ...(googleMapsConfig.trafficEnabled !== undefined && { trafficEnabled: googleMapsConfig.trafficEnabled })
+    };
+
+    // Validate API key if provided and enabled
+    let isValid = true;
+    let errors: string[] = [];
+
+    if (googleMapsConfig.enabled) {
+      if (!updatedGoogleMapsConfig.apiKey) {
+        isValid = false;
+        errors.push('API key is required when Google Maps is enabled');
+      } else {
+        // Validate API key if you have GoogleMapsService
+        try {
+          const validation = await this.googleMapsService.validateConfiguration(updatedGoogleMapsConfig);
+          isValid = validation.isValid;
+          errors = validation.errors;
+        } catch (error) {
+          isValid = false;
+          errors.push(`API key validation failed: ${error.message}`);
+        }
+      }
+    }
+
+    // Update the business configuration
+    currentConfig.integrations.googleMaps = updatedGoogleMapsConfig;
+    business.routePlanningConfig = currentConfig;
+    business.markModified('routePlanningConfig');
+    await business.save();
+
+    this.logger.log(`Updated Google Maps configuration for business ${businessId}`);
+
+    return {
+      success: true,
+      message: 'Google Maps configuration updated successfully',
+      isValid,
+      errors: errors.length > 0 ? errors : undefined
+    };
+  } catch (error) {
+    this.logger.error(`Error updating Google Maps config: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Update weather integration configuration
+ */
+async updateWeatherConfig(
+  businessId: string,
+  weatherConfig: {
+    enabled: boolean;
+    considerInRouting?: boolean;
+    delayThresholds?: {
+      rain?: number;
+      snow?: number;
+      wind?: number;
+      temperature?: { min: number; max: number };
+    };
+  }
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Get current config or create default
+    const currentConfig = business.routePlanningConfig || this.getDefaultRoutePlanningConfig();
+
+    // Update weather configuration
+    const updatedWeatherConfig = {
+      ...currentConfig.integrations.weatherApi,
+      enabled: weatherConfig.enabled,
+      ...(weatherConfig.considerInRouting !== undefined && { considerInRouting: weatherConfig.considerInRouting }),
+      ...(weatherConfig.delayThresholds && {
+        delayThresholds: {
+          ...currentConfig.integrations.weatherApi.delayThresholds,
+          ...weatherConfig.delayThresholds
+        }
+      })
+    };
+
+    // Update the business configuration
+    currentConfig.integrations.weatherApi = updatedWeatherConfig;
+    business.routePlanningConfig = currentConfig;
+    business.markModified('routePlanningConfig');
+    await business.save();
+
+    this.logger.log(`Updated weather configuration for business ${businessId}`);
+
+    return {
+      success: true,
+      message: 'Weather configuration updated successfully'
+    };
+  } catch (error) {
+    this.logger.error(`Error updating weather config: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Validate route planning configuration
+ */
+async validateRoutePlanningConfig(
+  businessId: string
+): Promise<{
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  integrationStatus: {
+    googleMaps: { enabled: boolean; valid: boolean; errors?: string[] };
+    weather: { enabled: boolean; valid: boolean; errors?: string[] };
+  };
+}> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const config = business.routePlanningConfig;
+    if (!config) {
+      return {
+        isValid: false,
+        errors: ['Route planning configuration not found'],
+        warnings: ['Consider setting up route planning configuration'],
+        integrationStatus: {
+          googleMaps: { enabled: false, valid: false, errors: ['Not configured'] },
+          weather: { enabled: false, valid: false, errors: ['Not configured'] }
+        }
+      };
+    }
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Validate core configuration
+    const coreValidation = this.validateConfigData(config);
+    if (!coreValidation.isValid) {
+      errors.push(...coreValidation.errors);
+    }
+    warnings.push(...coreValidation.warnings);
+
+    // Validate Google Maps integration
+    const googleMapsStatus = await this.validateGoogleMapsIntegration(config.integrations.googleMaps);
+    
+    // Validate Weather integration
+    const weatherStatus = await this.validateWeatherIntegration(config.integrations.weatherApi);
+
+    const isValid = errors.length === 0 && googleMapsStatus.valid && weatherStatus.valid;
+
+    return {
+      isValid,
+      errors,
+      warnings,
+      integrationStatus: {
+        googleMaps: googleMapsStatus,
+        weather: weatherStatus
+      }
+    };
+  } catch (error) {
+    this.logger.error(`Error validating route planning config: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+// ============================================================================
+// PRIVATE HELPER METHODS FOR ROUTE PLANNING CONFIG
+// ============================================================================
+
+/**
+ * Get default route planning configuration
+ */
+private getDefaultRoutePlanningConfig(): RoutePlanningConfiguration {
+  return {
+    enabled: true,
+    defaultOptimizationParams: {
+      prioritizeTime: true,
+      prioritizeFuel: false,
+      prioritizeCustomerPreference: true,
+      maxRouteTime: 480, // 8 hours
+      maxStopsPerRoute: 15,
+      allowOvertime: false,
+      considerTraffic: true,
+      considerWeather: true,
+      skillMatching: true,
+      balanceWorkload: true
+    },
+    integrations: {
+      googleMaps: {
+        enabled: false,
+        geocodingEnabled: true,
+        directionsEnabled: true,
+        trafficEnabled: true
+      },
+      weatherApi: {
+        enabled: false,
+        considerInRouting: true,
+        delayThresholds: {
+          rain: 10, // mm
+          snow: 5,  // cm
+          wind: 25, // km/h
+          temperature: { min: -10, max: 40 } // celsius
+        }
+      }
+    },
+    workingHours: {
+      start: '08:00',
+      end: '17:00',
+      timezone: 'UTC',
+      allowEarlyStart: false,
+      allowLateFinish: false
+    },
+    serviceRadius: 50, // km
+    allowOvertimeRoutes: false,
+    maxDailyTasksPerTeam: 8,
+    automaticOptimization: {
+      enabled: false,
+      scheduleTime: '06:00',
+      advanceDays: 1
+    },
+    notifications: {
+      routeAssigned: true,
+      routeStarted: true,
+      taskCompleted: true,
+      delays: true,
+      weatherAlerts: true
+    }
+  };
+}
+
+/**
+ * Validate configuration data
+ */
+private validateConfigData(config: RoutePlanningConfiguration): { isValid: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Validate working hours
+  if (!this.isValidTimeFormat(config.workingHours.start)) {
+    errors.push('Invalid working hours start time format (use HH:MM)');
+  }
+  if (!this.isValidTimeFormat(config.workingHours.end)) {
+    errors.push('Invalid working hours end time format (use HH:MM)');
+  }
+
+  // Validate numeric values
+  if (config.defaultOptimizationParams.maxRouteTime <= 0) {
+    errors.push('Maximum route time must be greater than 0');
+  }
+  if (config.defaultOptimizationParams.maxStopsPerRoute <= 0) {
+    errors.push('Maximum stops per route must be greater than 0');
+  }
+  if (config.serviceRadius <= 0) {
+    errors.push('Service radius must be greater than 0');
+  }
+  if (config.maxDailyTasksPerTeam <= 0) {
+    errors.push('Maximum daily tasks per team must be greater than 0');
+  }
+
+  // Validate automatic optimization
+  if (config.automaticOptimization.enabled) {
+    if (!this.isValidTimeFormat(config.automaticOptimization.scheduleTime)) {
+      errors.push('Invalid automatic optimization schedule time format (use HH:MM)');
+    }
+    if (config.automaticOptimization.advanceDays < 0) {
+      errors.push('Advance days for optimization cannot be negative');
+    }
+  }
+
+  // Warnings
+  if (config.defaultOptimizationParams.maxRouteTime > 600) {
+    warnings.push('Route time exceeds 10 hours - consider driver fatigue');
+  }
+  if (config.serviceRadius > 100) {
+    warnings.push('Large service radius may result in long travel times');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+/**
+ * Validate Google Maps integration
+ */
+private async validateGoogleMapsIntegration(googleMapsConfig: any): Promise<{ enabled: boolean; valid: boolean; errors?: string[] }> {
+  if (!googleMapsConfig.enabled) {
+    return { enabled: false, valid: true };
+  }
+
+  const errors: string[] = [];
+
+  if (!googleMapsConfig.apiKey) {
+    errors.push('API key is required when Google Maps is enabled');
+  }
+
+  // If you have GoogleMapsService, validate the API key
+  try {
+    if (googleMapsConfig.apiKey) {
+      const validation = await this.googleMapsService.validateConfiguration(googleMapsConfig);
+      if (!validation.isValid) {
+        errors.push(...validation.errors);
+      }
+    }
+  } catch (error) {
+    errors.push(`API validation failed: ${error.message}`);
+  }
+
+  return {
+    enabled: true,
+    valid: errors.length === 0,
+    errors: errors.length > 0 ? errors : undefined
+  };
+}
+
+/**
+ * Validate Weather integration
+ */
+private async validateWeatherIntegration(weatherConfig: any): Promise<{ enabled: boolean; valid: boolean; errors?: string[] }> {
+  if (!weatherConfig.enabled) {
+    return { enabled: false, valid: true };
+  }
+
+  const errors: string[] = [];
+
+  // Validate delay thresholds
+  if (weatherConfig.delayThresholds) {
+    const thresholds = weatherConfig.delayThresholds;
+    
+    if (thresholds.rain !== undefined && thresholds.rain < 0) {
+      errors.push('Rain delay threshold cannot be negative');
+    }
+    if (thresholds.snow !== undefined && thresholds.snow < 0) {
+      errors.push('Snow delay threshold cannot be negative');
+    }
+    if (thresholds.wind !== undefined && thresholds.wind < 0) {
+      errors.push('Wind delay threshold cannot be negative');
+    }
+    if (thresholds.temperature) {
+      if (thresholds.temperature.min >= thresholds.temperature.max) {
+        errors.push('Temperature minimum must be less than maximum');
+      }
+    }
+  }
+
+  return {
+    enabled: true,
+    valid: errors.length === 0,
+    errors: errors.length > 0 ? errors : undefined
+  };
+}
+
+/**
+ * Validate time format (HH:MM)
+ */
+private isValidTimeFormat(time: string): boolean {
+  const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  return timeRegex.test(time);
+}
 }
