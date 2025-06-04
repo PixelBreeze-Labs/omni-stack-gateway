@@ -5,7 +5,8 @@ import { Model } from 'mongoose';
 import { StaffProfile } from '../schemas/staff-profile.schema';
 import { Business, EnhancedTeam } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
-import { Schema as MongooseSchema } from 'mongoose';
+import { Types } from 'mongoose';
+
 import {
   SimpleStaffProfileResponse,
   FullStaffProfileResponse,
@@ -1595,7 +1596,7 @@ async updateFieldTeam(
 
     // Use direct MongoDB update to bypass Mongoose validation issues
     const result = await this.businessModel.collection.updateOne(
-      { _id: new MongooseSchema.Types.ObjectId(businessId) },
+      { _id: new Types.ObjectId(businessId) },
       { $set: updateOperations }
     );
 
