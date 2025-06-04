@@ -1419,7 +1419,6 @@ async getTeam(businessId: string, teamId: string): Promise<{
   }
 }
 
-// Fixed updateFieldTeam method - NO STUPID DEFAULTS
 async updateFieldTeam(
   businessId: string,
   teamId: string,
@@ -1429,25 +1428,44 @@ async updateFieldTeam(
   message: string;
   updatedTeam: any;
   changesApplied: string[];
+  debugInfo: any;
 }> {
+  const debugInfo = {
+    step: 'starting',
+    businessId,
+    teamId,
+    updateDataKeys: Object.keys(updateData)
+  };
+
   try {
     this.logger.log(`Starting field team update for business ${businessId}, team ${teamId}`);
+    debugInfo.step = 'finding_business';
 
     const business = await this.businessModel.findById(businessId);
+    debugInfo['businessFound'] = !!business;
+    debugInfo['teamsCount'] = business?.teams?.length || 0;
+
     if (!business) {
       throw new NotFoundException('Business not found');
     }
 
+    debugInfo.step = 'finding_team';
     // Find team - check both PHP ID and MongoDB ID
     let teamIndex = business.teams.findIndex((t: any) => t.metadata?.phpId === teamId);
     if (teamIndex === -1) {
       teamIndex = business.teams.findIndex((t: any) => t.id === teamId);
     }
     
+    debugInfo['teamIndex'] = teamIndex;
+    debugInfo['searchedByPhpId'] = business.teams.some((t: any) => t.metadata?.phpId === teamId);
+    debugInfo['searchedByMongoId'] = business.teams.some((t: any) => t.id === teamId);
+
     if (teamIndex === -1) {
+      debugInfo['availableTeamIds'] = business.teams.map((t: any) => ({ id: t.id, phpId: t.metadata?.phpId }));
       throw new NotFoundException('Team not found');
     }
 
+    debugInfo.step = 'building_update';
     const changesApplied: string[] = [];
     const updateOperations: any = {};
 
@@ -1568,6 +1586,10 @@ async updateFieldTeam(
     // Always update timestamp
     updateOperations[`teams.${teamIndex}.updatedAt`] = new Date();
 
+    debugInfo.step = 'executing_update';
+    debugInfo['updateOperationsCount'] = Object.keys(updateOperations).length;
+    debugInfo['changesApplied'] = changesApplied;
+
     this.logger.log(`Applying ${Object.keys(updateOperations).length} field updates`);
     this.logger.log(`Update operations:`, JSON.stringify(updateOperations, null, 2));
 
@@ -1577,10 +1599,17 @@ async updateFieldTeam(
       { $set: updateOperations }
     );
 
+    debugInfo['mongoResult'] = {
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+      acknowledged: result.acknowledged
+    };
+
     if (result.matchedCount === 0) {
       throw new Error('Business not found during update');
     }
 
+    debugInfo.step = 'fetching_updated_data';
     this.logger.log(`MongoDB update result: matched=${result.matchedCount}, modified=${result.modifiedCount}`);
     this.logger.log(`Successfully updated field team ${teamId} - Changes: ${changesApplied.join(', ')}`);
 
@@ -1589,19 +1618,28 @@ async updateFieldTeam(
     const updatedTeam = updatedBusiness.teams[teamIndex];
     const enhancedTeam = this.enhanceTeamWithStats(updatedTeam);
 
+    debugInfo.step = 'completed';
+
     return {
       success: true,
       message: `Field team updated successfully. ${changesApplied.length} changes applied.`,
       updatedTeam: enhancedTeam,
-      changesApplied
+      changesApplied,
+      debugInfo
     };
+
   } catch (error) {
-    this.logger.error(`Error updating field team: ${error.message}`, error.stack);
-    this.logger.error(`Full error:`, error);
+    debugInfo['error'] = {
+      step: debugInfo.step,
+      message: error.message,
+      name: error.name,
+      stack: error.stack?.split('\n').slice(0, 3)
+    };
+    this.logger.error(`Error at step ${debugInfo.step}:`, error);
+    this.logger.error(`Debug info:`, debugInfo);
     throw error;
   }
 }
-
 
 private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
   try {
