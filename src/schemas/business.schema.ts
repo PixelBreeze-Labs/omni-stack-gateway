@@ -461,18 +461,7 @@ export class Business extends Document {
         createdAt?: Date;
         updatedAt?: Date;
       }[];
-
-    // NEW: Teams Management (simple structure - just name and metadata)
-    @Prop({ 
-        type: [{
-          id: { type: String, required: true },
-          name: { type: String, required: true },
-          metadata: { type: MongooseSchema.Types.Mixed, default: {} },
-          createdAt: { type: Date, default: Date.now },
-          updatedAt: { type: Date, default: Date.now }
-        }], 
-        default: [] 
-      })
+      
       @Prop({ 
     type: [{
       id: { type: String, required: true },
