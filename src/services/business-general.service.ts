@@ -1425,103 +1425,65 @@ async updateFieldTeam(
 ): Promise<{
   success: boolean;
   message: string;
-  updatedTeam: EnhancedTeamResponse;
+  updatedTeam: any;
   changesApplied: string[];
 }> {
   try {
+    this.logger.log(`Starting field team update for business ${businessId}, team ${teamId}`);
+    this.logger.log(`Update data received:`, JSON.stringify(updateData, null, 2));
+
     const business = await this.businessModel.findById(businessId);
     if (!business) {
       throw new NotFoundException('Business not found');
     }
 
-    // Find team
+    // Find team - look for both PHP ID and MongoDB ID
     let teamIndex = business.teams.findIndex((t: any) => t.metadata?.phpId === teamId);
     if (teamIndex === -1) {
       teamIndex = business.teams.findIndex((t: any) => t.id === teamId);
     }
     
     if (teamIndex === -1) {
+      this.logger.error(`Team not found: ${teamId}`);
       throw new NotFoundException('Team not found');
     }
 
+    // Get the team object
     const team = business.teams[teamIndex];
     const changesApplied: string[] = [];
 
-    // 🔥 INITIALIZE MISSING ENHANCED FIELDS IF THEY DON'T EXIST
-    if (!team.currentLocation) {
-      team.currentLocation = {
-        lat: 0,
-        lng: 0,
-        accuracy: 0,
-        isManualUpdate: false,
-        timestamp: new Date()
-      };
-    }
+    this.logger.log(`Found team at index ${teamIndex}:`, JSON.stringify(team, null, 2));
 
-    if (!team.workingHours) {
-      team.workingHours = {
-        start: '',
-        end: '',
-        timezone: '',
-        breakDuration: null,
-        lunchBreak: { start: '', end: '' }
-      };
-    }
+    // 🔥 CRITICAL FIX: Use MongoDB's $set operator with arrayFilters
+    // This is the proper way to update nested array elements in MongoDB
+    
+    const updateOperations: any = {
+      $set: {}
+    };
 
-    if (!team.vehicleInfo) {
-      team.vehicleInfo = {
-        type: '',
-        licensePlate: '',
-        capacity: null,
-        fuelType: 'gasoline',
-        avgFuelConsumption: null,
-        maxRange: null,
-        currentFuelLevel: null,
-        maintenanceStatus: 'good',
-        gpsEnabled: false
-      };
-    }
-
-    if (!team.serviceAreas) team.serviceAreas = [];
-    if (!team.skills) team.skills = [];
-    if (!team.equipment) team.equipment = [];
-    if (!team.certifications) team.certifications = [];
-    if (team.isActive === undefined) team.isActive = false;
-    if (team.isAvailableForRouting === undefined) team.isAvailableForRouting = false;
-    if (!team.maxDailyTasks) team.maxDailyTasks = 8;
-    if (!team.maxRouteDistance) team.maxRouteDistance = 200;
-
-    if (!team.performanceMetrics) {
-      team.performanceMetrics = {
-        averageTasksPerDay: 0,
-        onTimePerformance: 0,
-        customerRating: 0,
-        fuelEfficiency: 0,
-        lastPerformanceUpdate: new Date()
-      };
-    }
-
-    if (!team.emergencyContact) {
-      team.emergencyContact = {
-        name: '',
-        phone: '',
-        relationship: ''
-      };
-    }
-
-    // 🔥 NOW DO THE ACTUAL UPDATES
+    // Build the update operations dynamically
     if (updateData.name !== undefined && updateData.name.trim() !== '') {
-      team.name = updateData.name;
+      updateOperations.$set[`teams.${teamIndex}.name`] = updateData.name;
       changesApplied.push('name');
     }
 
     if (updateData.currentLocation !== undefined) {
-      Object.assign(team.currentLocation, updateData.currentLocation);
-      team.lastLocationUpdate = new Date();
+      // Ensure we have valid coordinates
+      const location = {
+        lat: updateData.currentLocation.lat || 0,
+        lng: updateData.currentLocation.lng || 0,
+        accuracy: updateData.currentLocation.accuracy || 0,
+        isManualUpdate: updateData.currentLocation.isManualUpdate || false,
+        timestamp: new Date()
+      };
+      
+      updateOperations.$set[`teams.${teamIndex}.currentLocation`] = location;
+      updateOperations.$set[`teams.${teamIndex}.lastLocationUpdate`] = new Date();
       changesApplied.push('location');
     }
 
     if (updateData.workingHours !== undefined) {
+      // Validate time formats if provided
       if (updateData.workingHours.start && !this.isValidTimeFormat(updateData.workingHours.start)) {
         throw new BadRequestException('Invalid start time format. Use HH:MM format');
       }
@@ -1529,80 +1491,128 @@ async updateFieldTeam(
         throw new BadRequestException('Invalid end time format. Use HH:MM format');
       }
       
-      Object.assign(team.workingHours, updateData.workingHours);
+      const workingHours = {
+        start: updateData.workingHours.start || '',
+        end: updateData.workingHours.end || '',
+        timezone: updateData.workingHours.timezone || '',
+        breakDuration: updateData.workingHours.breakDuration || 30,
+        lunchBreak: {
+          start: updateData.workingHours.lunchBreak?.start || '',
+          end: updateData.workingHours.lunchBreak?.end || ''
+        }
+      };
+      
+      updateOperations.$set[`teams.${teamIndex}.workingHours`] = workingHours;
       changesApplied.push('working hours');
     }
 
     if (updateData.vehicleInfo !== undefined) {
-      Object.assign(team.vehicleInfo, updateData.vehicleInfo);
+      const vehicleInfo = {
+        type: updateData.vehicleInfo.type || '',
+        licensePlate: updateData.vehicleInfo.licensePlate || '',
+        capacity: updateData.vehicleInfo.capacity || null,
+        fuelType: updateData.vehicleInfo.fuelType || 'gasoline',
+        avgFuelConsumption: updateData.vehicleInfo.avgFuelConsumption || null,
+        maxRange: updateData.vehicleInfo.maxRange || null,
+        currentFuelLevel: updateData.vehicleInfo.currentFuelLevel || null,
+        maintenanceStatus: updateData.vehicleInfo.maintenanceStatus || 'good',
+        gpsEnabled: updateData.vehicleInfo.gpsEnabled || false
+      };
+      
+      updateOperations.$set[`teams.${teamIndex}.vehicleInfo`] = vehicleInfo;
       changesApplied.push('vehicle information');
     }
 
     if (updateData.serviceAreas !== undefined) {
-      team.serviceAreas = updateData.serviceAreas;
+      updateOperations.$set[`teams.${teamIndex}.serviceAreas`] = updateData.serviceAreas || [];
       changesApplied.push('service areas');
     }
 
     if (updateData.skills !== undefined) {
-      team.skills = updateData.skills;
+      updateOperations.$set[`teams.${teamIndex}.skills`] = updateData.skills || [];
       changesApplied.push('skills');
     }
 
     if (updateData.equipment !== undefined) {
-      team.equipment = updateData.equipment;
+      updateOperations.$set[`teams.${teamIndex}.equipment`] = updateData.equipment || [];
       changesApplied.push('equipment');
     }
 
     if (updateData.certifications !== undefined) {
-      team.certifications = updateData.certifications;
+      updateOperations.$set[`teams.${teamIndex}.certifications`] = updateData.certifications || [];
       changesApplied.push('certifications');
     }
 
     if (updateData.isActive !== undefined) {
-      team.isActive = updateData.isActive;
+      updateOperations.$set[`teams.${teamIndex}.isActive`] = updateData.isActive;
       changesApplied.push('active status');
     }
 
     if (updateData.isAvailableForRouting !== undefined) {
-      team.isAvailableForRouting = updateData.isAvailableForRouting;
+      updateOperations.$set[`teams.${teamIndex}.isAvailableForRouting`] = updateData.isAvailableForRouting;
       changesApplied.push('routing availability');
     }
 
     if (updateData.maxDailyTasks !== undefined) {
-      team.maxDailyTasks = updateData.maxDailyTasks;
+      updateOperations.$set[`teams.${teamIndex}.maxDailyTasks`] = updateData.maxDailyTasks || 8;
       changesApplied.push('max daily tasks');
     }
 
     if (updateData.maxRouteDistance !== undefined) {
-      team.maxRouteDistance = updateData.maxRouteDistance;
+      updateOperations.$set[`teams.${teamIndex}.maxRouteDistance`] = updateData.maxRouteDistance || 200;
       changesApplied.push('max route distance');
     }
 
     if (updateData.performanceMetrics !== undefined) {
-      Object.assign(team.performanceMetrics, updateData.performanceMetrics);
+      const performanceMetrics = {
+        averageTasksPerDay: updateData.performanceMetrics.averageTasksPerDay || 0,
+        onTimePerformance: updateData.performanceMetrics.onTimePerformance || 0,
+        customerRating: updateData.performanceMetrics.customerRating || 0,
+        fuelEfficiency: updateData.performanceMetrics.fuelEfficiency || 0,
+        lastPerformanceUpdate: new Date()
+      };
+      
+      updateOperations.$set[`teams.${teamIndex}.performanceMetrics`] = performanceMetrics;
       changesApplied.push('performance metrics');
     }
 
     if (updateData.emergencyContact !== undefined) {
-      Object.assign(team.emergencyContact, updateData.emergencyContact);
+      const emergencyContact = {
+        name: updateData.emergencyContact.name || '',
+        phone: updateData.emergencyContact.phone || '',
+        relationship: updateData.emergencyContact.relationship || ''
+      };
+      
+      updateOperations.$set[`teams.${teamIndex}.emergencyContact`] = emergencyContact;
       changesApplied.push('emergency contact');
     }
 
-    // 🔥 FORCE SAVE THE CHANGES
-    team.updatedAt = new Date();
-    
-    // Set the updated team back in the array
-    business.teams[teamIndex] = team;
-    
-    // Mark as modified and save
-    business.markModified('teams');
-    business.markModified(`teams.${teamIndex}`);
-    await business.save();
+    // Always update the timestamp
+    updateOperations.$set[`teams.${teamIndex}.updatedAt`] = new Date();
 
-    this.logger.log(`Updated field team ${team.id} - Changes: ${changesApplied.join(', ')}`);
+    this.logger.log(`Update operations:`, JSON.stringify(updateOperations, null, 2));
+    this.logger.log(`Changes applied: ${changesApplied.join(', ')}`);
 
-    // Return enhanced team
-    const enhancedTeam = this.enhanceTeamWithStats(team);
+    // 🔥 PERFORM THE ACTUAL MONGODB UPDATE
+    const updateResult = await this.businessModel.findByIdAndUpdate(
+      businessId,
+      updateOperations,
+      {
+        new: true,
+        runValidators: true,
+        strict: false // Allow updates to nested fields
+      }
+    );
+
+    if (!updateResult) {
+      throw new Error('Failed to update business document');
+    }
+
+    this.logger.log(`Successfully updated field team ${teamId} - Changes: ${changesApplied.join(', ')}`);
+
+    // Get the updated team for response
+    const updatedTeam = updateResult.teams[teamIndex];
+    const enhancedTeam = this.enhanceTeamWithStats(updatedTeam);
 
     return {
       success: true,
@@ -1612,9 +1622,11 @@ async updateFieldTeam(
     };
   } catch (error) {
     this.logger.error(`Error updating field team: ${error.message}`, error.stack);
+    this.logger.error(`Full error details:`, error);
     throw error;
   }
 }
+
 
 private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
   try {
