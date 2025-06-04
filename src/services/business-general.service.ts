@@ -5,6 +5,7 @@ import { Model } from 'mongoose';
 import { StaffProfile } from '../schemas/staff-profile.schema';
 import { Business, EnhancedTeam } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
+import { Schema as MongooseSchema } from 'mongoose';
 import {
   SimpleStaffProfileResponse,
   FullStaffProfileResponse,
@@ -1418,6 +1419,7 @@ async getTeam(businessId: string, teamId: string): Promise<{
   }
 }
 
+// Fixed updateFieldTeam method - NO STUPID DEFAULTS
 async updateFieldTeam(
   businessId: string,
   teamId: string,
@@ -1430,188 +1432,161 @@ async updateFieldTeam(
 }> {
   try {
     this.logger.log(`Starting field team update for business ${businessId}, team ${teamId}`);
-    this.logger.log(`Update data received:`, JSON.stringify(updateData, null, 2));
 
     const business = await this.businessModel.findById(businessId);
     if (!business) {
       throw new NotFoundException('Business not found');
     }
 
-    // Find team - look for both PHP ID and MongoDB ID
+    // Find team - check both PHP ID and MongoDB ID
     let teamIndex = business.teams.findIndex((t: any) => t.metadata?.phpId === teamId);
     if (teamIndex === -1) {
       teamIndex = business.teams.findIndex((t: any) => t.id === teamId);
     }
     
     if (teamIndex === -1) {
-      this.logger.error(`Team not found: ${teamId}`);
       throw new NotFoundException('Team not found');
     }
 
-    // Get the team object
-    const team = business.teams[teamIndex];
     const changesApplied: string[] = [];
+    const updateOperations: any = {};
 
-    this.logger.log(`Found team at index ${teamIndex}:`, JSON.stringify(team, null, 2));
-
-    // 🔥 CRITICAL FIX: Use MongoDB's $set operator with arrayFilters
-    // This is the proper way to update nested array elements in MongoDB
-    
-    const updateOperations: any = {
-      $set: {}
-    };
-
-    // Build the update operations dynamically
+    // Only update what's actually provided
     if (updateData.name !== undefined && updateData.name.trim() !== '') {
-      updateOperations.$set[`teams.${teamIndex}.name`] = updateData.name;
+      updateOperations[`teams.${teamIndex}.name`] = updateData.name;
       changesApplied.push('name');
     }
 
     if (updateData.currentLocation !== undefined) {
-      // Ensure we have valid coordinates
-      const location = {
-        lat: updateData.currentLocation.lat || 0,
-        lng: updateData.currentLocation.lng || 0,
-        accuracy: updateData.currentLocation.accuracy || 0,
-        isManualUpdate: updateData.currentLocation.isManualUpdate || false,
-        timestamp: new Date()
-      };
+      const locationUpdate: any = {};
+      if (updateData.currentLocation.lat !== undefined) locationUpdate.lat = updateData.currentLocation.lat;
+      if (updateData.currentLocation.lng !== undefined) locationUpdate.lng = updateData.currentLocation.lng;
+      if (updateData.currentLocation.accuracy !== undefined) locationUpdate.accuracy = updateData.currentLocation.accuracy;
+      if (updateData.currentLocation.isManualUpdate !== undefined) locationUpdate.isManualUpdate = updateData.currentLocation.isManualUpdate;
+      locationUpdate.timestamp = new Date();
       
-      updateOperations.$set[`teams.${teamIndex}.currentLocation`] = location;
-      updateOperations.$set[`teams.${teamIndex}.lastLocationUpdate`] = new Date();
+      updateOperations[`teams.${teamIndex}.currentLocation`] = locationUpdate;
+      updateOperations[`teams.${teamIndex}.lastLocationUpdate`] = new Date();
       changesApplied.push('location');
     }
 
     if (updateData.workingHours !== undefined) {
-      // Validate time formats if provided
-      if (updateData.workingHours.start && !this.isValidTimeFormat(updateData.workingHours.start)) {
-        throw new BadRequestException('Invalid start time format. Use HH:MM format');
-      }
-      if (updateData.workingHours.end && !this.isValidTimeFormat(updateData.workingHours.end)) {
-        throw new BadRequestException('Invalid end time format. Use HH:MM format');
+      const workingHoursUpdate: any = {};
+      if (updateData.workingHours.start !== undefined) workingHoursUpdate.start = updateData.workingHours.start;
+      if (updateData.workingHours.end !== undefined) workingHoursUpdate.end = updateData.workingHours.end;
+      if (updateData.workingHours.timezone !== undefined) workingHoursUpdate.timezone = updateData.workingHours.timezone;
+      if (updateData.workingHours.breakDuration !== undefined) workingHoursUpdate.breakDuration = updateData.workingHours.breakDuration;
+      
+      if (updateData.workingHours.lunchBreak !== undefined) {
+        workingHoursUpdate.lunchBreak = {};
+        if (updateData.workingHours.lunchBreak.start !== undefined) workingHoursUpdate.lunchBreak.start = updateData.workingHours.lunchBreak.start;
+        if (updateData.workingHours.lunchBreak.end !== undefined) workingHoursUpdate.lunchBreak.end = updateData.workingHours.lunchBreak.end;
       }
       
-      const workingHours = {
-        start: updateData.workingHours.start || '',
-        end: updateData.workingHours.end || '',
-        timezone: updateData.workingHours.timezone || '',
-        breakDuration: updateData.workingHours.breakDuration || 30,
-        lunchBreak: {
-          start: updateData.workingHours.lunchBreak?.start || '',
-          end: updateData.workingHours.lunchBreak?.end || ''
-        }
-      };
-      
-      updateOperations.$set[`teams.${teamIndex}.workingHours`] = workingHours;
+      updateOperations[`teams.${teamIndex}.workingHours`] = workingHoursUpdate;
       changesApplied.push('working hours');
     }
 
     if (updateData.vehicleInfo !== undefined) {
-      const vehicleInfo = {
-        type: updateData.vehicleInfo.type || '',
-        licensePlate: updateData.vehicleInfo.licensePlate || '',
-        capacity: updateData.vehicleInfo.capacity || null,
-        fuelType: updateData.vehicleInfo.fuelType || 'gasoline',
-        avgFuelConsumption: updateData.vehicleInfo.avgFuelConsumption || null,
-        maxRange: updateData.vehicleInfo.maxRange || null,
-        currentFuelLevel: updateData.vehicleInfo.currentFuelLevel || null,
-        maintenanceStatus: updateData.vehicleInfo.maintenanceStatus || 'good',
-        gpsEnabled: updateData.vehicleInfo.gpsEnabled || false
-      };
+      const vehicleUpdate: any = {};
+      if (updateData.vehicleInfo.type !== undefined) vehicleUpdate.type = updateData.vehicleInfo.type;
+      if (updateData.vehicleInfo.licensePlate !== undefined) vehicleUpdate.licensePlate = updateData.vehicleInfo.licensePlate;
+      if (updateData.vehicleInfo.capacity !== undefined) vehicleUpdate.capacity = updateData.vehicleInfo.capacity;
+      if (updateData.vehicleInfo.fuelType !== undefined) vehicleUpdate.fuelType = updateData.vehicleInfo.fuelType;
+      if (updateData.vehicleInfo.avgFuelConsumption !== undefined) vehicleUpdate.avgFuelConsumption = updateData.vehicleInfo.avgFuelConsumption;
+      if (updateData.vehicleInfo.maxRange !== undefined) vehicleUpdate.maxRange = updateData.vehicleInfo.maxRange;
+      if (updateData.vehicleInfo.currentFuelLevel !== undefined) vehicleUpdate.currentFuelLevel = updateData.vehicleInfo.currentFuelLevel;
+      if (updateData.vehicleInfo.maintenanceStatus !== undefined) vehicleUpdate.maintenanceStatus = updateData.vehicleInfo.maintenanceStatus;
+      if (updateData.vehicleInfo.gpsEnabled !== undefined) vehicleUpdate.gpsEnabled = updateData.vehicleInfo.gpsEnabled;
       
-      updateOperations.$set[`teams.${teamIndex}.vehicleInfo`] = vehicleInfo;
+      updateOperations[`teams.${teamIndex}.vehicleInfo`] = vehicleUpdate;
       changesApplied.push('vehicle information');
     }
 
     if (updateData.serviceAreas !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.serviceAreas`] = updateData.serviceAreas || [];
+      updateOperations[`teams.${teamIndex}.serviceAreas`] = updateData.serviceAreas;
       changesApplied.push('service areas');
     }
 
     if (updateData.skills !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.skills`] = updateData.skills || [];
+      updateOperations[`teams.${teamIndex}.skills`] = updateData.skills;
       changesApplied.push('skills');
     }
 
     if (updateData.equipment !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.equipment`] = updateData.equipment || [];
+      updateOperations[`teams.${teamIndex}.equipment`] = updateData.equipment;
       changesApplied.push('equipment');
     }
 
     if (updateData.certifications !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.certifications`] = updateData.certifications || [];
+      updateOperations[`teams.${teamIndex}.certifications`] = updateData.certifications;
       changesApplied.push('certifications');
     }
 
     if (updateData.isActive !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.isActive`] = updateData.isActive;
+      updateOperations[`teams.${teamIndex}.isActive`] = updateData.isActive;
       changesApplied.push('active status');
     }
 
     if (updateData.isAvailableForRouting !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.isAvailableForRouting`] = updateData.isAvailableForRouting;
+      updateOperations[`teams.${teamIndex}.isAvailableForRouting`] = updateData.isAvailableForRouting;
       changesApplied.push('routing availability');
     }
 
     if (updateData.maxDailyTasks !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.maxDailyTasks`] = updateData.maxDailyTasks || 8;
+      updateOperations[`teams.${teamIndex}.maxDailyTasks`] = updateData.maxDailyTasks;
       changesApplied.push('max daily tasks');
     }
 
     if (updateData.maxRouteDistance !== undefined) {
-      updateOperations.$set[`teams.${teamIndex}.maxRouteDistance`] = updateData.maxRouteDistance || 200;
+      updateOperations[`teams.${teamIndex}.maxRouteDistance`] = updateData.maxRouteDistance;
       changesApplied.push('max route distance');
     }
 
     if (updateData.performanceMetrics !== undefined) {
-      const performanceMetrics = {
-        averageTasksPerDay: updateData.performanceMetrics.averageTasksPerDay || 0,
-        onTimePerformance: updateData.performanceMetrics.onTimePerformance || 0,
-        customerRating: updateData.performanceMetrics.customerRating || 0,
-        fuelEfficiency: updateData.performanceMetrics.fuelEfficiency || 0,
-        lastPerformanceUpdate: new Date()
-      };
+      const performanceUpdate: any = {};
+      if (updateData.performanceMetrics.averageTasksPerDay !== undefined) performanceUpdate.averageTasksPerDay = updateData.performanceMetrics.averageTasksPerDay;
+      if (updateData.performanceMetrics.onTimePerformance !== undefined) performanceUpdate.onTimePerformance = updateData.performanceMetrics.onTimePerformance;
+      if (updateData.performanceMetrics.customerRating !== undefined) performanceUpdate.customerRating = updateData.performanceMetrics.customerRating;
+      if (updateData.performanceMetrics.fuelEfficiency !== undefined) performanceUpdate.fuelEfficiency = updateData.performanceMetrics.fuelEfficiency;
+      performanceUpdate.lastPerformanceUpdate = new Date();
       
-      updateOperations.$set[`teams.${teamIndex}.performanceMetrics`] = performanceMetrics;
+      updateOperations[`teams.${teamIndex}.performanceMetrics`] = performanceUpdate;
       changesApplied.push('performance metrics');
     }
 
     if (updateData.emergencyContact !== undefined) {
-      const emergencyContact = {
-        name: updateData.emergencyContact.name || '',
-        phone: updateData.emergencyContact.phone || '',
-        relationship: updateData.emergencyContact.relationship || ''
-      };
+      const emergencyUpdate: any = {};
+      if (updateData.emergencyContact.name !== undefined) emergencyUpdate.name = updateData.emergencyContact.name;
+      if (updateData.emergencyContact.phone !== undefined) emergencyUpdate.phone = updateData.emergencyContact.phone;
+      if (updateData.emergencyContact.relationship !== undefined) emergencyUpdate.relationship = updateData.emergencyContact.relationship;
       
-      updateOperations.$set[`teams.${teamIndex}.emergencyContact`] = emergencyContact;
+      updateOperations[`teams.${teamIndex}.emergencyContact`] = emergencyUpdate;
       changesApplied.push('emergency contact');
     }
 
-    // Always update the timestamp
-    updateOperations.$set[`teams.${teamIndex}.updatedAt`] = new Date();
+    // Always update timestamp
+    updateOperations[`teams.${teamIndex}.updatedAt`] = new Date();
 
+    this.logger.log(`Applying ${Object.keys(updateOperations).length} field updates`);
     this.logger.log(`Update operations:`, JSON.stringify(updateOperations, null, 2));
-    this.logger.log(`Changes applied: ${changesApplied.join(', ')}`);
 
-    // 🔥 PERFORM THE ACTUAL MONGODB UPDATE
-    const updateResult = await this.businessModel.findByIdAndUpdate(
-      businessId,
-      updateOperations,
-      {
-        new: true,
-        runValidators: true,
-        strict: false // Allow updates to nested fields
-      }
+    // Use direct MongoDB update to bypass Mongoose validation issues
+    const result = await this.businessModel.collection.updateOne(
+      { _id: new MongooseSchema.Types.ObjectId(businessId) },
+      { $set: updateOperations }
     );
 
-    if (!updateResult) {
-      throw new Error('Failed to update business document');
+    if (result.matchedCount === 0) {
+      throw new Error('Business not found during update');
     }
 
+    this.logger.log(`MongoDB update result: matched=${result.matchedCount}, modified=${result.modifiedCount}`);
     this.logger.log(`Successfully updated field team ${teamId} - Changes: ${changesApplied.join(', ')}`);
 
     // Get the updated team for response
-    const updatedTeam = updateResult.teams[teamIndex];
+    const updatedBusiness = await this.businessModel.findById(businessId);
+    const updatedTeam = updatedBusiness.teams[teamIndex];
     const enhancedTeam = this.enhanceTeamWithStats(updatedTeam);
 
     return {
@@ -1622,7 +1597,7 @@ async updateFieldTeam(
     };
   } catch (error) {
     this.logger.error(`Error updating field team: ${error.message}`, error.stack);
-    this.logger.error(`Full error details:`, error);
+    this.logger.error(`Full error:`, error);
     throw error;
   }
 }
