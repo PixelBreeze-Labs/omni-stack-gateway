@@ -9,25 +9,25 @@ import { TeamAvailability, AvailabilityStatus } from '../schemas/team-availabili
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
 
 interface LocationHistoryEntry {
-    id: string;
-    timestamp: Date;
-    latitude: number;
-    longitude: number;
-    address?: string;
-    accuracy?: number;
-    source: 'gps' | 'manual' | 'address';
-    notes?: string;
-    isManualUpdate: boolean;
-    batteryLevel?: number;
-    speed?: number;
-    heading?: number;
+  id: string;
+  timestamp: Date;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  accuracy?: number;
+  source: 'gps' | 'manual' | 'address';
+  notes?: string;
+  isManualUpdate: boolean;
+  batteryLevel?: number;
+  speed?: number;
+  heading?: number;
 }
 
 interface LocationHistoryResponse {
-history: LocationHistoryEntry[];
-total: number;
-teamId: string;
-teamName: string;
+  history: LocationHistoryEntry[];
+  total: number;
+  teamId: string;
+  teamName: string;
 }
 
 interface UpdateTeamLocationRequest {
@@ -111,18 +111,21 @@ export class TeamLocationService {
   ) {}
 
   // ============================================================================
-  // REAL LOCATION TRACKING USING YOUR SCHEMAS
+  // REAL LOCATION TRACKING USING YOUR SCHEMAS WITH PHP ID SUPPORT
   // ============================================================================
 
   /**
-   * Update team location using real TeamLocation schema
+   * Update team location using real TeamLocation schema with PHP ID handling
    */
   async updateTeamLocation(request: UpdateTeamLocationRequest): Promise<{ success: boolean; message: string }> {
     try {
       const business = await this.validateBusiness(request.businessId);
 
-      // Validate team exists
-      const team = business.teams?.find((t: any) => t.id === request.teamId);
+      // Find team by PHP ID first, then by MongoDB ID as fallback
+      let team = business.teams?.find((t: any) => t.metadata?.phpId === request.teamId);
+      if (!team) {
+        team = business.teams?.find((t: any) => t.id === request.teamId);
+      }
       if (!team) {
         throw new NotFoundException('Team not found');
       }
@@ -130,10 +133,13 @@ export class TeamLocationService {
       // Validate coordinates
       this.validateCoordinates(request.location.lat, request.location.lng);
 
+      // Use PHP ID for storage if available, otherwise use the provided teamId
+      const storageTeamId = team.metadata?.phpId || request.teamId;
+
       // Find existing location record or create new one
       let teamLocation = await this.teamLocationModel.findOne({
         businessId: request.businessId,
-        teamId: request.teamId,
+        teamId: storageTeamId,
         isDeleted: false
       });
 
@@ -141,7 +147,7 @@ export class TeamLocationService {
         // Create new team location record
         teamLocation = new this.teamLocationModel({
           businessId: request.businessId,
-          teamId: request.teamId,
+          teamId: storageTeamId,
           teamName: team.name,
           location: {
             latitude: request.location.lat,
@@ -211,10 +217,10 @@ export class TeamLocationService {
 
       // Also update team availability if status changed
       if (request.status) {
-        await this.updateTeamAvailability(request.businessId, request.teamId, request.status);
+        await this.updateTeamAvailability(request.businessId, storageTeamId, request.status);
       }
 
-      this.logger.log(`Updated location for team ${request.teamId} in business ${request.businessId}`);
+      this.logger.log(`Updated location for team ${request.teamId} (storage: ${storageTeamId}) in business ${request.businessId}`);
 
       return {
         success: true,
@@ -228,7 +234,7 @@ export class TeamLocationService {
   }
 
   /**
-   * Get team locations with filters using real database queries
+   * Get team locations with filters using real database queries with PHP ID support
    */
   async getTeamLocations(
     businessId: string,
@@ -263,12 +269,15 @@ export class TeamLocationService {
       const teamLocationResponses: TeamLocationResponse[] = [];
 
       for (const team of business.teams || []) {
-        const locationRecord = teamLocations.find(loc => loc.teamId === team.id);
+        // Check location records using both PHP ID and MongoDB ID
+        const locationRecord = teamLocations.find(loc => 
+          loc.teamId === team.metadata?.phpId || loc.teamId === team.id
+        );
         
         if (!locationRecord) {
           // Team without location data - show as offline
           teamLocationResponses.push({
-            id: team.id,
+            id: team.metadata?.phpId || team.id,
             name: team.name,
             members: this.getTeamMembers(team),
             location: {
@@ -282,10 +291,10 @@ export class TeamLocationService {
             project_name: team.metadata?.project_name
           });
         } else {
-          const routeProgress = await this.getRouteProgress(team.id, businessId);
+          const routeProgress = await this.getRouteProgress(team.metadata?.phpId || team.id, businessId);
           
           teamLocationResponses.push({
-            id: team.id,
+            id: team.metadata?.phpId || team.id,
             name: team.name,
             members: this.getTeamMembers(team),
             location: {
@@ -392,7 +401,7 @@ export class TeamLocationService {
   }
 
   /**
-   * Track route progress using real RouteProgress schema
+   * Track route progress using real RouteProgress schema with PHP ID support
    */
   async trackRouteProgress(
     businessId: string,
@@ -407,11 +416,17 @@ export class TeamLocationService {
     try {
       const business = await this.validateBusiness(businessId);
 
-      // Validate team exists
-      const team = business.teams?.find((t: any) => t.id === teamId);
+      // Find team by PHP ID first, then by MongoDB ID as fallback
+      let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
+      if (!team) {
+        team = business.teams?.find((t: any) => t.id === teamId);
+      }
       if (!team) {
         throw new NotFoundException('Team not found');
       }
+
+      // Use PHP ID for storage if available, otherwise use the provided teamId
+      const storageTeamId = team.metadata?.phpId || teamId;
 
       const routeDate = routeData.routeDate || new Date();
       const startOfDay = new Date(routeDate);
@@ -422,7 +437,7 @@ export class TeamLocationService {
       // Find existing route progress or create new
       let routeProgress = await this.routeProgressModel.findOne({
         businessId,
-        teamId,
+        teamId: storageTeamId,
         routeDate: { $gte: startOfDay, $lte: endOfDay },
         isDeleted: false
       });
@@ -438,7 +453,7 @@ export class TeamLocationService {
         // Create new route progress
         routeProgress = new this.routeProgressModel({
           businessId,
-          teamId,
+          teamId: storageTeamId,
           teamName: team.name,
           routeDate: startOfDay,
           tasks: routeData.taskIds.map((taskId, index) => {
@@ -504,7 +519,7 @@ export class TeamLocationService {
 
       await routeProgress.save();
 
-      this.logger.log(`Updated route progress for team ${teamId}: ${routeData.completedTasks}/${routeData.taskIds.length} tasks completed`);
+      this.logger.log(`Updated route progress for team ${teamId} (storage: ${storageTeamId}): ${routeData.completedTasks}/${routeData.taskIds.length} tasks completed`);
 
       return {
         success: true,
@@ -518,39 +533,45 @@ export class TeamLocationService {
   }
 
   /**
-   * Get team availability using real data
+   * Get team availability using real data with PHP ID support
    */
   async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
     try {
       const business = await this.validateBusiness(businessId);
 
       if (teamId) {
+        // Find team by PHP ID first, then by MongoDB ID as fallback
+        let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
+        if (!team) {
+          team = business.teams?.find((t: any) => t.id === teamId);
+        }
+        if (!team) {
+          throw new NotFoundException('Team not found');
+        }
+
+        const storageTeamId = team.metadata?.phpId || teamId;
+
         // Get specific team availability
         const teamLocation = await this.teamLocationModel.findOne({
           businessId,
-          teamId,
+          teamId: storageTeamId,
           isDeleted: false
         });
 
         const teamAvailability = await this.teamAvailabilityModel.findOne({
           businessId,
-          teamId,
+          teamId: storageTeamId,
           isDeleted: false
         });
 
-        const team = business.teams?.find((t: any) => t.id === teamId);
-        if (!team) {
-          throw new NotFoundException('Team not found');
-        }
-
         return {
-          teamId,
+          teamId: team.metadata?.phpId || team.id,
           teamName: team.name,
           available: teamLocation?.status === TeamLocationStatus.ACTIVE,
           status: teamLocation?.status || TeamLocationStatus.OFFLINE,
           location: teamLocation?.location || null,
           lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
-          routeProgress: await this.getRouteProgress(teamId, businessId),
+          routeProgress: await this.getRouteProgress(team.metadata?.phpId || team.id, businessId),
           workingHours: teamAvailability?.workingHours,
           unavailablePeriods: teamAvailability?.unavailablePeriods || [],
           skills: teamAvailability?.skills || []
@@ -568,11 +589,16 @@ export class TeamLocationService {
         });
 
         const teams = (business.teams || []).map((team: any) => {
-          const location = teamLocations.find(loc => loc.teamId === team.id);
-          const availability = teamAvailabilities.find(avail => avail.teamId === team.id);
+          // Check for team location using both PHP ID and MongoDB ID
+          const location = teamLocations.find(loc => 
+            loc.teamId === team.metadata?.phpId || loc.teamId === team.id
+          );
+          const availability = teamAvailabilities.find(avail => 
+            avail.teamId === team.metadata?.phpId || avail.teamId === team.id
+          );
 
           return {
-            teamId: team.id,
+            teamId: team.metadata?.phpId || team.id,
             teamName: team.name,
             available: location?.status === TeamLocationStatus.ACTIVE,
             status: location?.status || TeamLocationStatus.OFFLINE,
@@ -648,9 +674,9 @@ export class TeamLocationService {
   }
 
   /**
- * Get team location history in format expected by frontend table
- */
-async getTeamLocationHistory(
+   * Get team location history in format expected by frontend table with PHP ID support
+   */
+  async getTeamLocationHistory(
     businessId: string,
     teamId: string,
     filters: {
@@ -661,23 +687,29 @@ async getTeamLocationHistory(
   ): Promise<LocationHistoryResponse> {
     try {
       const business = await this.validateBusiness(businessId);
-  
-      // Validate team exists
-      const team = business.teams?.find((t: any) => t.id === teamId);
+
+      // Find team by PHP ID first, then by MongoDB ID as fallback
+      let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
+      if (!team) {
+        team = business.teams?.find((t: any) => t.id === teamId);
+      }
       if (!team) {
         throw new NotFoundException('Team not found');
       }
-  
+
+      // Use PHP ID for storage query if available, otherwise use the provided teamId
+      const storageTeamId = team.metadata?.phpId || teamId;
+
       // Build query for team location record
       const query: any = {
         businessId,
-        teamId,
+        teamId: storageTeamId,
         isDeleted: false
       };
-  
+
       // Get the team's location record
       const teamLocationRecord = await this.teamLocationModel.findOne(query);
-  
+
       if (!teamLocationRecord) {
         return {
           history: [],
@@ -686,10 +718,10 @@ async getTeamLocationHistory(
           teamName: team.name
         };
       }
-  
+
       // Get location history from the record
       let locationHistory = teamLocationRecord.locationHistory || [];
-  
+
       // Apply date filters
       if (filters.startDate || filters.endDate) {
         locationHistory = locationHistory.filter(entry => {
@@ -706,16 +738,16 @@ async getTeamLocationHistory(
           return true;
         });
       }
-  
+
       // Sort by timestamp (newest first)
       locationHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  
+
       // Apply limit
       const limitedHistory = locationHistory.slice(0, filters.limit);
-  
+
       // Format for frontend table - create comprehensive history entries
       const formattedHistory: LocationHistoryEntry[] = [];
-  
+
       // Add current location as the most recent entry if it exists
       if (teamLocationRecord.location && teamLocationRecord.lastLocationUpdate) {
         formattedHistory.push({
@@ -733,7 +765,7 @@ async getTeamLocationHistory(
           heading: teamLocationRecord.location.heading
         });
       }
-  
+
       // Add historical entries
       limitedHistory.forEach((entry, index) => {
         formattedHistory.push({
@@ -751,35 +783,34 @@ async getTeamLocationHistory(
           heading: this.calculateHeading(limitedHistory, index)
         });
       });
-  
+
       // Remove duplicates and sort again
       const uniqueHistory = this.removeDuplicateLocations(formattedHistory);
       uniqueHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  
-      this.logger.log(`Retrieved ${uniqueHistory.length} location history entries for team ${teamId}`);
-  
+
+      this.logger.log(`Retrieved ${uniqueHistory.length} location history entries for team ${teamId} (storage: ${storageTeamId})`);
+
       return {
         history: uniqueHistory.slice(0, filters.limit),
         total: uniqueHistory.length,
         teamId,
         teamName: team.name
       };
-  
+
     } catch (error) {
       this.logger.error(`Error getting team location history: ${error.message}`, error.stack);
       throw error;
     }
   }
 
-  
   // ============================================================================
   // PRIVATE HELPER METHODS
   // ============================================================================
 
   /**
- * Determine location source from team location record
- */
-private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address' {
+   * Determine location source from team location record
+   */
+  private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address' {
     if (teamLocation.metadata?.isCustomEntry) {
       return teamLocation.metadata?.entryMethod || 'manual';
     }
@@ -794,7 +825,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     
     return 'gps';
   }
-  
+
   /**
    * Determine source for historical entries
    */
@@ -805,7 +836,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     
     return 'gps'; // Most historical entries are from GPS tracking
   }
-  
+
   /**
    * Generate notes for current location
    */
@@ -830,7 +861,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     
     return notes.join(', ') || undefined;
   }
-  
+
   /**
    * Generate notes for historical entries
    */
@@ -853,7 +884,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     
     return notes.join(', ') || undefined;
   }
-  
+
   /**
    * Simple reverse geocoding placeholder
    */
@@ -862,7 +893,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     // For now, return coordinates as address
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
   }
-  
+
   /**
    * Interpolate battery level for historical entries
    */
@@ -875,7 +906,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     
     return Math.min(100, Math.max(0, estimatedBattery));
   }
-  
+
   /**
    * Calculate speed between location points
    */
@@ -900,7 +931,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     const speed = distance / timeDiff; // km/h
     return Math.round(speed * 10) / 10; // Round to 1 decimal place
   }
-  
+
   /**
    * Calculate heading between location points
    */
@@ -922,7 +953,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     const heading = Math.atan2(y, x) * 180 / Math.PI;
     return Math.round((heading + 360) % 360);
   }
-  
+
   /**
    * Calculate distance between two points using Haversine formula
    */
@@ -938,7 +969,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
-  
+
   /**
    * Remove duplicate location entries that are too close in time and space
    */
@@ -963,7 +994,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     
     return filtered;
   }
-  
+
   /**
    * Validate business exists
    */
@@ -1011,7 +1042,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
   }
 
   /**
-   * Get route progress for a team using real data
+   * Get route progress for a team using real data with PHP ID support
    */
   private async getRouteProgress(teamId: string, businessId: string): Promise<any> {
     const today = new Date();
@@ -1019,9 +1050,32 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Check for route progress using both PHP ID and MongoDB ID
+    const business = await this.businessModel.findById(businessId);
+    let actualTeamId = teamId;
+    
+    if (business) {
+      const team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
+      if (team) {
+        // If we found a team by PHP ID, check if route progress exists with either ID
+        const routeProgressByPhpId = await this.routeProgressModel.findOne({
+          businessId,
+          teamId: teamId,
+          routeDate: { $gte: today, $lt: tomorrow },
+          isDeleted: false
+        });
+        
+        if (routeProgressByPhpId) {
+          actualTeamId = teamId; // Use PHP ID
+        } else {
+          actualTeamId = team.id; // Try MongoDB ID
+        }
+      }
+    }
+
     const routeProgress = await this.routeProgressModel.findOne({
       businessId,
-      teamId,
+      teamId: actualTeamId,
       routeDate: { $gte: today, $lt: tomorrow },
       isDeleted: false
     });
@@ -1043,10 +1097,22 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
   }
 
   /**
-   * Update team availability status
+   * Update team availability status with PHP ID support
    */
   private async updateTeamAvailability(businessId: string, teamId: string, locationStatus: TeamLocationStatus): Promise<void> {
     try {
+      // Find the team to get consistent ID
+      const business = await this.businessModel.findById(businessId);
+      if (!business) return;
+
+      let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
+      if (!team) {
+        team = business.teams?.find((t: any) => t.id === teamId);
+      }
+      if (!team) return;
+
+      const storageTeamId = team.metadata?.phpId || teamId;
+
       let availabilityStatus: AvailabilityStatus;
       
       switch (locationStatus) {
@@ -1064,7 +1130,7 @@ private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address'
       }
 
       await this.teamAvailabilityModel.findOneAndUpdate(
-        { businessId, teamId, isDeleted: false },
+        { businessId, teamId: storageTeamId, isDeleted: false },
         { 
           status: availabilityStatus,
           statusSince: new Date(),

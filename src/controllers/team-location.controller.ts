@@ -51,7 +51,7 @@ import {
       summary: 'Update team location',
       description: 'Update the current location and status of a field team'
     })
-    @ApiParam({ name: 'teamId', description: 'Team ID' })
+    @ApiParam({ name: 'teamId', description: 'Team ID (PHP ID or MongoDB ID)' })
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
     @ApiBody({
       description: 'Team location update data',
@@ -207,6 +207,8 @@ import {
               throw new BadRequestException('Invalid connectivity value');
           }
         }
+
+        this.logger.log(`Updating location for team ${teamId} in business ${businessId}`);
   
         const result = await this.teamLocationService.updateTeamLocation({
           businessId,
@@ -324,107 +326,109 @@ import {
     }
   
     @Get(':teamId/location-history')
-@ApiOperation({ 
-  summary: 'Get team location history',
-  description: 'Retrieve historical location data for a specific team'
-})
-@ApiParam({ name: 'teamId', description: 'Team ID' })
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiQuery({ name: 'limit', required: false, description: 'Number of records to return (default: 100)' })
-@ApiQuery({ name: 'startDate', required: false, description: 'Start date for filtering (ISO string)' })
-@ApiQuery({ name: 'endDate', required: false, description: 'End date for filtering (ISO string)' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Location history retrieved successfully',
-  schema: {
-    type: 'object',
-    properties: {
-      success: { type: 'boolean', example: true },
-      history: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            timestamp: { type: 'string', format: 'date-time' },
-            latitude: { type: 'number' },
-            longitude: { type: 'number' },
-            address: { type: 'string' },
-            accuracy: { type: 'number' },
-            source: { type: 'string', enum: ['gps', 'manual', 'address'] },
-            notes: { type: 'string' },
-            isManualUpdate: { type: 'boolean' },
-            batteryLevel: { type: 'number' },
-            speed: { type: 'number' },
-            heading: { type: 'number' }
-          }
+    @ApiOperation({ 
+      summary: 'Get team location history',
+      description: 'Retrieve historical location data for a specific team'
+    })
+    @ApiParam({ name: 'teamId', description: 'Team ID (PHP ID or MongoDB ID)' })
+    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+    @ApiQuery({ name: 'limit', required: false, description: 'Number of records to return (default: 100)' })
+    @ApiQuery({ name: 'startDate', required: false, description: 'Start date for filtering (ISO string)' })
+    @ApiQuery({ name: 'endDate', required: false, description: 'End date for filtering (ISO string)' })
+    @ApiResponse({ 
+      status: 200, 
+      description: 'Location history retrieved successfully',
+      schema: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          history: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                timestamp: { type: 'string', format: 'date-time' },
+                latitude: { type: 'number' },
+                longitude: { type: 'number' },
+                address: { type: 'string' },
+                accuracy: { type: 'number' },
+                source: { type: 'string', enum: ['gps', 'manual', 'address'] },
+                notes: { type: 'string' },
+                isManualUpdate: { type: 'boolean' },
+                batteryLevel: { type: 'number' },
+                speed: { type: 'number' },
+                heading: { type: 'number' }
+              }
+            }
+          },
+          total: { type: 'number' },
+          teamId: { type: 'string' },
+          teamName: { type: 'string' }
         }
-      },
-      total: { type: 'number' },
-      teamId: { type: 'string' },
-      teamName: { type: 'string' }
+      }
+    })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    @ApiResponse({ status: 404, description: 'Business or team not found' })
+    async getTeamLocationHistory(
+      @Param('teamId') teamId: string,
+      @Query('businessId') businessId: string,
+      @Query('limit') limit?: string,
+      @Query('startDate') startDate?: string,
+      @Query('endDate') endDate?: string,
+      @Headers('business-x-api-key') apiKey?: string
+    ): Promise<any> {
+      try {
+        if (!businessId) {
+          throw new BadRequestException('Business ID is required');
+        }
+
+        if (!teamId) {
+          throw new BadRequestException('Team ID is required');
+        }
+
+        await this.validateBusinessApiKey(businessId, apiKey);
+
+        const filters = {
+          limit: limit ? parseInt(limit) : 100,
+          startDate: startDate ? new Date(startDate) : undefined,
+          endDate: endDate ? new Date(endDate) : undefined
+        };
+
+        // Validate date range
+        if (filters.startDate && filters.endDate && filters.startDate > filters.endDate) {
+          throw new BadRequestException('Start date cannot be after end date');
+        }
+
+        // Validate limit
+        if (filters.limit < 1 || filters.limit > 1000) {
+          throw new BadRequestException('Limit must be between 1 and 1000');
+        }
+
+        this.logger.log(`Getting location history for team ${teamId} (business: ${businessId})`);
+        
+        const result = await this.teamLocationService.getTeamLocationHistory(businessId, teamId, filters);
+
+        return {
+          success: true,
+          ...result
+        };
+
+      } catch (error) {
+        this.logger.error(`Error getting team location history: ${error.message}`, error.stack);
+        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new InternalServerErrorException('Failed to retrieve location history');
+      }
     }
-  }
-})
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business or team not found' })
-async getTeamLocationHistory(
-  @Param('teamId') teamId: string,
-  @Query('businessId') businessId: string,
-  @Query('limit') limit?: string,
-  @Query('startDate') startDate?: string,
-  @Query('endDate') endDate?: string,
-  @Headers('business-x-api-key') apiKey?: string
-): Promise<any> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    if (!teamId) {
-      throw new BadRequestException('Team ID is required');
-    }
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-
-    const filters = {
-      limit: limit ? parseInt(limit) : 100,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined
-    };
-
-    // Validate date range
-    if (filters.startDate && filters.endDate && filters.startDate > filters.endDate) {
-      throw new BadRequestException('Start date cannot be after end date');
-    }
-
-    // Validate limit
-    if (filters.limit < 1 || filters.limit > 1000) {
-      throw new BadRequestException('Limit must be between 1 and 1000');
-    }
-
-    const result = await this.teamLocationService.getTeamLocationHistory(businessId, teamId, filters);
-
-    return {
-      success: true,
-      ...result
-    };
-
-  } catch (error) {
-    this.logger.error(`Error getting team location history: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to retrieve location history');
-  }
-}
 
     @Post(':teamId/route-progress')
     @ApiOperation({ 
       summary: 'Track route progress',
       description: 'Update the route progress for a team currently on assignment'
     })
-    @ApiParam({ name: 'teamId', description: 'Team ID' })
+    @ApiParam({ name: 'teamId', description: 'Team ID (PHP ID or MongoDB ID)' })
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
     @ApiBody({
       description: 'Route progress data',
@@ -508,6 +512,8 @@ async getTeamLocationHistory(
 
         // Parse route date if provided
         const routeDate = progressData.routeDate ? new Date(progressData.routeDate) : undefined;
+
+        this.logger.log(`Tracking route progress for team ${teamId}: ${progressData.completedTasks}/${progressData.taskIds.length} tasks`);
   
         const result = await this.teamLocationService.trackRouteProgress(
           businessId,
@@ -573,7 +579,7 @@ async getTeamLocationHistory(
       description: 'Get availability status of all teams or a specific team'
     })
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiQuery({ name: 'teamId', required: false, description: 'Specific team ID (optional)' })
+    @ApiQuery({ name: 'teamId', required: false, description: 'Specific team ID (PHP ID or MongoDB ID, optional)' })
     @ApiResponse({ 
       status: 200, 
       description: 'Team availability retrieved successfully'
@@ -617,7 +623,7 @@ async getTeamLocationHistory(
       summary: 'Update team location (legacy)',
       description: 'Legacy endpoint for updating team location - use POST /:teamId/location instead'
     })
-    @ApiParam({ name: 'teamId', description: 'Team ID' })
+    @ApiParam({ name: 'teamId', description: 'Team ID (PHP ID or MongoDB ID)' })
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
     @ApiBody({
       description: 'Team location data (legacy format)',
