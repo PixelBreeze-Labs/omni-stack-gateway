@@ -949,13 +949,12 @@ async getTeam(
     throw new InternalServerErrorException('Failed to retrieve team');
   }
 }
-
 @Put('teams/:teamId/field-update')
 @ApiOperation({ 
   summary: 'Update field team with enhanced data',
   description: 'Update comprehensive team information including location, vehicle, performance, and operational data'
 })
-@ApiParam({ name: 'teamId', description: 'Team ID' })
+@ApiParam({ name: 'teamId', description: 'Team ID (PHP ID or MongoDB ID)' })
 @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
 @ApiResponse({ 
   status: 200, 
@@ -968,64 +967,7 @@ async updateFieldTeam(
   @Param('teamId') teamId: string,
   @Query('businessId') businessId: string,
   @Headers('business-x-api-key') apiKey: string,
-  @Body() updateData: {
-    name?: string;
-    currentLocation?: {
-      lat: number;
-      lng: number;
-      timestamp?: Date;
-      accuracy?: number;
-      isManualUpdate?: boolean;
-    };
-    workingHours?: {
-      start: string;
-      end: string;
-      timezone: string;
-      breakDuration?: number;
-      lunchBreak?: {
-        start: string;
-        end: string;
-      };
-    };
-    vehicleInfo?: {
-      type: string;
-      licensePlate?: string;
-      capacity: number;
-      fuelType: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
-      avgFuelConsumption: number;
-      maxRange: number;
-      currentFuelLevel?: number;
-      maintenanceStatus: 'good' | 'needs_service' | 'out_of_service';
-      gpsEnabled: boolean;
-    };
-    serviceAreas?: Array<{
-      name: string;
-      type: 'circle' | 'polygon';
-      coordinates: Array<{ lat: number; lng: number }>;
-      radius?: number;
-      priority: number;
-    }>;
-    skills?: string[];
-    equipment?: string[];
-    certifications?: string[];
-    isActive?: boolean;
-    isAvailableForRouting?: boolean;
-    maxDailyTasks?: number;
-    maxRouteDistance?: number;
-    performanceMetrics?: {
-      averageTasksPerDay?: number;
-      onTimePerformance?: number;
-      customerRating?: number;
-      fuelEfficiency?: number;
-      lastPerformanceUpdate?: Date;
-    };
-    emergencyContact?: {
-      name: string;
-      phone: string;
-      relationship: string;
-    };
-    metadata?: any;
-  }
+  @Body() updateData: any
 ): Promise<{
   success: boolean;
   message: string;

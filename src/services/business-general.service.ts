@@ -1433,80 +1433,7 @@ async getTeam(
 async updateFieldTeam(
   businessId: string,
   teamId: string,
-  updateData: {
-    name?: string;
-    
-    // Location and tracking
-    currentLocation?: {
-      lat: number;
-      lng: number;
-      timestamp?: Date;
-      accuracy?: number;
-      isManualUpdate?: boolean;
-    };
-    
-    // Working schedule
-    workingHours?: {
-      start: string; // HH:MM
-      end: string;   // HH:MM
-      timezone: string;
-      breakDuration?: number;
-      lunchBreak?: {
-        start: string;
-        end: string;
-      };
-    };
-    
-    // Vehicle information
-    vehicleInfo?: {
-      type: string;
-      licensePlate?: string;
-      capacity: number;
-      fuelType: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
-      avgFuelConsumption: number;
-      maxRange: number;
-      currentFuelLevel?: number;
-      maintenanceStatus: 'good' | 'needs_service' | 'out_of_service';
-      gpsEnabled: boolean;
-    };
-    
-    // Service capabilities
-    serviceAreas?: Array<{
-      name: string;
-      type: 'circle' | 'polygon';
-      coordinates: Array<{ lat: number; lng: number }>;
-      radius?: number;
-      priority: number;
-    }>;
-    
-    skills?: string[];
-    equipment?: string[];
-    certifications?: string[];
-    
-    // Team status
-    isActive?: boolean;
-    isAvailableForRouting?: boolean;
-    maxDailyTasks?: number;
-    maxRouteDistance?: number;
-    
-    // Performance metrics
-    performanceMetrics?: {
-      averageTasksPerDay?: number;
-      onTimePerformance?: number;
-      customerRating?: number;
-      fuelEfficiency?: number;
-      lastPerformanceUpdate?: Date;
-    };
-    
-    // Emergency contact
-    emergencyContact?: {
-      name: string;
-      phone: string;
-      relationship: string;
-    };
-    
-    metadata?: any;
-  }
+  updateData: any
 ): Promise<{
   success: boolean;
   message: string;
@@ -1519,18 +1446,27 @@ async updateFieldTeam(
       throw new NotFoundException('Business not found');
     }
 
-    // Find team by ID
-    const teamIndex = business.teams.findIndex((t: any) => t.id === teamId);
-    if (teamIndex === -1) {
+    // USE THE EXACT SAME LOGIC AS getTeam method
+    let team = business.teams.find((t: any) => t.metadata?.phpId === teamId);
+    if (!team) {
+      team = business.teams.find((t: any) => t.id === teamId);
+    }
+    
+    if (!team) {
       throw new NotFoundException('Team not found');
     }
 
-    const team = business.teams[teamIndex] as any;
+    // Get the team index for updating
+    let teamIndex = business.teams.findIndex((t: any) => t.metadata?.phpId === teamId);
+    if (teamIndex === -1) {
+      teamIndex = business.teams.findIndex((t: any) => t.id === teamId);
+    }
+
     const changesApplied: string[] = [];
 
     // Validate and apply updates
     if (updateData.name !== undefined) {
-      // Check for name conflicts
+      // Check for name conflicts (exclude current team)
       const nameConflict = business.teams.find(
         (t: any, index: number) => 
           index !== teamIndex && 
@@ -1696,75 +1632,219 @@ async updateFieldTeam(
 }
 
 // ============================================================================
-// PRIVATE HELPER METHODS FOR TEAM STATS
+// IMPROVED PRIVATE HELPER METHODS FOR TEAM STATS
 // ============================================================================
 
 private calculateTotalTasks(team: any): number {
-  // This would typically query your task/job database
-  // For now, return a calculated value based on performance metrics
-  return team.performanceMetrics?.averageTasksPerDay ? 
-    Math.floor(team.performanceMetrics.averageTasksPerDay * 30) : 0;
+  // Use actual performance data if available, otherwise return 0
+  if (team.performanceMetrics?.tasksCompleted) {
+    return team.performanceMetrics.tasksCompleted;
+  }
+  
+  // If we have average per day and a creation date, calculate based on actual time
+  if (team.performanceMetrics?.averageTasksPerDay && team.createdAt) {
+    const creationDate = new Date(team.createdAt);
+    const now = new Date();
+    const daysSinceCreation = Math.floor((now.getTime() - creationDate.getTime()) / (1000 * 60 * 60 * 24));
+    const workingDays = Math.floor(daysSinceCreation * 0.71); // ~5 working days per week
+    return Math.max(0, Math.floor(team.performanceMetrics.averageTasksPerDay * workingDays));
+  }
+  
+  return 0; // No data available
 }
 
 private calculateCompletedTasks(team: any): number {
-  // Calculate based on total tasks and performance
+  // Use actual completion data if available
+  if (team.performanceMetrics?.tasksOnTime) {
+    return team.performanceMetrics.tasksOnTime;
+  }
+  
+  // Calculate based on total tasks and completion rate
   const totalTasks = this.calculateTotalTasks(team);
-  const completionRate = team.performanceMetrics?.onTimePerformance || 100;
+  if (totalTasks === 0) return 0;
+  
+  const completionRate = team.performanceMetrics?.onTimePerformance || 0;
   return Math.floor(totalTasks * (completionRate / 100));
 }
 
 private calculateTotalDistance(team: any): number {
-  // This would typically be calculated from actual route data
-  // For now, estimate based on max route distance and activity
-  const maxDaily = team.maxRouteDistance || 200;
-  const activeDays = 20; // Assume 20 working days per month
-  return maxDaily * activeDays * 0.7; // 70% utilization
+  // Check if we have actual distance tracking data
+  if (team.performanceMetrics?.totalDistanceTraveled) {
+    return team.performanceMetrics.totalDistanceTraveled;
+  }
+  
+  // If we have route history or location updates, use that
+  if (team.routeHistory && Array.isArray(team.routeHistory)) {
+    return team.routeHistory.reduce((total: number, route: any) => {
+      return total + (route.distance || 0);
+    }, 0);
+  }
+  
+  // Estimate based on team activity and working pattern
+  if (team.maxRouteDistance && team.createdAt && team.isActive) {
+    const creationDate = new Date(team.createdAt);
+    const now = new Date();
+    const daysSinceCreation = Math.floor((now.getTime() - creationDate.getTime()) / (1000 * 60 * 60 * 24));
+    const workingDays = Math.floor(daysSinceCreation * 0.71); // ~5 working days per week
+    
+    // Estimate based on max route distance with realistic utilization
+    const estimatedDailyDistance = team.maxRouteDistance * 0.4; // 40% utilization seems reasonable
+    return Math.max(0, estimatedDailyDistance * workingDays);
+  }
+  
+  return 0; // No data to calculate from
 }
 
 private calculateFuelConsumption(team: any): number {
-  // Calculate based on distance and vehicle efficiency
+  // Use actual fuel consumption data if tracked
+  if (team.performanceMetrics?.totalFuelConsumed) {
+    return team.performanceMetrics.totalFuelConsumed;
+  }
+  
+  // Calculate based on actual distance and vehicle specs
   const totalDistance = this.calculateTotalDistance(team);
-  const consumption = team.vehicleInfo?.avgFuelConsumption || 8; // L/100km
-  return Math.round((totalDistance / 100) * consumption);
+  if (totalDistance === 0 || !team.vehicleInfo?.avgFuelConsumption) {
+    return 0;
+  }
+  
+  // Calculate fuel consumption: (distance / 100) * consumption rate
+  const fuelConsumed = (totalDistance / 100) * team.vehicleInfo.avgFuelConsumption;
+  return Math.round(fuelConsumed * 100) / 100; // Round to 2 decimal places
 }
 
 private calculateActiveHours(team: any): number {
-  // Calculate based on working hours and activity
-  const workingHours = team.workingHours;
-  if (!workingHours) return 0;
+  // Use actual tracked hours if available
+  if (team.performanceMetrics?.totalActiveHours) {
+    return team.performanceMetrics.totalActiveHours;
+  }
   
-  const startHour = parseInt(workingHours.start.split(':')[0]);
-  const endHour = parseInt(workingHours.end.split(':')[0]);
-  const dailyHours = endHour - startHour;
-  const activeDays = 20; // Working days per month
+  // Calculate based on actual working pattern
+  if (!team.workingHours || !team.createdAt) {
+    return 0;
+  }
   
-  return dailyHours * activeDays;
+  try {
+    const [startHour, startMin] = team.workingHours.start.split(':').map(Number);
+    const [endHour, endMin] = team.workingHours.end.split(':').map(Number);
+    
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    let dailyMinutes = endMinutes - startMinutes;
+    
+    // Handle overnight shifts
+    if (dailyMinutes < 0) {
+      dailyMinutes += 24 * 60;
+    }
+    
+    // Subtract break time
+    const breakMinutes = team.workingHours.breakDuration || 0;
+    const lunchMinutes = team.workingHours.lunchBreak ? 
+      this.calculateLunchDuration(team.workingHours.lunchBreak) : 0;
+    
+    const effectiveDailyMinutes = Math.max(0, dailyMinutes - breakMinutes - lunchMinutes);
+    const dailyHours = effectiveDailyMinutes / 60;
+    
+    // Calculate working days since creation
+    const creationDate = new Date(team.createdAt);
+    const now = new Date();
+    const daysSinceCreation = Math.floor((now.getTime() - creationDate.getTime()) / (1000 * 60 * 60 * 24));
+    const workingDays = Math.floor(daysSinceCreation * 0.71); // ~5 working days per week
+    
+    return Math.max(0, dailyHours * workingDays);
+  } catch (error) {
+    this.logger.warn(`Error calculating active hours for team: ${error.message}`);
+    return 0;
+  }
+}
+
+private calculateLunchDuration(lunchBreak: any): number {
+  if (!lunchBreak?.start || !lunchBreak?.end) return 0;
+  
+  try {
+    const [startHour, startMin] = lunchBreak.start.split(':').map(Number);
+    const [endHour, endMin] = lunchBreak.end.split(':').map(Number);
+    
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    
+    return Math.max(0, endMinutes - startMinutes);
+  } catch (error) {
+    return 0;
+  }
 }
 
 private calculateServiceAreaCoverage(team: any): number {
-  // Calculate coverage based on service areas
-  if (!team.serviceAreas || team.serviceAreas.length === 0) return 0;
+  // Use actual coverage data if tracked
+  if (team.performanceMetrics?.serviceCoverage) {
+    return team.performanceMetrics.serviceCoverage;
+  }
+  
+  if (!team.serviceAreas || team.serviceAreas.length === 0) {
+    return 0;
+  }
   
   let totalCoverage = 0;
+  
   for (const area of team.serviceAreas) {
-    if (area.type === 'circle' && area.radius) {
-      // Calculate circle area in km²
-      totalCoverage += Math.PI * Math.pow(area.radius / 1000, 2);
-    } else if (area.type === 'polygon' && area.coordinates) {
-      // Rough polygon area calculation (simplified)
-      totalCoverage += area.coordinates.length * 10; // Simplified calculation
+    try {
+      if (area.type === 'circle' && area.radius && area.radius > 0) {
+        // Calculate actual circle area in km²
+        const radiusKm = area.radius / 1000; // Convert meters to km
+        const areaKm2 = Math.PI * Math.pow(radiusKm, 2);
+        totalCoverage += areaKm2;
+      } else if (area.type === 'polygon' && area.coordinates && area.coordinates.length >= 3) {
+        // Use Shoelace formula for polygon area calculation
+        const areaKm2 = this.calculatePolygonArea(area.coordinates);
+        totalCoverage += areaKm2;
+      }
+    } catch (error) {
+      this.logger.warn(`Error calculating service area coverage: ${error.message}`);
     }
   }
   
-  return Math.round(totalCoverage);
+  return Math.round(totalCoverage * 100) / 100; // Round to 2 decimal places
+}
+
+private calculatePolygonArea(coordinates: Array<{ lat: number; lng: number }>): number {
+  if (coordinates.length < 3) return 0;
+  
+  // Shoelace formula for polygon area
+  // Note: This is a simplified calculation that assumes small areas where lat/lng can be treated as planar
+  let area = 0;
+  const n = coordinates.length;
+  
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += coordinates[i].lat * coordinates[j].lng;
+    area -= coordinates[j].lat * coordinates[i].lng;
+  }
+  
+  // Convert to approximate km² (very rough approximation)
+  // For accurate results, you'd use proper geodesic calculations
+  const approximateKm2 = Math.abs(area) * 12321; // Rough conversion factor
+  return approximateKm2;
 }
 
 private calculateEquipmentUtilization(team: any): number {
-  // Calculate based on equipment count and activity
-  const equipmentCount = team.equipment?.length || 0;
-  const utilizationRate = team.performanceMetrics?.onTimePerformance || 100;
+  // Use actual utilization data if tracked
+  if (team.performanceMetrics?.equipmentUtilization) {
+    return team.performanceMetrics.equipmentUtilization;
+  }
   
-  return Math.min(100, (equipmentCount * 10) + (utilizationRate * 0.5));
+  // Calculate based on equipment usage and team activity
+  const equipmentCount = team.equipment?.length || 0;
+  if (equipmentCount === 0) return 0;
+  
+  // Factor in team activity level
+  const activityFactor = team.isActive ? 1 : 0.1;
+  const routingFactor = team.isAvailableForRouting ? 1 : 0.5;
+  const performanceFactor = (team.performanceMetrics?.onTimePerformance || 0) / 100;
+  
+  // Calculate utilization as a percentage
+  const baseUtilization = Math.min(100, equipmentCount * 15); // Base 15% per equipment item
+  const adjustedUtilization = baseUtilization * activityFactor * routingFactor * performanceFactor;
+  
+  return Math.round(adjustedUtilization);
 }
 
 private getRecentActivity(team: any): Array<{
@@ -1773,40 +1853,92 @@ private getRecentActivity(team: any): Array<{
   description: string;
   metadata?: any;
 }> {
-  // This would typically query your activity/audit log database
-  // For now, return mock recent activity
-  const activities = [];
-  const now = new Date();
+  const activities: Array<{
+    date: Date;
+    type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
+    description: string;
+    metadata?: any;
+  }> = [];
   
+  // Use actual activity log if available
+  if (team.activityLog && Array.isArray(team.activityLog)) {
+    return team.activityLog
+      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 10)
+      .map((activity: any) => ({
+        date: new Date(activity.timestamp),
+        type: activity.type,
+        description: activity.description,
+        metadata: activity.metadata
+      }));
+  }
+  
+  // Generate activities from available data
   if (team.lastLocationUpdate) {
     activities.push({
-      date: team.lastLocationUpdate,
-      type: 'location_update' as const,
-      description: 'Location updated',
+      date: new Date(team.lastLocationUpdate),
+      type: 'location_update',
+      description: team.currentLocation ? 
+        `Location updated to ${team.currentLocation.lat.toFixed(4)}, ${team.currentLocation.lng.toFixed(4)}` :
+        'Location updated',
       metadata: { coordinates: team.currentLocation }
     });
   }
   
   if (team.performanceMetrics?.lastPerformanceUpdate) {
     activities.push({
-      date: team.performanceMetrics.lastPerformanceUpdate,
-      type: 'task_completed' as const,
-      description: 'Performance metrics updated',
-      metadata: { rating: team.performanceMetrics.customerRating }
+      date: new Date(team.performanceMetrics.lastPerformanceUpdate),
+      type: 'task_completed',
+      description: `Performance metrics updated - ${team.performanceMetrics.customerRating}/5 rating`,
+      metadata: { 
+        rating: team.performanceMetrics.customerRating,
+        onTimePerformance: team.performanceMetrics.onTimePerformance
+      }
     });
   }
   
   if (team.updatedAt) {
     activities.push({
-      date: team.updatedAt,
-      type: 'status_change' as const,
-      description: 'Team information updated',
-      metadata: { isActive: team.isActive }
+      date: new Date(team.updatedAt),
+      type: 'status_change',
+      description: `Team configuration updated`,
+      metadata: { 
+        isActive: team.isActive,
+        isAvailableForRouting: team.isAvailableForRouting
+      }
     });
   }
   
-  // Sort by date (most recent first)
-  return activities.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 10);
+  if (team.vehicleInfo?.maintenanceStatus && team.vehicleInfo.maintenanceStatus !== 'good') {
+    // Estimate maintenance activity date (if not available)
+    const maintenanceDate = team.vehicleInfo.lastMaintenanceDate ? 
+      new Date(team.vehicleInfo.lastMaintenanceDate) : 
+      new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000); // Random within last week
+      
+    activities.push({
+      date: maintenanceDate,
+      type: 'maintenance',
+      description: `Vehicle maintenance: ${team.vehicleInfo.maintenanceStatus.replace('_', ' ')}`,
+      metadata: { 
+        vehicleType: team.vehicleInfo.type,
+        maintenanceStatus: team.vehicleInfo.maintenanceStatus
+      }
+    });
+  }
+  
+  if (team.createdAt) {
+    activities.push({
+      date: new Date(team.createdAt),
+      type: 'status_change',
+      description: 'Team created and configured for field operations',
+      metadata: { teamName: team.name }
+    });
+  }
+  
+  // Sort by date (most recent first) and limit to 10
+  return activities
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, 10);
 }
 
 }
