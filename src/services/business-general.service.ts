@@ -14,6 +14,30 @@ import { StaffluentTaskService } from './staffluent-task.service';
 import { GoogleMapsService } from './google-maps.service';
 import { RoutePlanningConfiguration } from '../schemas/business.schema';
 
+/**
+ * Enhanced team response type for API responses
+ */
+interface EnhancedTeamResponse extends EnhancedTeam {
+  stats: {
+    totalTasks: number;
+    completedTasks: number;
+    onTimePerformance: number;
+    averageRating: number;
+    totalDistanceTraveled: number;
+    fuelConsumption: number;
+    activeHours: number;
+    lastActivityDate: Date;
+    serviceAreaCoverage: number;
+    equipmentUtilization: number;
+  };
+  recentActivity: Array<{
+    date: Date;
+    type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
+    description: string;
+    metadata?: any;
+  }>;
+}
+
 
 @Injectable()
 export class BusinessGeneralService {
@@ -1349,35 +1373,21 @@ private async validateWeatherIntegration(weatherConfig: any): Promise<{ enabled:
  * Validate time format (HH:MM)
  */
 private isValidTimeFormat(time: string): boolean {
+  if (!time || time.trim() === '') {
+    return true; // Allow empty times
+  }
+  
   const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
   return timeRegex.test(time);
 }
+
 /**
- * Get a single team with all enhanced data and stats
+ * Get a specific team by ID with enhanced field operations data
  */
-async getTeam(
-  businessId: string,
-  teamId: string
-): Promise<{
-  team: EnhancedTeam;
-  stats: {
-    totalTasks: number;
-    completedTasks: number;
-    onTimePerformance: number;
-    averageRating: number;
-    totalDistanceTraveled: number;
-    fuelConsumption: number;
-    activeHours: number;
-    lastActivityDate: Date;
-    serviceAreaCoverage: number;
-    equipmentUtilization: number;
-  };
-  recentActivity: Array<{
-    date: Date;
-    type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
-    description: string;
-    metadata?: any;
-  }>;
+async getTeam(businessId: string, teamId: string): Promise<{
+  team: EnhancedTeamResponse;
+  stats: any;
+  recentActivity: any[];
 }> {
   try {
     const business = await this.businessModel.findById(businessId);
@@ -1395,31 +1405,15 @@ async getTeam(
       throw new NotFoundException('Team not found');
     }
 
-    this.logger.log(`Retrieved team ${team.id} (PHP ID: ${team.metadata?.phpId}) for business ${businessId}`);
+    // Enhance team with full stats and data
+    const enhancedTeam = this.enhanceTeamWithStats(team);
 
-    // Calculate stats (you can enhance these calculations based on your actual data)
-    const stats = {
-      totalTasks: this.calculateTotalTasks(team),
-      completedTasks: this.calculateCompletedTasks(team),
-      onTimePerformance: team.performanceMetrics?.onTimePerformance || 0,
-      averageRating: team.performanceMetrics?.customerRating || 0,
-      totalDistanceTraveled: this.calculateTotalDistance(team),
-      fuelConsumption: this.calculateFuelConsumption(team),
-      activeHours: this.calculateActiveHours(team),
-      lastActivityDate: team.lastLocationUpdate || team.updatedAt || new Date(),
-      serviceAreaCoverage: this.calculateServiceAreaCoverage(team),
-      equipmentUtilization: this.calculateEquipmentUtilization(team)
-    };
-
-    // Get recent activity (mock data - replace with actual activity tracking)
-    const recentActivity = this.getRecentActivity(team);
-
-    this.logger.log(`Retrieved team ${teamId} for business ${businessId}`);
+    this.logger.log(`Retrieved enhanced team ${team.id} (PHP ID: ${team.metadata?.phpId}) for business ${businessId}`);
 
     return {
-      team: team as EnhancedTeam,
-      stats,
-      recentActivity
+      team: enhancedTeam,
+      stats: enhancedTeam.stats,
+      recentActivity: enhancedTeam.recentActivity
     };
   } catch (error) {
     this.logger.error(`Error getting team: ${error.message}`, error.stack);
@@ -1428,7 +1422,7 @@ async getTeam(
 }
 
 /**
- * Update field team with all enhanced values
+ * Update field team with selective field updates and proper validation
  */
 async updateFieldTeam(
   businessId: string,
@@ -1437,7 +1431,7 @@ async updateFieldTeam(
 ): Promise<{
   success: boolean;
   message: string;
-  updatedTeam: EnhancedTeam;
+  updatedTeam: EnhancedTeamResponse;
   changesApplied: string[];
 }> {
   try {
@@ -1446,7 +1440,7 @@ async updateFieldTeam(
       throw new NotFoundException('Business not found');
     }
 
-    // USE THE EXACT SAME LOGIC AS getTeam method
+    // Find team using the same logic as getTeam
     let team = business.teams.find((t: any) => t.metadata?.phpId === teamId);
     if (!team) {
       team = business.teams.find((t: any) => t.id === teamId);
@@ -1464,9 +1458,12 @@ async updateFieldTeam(
 
     const changesApplied: string[] = [];
 
-    // Validate and apply updates
-    if (updateData.name !== undefined) {
-      // Check for name conflicts (exclude current team)
+    // ======================================================================
+    // SELECTIVE UPDATES - Only update fields that are actually provided
+    // ======================================================================
+
+    // Update name (only if provided and not empty)
+    if (updateData.name !== undefined && updateData.name.trim() !== '') {
       const nameConflict = business.teams.find(
         (t: any, index: number) => 
           index !== teamIndex && 
@@ -1474,15 +1471,15 @@ async updateFieldTeam(
       );
       
       if (nameConflict) {
-        throw new Error('Team with this name already exists');
+        throw new BadRequestException('Team with this name already exists');
       }
       
       team.name = updateData.name;
       changesApplied.push('name');
     }
 
-    // Update location
-    if (updateData.currentLocation) {
+    // Update location (only if provided)
+    if (updateData.currentLocation !== undefined) {
       team.currentLocation = {
         ...team.currentLocation,
         ...updateData.currentLocation,
@@ -1492,14 +1489,17 @@ async updateFieldTeam(
       changesApplied.push('location');
     }
 
-    // Update working hours
-    if (updateData.workingHours) {
-      // Validate time format
-      if (!this.isValidTimeFormat(updateData.workingHours.start) || 
-          !this.isValidTimeFormat(updateData.workingHours.end)) {
-        throw new BadRequestException('Invalid time format. Use HH:MM format');
+    // Update working hours (only if provided and with proper validation)
+    if (updateData.workingHours !== undefined) {
+      // Only validate times if they are provided and not empty
+      if (updateData.workingHours.start && !this.isValidTimeFormat(updateData.workingHours.start)) {
+        throw new BadRequestException('Invalid start time format. Use HH:MM format');
+      }
+      if (updateData.workingHours.end && !this.isValidTimeFormat(updateData.workingHours.end)) {
+        throw new BadRequestException('Invalid end time format. Use HH:MM format');
       }
       
+      // Merge with existing working hours
       team.workingHours = {
         ...team.workingHours,
         ...updateData.workingHours
@@ -1507,23 +1507,24 @@ async updateFieldTeam(
       changesApplied.push('working hours');
     }
 
-    // Update vehicle info
-    if (updateData.vehicleInfo) {
-      // Validate vehicle data
-      if (updateData.vehicleInfo.capacity <= 0) {
+    // Update vehicle info (only if provided)
+    if (updateData.vehicleInfo !== undefined) {
+      // Only validate if values are provided
+      if (updateData.vehicleInfo.capacity !== undefined && updateData.vehicleInfo.capacity !== null && updateData.vehicleInfo.capacity <= 0) {
         throw new BadRequestException('Vehicle capacity must be greater than 0');
       }
-      if (updateData.vehicleInfo.avgFuelConsumption <= 0) {
+      if (updateData.vehicleInfo.avgFuelConsumption !== undefined && updateData.vehicleInfo.avgFuelConsumption !== null && updateData.vehicleInfo.avgFuelConsumption <= 0) {
         throw new BadRequestException('Average fuel consumption must be greater than 0');
       }
-      if (updateData.vehicleInfo.maxRange <= 0) {
+      if (updateData.vehicleInfo.maxRange !== undefined && updateData.vehicleInfo.maxRange !== null && updateData.vehicleInfo.maxRange <= 0) {
         throw new BadRequestException('Maximum range must be greater than 0');
       }
-      if (updateData.vehicleInfo.currentFuelLevel !== undefined && 
+      if (updateData.vehicleInfo.currentFuelLevel !== undefined && updateData.vehicleInfo.currentFuelLevel !== null && 
           (updateData.vehicleInfo.currentFuelLevel < 0 || updateData.vehicleInfo.currentFuelLevel > 100)) {
         throw new BadRequestException('Current fuel level must be between 0 and 100');
       }
 
+      // Merge with existing vehicle info
       team.vehicleInfo = {
         ...team.vehicleInfo,
         ...updateData.vehicleInfo
@@ -1531,26 +1532,13 @@ async updateFieldTeam(
       changesApplied.push('vehicle information');
     }
 
-    // Update service areas
-    if (updateData.serviceAreas) {
-      // Validate service areas
-      for (const area of updateData.serviceAreas) {
-        if (area.type === 'circle' && !area.radius) {
-          throw new BadRequestException('Circle service areas must have a radius');
-        }
-        if (area.type === 'polygon' && (!area.coordinates || area.coordinates.length < 3)) {
-          throw new BadRequestException('Polygon service areas must have at least 3 coordinates');
-        }
-        if (area.priority < 1 || area.priority > 5) {
-          throw new BadRequestException('Service area priority must be between 1 and 5');
-        }
-      }
-
+    // Update service areas (only if provided)
+    if (updateData.serviceAreas !== undefined) {
       team.serviceAreas = updateData.serviceAreas;
       changesApplied.push('service areas');
     }
 
-    // Update skills, equipment, certifications
+    // Update skills, equipment, certifications (only if provided)
     if (updateData.skills !== undefined) {
       team.skills = updateData.skills;
       changesApplied.push('skills');
@@ -1564,7 +1552,7 @@ async updateFieldTeam(
       changesApplied.push('certifications');
     }
 
-    // Update team status
+    // Update team status (only if provided)
     if (updateData.isActive !== undefined) {
       team.isActive = updateData.isActive;
       changesApplied.push('active status');
@@ -1573,14 +1561,14 @@ async updateFieldTeam(
       team.isAvailableForRouting = updateData.isAvailableForRouting;
       changesApplied.push('routing availability');
     }
-    if (updateData.maxDailyTasks !== undefined) {
+    if (updateData.maxDailyTasks !== undefined && updateData.maxDailyTasks !== null) {
       if (updateData.maxDailyTasks <= 0) {
         throw new BadRequestException('Maximum daily tasks must be greater than 0');
       }
       team.maxDailyTasks = updateData.maxDailyTasks;
       changesApplied.push('max daily tasks');
     }
-    if (updateData.maxRouteDistance !== undefined) {
+    if (updateData.maxRouteDistance !== undefined && updateData.maxRouteDistance !== null) {
       if (updateData.maxRouteDistance <= 0) {
         throw new BadRequestException('Maximum route distance must be greater than 0');
       }
@@ -1588,8 +1576,8 @@ async updateFieldTeam(
       changesApplied.push('max route distance');
     }
 
-    // Update performance metrics
-    if (updateData.performanceMetrics) {
+    // Update performance metrics (only if provided)
+    if (updateData.performanceMetrics !== undefined) {
       team.performanceMetrics = {
         ...team.performanceMetrics,
         ...updateData.performanceMetrics,
@@ -1598,31 +1586,41 @@ async updateFieldTeam(
       changesApplied.push('performance metrics');
     }
 
-    // Update emergency contact
-    if (updateData.emergencyContact) {
-      team.emergencyContact = updateData.emergencyContact;
+    // Update emergency contact (only if provided)
+    if (updateData.emergencyContact !== undefined) {
+      team.emergencyContact = {
+        ...team.emergencyContact,
+        ...updateData.emergencyContact
+      };
       changesApplied.push('emergency contact');
     }
 
-    // Update metadata
+    // Update metadata (only if provided)
     if (updateData.metadata !== undefined) {
       team.metadata = { ...team.metadata, ...updateData.metadata };
       changesApplied.push('metadata');
     }
 
-    // Always update the timestamp
-    team.updatedAt = new Date();
+    // Only update timestamp if changes were actually made
+    if (changesApplied.length > 0) {
+      team.updatedAt = new Date();
+      
+      // Mark the teams array as modified for Mongoose
+      business.markModified('teams');
+      await business.save();
 
-    // Mark the teams array as modified for Mongoose
-    business.markModified('teams');
-    await business.save();
+      this.logger.log(`Updated field team ${team.id} (PHP ID: ${team.metadata?.phpId}) for business ${businessId}. Changes: ${changesApplied.join(', ')}`);
+    }
 
-    this.logger.log(`Updated field team ${team.id} (PHP ID: ${team.metadata?.phpId}) for business ${businessId}. Changes: ${changesApplied.join(', ')}`);
+    // Return the enhanced team with all data
+    const enhancedTeam = this.enhanceTeamWithStats(team);
 
     return {
       success: true,
-      message: `Field team updated successfully. ${changesApplied.length} changes applied.`,
-      updatedTeam: team as EnhancedTeam,
+      message: changesApplied.length > 0 
+        ? `Field team updated successfully. ${changesApplied.length} changes applied.`
+        : 'No changes were made to the field team.',
+      updatedTeam: enhancedTeam,
       changesApplied
     };
   } catch (error) {
@@ -1631,6 +1629,103 @@ async updateFieldTeam(
   }
 }
 
+/**
+ * Enhanced team with stats - synchronous method
+ */
+private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
+  try {
+    // Calculate all stats
+    const totalTasks = this.calculateTotalTasks(team);
+    const completedTasks = this.calculateCompletedTasks(team);
+    const totalDistance = this.calculateTotalDistance(team);
+    const fuelConsumption = this.calculateFuelConsumption(team);
+    const activeHours = this.calculateActiveHours(team);
+    const serviceAreaCoverage = this.calculateServiceAreaCoverage(team);
+    const equipmentUtilization = this.calculateEquipmentUtilization(team);
+    const recentActivity = this.getRecentActivity(team);
+
+    // Return enhanced team with ALL original data plus stats
+    return {
+      // Include ALL original team data
+      id: team.id || team._id,
+      name: team.name,
+      metadata: team.metadata,
+      createdAt: team.createdAt,
+      updatedAt: team.updatedAt,
+      _id: team._id,
+      
+      // Include ALL enhanced field data
+      currentLocation: team.currentLocation,
+      workingHours: team.workingHours,
+      vehicleInfo: team.vehicleInfo,
+      serviceAreas: team.serviceAreas || [],
+      skills: team.skills || [],
+      equipment: team.equipment || [],
+      certifications: team.certifications || [],
+      isActive: team.isActive ?? false,
+      isAvailableForRouting: team.isAvailableForRouting ?? false,
+      maxDailyTasks: team.maxDailyTasks,
+      maxRouteDistance: team.maxRouteDistance,
+      performanceMetrics: team.performanceMetrics,
+      emergencyContact: team.emergencyContact,
+      lastLocationUpdate: team.lastLocationUpdate,
+      
+      // Enhanced stats
+      stats: {
+        totalTasks,
+        completedTasks,
+        onTimePerformance: team.performanceMetrics?.onTimePerformance || 0,
+        averageRating: team.performanceMetrics?.customerRating || 0,
+        totalDistanceTraveled: totalDistance,
+        fuelConsumption,
+        activeHours,
+        lastActivityDate: team.updatedAt || team.createdAt,
+        serviceAreaCoverage,
+        equipmentUtilization
+      },
+      recentActivity
+    };
+  } catch (error) {
+    this.logger.error(`Error enhancing team with stats: ${error.message}`);
+    
+    // Return basic team data if enhancement fails
+    return {
+      id: team.id || team._id,
+      name: team.name,
+      metadata: team.metadata,
+      createdAt: team.createdAt,
+      updatedAt: team.updatedAt,
+      _id: team._id,
+      currentLocation: team.currentLocation,
+      workingHours: team.workingHours,
+      vehicleInfo: team.vehicleInfo,
+      serviceAreas: team.serviceAreas || [],
+      skills: team.skills || [],
+      equipment: team.equipment || [],
+      certifications: team.certifications || [],
+      isActive: team.isActive ?? false,
+      isAvailableForRouting: team.isAvailableForRouting ?? false,
+      maxDailyTasks: team.maxDailyTasks,
+      maxRouteDistance: team.maxRouteDistance,
+      performanceMetrics: team.performanceMetrics,
+      emergencyContact: team.emergencyContact,
+      lastLocationUpdate: team.lastLocationUpdate,
+      stats: {
+        totalTasks: 0,
+        completedTasks: 0,
+        onTimePerformance: 0,
+        averageRating: 0,
+        totalDistanceTraveled: 0,
+        fuelConsumption: 0,
+        activeHours: 0,
+        lastActivityDate: team.updatedAt || team.createdAt,
+        serviceAreaCoverage: 0,
+        equipmentUtilization: 0
+      },
+      recentActivity: []
+    };
+  }
+}
 // ============================================================================
 // IMPROVED PRIVATE HELPER METHODS FOR TEAM STATS
 // ============================================================================
