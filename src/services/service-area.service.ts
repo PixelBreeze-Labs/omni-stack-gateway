@@ -226,20 +226,16 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
           priority: request.priority || 'medium',
           region: request.region || 'Unknown Region',
           coverage: {
-            area: request.coverage?.area || 50, // Default 50 km²
-            population: request.coverage?.population || 100, // Default 100
+            area: request.coverage?.area || 0,
+            population: request.coverage?.population || 0,
             boundaries: request.coverage?.boundaries || {
               type: 'Polygon',
               coordinates: coordinates ? [coordinates] : []
             }
           },
-          manager: request.manager || {
-            name: 'Site Manager',
-            email: 'manager@company.com',
-            phone: '+1-555-0123'
-          },
+          manager: request.manager,
           teams: [],
-          noOfWorkers: request.coverage?.population || 100,
+          noOfWorkers: request.coverage?.population || 0,
           ...request.metadata
         }
       });
@@ -417,10 +413,10 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
         total_areas: constructionSites.length,
         active_areas: activeSites.length,
         total_coverage: constructionSites.reduce((sum, site) => {
-          return sum + (site.metadata.coverage?.area || 50); // Default 50 km² if not set
+          return sum + (site.metadata.coverage?.area || 0);
         }, 0),
         total_population: constructionSites.reduce((sum, site) => {
-          return sum + (site.metadata.coverage?.population || site.metadata.noOfWorkers || 100);
+          return sum + (site.metadata.coverage?.population || site.metadata.noOfWorkers || 0);
         }, 0),
         avg_response_time: 0,
         avg_satisfaction: 0,
@@ -555,8 +551,8 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
   private getCoverageFromSite(site: any): { area: number; population: number; boundaries?: any } {
     const coverage = site.metadata?.coverage || {};
     return {
-      area: coverage.area || 50, // Default 50 km²
-      population: coverage.population || site.metadata?.noOfWorkers || 100, // Default 100
+      area: coverage.area || 0,
+      population: coverage.population || site.metadata?.noOfWorkers || 0,
       boundaries: coverage.boundaries
     };
   }
@@ -660,12 +656,12 @@ private validateServiceAreaData(data: CreateServiceAreaRequest): void {
     // Calculate real metrics from actual data
     const totalCustomers = new Set(tasks.map(t => t.appClientId.toString())).size;
     const totalRevenue = completedTasks.reduce((sum, task) => {
-      return sum + (task.billingInfo?.totalAmount || 85); // Default $85 per task
+      return sum + (task.billingInfo?.totalAmount || 0);
     }, 0);
 
     const avgResponseTime = completedTasks.length > 0 ? 
       completedTasks.reduce((sum, task) => {
-        const responseTime = task.actualPerformance?.actualDuration || 25;
+        const responseTime = task.actualPerformance?.actualDuration || 0;
         return sum + responseTime;
       }, 0) / completedTasks.length : 25;
 
@@ -732,9 +728,9 @@ private validateServiceAreaData(data: CreateServiceAreaRequest): void {
       isDeleted: false
     }).limit(20).sort({ completedAt: -1 });
 
-    if (tasks.length === 0) return 25; // Default response time
+    if (tasks.length === 0) return 0;
 
-    const responseTimes = tasks.map(task => task.actualPerformance?.actualDuration || 25);
+    const responseTimes = tasks.map(task => task.actualPerformance?.actualDuration || 0);
     return responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
   }
 
@@ -750,7 +746,7 @@ private validateServiceAreaData(data: CreateServiceAreaRequest): void {
       isDeleted: false
     }).limit(20).sort({ completedAt: -1 });
 
-    if (tasks.length === 0) return 84; // Default satisfaction
+    if (tasks.length === 0) return 0;
 
     const ratings = tasks.map(task => task.clientSignoff.satisfactionRating);
     const avgRating = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
@@ -791,7 +787,7 @@ private validateServiceAreaData(data: CreateServiceAreaRequest): void {
       isDeleted: false
     });
 
-    if (tasks.length === 0) return 85; // Default rate
+    if (tasks.length === 0) return 0;
 
     const completedTasks = tasks.filter(t => t.status === FieldTaskStatus.COMPLETED);
     return (completedTasks.length / tasks.length) * 100;
