@@ -76,7 +76,6 @@ export enum BusinessOperationType {
     };
   }
   
-  // Enhanced Team interface for route planning
   export interface EnhancedTeam {
     id: string;
     name: string;
@@ -91,7 +90,7 @@ export enum BusinessOperationType {
     };
     
     // Working schedule
-    workingHours: { 
+    workingHours?: { 
       start: string; // HH:MM
       end: string;   // HH:MM
       timezone: string;
@@ -103,7 +102,7 @@ export enum BusinessOperationType {
     };
     
     // Vehicle information for route planning
-    vehicleInfo: {
+    vehicleInfo?: {
       type: string; // 'van', 'truck', 'car', 'motorcycle', 'bicycle'
       licensePlate?: string;
       capacity: number; // maximum items/weight
@@ -116,7 +115,7 @@ export enum BusinessOperationType {
     };
     
     // Service capabilities
-    serviceAreas: Array<{
+    serviceAreas?: Array<{
       name: string;
       type: 'circle' | 'polygon';
       coordinates: Array<{ lat: number; lng: number }>;
@@ -124,27 +123,27 @@ export enum BusinessOperationType {
       priority: number; // 1-5, higher = preferred
     }>;
     
-    skills: string[];
-    equipment: string[];
-    certifications: string[];
+    skills?: string[];
+    equipment?: string[];
+    certifications?: string[];
     
     // Team status and availability
-    isActive: boolean;
-    isAvailableForRouting: boolean;
-    maxDailyTasks: number;
-    maxRouteDistance: number; // km
+    isActive?: boolean;
+    isAvailableForRouting?: boolean;
+    maxDailyTasks?: number;
+    maxRouteDistance?: number; // km
     
     // Performance metrics
-    performanceMetrics: {
+    performanceMetrics?: {
       averageTasksPerDay: number;
       onTimePerformance: number; // percentage
       customerRating: number; // 1-5
       fuelEfficiency: number; // actual vs target
-      lastPerformanceUpdate: Date;
+      lastPerformanceUpdate?: Date;
     };
     
     // Emergency and contact info
-    emergencyContact: {
+    emergencyContact?: {
       name: string;
       phone: string;
       relationship: string;
@@ -153,9 +152,31 @@ export enum BusinessOperationType {
     lastLocationUpdate?: Date;
     
     // Metadata and creation info
-    metadata: any;
+    metadata?: any;
     createdAt?: Date;
     updatedAt?: Date;
+    _id?: string;
+  
+    // ADD MISSING PROPERTIES FOR ENHANCED RESPONSES
+    stats?: {
+      totalTasks: number;
+      completedTasks: number;
+      onTimePerformance: number;
+      averageRating: number;
+      totalDistanceTraveled: number;
+      fuelConsumption: number;
+      activeHours: number;
+      lastActivityDate: Date;
+      serviceAreaCoverage: number;
+      equipmentUtilization: number;
+    };
+  
+    recentActivity?: Array<{
+      date: Date;
+      type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
+      description: string;
+      metadata?: any;
+    }>;
   }
 
 export enum BusinessType {
