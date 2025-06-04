@@ -1629,12 +1629,9 @@ async updateFieldTeam(
   }
 }
 
-/**
- * Enhanced team with stats - synchronous method
- */
 private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
   try {
-    // Calculate all stats
+    // Calculate stats
     const totalTasks = this.calculateTotalTasks(team);
     const completedTasks = this.calculateCompletedTasks(team);
     const totalDistance = this.calculateTotalDistance(team);
@@ -1644,33 +1641,18 @@ private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
     const equipmentUtilization = this.calculateEquipmentUtilization(team);
     const recentActivity = this.getRecentActivity(team);
 
-    // Return enhanced team with ALL original data plus stats
+    // Return ALL original team data + enhanced stats
     return {
-      // Include ALL original team data
-      id: team.id || team._id,
-      name: team.name,
-      metadata: team.metadata,
-      createdAt: team.createdAt,
-      updatedAt: team.updatedAt,
-      _id: team._id,
+      ...team, // 🔥 COPY ALL ORIGINAL FIELDS FIRST
       
-      // Include ALL enhanced field data
-      currentLocation: team.currentLocation,
-      workingHours: team.workingHours,
-      vehicleInfo: team.vehicleInfo,
+      // Ensure required fields exist
+      id: team.id || team._id,
       serviceAreas: team.serviceAreas || [],
       skills: team.skills || [],
       equipment: team.equipment || [],
       certifications: team.certifications || [],
-      isActive: team.isActive ?? false,
-      isAvailableForRouting: team.isAvailableForRouting ?? false,
-      maxDailyTasks: team.maxDailyTasks,
-      maxRouteDistance: team.maxRouteDistance,
-      performanceMetrics: team.performanceMetrics,
-      emergencyContact: team.emergencyContact,
-      lastLocationUpdate: team.lastLocationUpdate,
       
-      // Enhanced stats
+      // Add enhanced data
       stats: {
         totalTasks,
         completedTasks,
@@ -1686,30 +1668,16 @@ private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
       recentActivity
     };
   } catch (error) {
-    this.logger.error(`Error enhancing team with stats: ${error.message}`);
+    this.logger.error(`Error enhancing team: ${error.message}`);
     
-    // Return basic team data if enhancement fails
+    // Fallback: return original team + empty stats
     return {
+      ...team,
       id: team.id || team._id,
-      name: team.name,
-      metadata: team.metadata,
-      createdAt: team.createdAt,
-      updatedAt: team.updatedAt,
-      _id: team._id,
-      currentLocation: team.currentLocation,
-      workingHours: team.workingHours,
-      vehicleInfo: team.vehicleInfo,
       serviceAreas: team.serviceAreas || [],
       skills: team.skills || [],
       equipment: team.equipment || [],
       certifications: team.certifications || [],
-      isActive: team.isActive ?? false,
-      isAvailableForRouting: team.isAvailableForRouting ?? false,
-      maxDailyTasks: team.maxDailyTasks,
-      maxRouteDistance: team.maxRouteDistance,
-      performanceMetrics: team.performanceMetrics,
-      emergencyContact: team.emergencyContact,
-      lastLocationUpdate: team.lastLocationUpdate,
       stats: {
         totalTasks: 0,
         completedTasks: 0,
