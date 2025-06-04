@@ -461,100 +461,97 @@ export class Business extends Document {
         createdAt?: Date;
         updatedAt?: Date;
       }[];
-      
+
       @Prop({ 
-    type: [{
-      id: { type: String, required: true },
-      name: { type: String, required: true },
-      
-      // Enhanced location and tracking
-      currentLocation: {
-        lat: { type: Number },
-        lng: { type: Number },
-        timestamp: { type: Date },
-        accuracy: { type: Number },
-        isManualUpdate: { type: Boolean, default: false }
-      },
-      
-      // Working schedule
-      workingHours: {
-        start: { type: String, required: true }, // HH:MM
-        end: { type: String, required: true },   // HH:MM
-        timezone: { type: String, required: true },
-        breakDuration: { type: Number, default: 30 }, // minutes
-        lunchBreak: {
-          start: { type: String }, // HH:MM
-          end: { type: String }     // HH:MM
-        }
-      },
-      
-      // Vehicle information
-      vehicleInfo: {
-        type: { type: String, required: true },
-        licensePlate: { type: String },
-        capacity: { type: Number, required: true },
-        fuelType: { 
-          type: String, 
-          enum: ['gasoline', 'diesel', 'electric', 'hybrid'],
-          required: true 
-        },
-        avgFuelConsumption: { type: Number, required: true },
-        maxRange: { type: Number, required: true },
-        currentFuelLevel: { type: Number },
-        maintenanceStatus: { 
-          type: String, 
-          enum: ['good', 'needs_service', 'out_of_service'],
-          default: 'good'
-        },
-        gpsEnabled: { type: Boolean, default: true }
-      },
-      
-      // Service capabilities
-      serviceAreas: [{
-        name: { type: String, required: true },
-        type: { type: String, enum: ['circle', 'polygon'], required: true },
-        coordinates: [{ 
-          lat: { type: Number, required: true }, 
-          lng: { type: Number, required: true } 
-        }],
-        radius: { type: Number },
-        priority: { type: Number, min: 1, max: 5, default: 3 }
-      }],
-      
-      skills: { type: [String], default: [] },
-      equipment: { type: [String], default: [] },
-      certifications: { type: [String], default: [] },
-      
-      // Team status
-      isActive: { type: Boolean, default: true },
-      isAvailableForRouting: { type: Boolean, default: true },
-      maxDailyTasks: { type: Number, default: 8 },
-      maxRouteDistance: { type: Number, default: 200 }, // km
-      
-      // Performance metrics
-      performanceMetrics: {
-        averageTasksPerDay: { type: Number, default: 0 },
-        onTimePerformance: { type: Number, default: 100 },
-        customerRating: { type: Number, default: 5 },
-        fuelEfficiency: { type: Number, default: 100 },
-        lastPerformanceUpdate: { type: Date, default: Date.now }
-      },
-      
-      // Emergency contact
-      emergencyContact: {
-        name: { type: String },
-        phone: { type: String },
-        relationship: { type: String }
-      },
-      
-      lastLocationUpdate: { type: Date },
-      metadata: { type: MongooseSchema.Types.Mixed, default: {} },
-      createdAt: { type: Date, default: Date.now },
-      updatedAt: { type: Date, default: Date.now }
-    }], 
-    default: [] 
-  })
-  teams: EnhancedTeam[];
+        type: [{
+          id: { type: String, required: true },
+          name: { type: String, required: true },
+          
+          // Enhanced location and tracking - ALL OPTIONAL
+          currentLocation: {
+            lat: { type: Number },
+            lng: { type: Number },
+            timestamp: { type: Date },
+            accuracy: { type: Number },
+            isManualUpdate: { type: Boolean, default: false }
+          },
+          
+          // Working schedule - ALL OPTIONAL
+          workingHours: {
+            start: { type: String }, // REMOVED required: true
+            end: { type: String },   // REMOVED required: true
+            timezone: { type: String }, // REMOVED required: true
+            breakDuration: { type: Number, default: 30 },
+            lunchBreak: {
+              start: { type: String },
+              end: { type: String }
+            }
+          },
+          
+          // Vehicle information - ALL OPTIONAL
+          vehicleInfo: {
+            type: { type: String }, // REMOVED required: true
+            licensePlate: { type: String },
+            capacity: { type: Number }, // REMOVED required: true
+            fuelType: { 
+              type: String, 
+              enum: ['gasoline', 'diesel', 'electric', 'hybrid']
+              // REMOVED required: true
+            },
+            avgFuelConsumption: { type: Number }, // REMOVED required: true
+            maxRange: { type: Number }, // REMOVED required: true
+            currentFuelLevel: { type: Number },
+            maintenanceStatus: { 
+              type: String, 
+              enum: ['good', 'needs_service', 'out_of_service'],
+              default: 'good'
+            },
+            gpsEnabled: { type: Boolean, default: true }
+          },
+          
+          // Service capabilities - ALL OPTIONAL
+          serviceAreas: [{
+            name: { type: String }, // REMOVED required: true
+            type: { type: String, enum: ['circle', 'polygon'] }, // REMOVED required: true
+            coordinates: [{ 
+              lat: { type: Number }, // REMOVED required: true
+              lng: { type: Number } // REMOVED required: true
+            }],
+            radius: { type: Number },
+            priority: { type: Number, min: 1, max: 5, default: 3 }
+          }],
+          
+          skills: { type: [String], default: [] },
+          equipment: { type: [String], default: [] },
+          certifications: { type: [String], default: [] },
+          
+          isActive: { type: Boolean, default: true },
+          isAvailableForRouting: { type: Boolean, default: true },
+          maxDailyTasks: { type: Number, default: 8 },
+          maxRouteDistance: { type: Number, default: 200 },
+          
+          performanceMetrics: {
+            averageTasksPerDay: { type: Number, default: 0 },
+            onTimePerformance: { type: Number, default: 100 },
+            customerRating: { type: Number, default: 5 },
+            fuelEfficiency: { type: Number, default: 100 },
+            lastPerformanceUpdate: { type: Date, default: Date.now }
+          },
+          
+          emergencyContact: {
+            name: { type: String },
+            phone: { type: String },
+            relationship: { type: String }
+          },
+          
+          lastLocationUpdate: { type: Date },
+          metadata: { type: MongooseSchema.Types.Mixed, default: {} },
+          createdAt: { type: Date, default: Date.now },
+          updatedAt: { type: Date, default: Date.now }
+        }], 
+        default: [] 
+      })
+      teams: EnhancedTeam[];
 
   // NEW: Route Planning Statistics and Caching
   @Prop({ type: MongooseSchema.Types.Mixed })
