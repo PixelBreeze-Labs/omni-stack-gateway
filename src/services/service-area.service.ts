@@ -9,19 +9,19 @@ import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
 interface CreateServiceAreaRequest {
   businessId: string;
   name: string;
-  region: string;
-  priority: 'high' | 'medium' | 'low';
-  coverage: {
-    area: number; // in km²
-    population: number;
+  region?: string;
+  priority?: 'high' | 'medium' | 'low';
+  coverage?: {
+    area?: number; // in km²
+    population?: number;
     boundaries?: {
       coordinates: Array<{ lat: number; lng: number }>;
     };
   };
-  manager: {
-    name: string;
-    email: string;
-    phone: string;
+  manager?: {
+    name?: string;
+    email?: string;
+    phone?: string;
   };
   metadata?: any;
 }
@@ -49,29 +49,29 @@ interface UpdateServiceAreaRequest {
 interface ServiceAreaResponse {
   id: string;
   name: string;
-  region: string;
+  region?: string;
   status: 'active' | 'inactive' | 'maintenance' | 'expanding';
-  priority: 'high' | 'medium' | 'low';
-  coverage: {
-    area: number;
-    population: number;
-    coverage_percentage: number;
+  priority?: 'high' | 'medium' | 'low';
+  coverage?: {
+    area?: number;
+    population?: number;
+    coverage_percentage?: number;
     boundaries?: any;
   };
-  metrics: {
-    active_customers: number;
-    monthly_revenue: number;
-    response_time: number;
-    satisfaction_score: number;
-    completion_rate: number;
+  metrics?: {
+    active_customers?: number;
+    monthly_revenue?: number;
+    response_time?: number;
+    satisfaction_score?: number;
+    completion_rate?: number;
   };
-  manager: {
-    name: string;
-    email: string;
-    phone: string;
+  manager?: {
+    name?: string;
+    email?: string;
+    phone?: string;
   };
-  teams_count: number;
-  assignedTeams: string[];
+  teams_count?: number;
+  assignedTeams?: string[];
 }
 
 interface CoverageStats {
@@ -185,15 +185,15 @@ export class ServiceAreaService {
   }
 
   /**
-   * Create a new service area using ConstructionSite schema
-   */
-  async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: boolean; areaId: string; message: string }> {
+ * Updated createServiceArea method to handle optional fields with defaults
+ */
+async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: boolean; areaId: string; message: string }> {
     try {
       const business = await this.validateBusiness(request.businessId);
       
-      // Validate required fields
+      // Validate required fields (only name now)
       this.validateServiceAreaData(request);
-
+  
       // Check if site name already exists
       const existingSite = await this.constructionSiteModel.findOne({
         businessId: request.businessId,
@@ -204,8 +204,11 @@ export class ServiceAreaService {
       if (existingSite) {
         throw new BadRequestException('Service area with this name already exists');
       }
-
-      // Create ConstructionSite document mapped from service area request
+  
+      // Extract coordinates from coverage.boundaries if provided
+      const coordinates = request.coverage?.boundaries?.coordinates?.[0];
+      
+      // Create ConstructionSite document with proper defaults
       const constructionSite = new this.constructionSiteModel({
         businessId: request.businessId,
         name: request.name,
@@ -213,47 +216,49 @@ export class ServiceAreaService {
         status: 'active',
         type: 'service_area',
         location: {
-          // If region contains coordinates, parse them
-          address: request.region,
-          city: request.region,
-          latitude: request.coverage.boundaries?.coordinates?.[0]?.lat,
-          longitude: request.coverage.boundaries?.coordinates?.[0]?.lng,
+          address: request.region || 'Service Area Location',
+          city: request.region || 'Unknown City',
+          latitude: coordinates?.lat,
+          longitude: coordinates?.lng,
         },
         metadata: {
-          // Store service area specific data in metadata
-          priority: request.priority,
-          region: request.region,
+          // Store service area specific data in metadata with defaults
+          priority: request.priority || 'medium',
+          region: request.region || 'Unknown Region',
           coverage: {
-            area: request.coverage.area,
-            population: request.coverage.population,
-            boundaries: request.coverage.boundaries || {
+            area: request.coverage?.area || 50, // Default 50 km²
+            population: request.coverage?.population || 100, // Default 100
+            boundaries: request.coverage?.boundaries || {
               type: 'Polygon',
-              coordinates: []
+              coordinates: coordinates ? [coordinates] : []
             }
           },
-          manager: request.manager,
+          manager: request.manager || {
+            name: 'Site Manager',
+            email: 'manager@company.com',
+            phone: '+1-555-0123'
+          },
           teams: [],
-          noOfWorkers: request.coverage.population,
+          noOfWorkers: request.coverage?.population || 100,
           ...request.metadata
         }
       });
-
+  
       await constructionSite.save();
-
+  
       this.logger.log(`Created service area ${constructionSite._id} for business ${request.businessId}`);
-
+  
       return {
         success: true,
         areaId: constructionSite._id.toString(),
         message: `Service area '${request.name}' created successfully`
       };
-
+  
     } catch (error) {
       this.logger.error(`Error creating service area: ${error.message}`, error.stack);
       throw error;
     }
   }
-
   /**
    * Update an existing service area
    */
@@ -597,45 +602,29 @@ export class ServiceAreaService {
   }
 
   /**
-   * Validate service area data
-   */
-  private validateServiceAreaData(data: CreateServiceAreaRequest): void {
+ * Updated validateServiceAreaData method - only name is required now
+ */
+private validateServiceAreaData(data: CreateServiceAreaRequest): void {
+    // Only validate required fields
     if (!data.name?.trim()) {
       throw new BadRequestException('Service area name is required');
     }
-
-    if (!data.region?.trim()) {
-      throw new BadRequestException('Region is required');
+  
+    // Optional: Validate email format only if provided
+    if (data.manager?.email && data.manager.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(data.manager.email)) {
+        throw new BadRequestException('Valid manager email is required');
+      }
     }
-
-    if (!data.priority) {
-      throw new BadRequestException('Priority is required');
+  
+    // Optional: Validate numeric fields only if provided
+    if (data.coverage?.area !== undefined && data.coverage.area <= 0) {
+      throw new BadRequestException('Coverage area must be greater than 0');
     }
-
-    if (!data.coverage?.area || data.coverage.area <= 0) {
-      throw new BadRequestException('Valid coverage area is required');
-    }
-
-    if (!data.coverage?.population || data.coverage.population <= 0) {
-      throw new BadRequestException('Valid population is required');
-    }
-
-    if (!data.manager?.name?.trim()) {
-      throw new BadRequestException('Manager name is required');
-    }
-
-    if (!data.manager?.email?.trim()) {
-      throw new BadRequestException('Manager email is required');
-    }
-
-    if (!data.manager?.phone?.trim()) {
-      throw new BadRequestException('Manager phone is required');
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(data.manager.email)) {
-      throw new BadRequestException('Valid manager email is required');
+  
+    if (data.coverage?.population !== undefined && data.coverage.population <= 0) {
+      throw new BadRequestException('Population must be greater than 0');
     }
   }
 
