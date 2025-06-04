@@ -1352,7 +1352,6 @@ private isValidTimeFormat(time: string): boolean {
   const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
   return timeRegex.test(time);
 }
-
 /**
  * Get a single team with all enhanced data and stats
  */
@@ -1386,11 +1385,17 @@ async getTeam(
       throw new NotFoundException('Business not found');
     }
 
-    // Find team by ID
-    const team = business.teams.find((t: any) => t.id === teamId);
+    // Find team by PHP ID first, then by MongoDB ID as fallback
+    let team = business.teams.find((t: any) => t.metadata?.phpId === teamId);
+    if (!team) {
+      team = business.teams.find((t: any) => t.id === teamId);
+    }
+    
     if (!team) {
       throw new NotFoundException('Team not found');
     }
+
+    this.logger.log(`Retrieved team ${team.id} (PHP ID: ${team.metadata?.phpId}) for business ${businessId}`);
 
     // Calculate stats (you can enhance these calculations based on your actual data)
     const stats = {
@@ -1676,7 +1681,7 @@ async updateFieldTeam(
     business.markModified('teams');
     await business.save();
 
-    this.logger.log(`Updated field team ${teamId} for business ${businessId}. Changes: ${changesApplied.join(', ')}`);
+    this.logger.log(`Updated field team ${team.id} (PHP ID: ${team.metadata?.phpId}) for business ${businessId}. Changes: ${changesApplied.join(', ')}`);
 
     return {
       success: true,
