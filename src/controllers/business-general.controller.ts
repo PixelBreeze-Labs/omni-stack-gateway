@@ -891,4 +891,168 @@ async validateRoutePlanningConfig(
     throw new InternalServerErrorException('Failed to validate route planning configuration');
   }
 }
+
+@Get('teams/:teamId')
+@ApiOperation({ 
+  summary: 'Get a single team with enhanced data and stats',
+  description: 'Retrieve comprehensive team information including performance stats and recent activity'
+})
+@ApiParam({ name: 'teamId', description: 'Team ID' })
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Team retrieved successfully with stats and activity'
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business or team not found' })
+async getTeam(
+  @Param('teamId') teamId: string,
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<{
+  team: any;
+  stats: {
+    totalTasks: number;
+    completedTasks: number;
+    onTimePerformance: number;
+    averageRating: number;
+    totalDistanceTraveled: number;
+    fuelConsumption: number;
+    activeHours: number;
+    lastActivityDate: Date;
+    serviceAreaCoverage: number;
+    equipmentUtilization: number;
+  };
+  recentActivity: Array<{
+    date: Date;
+    type: string;
+    description: string;
+    metadata?: any;
+  }>;
+}> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (!teamId) {
+      throw new BadRequestException('Team ID is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.getTeam(businessId, teamId);
+  } catch (error) {
+    this.logger.error(`Error getting team: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve team');
+  }
+}
+
+@Put('teams/:teamId/field-update')
+@ApiOperation({ 
+  summary: 'Update field team with enhanced data',
+  description: 'Update comprehensive team information including location, vehicle, performance, and operational data'
+})
+@ApiParam({ name: 'teamId', description: 'Team ID' })
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Field team updated successfully'
+})
+@ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business or team not found' })
+async updateFieldTeam(
+  @Param('teamId') teamId: string,
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Body() updateData: {
+    name?: string;
+    currentLocation?: {
+      lat: number;
+      lng: number;
+      timestamp?: Date;
+      accuracy?: number;
+      isManualUpdate?: boolean;
+    };
+    workingHours?: {
+      start: string;
+      end: string;
+      timezone: string;
+      breakDuration?: number;
+      lunchBreak?: {
+        start: string;
+        end: string;
+      };
+    };
+    vehicleInfo?: {
+      type: string;
+      licensePlate?: string;
+      capacity: number;
+      fuelType: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
+      avgFuelConsumption: number;
+      maxRange: number;
+      currentFuelLevel?: number;
+      maintenanceStatus: 'good' | 'needs_service' | 'out_of_service';
+      gpsEnabled: boolean;
+    };
+    serviceAreas?: Array<{
+      name: string;
+      type: 'circle' | 'polygon';
+      coordinates: Array<{ lat: number; lng: number }>;
+      radius?: number;
+      priority: number;
+    }>;
+    skills?: string[];
+    equipment?: string[];
+    certifications?: string[];
+    isActive?: boolean;
+    isAvailableForRouting?: boolean;
+    maxDailyTasks?: number;
+    maxRouteDistance?: number;
+    performanceMetrics?: {
+      averageTasksPerDay?: number;
+      onTimePerformance?: number;
+      customerRating?: number;
+      fuelEfficiency?: number;
+      lastPerformanceUpdate?: Date;
+    };
+    emergencyContact?: {
+      name: string;
+      phone: string;
+      relationship: string;
+    };
+    metadata?: any;
+  }
+): Promise<{
+  success: boolean;
+  message: string;
+  updatedTeam: any;
+  changesApplied: string[];
+}> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (!teamId) {
+      throw new BadRequestException('Team ID is required');
+    }
+
+    if (!updateData || Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Update data is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.updateFieldTeam(businessId, teamId, updateData);
+  } catch (error) {
+    this.logger.error(`Error updating field team: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to update field team');
+  }
+}
 }

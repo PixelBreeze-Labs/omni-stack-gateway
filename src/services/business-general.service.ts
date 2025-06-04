@@ -1352,4 +1352,456 @@ private isValidTimeFormat(time: string): boolean {
   const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
   return timeRegex.test(time);
 }
+
+/**
+ * Get a single team with all enhanced data and stats
+ */
+async getTeam(
+  businessId: string,
+  teamId: string
+): Promise<{
+  team: EnhancedTeam;
+  stats: {
+    totalTasks: number;
+    completedTasks: number;
+    onTimePerformance: number;
+    averageRating: number;
+    totalDistanceTraveled: number;
+    fuelConsumption: number;
+    activeHours: number;
+    lastActivityDate: Date;
+    serviceAreaCoverage: number;
+    equipmentUtilization: number;
+  };
+  recentActivity: Array<{
+    date: Date;
+    type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
+    description: string;
+    metadata?: any;
+  }>;
+}> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find team by ID
+    const team = business.teams.find((t: any) => t.id === teamId);
+    if (!team) {
+      throw new NotFoundException('Team not found');
+    }
+
+    // Calculate stats (you can enhance these calculations based on your actual data)
+    const stats = {
+      totalTasks: this.calculateTotalTasks(team),
+      completedTasks: this.calculateCompletedTasks(team),
+      onTimePerformance: team.performanceMetrics?.onTimePerformance || 0,
+      averageRating: team.performanceMetrics?.customerRating || 0,
+      totalDistanceTraveled: this.calculateTotalDistance(team),
+      fuelConsumption: this.calculateFuelConsumption(team),
+      activeHours: this.calculateActiveHours(team),
+      lastActivityDate: team.lastLocationUpdate || team.updatedAt || new Date(),
+      serviceAreaCoverage: this.calculateServiceAreaCoverage(team),
+      equipmentUtilization: this.calculateEquipmentUtilization(team)
+    };
+
+    // Get recent activity (mock data - replace with actual activity tracking)
+    const recentActivity = this.getRecentActivity(team);
+
+    this.logger.log(`Retrieved team ${teamId} for business ${businessId}`);
+
+    return {
+      team: team as EnhancedTeam,
+      stats,
+      recentActivity
+    };
+  } catch (error) {
+    this.logger.error(`Error getting team: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Update field team with all enhanced values
+ */
+async updateFieldTeam(
+  businessId: string,
+  teamId: string,
+  updateData: {
+    name?: string;
+    
+    // Location and tracking
+    currentLocation?: {
+      lat: number;
+      lng: number;
+      timestamp?: Date;
+      accuracy?: number;
+      isManualUpdate?: boolean;
+    };
+    
+    // Working schedule
+    workingHours?: {
+      start: string; // HH:MM
+      end: string;   // HH:MM
+      timezone: string;
+      breakDuration?: number;
+      lunchBreak?: {
+        start: string;
+        end: string;
+      };
+    };
+    
+    // Vehicle information
+    vehicleInfo?: {
+      type: string;
+      licensePlate?: string;
+      capacity: number;
+      fuelType: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
+      avgFuelConsumption: number;
+      maxRange: number;
+      currentFuelLevel?: number;
+      maintenanceStatus: 'good' | 'needs_service' | 'out_of_service';
+      gpsEnabled: boolean;
+    };
+    
+    // Service capabilities
+    serviceAreas?: Array<{
+      name: string;
+      type: 'circle' | 'polygon';
+      coordinates: Array<{ lat: number; lng: number }>;
+      radius?: number;
+      priority: number;
+    }>;
+    
+    skills?: string[];
+    equipment?: string[];
+    certifications?: string[];
+    
+    // Team status
+    isActive?: boolean;
+    isAvailableForRouting?: boolean;
+    maxDailyTasks?: number;
+    maxRouteDistance?: number;
+    
+    // Performance metrics
+    performanceMetrics?: {
+      averageTasksPerDay?: number;
+      onTimePerformance?: number;
+      customerRating?: number;
+      fuelEfficiency?: number;
+      lastPerformanceUpdate?: Date;
+    };
+    
+    // Emergency contact
+    emergencyContact?: {
+      name: string;
+      phone: string;
+      relationship: string;
+    };
+    
+    metadata?: any;
+  }
+): Promise<{
+  success: boolean;
+  message: string;
+  updatedTeam: EnhancedTeam;
+  changesApplied: string[];
+}> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find team by ID
+    const teamIndex = business.teams.findIndex((t: any) => t.id === teamId);
+    if (teamIndex === -1) {
+      throw new NotFoundException('Team not found');
+    }
+
+    const team = business.teams[teamIndex] as any;
+    const changesApplied: string[] = [];
+
+    // Validate and apply updates
+    if (updateData.name !== undefined) {
+      // Check for name conflicts
+      const nameConflict = business.teams.find(
+        (t: any, index: number) => 
+          index !== teamIndex && 
+          t.name.toLowerCase() === updateData.name.toLowerCase()
+      );
+      
+      if (nameConflict) {
+        throw new Error('Team with this name already exists');
+      }
+      
+      team.name = updateData.name;
+      changesApplied.push('name');
+    }
+
+    // Update location
+    if (updateData.currentLocation) {
+      team.currentLocation = {
+        ...team.currentLocation,
+        ...updateData.currentLocation,
+        timestamp: updateData.currentLocation.timestamp || new Date()
+      };
+      team.lastLocationUpdate = new Date();
+      changesApplied.push('location');
+    }
+
+    // Update working hours
+    if (updateData.workingHours) {
+      // Validate time format
+      if (!this.isValidTimeFormat(updateData.workingHours.start) || 
+          !this.isValidTimeFormat(updateData.workingHours.end)) {
+        throw new BadRequestException('Invalid time format. Use HH:MM format');
+      }
+      
+      team.workingHours = {
+        ...team.workingHours,
+        ...updateData.workingHours
+      };
+      changesApplied.push('working hours');
+    }
+
+    // Update vehicle info
+    if (updateData.vehicleInfo) {
+      // Validate vehicle data
+      if (updateData.vehicleInfo.capacity <= 0) {
+        throw new BadRequestException('Vehicle capacity must be greater than 0');
+      }
+      if (updateData.vehicleInfo.avgFuelConsumption <= 0) {
+        throw new BadRequestException('Average fuel consumption must be greater than 0');
+      }
+      if (updateData.vehicleInfo.maxRange <= 0) {
+        throw new BadRequestException('Maximum range must be greater than 0');
+      }
+      if (updateData.vehicleInfo.currentFuelLevel !== undefined && 
+          (updateData.vehicleInfo.currentFuelLevel < 0 || updateData.vehicleInfo.currentFuelLevel > 100)) {
+        throw new BadRequestException('Current fuel level must be between 0 and 100');
+      }
+
+      team.vehicleInfo = {
+        ...team.vehicleInfo,
+        ...updateData.vehicleInfo
+      };
+      changesApplied.push('vehicle information');
+    }
+
+    // Update service areas
+    if (updateData.serviceAreas) {
+      // Validate service areas
+      for (const area of updateData.serviceAreas) {
+        if (area.type === 'circle' && !area.radius) {
+          throw new BadRequestException('Circle service areas must have a radius');
+        }
+        if (area.type === 'polygon' && (!area.coordinates || area.coordinates.length < 3)) {
+          throw new BadRequestException('Polygon service areas must have at least 3 coordinates');
+        }
+        if (area.priority < 1 || area.priority > 5) {
+          throw new BadRequestException('Service area priority must be between 1 and 5');
+        }
+      }
+
+      team.serviceAreas = updateData.serviceAreas;
+      changesApplied.push('service areas');
+    }
+
+    // Update skills, equipment, certifications
+    if (updateData.skills !== undefined) {
+      team.skills = updateData.skills;
+      changesApplied.push('skills');
+    }
+    if (updateData.equipment !== undefined) {
+      team.equipment = updateData.equipment;
+      changesApplied.push('equipment');
+    }
+    if (updateData.certifications !== undefined) {
+      team.certifications = updateData.certifications;
+      changesApplied.push('certifications');
+    }
+
+    // Update team status
+    if (updateData.isActive !== undefined) {
+      team.isActive = updateData.isActive;
+      changesApplied.push('active status');
+    }
+    if (updateData.isAvailableForRouting !== undefined) {
+      team.isAvailableForRouting = updateData.isAvailableForRouting;
+      changesApplied.push('routing availability');
+    }
+    if (updateData.maxDailyTasks !== undefined) {
+      if (updateData.maxDailyTasks <= 0) {
+        throw new BadRequestException('Maximum daily tasks must be greater than 0');
+      }
+      team.maxDailyTasks = updateData.maxDailyTasks;
+      changesApplied.push('max daily tasks');
+    }
+    if (updateData.maxRouteDistance !== undefined) {
+      if (updateData.maxRouteDistance <= 0) {
+        throw new BadRequestException('Maximum route distance must be greater than 0');
+      }
+      team.maxRouteDistance = updateData.maxRouteDistance;
+      changesApplied.push('max route distance');
+    }
+
+    // Update performance metrics
+    if (updateData.performanceMetrics) {
+      team.performanceMetrics = {
+        ...team.performanceMetrics,
+        ...updateData.performanceMetrics,
+        lastPerformanceUpdate: updateData.performanceMetrics.lastPerformanceUpdate || new Date()
+      };
+      changesApplied.push('performance metrics');
+    }
+
+    // Update emergency contact
+    if (updateData.emergencyContact) {
+      team.emergencyContact = updateData.emergencyContact;
+      changesApplied.push('emergency contact');
+    }
+
+    // Update metadata
+    if (updateData.metadata !== undefined) {
+      team.metadata = { ...team.metadata, ...updateData.metadata };
+      changesApplied.push('metadata');
+    }
+
+    // Always update the timestamp
+    team.updatedAt = new Date();
+
+    // Mark the teams array as modified for Mongoose
+    business.markModified('teams');
+    await business.save();
+
+    this.logger.log(`Updated field team ${teamId} for business ${businessId}. Changes: ${changesApplied.join(', ')}`);
+
+    return {
+      success: true,
+      message: `Field team updated successfully. ${changesApplied.length} changes applied.`,
+      updatedTeam: team as EnhancedTeam,
+      changesApplied
+    };
+  } catch (error) {
+    this.logger.error(`Error updating field team: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+// ============================================================================
+// PRIVATE HELPER METHODS FOR TEAM STATS
+// ============================================================================
+
+private calculateTotalTasks(team: any): number {
+  // This would typically query your task/job database
+  // For now, return a calculated value based on performance metrics
+  return team.performanceMetrics?.averageTasksPerDay ? 
+    Math.floor(team.performanceMetrics.averageTasksPerDay * 30) : 0;
+}
+
+private calculateCompletedTasks(team: any): number {
+  // Calculate based on total tasks and performance
+  const totalTasks = this.calculateTotalTasks(team);
+  const completionRate = team.performanceMetrics?.onTimePerformance || 100;
+  return Math.floor(totalTasks * (completionRate / 100));
+}
+
+private calculateTotalDistance(team: any): number {
+  // This would typically be calculated from actual route data
+  // For now, estimate based on max route distance and activity
+  const maxDaily = team.maxRouteDistance || 200;
+  const activeDays = 20; // Assume 20 working days per month
+  return maxDaily * activeDays * 0.7; // 70% utilization
+}
+
+private calculateFuelConsumption(team: any): number {
+  // Calculate based on distance and vehicle efficiency
+  const totalDistance = this.calculateTotalDistance(team);
+  const consumption = team.vehicleInfo?.avgFuelConsumption || 8; // L/100km
+  return Math.round((totalDistance / 100) * consumption);
+}
+
+private calculateActiveHours(team: any): number {
+  // Calculate based on working hours and activity
+  const workingHours = team.workingHours;
+  if (!workingHours) return 0;
+  
+  const startHour = parseInt(workingHours.start.split(':')[0]);
+  const endHour = parseInt(workingHours.end.split(':')[0]);
+  const dailyHours = endHour - startHour;
+  const activeDays = 20; // Working days per month
+  
+  return dailyHours * activeDays;
+}
+
+private calculateServiceAreaCoverage(team: any): number {
+  // Calculate coverage based on service areas
+  if (!team.serviceAreas || team.serviceAreas.length === 0) return 0;
+  
+  let totalCoverage = 0;
+  for (const area of team.serviceAreas) {
+    if (area.type === 'circle' && area.radius) {
+      // Calculate circle area in km²
+      totalCoverage += Math.PI * Math.pow(area.radius / 1000, 2);
+    } else if (area.type === 'polygon' && area.coordinates) {
+      // Rough polygon area calculation (simplified)
+      totalCoverage += area.coordinates.length * 10; // Simplified calculation
+    }
+  }
+  
+  return Math.round(totalCoverage);
+}
+
+private calculateEquipmentUtilization(team: any): number {
+  // Calculate based on equipment count and activity
+  const equipmentCount = team.equipment?.length || 0;
+  const utilizationRate = team.performanceMetrics?.onTimePerformance || 100;
+  
+  return Math.min(100, (equipmentCount * 10) + (utilizationRate * 0.5));
+}
+
+private getRecentActivity(team: any): Array<{
+  date: Date;
+  type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
+  description: string;
+  metadata?: any;
+}> {
+  // This would typically query your activity/audit log database
+  // For now, return mock recent activity
+  const activities = [];
+  const now = new Date();
+  
+  if (team.lastLocationUpdate) {
+    activities.push({
+      date: team.lastLocationUpdate,
+      type: 'location_update' as const,
+      description: 'Location updated',
+      metadata: { coordinates: team.currentLocation }
+    });
+  }
+  
+  if (team.performanceMetrics?.lastPerformanceUpdate) {
+    activities.push({
+      date: team.performanceMetrics.lastPerformanceUpdate,
+      type: 'task_completed' as const,
+      description: 'Performance metrics updated',
+      metadata: { rating: team.performanceMetrics.customerRating }
+    });
+  }
+  
+  if (team.updatedAt) {
+    activities.push({
+      date: team.updatedAt,
+      type: 'status_change' as const,
+      description: 'Team information updated',
+      metadata: { isActive: team.isActive }
+    });
+  }
+  
+  // Sort by date (most recent first)
+  return activities.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 10);
+}
+
 }
