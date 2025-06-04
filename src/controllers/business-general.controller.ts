@@ -971,9 +971,19 @@ async updateFieldTeam(
 ): Promise<{
   success: boolean;
   message: string;
-  updatedTeam: any;
-  changesApplied: string[];
+  updatedTeam?: any;
+  changesApplied?: string[];
+  debugInfo: any;
+  error?: any;
 }> {
+  const debugInfo = {
+    timestamp: new Date().toISOString(),
+    businessId,
+    teamId,
+    updateDataKeys: Object.keys(updateData || {}),
+    updateDataSize: JSON.stringify(updateData || {}).length
+  };
+
   try {
     if (!businessId) {
       throw new BadRequestException('Business ID is required');
@@ -987,14 +997,46 @@ async updateFieldTeam(
       throw new BadRequestException('Update data is required');
     }
 
+    debugInfo['validationPassed'] = true;
+
     await this.validateBusinessApiKey(businessId, apiKey);
-    return await this.businessGeneralService.updateFieldTeam(businessId, teamId, updateData);
+    debugInfo['authPassed'] = true;
+
+    const result = await this.businessGeneralService.updateFieldTeam(businessId, teamId, updateData);
+    debugInfo['serviceCallSuccess'] = true;
+
+    return {
+      success: result.success,
+      message: result.message,
+      updatedTeam: result.updatedTeam,
+      changesApplied: result.changesApplied,
+      debugInfo
+    };
+
   } catch (error) {
+    debugInfo['error'] = {
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.split('\n').slice(0, 5), // First 5 lines of stack
+      type: error.constructor.name
+    };
+
     this.logger.error(`Error updating field team: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to update field team');
+    this.logger.error(`Debug info:`, debugInfo);
+
+    // Return debug info in error response instead of throwing
+    return {
+      success: false,
+      message: 'Failed to update field team',
+      debugInfo,
+      error: {
+        name: error.name,
+        message: error.message,
+        statusCode: error instanceof BadRequestException ? 400 : 
+                   error instanceof UnauthorizedException ? 401 :
+                   error instanceof NotFoundException ? 404 : 500
+      }
+    };
   }
 }
 }
