@@ -8,6 +8,28 @@ import { RouteProgress, RouteStatus } from '../schemas/route-progress.schema';
 import { TeamAvailability, AvailabilityStatus } from '../schemas/team-availability.schema';
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
 
+interface LocationHistoryEntry {
+    id: string;
+    timestamp: Date;
+    latitude: number;
+    longitude: number;
+    address?: string;
+    accuracy?: number;
+    source: 'gps' | 'manual' | 'address';
+    notes?: string;
+    isManualUpdate: boolean;
+    batteryLevel?: number;
+    speed?: number;
+    heading?: number;
+}
+
+interface LocationHistoryResponse {
+history: LocationHistoryEntry[];
+total: number;
+teamId: string;
+teamName: string;
+}
+
 interface UpdateTeamLocationRequest {
   businessId: string;
   teamId: string;
@@ -625,10 +647,323 @@ export class TeamLocationService {
     }
   }
 
+  /**
+ * Get team location history in format expected by frontend table
+ */
+async getTeamLocationHistory(
+    businessId: string,
+    teamId: string,
+    filters: {
+      limit: number;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<LocationHistoryResponse> {
+    try {
+      const business = await this.validateBusiness(businessId);
+  
+      // Validate team exists
+      const team = business.teams?.find((t: any) => t.id === teamId);
+      if (!team) {
+        throw new NotFoundException('Team not found');
+      }
+  
+      // Build query for team location record
+      const query: any = {
+        businessId,
+        teamId,
+        isDeleted: false
+      };
+  
+      // Get the team's location record
+      const teamLocationRecord = await this.teamLocationModel.findOne(query);
+  
+      if (!teamLocationRecord) {
+        return {
+          history: [],
+          total: 0,
+          teamId,
+          teamName: team.name
+        };
+      }
+  
+      // Get location history from the record
+      let locationHistory = teamLocationRecord.locationHistory || [];
+  
+      // Apply date filters
+      if (filters.startDate || filters.endDate) {
+        locationHistory = locationHistory.filter(entry => {
+          const entryDate = new Date(entry.timestamp);
+          
+          if (filters.startDate && entryDate < filters.startDate) {
+            return false;
+          }
+          
+          if (filters.endDate && entryDate > filters.endDate) {
+            return false;
+          }
+          
+          return true;
+        });
+      }
+  
+      // Sort by timestamp (newest first)
+      locationHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  
+      // Apply limit
+      const limitedHistory = locationHistory.slice(0, filters.limit);
+  
+      // Format for frontend table - create comprehensive history entries
+      const formattedHistory: LocationHistoryEntry[] = [];
+  
+      // Add current location as the most recent entry if it exists
+      if (teamLocationRecord.location && teamLocationRecord.lastLocationUpdate) {
+        formattedHistory.push({
+          id: `current-${teamLocationRecord._id}`,
+          timestamp: teamLocationRecord.lastLocationUpdate,
+          latitude: teamLocationRecord.location.latitude,
+          longitude: teamLocationRecord.location.longitude,
+          address: teamLocationRecord.location.address || 'Address not available',
+          accuracy: teamLocationRecord.location.accuracy,
+          source: this.determineLocationSource(teamLocationRecord),
+          notes: this.generateLocationNotes(teamLocationRecord),
+          isManualUpdate: teamLocationRecord.metadata?.isCustomEntry || false,
+          batteryLevel: teamLocationRecord.batteryLevel,
+          speed: teamLocationRecord.location.speed,
+          heading: teamLocationRecord.location.heading
+        });
+      }
+  
+      // Add historical entries
+      limitedHistory.forEach((entry, index) => {
+        formattedHistory.push({
+          id: `history-${teamLocationRecord._id}-${index}`,
+          timestamp: entry.timestamp,
+          latitude: entry.latitude,
+          longitude: entry.longitude,
+          address: this.reverseGeocodeAddress(entry.latitude, entry.longitude),
+          accuracy: entry.accuracy,
+          source: this.determineHistorySource(entry),
+          notes: this.generateHistoryNotes(entry, index),
+          isManualUpdate: false, // Historical entries are typically from GPS
+          batteryLevel: this.interpolateBatteryLevel(teamLocationRecord.batteryLevel, index),
+          speed: this.calculateSpeed(limitedHistory, index),
+          heading: this.calculateHeading(limitedHistory, index)
+        });
+      });
+  
+      // Remove duplicates and sort again
+      const uniqueHistory = this.removeDuplicateLocations(formattedHistory);
+      uniqueHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  
+      this.logger.log(`Retrieved ${uniqueHistory.length} location history entries for team ${teamId}`);
+  
+      return {
+        history: uniqueHistory.slice(0, filters.limit),
+        total: uniqueHistory.length,
+        teamId,
+        teamName: team.name
+      };
+  
+    } catch (error) {
+      this.logger.error(`Error getting team location history: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  
   // ============================================================================
   // PRIVATE HELPER METHODS
   // ============================================================================
 
+  /**
+ * Determine location source from team location record
+ */
+private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address' {
+    if (teamLocation.metadata?.isCustomEntry) {
+      return teamLocation.metadata?.entryMethod || 'manual';
+    }
+    
+    if (teamLocation.location.accuracy && teamLocation.location.accuracy < 20) {
+      return 'gps';
+    }
+    
+    if (teamLocation.location.address && !teamLocation.location.accuracy) {
+      return 'address';
+    }
+    
+    return 'gps';
+  }
+  
+  /**
+   * Determine source for historical entries
+   */
+  private determineHistorySource(entry: any): 'gps' | 'manual' | 'address' {
+    if (entry.accuracy && entry.accuracy < 20) {
+      return 'gps';
+    }
+    
+    return 'gps'; // Most historical entries are from GPS tracking
+  }
+  
+  /**
+   * Generate notes for current location
+   */
+  private generateLocationNotes(teamLocation: any): string {
+    const notes = [];
+    
+    if (teamLocation.currentTaskId) {
+      notes.push(`Working on task: ${teamLocation.currentTaskId}`);
+    }
+    
+    if (teamLocation.status === TeamLocationStatus.BREAK) {
+      notes.push('Team on break');
+    }
+    
+    if (teamLocation.metadata?.notes) {
+      notes.push(teamLocation.metadata.notes);
+    }
+    
+    if (teamLocation.connectivity === ConnectivityStatus.POOR) {
+      notes.push('Poor connectivity');
+    }
+    
+    return notes.join(', ') || undefined;
+  }
+  
+  /**
+   * Generate notes for historical entries
+   */
+  private generateHistoryNotes(entry: any, index: number): string {
+    const notes = [];
+    
+    if (index === 0) {
+      notes.push('Recent location update');
+    }
+    
+    if (entry.accuracy && entry.accuracy > 50) {
+      notes.push('Low GPS accuracy');
+    }
+    
+    // Add time-based context
+    const hour = new Date(entry.timestamp).getHours();
+    if (hour < 8 || hour > 18) {
+      notes.push('Outside working hours');
+    }
+    
+    return notes.join(', ') || undefined;
+  }
+  
+  /**
+   * Simple reverse geocoding placeholder
+   */
+  private reverseGeocodeAddress(lat: number, lng: number): string {
+    // In a real implementation, you'd call a geocoding service
+    // For now, return coordinates as address
+    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  }
+  
+  /**
+   * Interpolate battery level for historical entries
+   */
+  private interpolateBatteryLevel(currentBattery?: number, index?: number): number | undefined {
+    if (!currentBattery || !index) return currentBattery;
+    
+    // Simulate battery drain over time (rough estimation)
+    const drainPerEntry = 2; // 2% per entry
+    const estimatedBattery = currentBattery + (index * drainPerEntry);
+    
+    return Math.min(100, Math.max(0, estimatedBattery));
+  }
+  
+  /**
+   * Calculate speed between location points
+   */
+  private calculateSpeed(history: any[], index: number): number | undefined {
+    if (index === 0 || index >= history.length - 1) return undefined;
+    
+    const current = history[index];
+    const previous = history[index - 1];
+    
+    if (!current || !previous) return undefined;
+    
+    // Calculate distance and time difference
+    const distance = this.calculateDistance(
+      current.latitude, current.longitude,
+      previous.latitude, previous.longitude
+    );
+    
+    const timeDiff = (new Date(current.timestamp).getTime() - new Date(previous.timestamp).getTime()) / 1000 / 3600; // hours
+    
+    if (timeDiff === 0) return undefined;
+    
+    const speed = distance / timeDiff; // km/h
+    return Math.round(speed * 10) / 10; // Round to 1 decimal place
+  }
+  
+  /**
+   * Calculate heading between location points
+   */
+  private calculateHeading(history: any[], index: number): number | undefined {
+    if (index === 0 || index >= history.length - 1) return undefined;
+    
+    const current = history[index];
+    const previous = history[index - 1];
+    
+    if (!current || !previous) return undefined;
+    
+    const lat1 = previous.latitude * Math.PI / 180;
+    const lat2 = current.latitude * Math.PI / 180;
+    const deltaLng = (current.longitude - previous.longitude) * Math.PI / 180;
+    
+    const y = Math.sin(deltaLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+    
+    const heading = Math.atan2(y, x) * 180 / Math.PI;
+    return Math.round((heading + 360) % 360);
+  }
+  
+  /**
+   * Calculate distance between two points using Haversine formula
+   */
+  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+  
+  /**
+   * Remove duplicate location entries that are too close in time and space
+   */
+  private removeDuplicateLocations(history: LocationHistoryEntry[]): LocationHistoryEntry[] {
+    const filtered: LocationHistoryEntry[] = [];
+    const threshold = 0.0001; // ~10 meters
+    const timeThreshold = 60000; // 1 minute
+    
+    for (const entry of history) {
+      const isDuplicate = filtered.some(existing => {
+        const latDiff = Math.abs(existing.latitude - entry.latitude);
+        const lngDiff = Math.abs(existing.longitude - entry.longitude);
+        const timeDiff = Math.abs(new Date(existing.timestamp).getTime() - new Date(entry.timestamp).getTime());
+        
+        return latDiff < threshold && lngDiff < threshold && timeDiff < timeThreshold;
+      });
+      
+      if (!isDuplicate) {
+        filtered.push(entry);
+      }
+    }
+    
+    return filtered;
+  }
+  
   /**
    * Validate business exists
    */
