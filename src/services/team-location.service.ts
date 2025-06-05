@@ -722,9 +722,7 @@ export class TeamLocationService {
           location: teamLocation?.location || null,
           lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
           routeProgress: await this.getRouteProgress(team.metadata?.phpId || team.id, businessId),
-          workingHours: teamAvailability?.workingHours,
-          unavailablePeriods: teamAvailability?.unavailablePeriods || [],
-          skills: teamAvailability?.skills || [],
+          workingHours: teamAvailability?.workingHours ?? [],
           // NEW: Include emergency contact in availability response
           emergencyContact: team.emergencyContact ? {
             name: team.emergencyContact.name,
@@ -759,7 +757,7 @@ export class TeamLocationService {
             available: location?.status === TeamLocationStatus.ACTIVE,
             status: location?.status || TeamLocationStatus.OFFLINE,
             lastUpdated: location?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
-            workingHours: availability?.workingHours,
+            workingHours: availability?.workingHours ?? [],
             currentTaskId: location?.currentTaskId,
             batteryLevel: location?.batteryLevel,
             connectivity: location?.connectivity,
