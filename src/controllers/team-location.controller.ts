@@ -26,6 +26,7 @@ import {
   import { TeamLocationService } from '../services/team-location.service';
   import { BusinessService } from '../services/business.service';
   import { TeamLocationStatus, ConnectivityStatus } from '../schemas/team-location.schema';
+  import { TeamAvailabilityResponse, AllTeamsAvailabilityResponse } from '../services/team-location.service';
   
   @ApiTags('Team Location Tracking')
   @Controller('business/team-locations')
@@ -573,46 +574,94 @@ import {
       }
     }
   
-    @Get('availability')
-    @ApiOperation({ 
-      summary: 'Get team availability',
-      description: 'Get availability status of all teams or a specific team'
-    })
-    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiQuery({ name: 'teamId', required: false, description: 'Specific team ID (PHP ID or MongoDB ID, optional)' })
-    @ApiResponse({ 
-      status: 200, 
-      description: 'Team availability retrieved successfully'
-    })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Business or team not found' })
-    async getTeamAvailability(
-      @Query('businessId') businessId: string,
-      @Query('teamId') teamId?: string,
-      @Headers('business-x-api-key') apiKey?: string
-    ): Promise<any> {
-      try {
-        if (!businessId) {
-          throw new BadRequestException('Business ID is required');
-        }
-  
-        await this.validateBusinessApiKey(businessId, apiKey);
-  
-        const availability = await this.teamLocationService.getTeamAvailability(businessId, teamId);
-  
-        return {
-          success: true,
-          ...availability
-        };
-  
-      } catch (error) {
-        this.logger.error(`Error getting team availability: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-          throw error;
-        }
-        throw new InternalServerErrorException('Failed to retrieve team availability');
+    /**
+ * Get team availability with comprehensive analytics
+ * Returns detailed availability data including today's status, weekly view, upcoming schedule, and performance metrics
+ */
+@Get('/availability')
+@ApiOperation({ 
+  summary: 'Get comprehensive team availability data',
+  description: 'Returns detailed availability information including current status, weekly schedule, upcoming tasks, and performance metrics'
+})
+@ApiResponse({ 
+  status: 200, 
+  description: 'Team availability data retrieved successfully',
+  schema: {
+    example: {
+      teamId: "team_123",
+      teamName: "Alpha Team",
+      availability: {
+        today: {
+          status: "available",
+          workingHours: { start: "8:00 AM", end: "5:00 PM" },
+          scheduledTasks: 6,
+          completedTasks: 4,
+          currentCapacity: 6,
+          maxCapacity: 10
+        },
+        week: [
+          {
+            date: "2025-06-05",
+            dayOfWeek: "Thursday",
+            status: "busy",
+            scheduledHours: 7.5,
+            tasks: 6
+          }
+        ],
+        upcomingSchedule: [
+          {
+            date: "2025-06-06",
+            time: "2:00 PM",
+            task: "Client site inspection",
+            location: "123 Main St, Downtown",
+            duration: 2
+          }
+        ]
+      },
+      performance: {
+        efficiency: 87,
+        completionRate: 94,
+        averageResponseTime: 18,
+        rating: 4.3
+      },
+      lastUpdated: "2025-06-05T10:30:00Z",
+      emergencyContact: {
+        name: "John Supervisor",
+        phone: "+1-555-0123",
+        relationship: "Team Lead"
       }
     }
+  }
+})
+async getTeamAvailability(
+  @Query('businessId') businessId: string,
+  @Query('teamId') teamId?: string
+): Promise<TeamAvailabilityResponse | AllTeamsAvailabilityResponse> {
+  try {
+    this.logger.log(`Getting availability for ${teamId ? `team ${teamId}` : 'all teams'} in business ${businessId}`);
+    
+    const result = await this.teamLocationService.getTeamAvailability(businessId, teamId);
+    
+    // Return the comprehensive availability data
+    return {
+      // @ts-ignore
+      success: true,
+      data: result,
+      message: teamId ? 
+        `Availability data retrieved for team ${teamId}` : 
+        `Availability data retrieved for ${result.teams?.length || 0} teams`
+    };
+    
+  } catch (error) {
+    this.logger.error(`Error getting team availability: ${error.message}`, error.stack);
+    
+    if (error instanceof NotFoundException) {
+      throw new NotFoundException(error.message);
+    }
+    
+    throw new InternalServerErrorException('Failed to retrieve team availability');
+  }
+}
   
     // ============================================================================
     // LEGACY ENDPOINT FOR BACKWARD COMPATIBILITY

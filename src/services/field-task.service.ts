@@ -706,6 +706,7 @@ export class FieldTaskService {
       [FieldTaskStatus.COMPLETED]: TaskStatus.COMPLETED,
       [FieldTaskStatus.CANCELLED]: TaskStatus.CANCELLED,
       [FieldTaskStatus.RESCHEDULED]: TaskStatus.ASSIGNED,
+      [FieldTaskStatus.SCHEDULED]: TaskStatus.SCHEDULED,
     };
 
     return statusMap[fieldTaskStatus] || TaskStatus.UNASSIGNED;

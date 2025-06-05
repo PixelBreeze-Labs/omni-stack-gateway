@@ -15,6 +15,8 @@ import { StaffluentEmployeeService } from './staffluent-employee.service';
 import { StaffluentTaskService } from './staffluent-task.service';
 import { GoogleMapsService } from './google-maps.service';
 import { RoutePlanningConfiguration } from '../schemas/business.schema';
+import { AppProject } from '../schemas/app-project.schema';
+import { ConstructionSite } from '../schemas/construction-site.schema';
 
 /**
  * Enhanced team response type for API responses
@@ -49,6 +51,8 @@ export class BusinessGeneralService {
     @InjectModel(StaffProfile.name) private staffProfileModel: Model<StaffProfile>,
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(AppProject.name) private appProjectModel: Model<AppProject>,
+    @InjectModel(ConstructionSite.name) private constructionSiteModel: Model<ConstructionSite>,
     private readonly googleMapsService: GoogleMapsService,
     private readonly staffluentEmployeeService: StaffluentEmployeeService,
     private readonly staffluentTaskService: StaffluentTaskService,
@@ -878,6 +882,278 @@ export class BusinessGeneralService {
         yearsExperience: data.yearsExperience || 0
       }));
   }
+
+  // ============================================================================
+  // PROJECTS MANAGEMENT (NEW)
+  // ============================================================================
+
+  /**
+   * Get all projects for a business
+   */
+  async getProjects(
+    businessId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      projectType?: string;
+    } = {}
+  ): Promise<{
+    projects: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    try {
+      const { page = 1, limit = 50, status, projectType } = options;
+      
+      // Build filter query
+      const filter: any = { 
+        businessId: new Types.ObjectId(businessId),
+        isDeleted: { $ne: true }
+      };
+      
+      if (status) {
+        filter.status = status;
+      }
+      
+      if (projectType) {
+        filter['metadata.projectType'] = projectType;
+      }
+
+      // Get total count
+      const total = await this.appProjectModel.countDocuments(filter);
+      
+      // Get paginated results
+      const projects = await this.appProjectModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+      this.logger.log(`Retrieved ${projects.length} projects for business ${businessId}`);
+
+      return {
+        projects,
+        total,
+        page,
+        limit
+      };
+    } catch (error) {
+      this.logger.error(`Error getting projects: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single project by ID
+   */
+  async getProject(businessId: string, projectId: string): Promise<{ project: any }> {
+    try {
+      const project = await this.appProjectModel
+        .findOne({ 
+          _id: projectId, 
+          businessId: new Types.ObjectId(businessId),
+          isDeleted: { $ne: true }
+        })
+        .lean();
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      this.logger.log(`Retrieved project ${projectId} for business ${businessId}`);
+
+      return { project };
+    } catch (error) {
+      this.logger.error(`Error getting project: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new project
+   */
+  async createProject(
+    businessId: string,
+    projectData: {
+      name: string;
+      description?: string;
+      clientId?: string;
+      status?: string;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; projectId: string; message: string }> {
+    try {
+      const newProject = new this.appProjectModel({
+        name: projectData.name,
+        description: projectData.description,
+        businessId: new Types.ObjectId(businessId),
+        clientId: projectData.clientId,
+        status: projectData.status || 'planning',
+        metadata: {
+          ...projectData.metadata,
+          createdVia: 'business-api',
+          lastSyncedAt: new Date()
+        }
+      });
+
+      await newProject.save();
+
+      this.logger.log(`Created project ${newProject._id} for business ${businessId}`);
+
+      return {
+        success: true,
+        projectId: newProject._id.toString(),
+        message: `Project '${projectData.name}' created successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error creating project: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // CONSTRUCTION SITES MANAGEMENT (NEW)
+  // ============================================================================
+
+  /**
+   * Get all construction sites for a business
+   */
+  async getConstructionSites(
+    businessId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      type?: string;
+      projectId?: string;
+    } = {}
+  ): Promise<{
+    sites: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    try {
+      const { page = 1, limit = 50, status, type, projectId } = options;
+      
+      // Build filter query
+      const filter: any = { 
+        businessId: new Types.ObjectId(businessId),
+        isDeleted: { $ne: true }
+      };
+      
+      if (status) {
+        filter.status = status;
+      }
+      
+      if (type) {
+        filter.type = type;
+      }
+
+      if (projectId) {
+        filter.appProjectId = new Types.ObjectId(projectId);
+      }
+
+      // Get total count
+      const total = await this.constructionSiteModel.countDocuments(filter);
+      
+      // Get paginated results
+      const sites = await this.constructionSiteModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+      this.logger.log(`Retrieved ${sites.length} construction sites for business ${businessId}`);
+
+      return {
+        sites,
+        total,
+        page,
+        limit
+      };
+    } catch (error) {
+      this.logger.error(`Error getting construction sites: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single construction site by ID
+   */
+  async getConstructionSite(businessId: string, siteId: string): Promise<{ site: any }> {
+    try {
+      const site = await this.constructionSiteModel
+        .findOne({ 
+          _id: siteId, 
+          businessId: new Types.ObjectId(businessId),
+          isDeleted: { $ne: true }
+        })
+        .lean();
+
+      if (!site) {
+        throw new NotFoundException('Construction site not found');
+      }
+
+      this.logger.log(`Retrieved construction site ${siteId} for business ${businessId}`);
+
+      return { site };
+    } catch (error) {
+      this.logger.error(`Error getting construction site: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new construction site
+   */
+  async createConstructionSite(
+    businessId: string,
+    siteData: {
+      name: string;
+      description?: string;
+      appProjectId?: string;
+      status?: string;
+      type?: string;
+      location?: any;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; siteId: string; message: string }> {
+    try {
+      const newSite = new this.constructionSiteModel({
+        name: siteData.name,
+        description: siteData.description,
+        businessId: new Types.ObjectId(businessId),
+        appProjectId: siteData.appProjectId ? new Types.ObjectId(siteData.appProjectId) : undefined,
+        status: siteData.status || 'planning',
+        type: siteData.type || 'construction',
+        location: siteData.location || {},
+        metadata: {
+          ...siteData.metadata,
+          createdVia: 'business-api',
+          lastSyncedAt: new Date()
+        }
+      });
+
+      await newSite.save();
+
+      this.logger.log(`Created construction site ${newSite._id} for business ${businessId}`);
+
+      return {
+        success: true,
+        siteId: newSite._id.toString(),
+        message: `Construction site '${siteData.name}' created successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Error creating construction site: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
 
   // ============================================================================
 // ROUTE PLANNING CONFIGURATION METHODS (NEW)
