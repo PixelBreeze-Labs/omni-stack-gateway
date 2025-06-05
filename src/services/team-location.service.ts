@@ -85,6 +85,11 @@ interface TeamLocationResponse {
     deviceId?: string;
     appVersion?: string;
   };
+  emergencyContact?: {
+    name: string;
+    phone: string;
+    relationship: string;
+  };
 }
 
 interface LocationStats {
@@ -341,6 +346,7 @@ export class TeamLocationService {
 
   /**
    * Get team locations with filters using real database queries with PHP ID support
+   * UPDATED: Now includes emergency contact information
    */
   async getTeamLocations(
     businessId: string,
@@ -394,7 +400,13 @@ export class TeamLocationService {
             status: TeamLocationStatus.OFFLINE,
             last_updated: new Date().toISOString(),
             connectivity: ConnectivityStatus.OFFLINE,
-            project_name: team.metadata?.project_name
+            project_name: team.metadata?.project_name,
+            // UPDATED: Include emergency contact from team data
+            emergencyContact: team.emergencyContact ? {
+              name: team.emergencyContact.name,
+              phone: team.emergencyContact.phone,
+              relationship: team.emergencyContact.relationship
+            } : undefined
           });
         } else {
           const routeProgress = await this.getRouteProgress(team.metadata?.phpId || team.id, businessId);
@@ -422,7 +434,13 @@ export class TeamLocationService {
             deviceInfo: {
               deviceId: locationRecord.deviceId,
               appVersion: locationRecord.appVersion
-            }
+            },
+            // UPDATED: Include emergency contact from team data
+            emergencyContact: team.emergencyContact ? {
+              name: team.emergencyContact.name,
+              phone: team.emergencyContact.phone,
+              relationship: team.emergencyContact.relationship
+            } : undefined
           });
         }
       }
@@ -432,6 +450,8 @@ export class TeamLocationService {
       if (filters?.project && filters.project !== 'all') {
         filteredLocations = filteredLocations.filter(loc => loc.project_name === filters.project);
       }
+
+      this.logger.log(`Retrieved ${filteredLocations.length} team locations with emergency contact info for business ${businessId}`);
 
       return filteredLocations;
 
@@ -639,7 +659,7 @@ export class TeamLocationService {
   }
 
   /**
-   * Get team availability using real data with PHP ID support
+   * UPDATED: Get team availability now includes emergency contact information
    */
   async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
     try {
@@ -680,7 +700,13 @@ export class TeamLocationService {
           routeProgress: await this.getRouteProgress(team.metadata?.phpId || team.id, businessId),
           workingHours: teamAvailability?.workingHours,
           unavailablePeriods: teamAvailability?.unavailablePeriods || [],
-          skills: teamAvailability?.skills || []
+          skills: teamAvailability?.skills || [],
+          // NEW: Include emergency contact in availability response
+          emergencyContact: team.emergencyContact ? {
+            name: team.emergencyContact.name,
+            phone: team.emergencyContact.phone,
+            relationship: team.emergencyContact.relationship
+          } : undefined
         };
       } else {
         // Get all teams availability
@@ -712,7 +738,13 @@ export class TeamLocationService {
             workingHours: availability?.workingHours,
             currentTaskId: location?.currentTaskId,
             batteryLevel: location?.batteryLevel,
-            connectivity: location?.connectivity
+            connectivity: location?.connectivity,
+            // NEW: Include emergency contact in team list
+            emergencyContact: team.emergencyContact ? {
+              name: team.emergencyContact.name,
+              phone: team.emergencyContact.phone,
+              relationship: team.emergencyContact.relationship
+            } : undefined
           };
         });
 
@@ -722,7 +754,8 @@ export class TeamLocationService {
             totalTeams: teams.length,
             availableTeams: teams.filter(t => t.available).length,
             busyTeams: teams.filter(t => t.status === TeamLocationStatus.ACTIVE && t.currentTaskId).length,
-            offlineTeams: teams.filter(t => t.status === TeamLocationStatus.OFFLINE).length
+            offlineTeams: teams.filter(t => t.status === TeamLocationStatus.OFFLINE).length,
+            teamsWithEmergencyContact: teams.filter(t => t.emergencyContact?.phone).length
           }
         };
       }
@@ -734,14 +767,14 @@ export class TeamLocationService {
   }
 
   /**
-   * Export location data using real database data
+   * UPDATED: Export location data now includes emergency contact information
    */
   async exportLocationData(businessId: string): Promise<{ success: boolean; data: any[]; message: string }> {
     try {
       const business = await this.validateBusiness(businessId);
       const teamLocations = await this.getTeamLocations(businessId);
 
-      // Prepare export data with comprehensive information
+      // Prepare export data with comprehensive information including emergency contacts
       const exportData = teamLocations.map(location => ({
         team_id: location.id,
         team_name: location.name,
@@ -762,15 +795,19 @@ export class TeamLocationService {
         device_id: location.deviceInfo?.deviceId || 'N/A',
         app_version: location.deviceInfo?.appVersion || 'N/A',
         route_progress: location.route_progress ? 
-          `${location.route_progress.completedTasks}/${location.route_progress.totalTasks}` : 'N/A'
+          `${location.route_progress.completedTasks}/${location.route_progress.totalTasks}` : 'N/A',
+        // NEW: Emergency contact information in export
+        emergency_contact_name: location.emergencyContact?.name || 'N/A',
+        emergency_contact_phone: location.emergencyContact?.phone || 'N/A',
+        emergency_contact_relationship: location.emergencyContact?.relationship || 'N/A'
       }));
 
-      this.logger.log(`Exported location data for ${exportData.length} teams from business ${businessId}`);
+      this.logger.log(`Exported location data with emergency contacts for ${exportData.length} teams from business ${businessId}`);
 
       return {
         success: true,
         data: exportData,
-        message: `Exported data for ${exportData.length} teams`
+        message: `Exported data for ${exportData.length} teams with emergency contact information`
       };
 
     } catch (error) {
@@ -1136,9 +1173,9 @@ export class TeamLocationService {
     // Use actual team members if available
     if (team.members && Array.isArray(team.members)) {
       return team.members.map((member: any, index: number) => ({
-        id: member.id || `member-${team.id}-${index}`,
-        name: member.name || `Team Member ${index + 1}`,
-        role: member.role || (index === 0 ? 'Lead' : 'Technician'),
+        id: member.id,
+        name: member.name,
+        role: member.role,
         phone: member.phone
       }));
     }
