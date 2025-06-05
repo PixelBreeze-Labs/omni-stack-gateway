@@ -723,8 +723,6 @@ export class TeamLocationService {
           lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
           routeProgress: await this.getRouteProgress(team.metadata?.phpId || team.id, businessId),
           workingHours: teamAvailability?.workingHours,
-          unavailablePeriods: teamAvailability?.unavailablePeriods || [],
-          skills: teamAvailability?.skills || [],
           // NEW: Include emergency contact in availability response
           emergencyContact: team.emergencyContact ? {
             name: team.emergencyContact.name,
