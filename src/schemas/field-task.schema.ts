@@ -20,7 +20,8 @@ export enum FieldTaskStatus {
   ON_HOLD = 'on_hold',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
-  RESCHEDULED = 'rescheduled'
+  RESCHEDULED = 'rescheduled',
+  SCHEDULED = 'scheduled'
 }
 
 export enum FieldTaskPriority {
@@ -130,6 +131,9 @@ export class FieldTask extends Document {
 
   @Prop({ required: true })
   scheduledDate: Date;
+
+  @Prop({ required: false })
+  scheduledTime?: string;
 
   @Prop({ type: Object, required: true })
   timeWindow: TimeWindow;

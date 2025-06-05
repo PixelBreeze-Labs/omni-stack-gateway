@@ -23,6 +23,62 @@ interface LocationHistoryEntry {
   heading?: number;
 }
 
+export interface TeamAvailabilityResponse {
+    teamId: string;
+    teamName: string;
+    availability: {
+      today: {
+        status: 'available' | 'busy' | 'offline' | 'unavailable';
+        workingHours: {
+          start: string;
+          end: string;
+        };
+        scheduledTasks: number;
+        completedTasks: number;
+        currentCapacity: number;
+        maxCapacity: number;
+      };
+      week: Array<{
+        date: string;
+        dayOfWeek: string;
+        status: 'available' | 'busy' | 'offline' | 'scheduled';
+        scheduledHours: number;
+        tasks: number;
+      }>;
+      upcomingSchedule: Array<{
+        date: string;
+        time: string;
+        task: string;
+        location: string;
+        duration: number;
+      }>;
+    };
+    performance: {
+      efficiency: number;
+      completionRate: number;
+      averageResponseTime: number;
+      rating: number;
+    };
+    lastUpdated: string;
+    emergencyContact?: {
+      name: string;
+      phone: string;
+      relationship: string;
+    };
+  }
+  
+  export interface AllTeamsAvailabilityResponse {
+    teams: TeamAvailabilityResponse[];
+    summary: {
+      totalTeams: number;
+      availableTeams: number;
+      busyTeams: number;
+      offlineTeams: number;
+      teamsWithEmergencyContact: number;
+    };
+  }
+  
+
 interface LocationHistoryResponse {
   history: LocationHistoryEntry[];
   total: number;
@@ -683,12 +739,13 @@ export class TeamLocationService {
   }
 
   /**
-   * UPDATED: Get team availability now includes emergency contact information
-   */
-  async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
+ * ENHANCED: Get comprehensive team availability with detailed analytics
+ * Returns structured data matching frontend expectations
+ */
+async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
     try {
       const business = await this.validateBusiness(businessId);
-
+  
       if (teamId) {
         // Find team by PHP ID first, then by MongoDB ID as fallback
         let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
@@ -698,96 +755,418 @@ export class TeamLocationService {
         if (!team) {
           throw new NotFoundException('Team not found');
         }
-
+  
         const storageTeamId = team.metadata?.phpId || teamId;
-
-        // Get specific team availability
+  
+        // Get team location and availability records
         const teamLocation = await this.teamLocationModel.findOne({
           businessId,
           teamId: storageTeamId,
           isDeleted: false
         });
-
+  
         const teamAvailability = await this.teamAvailabilityModel.findOne({
           businessId,
           teamId: storageTeamId,
           isDeleted: false
         });
-
-        return {
-          teamId: team.metadata?.phpId || team.id,
-          teamName: team.name,
-          available: teamLocation?.status === TeamLocationStatus.ACTIVE,
-          status: teamLocation?.status || TeamLocationStatus.OFFLINE,
-          location: teamLocation?.location || null,
-          lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
-          routeProgress: await this.getRouteProgress(team.metadata?.phpId || team.id, businessId),
-          workingHours: teamAvailability?.workingHours ?? [],
-          // NEW: Include emergency contact in availability response
-          emergencyContact: team.emergencyContact ? {
-            name: team.emergencyContact.name,
-            phone: team.emergencyContact.phone,
-            relationship: team.emergencyContact.relationship
-          } : undefined
-        };
+  
+        // Calculate comprehensive availability data
+        const availabilityData = await this.calculateTeamAvailabilityDetails(
+          businessId, 
+          storageTeamId, 
+          team, 
+          teamLocation, 
+          teamAvailability
+        );
+  
+        return availabilityData;
+  
       } else {
-        // Get all teams availability
+        // Get all teams availability summary
         const teamLocations = await this.teamLocationModel.find({
           businessId,
           isDeleted: false
         });
-
+  
         const teamAvailabilities = await this.teamAvailabilityModel.find({
           businessId,
           isDeleted: false
         });
-
-        const teams = (business.teams || []).map((team: any) => {
-          // Check for team location using both PHP ID and MongoDB ID
+  
+        const teams = await Promise.all((business.teams || []).map(async (team: any) => {
           const location = teamLocations.find(loc => 
             loc.teamId === team.metadata?.phpId || loc.teamId === team.id
           );
           const availability = teamAvailabilities.find(avail => 
             avail.teamId === team.metadata?.phpId || avail.teamId === team.id
           );
-
+  
+          const storageTeamId = team.metadata?.phpId || team.id;
+          const basicAvailability = await this.calculateTeamAvailabilityDetails(
+            businessId, 
+            storageTeamId, 
+            team, 
+            location, 
+            availability
+          );
+  
           return {
             teamId: team.metadata?.phpId || team.id,
             teamName: team.name,
-            available: location?.status === TeamLocationStatus.ACTIVE,
-            status: location?.status || TeamLocationStatus.OFFLINE,
-            lastUpdated: location?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
-            workingHours: availability?.workingHours ?? [],
-            currentTaskId: location?.currentTaskId,
-            batteryLevel: location?.batteryLevel,
-            connectivity: location?.connectivity,
-            // NEW: Include emergency contact in team list
-            emergencyContact: team.emergencyContact ? {
-              name: team.emergencyContact.name,
-              phone: team.emergencyContact.phone,
-              relationship: team.emergencyContact.relationship
-            } : undefined
+            availability: basicAvailability.availability,
+            performance: basicAvailability.performance,
+            emergencyContact: team.emergencyContact
           };
-        });
-
+        }));
+  
         return {
           teams,
           summary: {
             totalTeams: teams.length,
-            availableTeams: teams.filter(t => t.available).length,
-            busyTeams: teams.filter(t => t.status === TeamLocationStatus.ACTIVE && t.currentTaskId).length,
-            offlineTeams: teams.filter(t => t.status === TeamLocationStatus.OFFLINE).length,
+            availableTeams: teams.filter(t => t.availability.today.status === 'available').length,
+            busyTeams: teams.filter(t => t.availability.today.status === 'busy').length,
+            offlineTeams: teams.filter(t => t.availability.today.status === 'offline').length,
             teamsWithEmergencyContact: teams.filter(t => t.emergencyContact?.phone).length
           }
         };
       }
-
+  
     } catch (error) {
       this.logger.error(`Error getting team availability: ${error.message}`, error.stack);
       throw error;
     }
   }
 
+
+  /**
+ * NEW: Calculate comprehensive team availability details
+ */
+private async calculateTeamAvailabilityDetails(
+    businessId: string,
+    teamId: string,
+    team: any,
+    teamLocation: any,
+    teamAvailability: any
+  ): Promise<any> {
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+  
+    // Calculate today's data
+    const todayData = await this.calculateTodayAvailability(businessId, teamId, teamLocation, today);
+    
+    // Calculate week data
+    const weekData = await this.calculateWeekAvailability(businessId, teamId, today);
+    
+    // Get upcoming schedule
+    const upcomingSchedule = await this.getUpcomingSchedule(businessId, teamId, now);
+    
+    // Calculate performance metrics
+    const performance = await this.calculatePerformanceMetrics(businessId, teamId);
+  
+    return {
+      teamId,
+      teamName: team.name,
+      availability: {
+        today: todayData,
+        week: weekData,
+        upcomingSchedule
+      },
+      performance,
+      lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || now.toISOString(),
+      emergencyContact: team.emergencyContact ? {
+        name: team.emergencyContact.name,
+        phone: team.emergencyContact.phone,
+        relationship: team.emergencyContact.relationship
+      } : undefined
+    };
+  }
+  
+  /**
+   * NEW: Calculate today's availability details
+   */
+  private async calculateTodayAvailability(
+    businessId: string,
+    teamId: string,
+    teamLocation: any,
+    today: Date
+  ): Promise<any> {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+  
+    // Get today's tasks
+    const todayTasks = await this.fieldTaskModel.find({
+      businessId,
+      assignedTeamId: teamId,
+      scheduledDate: { $gte: today, $lt: tomorrow },
+      isDeleted: false
+    });
+  
+    // Get today's route progress
+    const routeProgress = await this.routeProgressModel.findOne({
+      businessId,
+      teamId,
+      routeDate: { $gte: today, $lt: tomorrow },
+      isDeleted: false
+    });
+  
+    // Determine current status
+    let currentStatus: 'available' | 'busy' | 'offline' | 'unavailable' = 'offline';
+    
+    if (teamLocation) {
+      switch (teamLocation.status) {
+        case TeamLocationStatus.ACTIVE:
+          currentStatus = teamLocation.currentTaskId ? 'busy' : 'available';
+          break;
+        case TeamLocationStatus.BREAK:
+          currentStatus = 'unavailable';
+          break;
+        case TeamLocationStatus.INACTIVE:
+        case TeamLocationStatus.OFFLINE:
+        default:
+          currentStatus = 'offline';
+          break;
+      }
+    }
+  
+    // Calculate working hours (default or from team availability)
+    const workingHours = {
+      start: '8:00 AM',
+      end: '5:00 PM'
+    };
+  
+    // Calculate task metrics
+    const scheduledTasks = todayTasks.length;
+    const completedTasks = todayTasks.filter(task => 
+      task.status === FieldTaskStatus.COMPLETED
+    ).length;
+  
+    // Calculate capacity (simplified - based on tasks and working hours)
+    const maxCapacity = 10; // Maximum tasks per day
+    const currentCapacity = routeProgress?.completedTasksCount || completedTasks;
+  
+    return {
+      status: currentStatus,
+      workingHours,
+      scheduledTasks,
+      completedTasks,
+      currentCapacity,
+      maxCapacity
+    };
+  }
+  
+  /**
+   * NEW: Calculate week availability data
+   */
+  private async calculateWeekAvailability(
+    businessId: string,
+    teamId: string,
+    startOfWeek: Date
+  ): Promise<any[]> {
+    const weekData = [];
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + i);
+      const nextDay = new Date(date);
+      nextDay.setDate(date.getDate() + 1);
+  
+      // Get tasks for this day
+      const dayTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: teamId,
+        scheduledDate: { $gte: date, $lt: nextDay },
+        isDeleted: false
+      });
+  
+      // Get route progress for this day
+      const routeProgress = await this.routeProgressModel.findOne({
+        businessId,
+        teamId,
+        routeDate: { $gte: date, $lt: nextDay },
+        isDeleted: false
+      });
+  
+      // Determine day status
+      let dayStatus: 'available' | 'busy' | 'offline' | 'scheduled' = 'available';
+      
+      if (dayTasks.length > 0) {
+        const hasInProgress = dayTasks.some(task => task.status === FieldTaskStatus.IN_PROGRESS);
+        const hasCompleted = dayTasks.some(task => task.status === FieldTaskStatus.COMPLETED);
+        
+        if (hasInProgress) {
+          dayStatus = 'busy';
+        } else if (hasCompleted || dayTasks.length > 0) {
+          dayStatus = 'scheduled';
+        }
+      }
+  
+      // Calculate scheduled hours (estimated)
+      const scheduledHours = dayTasks.reduce((total, task) => {
+        return total + (task.estimatedDuration || 60) / 60; // Convert minutes to hours
+      }, 0);
+  
+      weekData.push({
+        date: date.toISOString().split('T')[0],
+        dayOfWeek: dayNames[date.getDay()],
+        status: dayStatus,
+        scheduledHours: Math.round(scheduledHours * 10) / 10, // Round to 1 decimal
+        tasks: dayTasks.length
+      });
+    }
+  
+    return weekData;
+  }
+  
+  /**
+ * NEW: Calculate comprehensive performance metrics for a team
+ */
+private async calculatePerformanceMetrics(
+    businessId: string,
+    teamId: string
+  ): Promise<{
+    efficiency: number;
+    completionRate: number;
+    averageResponseTime: number;
+    rating: number;
+  }> {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+      // Get recent tasks for this team
+      const recentTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: teamId,
+        createdAt: { $gte: thirtyDaysAgo },
+        isDeleted: false
+      });
+  
+      // Get completed tasks
+      const completedTasks = recentTasks.filter(task => 
+        task.status === FieldTaskStatus.COMPLETED
+      );
+  
+      // Calculate completion rate
+      const completionRate = recentTasks.length > 0 ? 
+        (completedTasks.length / recentTasks.length) * 100 : 0;
+  
+      // Calculate efficiency (actual vs estimated duration)
+      let efficiency = 0; // Default to 0%
+      if (completedTasks.length > 0) {
+        const efficiencyReadings = completedTasks
+          .filter(task => 
+            task.actualPerformance?.actualDuration && 
+            task.estimatedDuration
+          )
+          .map(task => {
+            const estimated = task.estimatedDuration;
+            const actual = task.actualPerformance!.actualDuration!;
+            // Efficiency = (estimated / actual) * 100
+            // If actual < estimated, efficiency > 100% (good)
+            // If actual > estimated, efficiency < 100% (needs improvement)
+            return Math.min(200, (estimated / actual) * 100); // Cap at 200%
+          });
+  
+        if (efficiencyReadings.length > 0) {
+          efficiency = efficiencyReadings.reduce((sum, eff) => sum + eff, 0) / efficiencyReadings.length;
+        }
+      }
+  
+      // Calculate average response time
+      let averageResponseTime = 0; // Default 0 minutes
+      if (completedTasks.length > 0) {
+        const responseTimes = completedTasks
+          .filter(task => 
+            task.actualPerformance?.startTime && 
+            task.scheduledDate
+          )
+          .map(task => {
+            // Calculate time between scheduled time and actual start
+            const scheduled = new Date(task.scheduledDate);
+            if (task.scheduledTime) {
+              const [hours, minutes] = task.scheduledTime.split(':').map(Number);
+              scheduled.setHours(hours, minutes, 0, 0);
+            } else {
+              scheduled.setHours(9, 0, 0, 0); // Default to 9 AM
+            }
+            
+            const actualStart = task.actualPerformance!.startTime!;
+            const diffMinutes = Math.abs(actualStart.getTime() - scheduled.getTime()) / (1000 * 60);
+            
+            return Math.min(120, diffMinutes); // Cap at 2 hours
+          });
+  
+        if (responseTimes.length > 0) {
+          averageResponseTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
+        }
+      }
+  
+      // Calculate rating based on client signoffs
+      let rating = 0; // Default to 0 stars
+      const tasksWithRatings = completedTasks.filter(task => 
+        task.clientSignoff?.satisfactionRating
+      );
+  
+      if (tasksWithRatings.length > 0) {
+        const totalRating = tasksWithRatings.reduce((sum, task) => 
+          sum + (task.clientSignoff!.satisfactionRating! || 5), 0
+        );
+        rating = totalRating / tasksWithRatings.length;
+      }
+  
+      // Round all values appropriately
+      return {
+        efficiency: Math.round(efficiency * 10) / 10, // 1 decimal place
+        completionRate: Math.round(completionRate * 10) / 10, // 1 decimal place
+        averageResponseTime: Math.round(averageResponseTime), // Whole minutes
+        rating: Math.round(rating * 10) / 10 // 1 decimal place
+      };
+  
+    } catch (error) {
+      this.logger.warn(`Failed to calculate performance metrics for team ${teamId}: ${error.message}`);
+      
+      // Return default values if calculation fails
+      return {
+        efficiency: 0,
+        completionRate: 0,
+        averageResponseTime: 0,
+        rating: 0
+      };
+    }
+  }
+
+  /**
+   * NEW: Get upcoming scheduled tasks
+   */
+  private async getUpcomingSchedule(
+    businessId: string,
+    teamId: string,
+    fromDate: Date
+  ): Promise<any[]> {
+    const upcomingLimit = new Date(fromDate);
+    upcomingLimit.setDate(upcomingLimit.getDate() + 14); // Next 2 weeks
+  
+    const upcomingTasks = await this.fieldTaskModel.find({
+      businessId,
+      assignedTeamId: teamId,
+      scheduledDate: { $gte: fromDate, $lte: upcomingLimit },
+      status: { $in: [FieldTaskStatus.PENDING, FieldTaskStatus.SCHEDULED] },
+      isDeleted: false
+    }).sort({ scheduledDate: 1, scheduledTime: 1 }).limit(10);
+  
+    return upcomingTasks.map(task => ({
+      date: task.scheduledDate.toISOString().split('T')[0],
+      time: task.scheduledTime || '9:00 AM',
+      task: task.name || task.description || 'Scheduled task',
+      location: task.location?.address || 'Location TBD',
+      duration: Math.round((task.estimatedDuration || 60) / 60 * 10) / 10 // Convert to hours, round to 1 decimal
+    }));
+  }
 
  /**
    * UPDATED: Export location data now includes emergency contact information
@@ -1330,7 +1709,7 @@ export class TeamLocationService {
       isDeleted: false
     }).limit(50);
 
-    if (completedTasks.length === 0) return 25; // Default 25 minutes
+    if (completedTasks.length === 0) return 0; // Default 0 minutes
 
     // Calculate average actual duration as response time
     const actualDurations = completedTasks

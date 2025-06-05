@@ -659,6 +659,290 @@ export class BusinessGeneralController {
     return business;
   }
 
+  // ============================================================================
+  // PROJECTS MANAGEMENT ENDPOINTS (NEW)
+  // ============================================================================
+
+  @Get('projects')
+  @ApiOperation({ 
+    summary: 'Get all projects',
+    description: 'Retrieve all projects for the business with pagination and filtering'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 50)' })
+  @ApiQuery({ name: 'status', required: false, description: 'Filter by project status' })
+  @ApiQuery({ name: 'projectType', required: false, description: 'Filter by project type' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Projects retrieved successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async getProjects(
+    @Query('businessId') businessId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('projectType') projectType?: string,
+    @Headers('business-x-api-key') apiKey?: string
+  ): Promise<{
+    projects: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      const options = {
+        page: page ? parseInt(page) : 1,
+        limit: limit ? parseInt(limit) : 50,
+        status,
+        projectType
+      };
+
+      return await this.businessGeneralService.getProjects(businessId, options);
+    } catch (error) {
+      this.logger.error(`Error getting projects: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve projects');
+    }
+  }
+
+  @Get('projects/:projectId')
+  @ApiOperation({ 
+    summary: 'Get a single project',
+    description: 'Retrieve detailed information for a specific project'
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Project retrieved successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or project not found' })
+  async getProject(
+    @Param('projectId') projectId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ project: any }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!projectId) {
+        throw new BadRequestException('Project ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getProject(businessId, projectId);
+    } catch (error) {
+      this.logger.error(`Error getting project: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve project');
+    }
+  }
+
+  @Post('projects')
+  @ApiOperation({ 
+    summary: 'Create a new project',
+    description: 'Create a new project for the business'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Project created successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid project data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async createProject(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() projectData: {
+      name: string;
+      description?: string;
+      clientId?: string;
+      status?: string;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; projectId: string; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!projectData.name) {
+        throw new BadRequestException('Project name is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.createProject(businessId, projectData);
+    } catch (error) {
+      this.logger.error(`Error creating project: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create project');
+    }
+  }
+
+  // ============================================================================
+  // CONSTRUCTION SITES MANAGEMENT ENDPOINTS (NEW)
+  // ============================================================================
+
+  @Get('construction-sites')
+  @ApiOperation({ 
+    summary: 'Get all construction sites',
+    description: 'Retrieve all construction sites for the business with pagination and filtering'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 50)' })
+  @ApiQuery({ name: 'status', required: false, description: 'Filter by site status' })
+  @ApiQuery({ name: 'type', required: false, description: 'Filter by site type' })
+  @ApiQuery({ name: 'projectId', required: false, description: 'Filter by project ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Construction sites retrieved successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async getConstructionSites(
+    @Query('businessId') businessId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('projectId') projectId?: string,
+    @Headers('business-x-api-key') apiKey?: string
+  ): Promise<{
+    sites: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      
+      const options = {
+        page: page ? parseInt(page) : 1,
+        limit: limit ? parseInt(limit) : 50,
+        status,
+        type,
+        projectId
+      };
+
+      return await this.businessGeneralService.getConstructionSites(businessId, options);
+    } catch (error) {
+      this.logger.error(`Error getting construction sites: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve construction sites');
+    }
+  }
+
+  @Get('construction-sites/:siteId')
+  @ApiOperation({ 
+    summary: 'Get a single construction site',
+    description: 'Retrieve detailed information for a specific construction site'
+  })
+  @ApiParam({ name: 'siteId', description: 'Construction Site ID' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Construction site retrieved successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or construction site not found' })
+  async getConstructionSite(
+    @Param('siteId') siteId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ site: any }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!siteId) {
+        throw new BadRequestException('Construction Site ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getConstructionSite(businessId, siteId);
+    } catch (error) {
+      this.logger.error(`Error getting construction site: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve construction site');
+    }
+  }
+
+  @Post('construction-sites')
+  @ApiOperation({ 
+    summary: 'Create a new construction site',
+    description: 'Create a new construction site for the business'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Construction site created successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid site data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async createConstructionSite(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() siteData: {
+      name: string;
+      description?: string;
+      appProjectId?: string;
+      status?: string;
+      type?: string;
+      location?: any;
+      metadata?: any;
+    }
+  ): Promise<{ success: boolean; siteId: string; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!siteData.name) {
+        throw new BadRequestException('Construction site name is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.createConstructionSite(businessId, siteData);
+    } catch (error) {
+      this.logger.error(`Error creating construction site: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create construction site');
+    }
+  }
+
+
   @Get('route-planning/config')
 @ApiOperation({ 
   summary: 'Get route planning configuration',
