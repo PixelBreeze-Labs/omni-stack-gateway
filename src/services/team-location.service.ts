@@ -757,7 +757,7 @@ export class TeamLocationService {
             available: location?.status === TeamLocationStatus.ACTIVE,
             status: location?.status || TeamLocationStatus.OFFLINE,
             lastUpdated: location?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
-            workingHours: availability?.workingHours,
+            workingHours: availability?.workingHours ?? [],
             currentTaskId: location?.currentTaskId,
             batteryLevel: location?.batteryLevel,
             connectivity: location?.connectivity,
