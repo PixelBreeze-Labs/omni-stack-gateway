@@ -115,37 +115,83 @@ export class TeamLocationService {
   // ============================================================================
 
   /**
-   * Update team location using real TeamLocation schema with PHP ID handling
+   * Update team location using real TeamLocation schema with PHP ID handling and debug info
    */
-  async updateTeamLocation(request: UpdateTeamLocationRequest): Promise<{ success: boolean; message: string }> {
-    try {
-      const business = await this.validateBusiness(request.businessId);
+  async updateTeamLocation(request: UpdateTeamLocationRequest): Promise<{ success: boolean; message: string; debug?: any }> {
+    const debugInfo: any = {
+      requestTeamId: request.teamId,
+      businessId: request.businessId,
+      coordinates: { lat: request.location.lat, lng: request.location.lng },
+      timestamp: new Date().toISOString()
+    };
 
-      // Find team by PHP ID first, then by MongoDB ID as fallback
+    try {
+      // Step 1: Validate business
+      debugInfo.step1_validateBusiness = 'starting';
+      const business = await this.validateBusiness(request.businessId);
+      debugInfo.step1_validateBusiness = 'completed';
+      debugInfo.businessFound = !!business;
+      debugInfo.businessName = business?.name;
+      debugInfo.teamsCount = business?.teams?.length || 0;
+
+      // Step 2: Find team by PHP ID first, then by MongoDB ID as fallback
+      debugInfo.step2_findTeam = 'starting';
       let team = business.teams?.find((t: any) => t.metadata?.phpId === request.teamId);
+      debugInfo.foundByPhpId = !!team;
+      
       if (!team) {
         team = business.teams?.find((t: any) => t.id === request.teamId);
+        debugInfo.foundByMongoId = !!team;
       }
+      
       if (!team) {
+        debugInfo.availableTeams = business.teams?.map((t: any) => ({
+          id: t.id,
+          phpId: t.metadata?.phpId,
+          name: t.name
+        })) || [];
+        debugInfo.step2_findTeam = 'failed - team not found';
         throw new NotFoundException('Team not found');
       }
 
-      // Validate coordinates
+      debugInfo.step2_findTeam = 'completed';
+      debugInfo.teamFound = {
+        id: team.id,
+        phpId: team.metadata?.phpId,
+        name: team.name
+      };
+
+      // Step 3: Validate coordinates
+      debugInfo.step3_validateCoordinates = 'starting';
       this.validateCoordinates(request.location.lat, request.location.lng);
+      debugInfo.step3_validateCoordinates = 'completed';
+      debugInfo.coordinatesValid = true;
 
-      // Use PHP ID for storage if available, otherwise use the provided teamId
+      // Step 4: Use PHP ID for storage if available, otherwise use the provided teamId
       const storageTeamId = team.metadata?.phpId || request.teamId;
+      debugInfo.step4_determineStorageId = 'completed';
+      debugInfo.storageTeamId = storageTeamId;
 
-      // Find existing location record or create new one
-      let teamLocation = await this.teamLocationModel.findOne({
+      // Step 5: Find existing location record
+      debugInfo.step5_findExistingLocation = 'starting';
+      const existingQuery = {
         businessId: request.businessId,
         teamId: storageTeamId,
         isDeleted: false
-      });
+      };
+      debugInfo.existingQuery = existingQuery;
+
+      let teamLocation = await this.teamLocationModel.findOne(existingQuery);
+      debugInfo.step5_findExistingLocation = 'completed';
+      debugInfo.existingLocationFound = !!teamLocation;
+      debugInfo.existingLocationId = teamLocation?._id?.toString();
 
       if (!teamLocation) {
+        debugInfo.step6_createNewLocation = 'starting';
+        debugInfo.action = 'creating_new';
+        
         // Create new team location record
-        teamLocation = new this.teamLocationModel({
+        const newLocationData = {
           businessId: request.businessId,
           teamId: storageTeamId,
           teamName: team.name,
@@ -168,8 +214,25 @@ export class TeamLocationService {
           locationHistory: [],
           metadata: request.metadata || {},
           createdBy: business.adminUserId
-        });
+        };
+        
+        debugInfo.newLocationData = {
+          ...newLocationData,
+          createdBy: newLocationData.createdBy?.toString()
+        };
+        
+        teamLocation = new this.teamLocationModel(newLocationData);
+        debugInfo.step6_createNewLocation = 'model_created';
       } else {
+        debugInfo.step6_updateExistingLocation = 'starting';
+        debugInfo.action = 'updating_existing';
+        debugInfo.existingLocation = {
+          id: teamLocation._id?.toString(),
+          teamId: teamLocation.teamId,
+          lastUpdate: teamLocation.lastLocationUpdate,
+          currentStatus: teamLocation.status
+        };
+
         // Add to location history before updating
         teamLocation.locationHistory.push({
           timestamp: new Date(),
@@ -211,27 +274,70 @@ export class TeamLocationService {
 
         teamLocation.lastLocationUpdate = new Date();
         teamLocation.updatedBy = business.adminUserId;
+        debugInfo.step6_updateExistingLocation = 'fields_updated';
       }
 
-      await teamLocation.save();
+      // Step 7: Save the team location
+      debugInfo.step7_saveLocation = 'starting';
+      const savedLocation = await teamLocation.save();
+      debugInfo.step7_saveLocation = 'completed';
+      debugInfo.saveSuccessful = true;
+      debugInfo.savedLocationId = savedLocation._id?.toString();
+      debugInfo.savedLocation = {
+        teamId: savedLocation.teamId,
+        teamName: savedLocation.teamName,
+        latitude: savedLocation.location.latitude,
+        longitude: savedLocation.location.longitude,
+        status: savedLocation.status,
+        lastUpdate: savedLocation.lastLocationUpdate
+      };
 
-      // Also update team availability if status changed
+      // Step 8: Update team availability if status changed
       if (request.status) {
+        debugInfo.step8_updateAvailability = 'starting';
         await this.updateTeamAvailability(request.businessId, storageTeamId, request.status);
+        debugInfo.step8_updateAvailability = 'completed';
+        debugInfo.availabilityUpdated = true;
+      } else {
+        debugInfo.step8_updateAvailability = 'skipped - no status provided';
       }
+
+      debugInfo.completedSuccessfully = true;
+      debugInfo.endTimestamp = new Date().toISOString();
 
       this.logger.log(`Updated location for team ${request.teamId} (storage: ${storageTeamId}) in business ${request.businessId}`);
 
       return {
         success: true,
-        message: `Location updated for team ${team.name}`
+        message: `Location updated for team ${team.name}`,
+        debug: debugInfo
       };
 
     } catch (error) {
+      debugInfo.error = {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        timestamp: new Date().toISOString()
+      };
+      
+      debugInfo.completedSuccessfully = false;
+      debugInfo.errorTimestamp = new Date().toISOString();
+      
       this.logger.error(`Error updating team location: ${error.message}`, error.stack);
+      
+      // Include debug info in error for easier troubleshooting
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        return {
+          success: false,
+          message: `${error.message}`,
+          debug: debugInfo
+        };
+      }
+      
       throw error;
     }
-  }
+}
 
   /**
    * Get team locations with filters using real database queries with PHP ID support
