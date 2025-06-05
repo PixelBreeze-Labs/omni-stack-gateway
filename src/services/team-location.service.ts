@@ -90,6 +90,13 @@ interface TeamLocationResponse {
     phone: string;
     relationship: string;
   };
+  vehicle_info?: {
+    type: string;
+    license_plate: string;
+    fuel_level?: number;
+    model?: string;
+    year?: number;
+  };
 }
 
 interface LocationStats {
@@ -401,11 +408,20 @@ export class TeamLocationService {
             last_updated: new Date().toISOString(),
             connectivity: ConnectivityStatus.OFFLINE,
             project_name: team.metadata?.project_name,
+            route_progress: team.routeProgress,
             // UPDATED: Include emergency contact from team data
             emergencyContact: team.emergencyContact ? {
               name: team.emergencyContact.name,
               phone: team.emergencyContact.phone,
               relationship: team.emergencyContact.relationship
+            } : undefined,
+            // NEW: Include vehicle info from team data
+            vehicle_info: team.vehicleInfo ? {
+              type: team.vehicleInfo.type,
+              license_plate: team.vehicleInfo.licensePlate,
+              fuel_level: team.vehicleInfo.currentFuelLevel,
+              model: team.vehicleInfo.model,
+              year: team.vehicleInfo.year
             } : undefined
           });
         } else {
@@ -440,6 +456,14 @@ export class TeamLocationService {
               name: team.emergencyContact.name,
               phone: team.emergencyContact.phone,
               relationship: team.emergencyContact.relationship
+            } : undefined,
+            // NEW: Include vehicle info from team data
+            vehicle_info: team.vehicleInfo ? {
+              type: team.vehicleInfo.type,
+              license_plate: team.vehicleInfo.licensePlate,
+              fuel_level: team.vehicleInfo.currentFuelLevel,
+              model: team.vehicleInfo.model,
+              year: team.vehicleInfo.year
             } : undefined
           });
         }
@@ -766,10 +790,11 @@ export class TeamLocationService {
     }
   }
 
-  /**
+
+ /**
    * UPDATED: Export location data now includes emergency contact information
    */
-  async exportLocationData(businessId: string): Promise<{ success: boolean; data: any[]; message: string }> {
+ async exportLocationData(businessId: string): Promise<{ success: boolean; data: any[]; message: string }> {
     try {
       const business = await this.validateBusiness(businessId);
       const teamLocations = await this.getTeamLocations(businessId);
@@ -799,15 +824,21 @@ export class TeamLocationService {
         // NEW: Emergency contact information in export
         emergency_contact_name: location.emergencyContact?.name || 'N/A',
         emergency_contact_phone: location.emergencyContact?.phone || 'N/A',
-        emergency_contact_relationship: location.emergencyContact?.relationship || 'N/A'
+        emergency_contact_relationship: location.emergencyContact?.relationship || 'N/A',
+        // NEW: Vehicle information in export
+        vehicle_type: location.vehicle_info?.type || 'N/A',
+        vehicle_license_plate: location.vehicle_info?.license_plate || 'N/A',
+        vehicle_fuel_level: location.vehicle_info?.fuel_level || 'N/A',
+        vehicle_model: location.vehicle_info?.model || 'N/A',
+        vehicle_year: location.vehicle_info?.year || 'N/A'
       }));
 
-      this.logger.log(`Exported location data with emergency contacts for ${exportData.length} teams from business ${businessId}`);
+      this.logger.log(`Exported location data with emergency contacts and vehicle info for ${exportData.length} teams from business ${businessId}`);
 
       return {
         success: true,
         data: exportData,
-        message: `Exported data for ${exportData.length} teams with emergency contact information`
+        message: `Exported data for ${exportData.length} teams with emergency contact and vehicle information`
       };
 
     } catch (error) {
