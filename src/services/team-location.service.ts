@@ -722,7 +722,7 @@ export class TeamLocationService {
           location: teamLocation?.location || null,
           lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
           routeProgress: await this.getRouteProgress(team.metadata?.phpId || team.id, businessId),
-          workingHours: teamAvailability?.workingHours,
+          workingHours: teamAvailability?.workingHours ?? [],
           // NEW: Include emergency contact in availability response
           emergencyContact: team.emergencyContact ? {
             name: team.emergencyContact.name,
