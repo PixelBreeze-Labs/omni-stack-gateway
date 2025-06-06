@@ -1028,21 +1028,22 @@ private async calculateTeamAvailabilityDetails(
 }
   
   /**
- * FIXED: Calculate week availability data with proper PHP ID handling
+ * FIXED: Calculate week availability data with proper completion status logic
+ * Now properly reflects when tasks are completed vs just scheduled
  */
 private async calculateWeekAvailability(
     businessId: string,
     teamId: string,
     startOfWeek: Date,
-    team: any  // Added team parameter to access both IDs
+    team: any
   ): Promise<any[]> {
     const weekData = [];
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
-    // FIXED: Setup flexible team ID matching for ALL 3 possible formats
-    const phpId = team.metadata?.phpId;           // "19"
-    const generatedId = team.id;                  // "1748608291431"
-    const mongoObjectId = team._id?.toString();   // ObjectId as string
+    // Setup flexible team ID matching for ALL 3 possible formats
+    const phpId = team.metadata?.phpId;
+    const generatedId = team.id;
+    const mongoObjectId = team._id?.toString();
     
     const teamIdQuery = [];
     if (phpId) teamIdQuery.push(phpId);
@@ -1056,32 +1057,41 @@ private async calculateWeekAvailability(
       const nextDay = new Date(date);
       nextDay.setDate(date.getDate() + 1);
   
-      // FIXED: Get tasks for this day using flexible team ID matching
+      // Get tasks for this day using flexible team ID matching
       const dayTasks = await this.fieldTaskModel.find({
         businessId,
-        assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
+        assignedTeamId: { $in: teamIdQuery },
         scheduledDate: { $gte: date, $lt: nextDay },
         isDeleted: false
       });
   
-      // FIXED: Get route progress for this day using flexible team ID matching
-      const routeProgress = await this.routeProgressModel.findOne({
-        businessId,
-        teamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
-        routeDate: { $gte: date, $lt: nextDay },
-        isDeleted: false
-      });
-  
-      // Determine day status
+      // 🚀 FIXED: Better day status logic based on actual task completion
       let dayStatus: 'available' | 'busy' | 'offline' | 'scheduled' = 'available';
       
       if (dayTasks.length > 0) {
-        const hasInProgress = dayTasks.some(task => task.status === FieldTaskStatus.IN_PROGRESS);
-        const hasCompleted = dayTasks.some(task => task.status === FieldTaskStatus.COMPLETED);
+        const inProgressTasks = dayTasks.filter(task => task.status === FieldTaskStatus.IN_PROGRESS);
+        const completedTasks = dayTasks.filter(task => task.status === FieldTaskStatus.COMPLETED);
+        const pendingTasks = dayTasks.filter(task => 
+          task.status === FieldTaskStatus.PENDING || 
+          task.status === FieldTaskStatus.SCHEDULED || 
+          task.status === FieldTaskStatus.ASSIGNED
+        );
         
-        if (hasInProgress) {
+        // 🚀 IMPROVED: More accurate status determination
+        if (inProgressTasks.length > 0) {
+          // Team is actively working on tasks
           dayStatus = 'busy';
-        } else if (hasCompleted || dayTasks.length > 0) {
+        } else if (completedTasks.length > 0 && pendingTasks.length === 0) {
+          // All tasks for the day are completed - team is available
+          dayStatus = 'available';
+        } else if (pendingTasks.length > 0) {
+          // Has pending/scheduled tasks but not working on them yet
+          dayStatus = 'scheduled';
+        } else if (completedTasks.length > 0) {
+          // Has some completed tasks but no pending - available
+          dayStatus = 'available';
+        } else {
+          // Default case
           dayStatus = 'scheduled';
         }
       }
@@ -1096,7 +1106,18 @@ private async calculateWeekAvailability(
         dayOfWeek: dayNames[date.getDay()],
         status: dayStatus,
         scheduledHours: Math.round(scheduledHours * 10) / 10, // Round to 1 decimal
-        tasks: dayTasks.length
+        tasks: dayTasks.length,
+        // 🚀 NEW: Add task breakdown for debugging
+        taskBreakdown: {
+          total: dayTasks.length,
+          completed: dayTasks.filter(t => t.status === FieldTaskStatus.COMPLETED).length,
+          inProgress: dayTasks.filter(t => t.status === FieldTaskStatus.IN_PROGRESS).length,
+          pending: dayTasks.filter(t => 
+            t.status === FieldTaskStatus.PENDING || 
+            t.status === FieldTaskStatus.SCHEDULED || 
+            t.status === FieldTaskStatus.ASSIGNED
+          ).length
+        }
       });
     }
   
