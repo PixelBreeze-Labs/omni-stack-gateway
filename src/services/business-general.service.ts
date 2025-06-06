@@ -1793,6 +1793,9 @@ async updateFieldTeam(
       if (updateData.vehicleInfo.currentFuelLevel !== undefined) vehicleUpdate.currentFuelLevel = updateData.vehicleInfo.currentFuelLevel;
       if (updateData.vehicleInfo.maintenanceStatus !== undefined) vehicleUpdate.maintenanceStatus = updateData.vehicleInfo.maintenanceStatus;
       if (updateData.vehicleInfo.gpsEnabled !== undefined) vehicleUpdate.gpsEnabled = updateData.vehicleInfo.gpsEnabled;
+      // NEW: Fuel pricing fields
+      if (updateData.vehicleInfo.fuelPricePerLiter !== undefined) vehicleUpdate.fuelPricePerLiter = updateData.vehicleInfo.fuelPricePerLiter;
+      if (updateData.vehicleInfo.fuelPricePerKwh !== undefined) vehicleUpdate.fuelPricePerKwh = updateData.vehicleInfo.fuelPricePerKwh;
       
       updateOperations[`teams.${teamIndex}.vehicleInfo`] = vehicleUpdate;
       changesApplied.push('vehicle information');
