@@ -10,6 +10,7 @@ import { Route, RouteStatus, OptimizationObjective } from '../schemas/route.sche
 import { RouteProgress, RouteStatus as ProgressRouteStatus } from '../schemas/route-progress.schema';
 import { FieldTaskService } from './field-task.service';
 import { WeatherService } from './weather.service';
+import { WeatherRouteService } from './weather-route.service';
 import { GoogleMapsService } from './google-maps.service';
 
 interface OptimizeRoutesRequest {
@@ -106,6 +107,7 @@ export class RouteOptimizationService {
     @InjectModel(RouteProgress.name) private routeProgressModel: Model<RouteProgress>,
     private readonly fieldTaskService: FieldTaskService,
     private readonly weatherService: WeatherService,
+    private readonly weatherRouteService: WeatherRouteService,
     private readonly googleMapsService: GoogleMapsService,
   ) {}
 
@@ -310,16 +312,14 @@ export class RouteOptimizationService {
         debug.progressCreated.push({
           progressId: savedProgress._id.toString(),
           teamId: route.teamId,
-          taskCount: route.tasks.length,
-          createdAt: savedProgress.createdAt
+          taskCount: route.tasks.length
         });
 
         // Add to response
         persistedRoutes.push({
           ...route,
           routeId,
-          status: RouteStatus.OPTIMIZED,
-          createdAt: savedRoute.createdAt
+          status: RouteStatus.OPTIMIZED
         });
       }
 
@@ -455,8 +455,7 @@ export class RouteOptimizationService {
             travelTime: stop.travelTimeFromPrevious,
             distance: stop.distanceFromPrevious
           })),
-          status: route.status,
-          createdAt: route.createdAt
+          status: route.status
         });
       }
 
@@ -485,13 +484,14 @@ export class RouteOptimizationService {
   }
 
   /**
-   * ✅ Update route progress and RouteProgress tracking
+   * ✅ FIXED: Update route progress and RouteProgress tracking with actual location
    */
   async updateRouteProgress(
     businessId: string,
     teamId: string,
     taskId: string,
-    status: 'started' | 'completed' | 'paused' | 'arrived'
+    status: 'started' | 'completed' | 'paused' | 'arrived',
+    currentLocation?: { latitude: number; longitude: number }
   ): Promise<{
     success: boolean;
     message: string;
@@ -502,7 +502,7 @@ export class RouteOptimizationService {
       timestamp: new Date().toISOString(),
       method: 'updateRouteProgress',
       businessId,
-      inputs: { businessId, teamId, taskId, status },
+      inputs: { businessId, teamId, taskId, status, currentLocation },
       queryResults: {},
       errors: [],
       warnings: [],
@@ -516,7 +516,7 @@ export class RouteOptimizationService {
       debug.queryResults.businessObjectId = businessObjectId.toString();
       debug.queryResults.taskObjectId = taskObjectId.toString();
 
-      await this.validateBusiness(businessId);
+      const business = await this.validateBusiness(businessId);
 
       // Update FieldTask
       const task = await this.fieldTaskModel.findOne({
@@ -554,6 +554,48 @@ export class RouteOptimizationService {
       }
 
       await task.save();
+
+      // 🚀 FIXED: Get actual location from multiple sources
+      let locationToUse = currentLocation;
+      
+      if (!locationToUse) {
+        // Try to get location from various sources
+        const team = business.teams?.find((t: any) => t.id === teamId);
+        
+        if (team?.currentLocation) {
+          // Use team's current location if available
+          locationToUse = {
+            latitude: team.currentLocation.lat || team.currentLocation.latitude,
+            longitude: team.currentLocation.lng || team.currentLocation.longitude
+          };
+          debug.queryResults.locationSource = 'team_current_location';
+        } else if (task.location) {
+          // Fall back to task location
+          locationToUse = {
+            latitude: task.location.latitude,
+            longitude: task.location.longitude
+          };
+          debug.queryResults.locationSource = 'task_location';
+        } else {
+          // Use business base location as last resort
+          if (business.baseLocation?.latitude && business.baseLocation?.longitude) {
+            locationToUse = {
+              latitude: business.baseLocation.latitude,
+              longitude: business.baseLocation.longitude
+            };
+            debug.queryResults.locationSource = 'business_base_location';
+          } else {
+            // Default coordinates (this should rarely happen)
+            locationToUse = { latitude: 0, longitude: 0 };
+            debug.warnings.push('No location data available, using default coordinates');
+            debug.queryResults.locationSource = 'default_fallback';
+          }
+        }
+      } else {
+        debug.queryResults.locationSource = 'provided_parameter';
+      }
+
+      debug.queryResults.locationUsed = locationToUse;
 
       // 🚀 UPDATE ROUTE PROGRESS
       const today = new Date();
@@ -609,12 +651,12 @@ export class RouteOptimizationService {
             routeTask.status = 'pending'; // Ready to start
           }
 
-          // Add progress update
+          // Add progress update with actual location
           routeProgress.progressUpdates.push({
             timestamp: new Date(),
-            location: { latitude: 0, longitude: 0 }, // TODO: Get actual location
+            location: locationToUse,
             status: `task_${status}`,
-            notes: `Task ${taskId} ${status} by team ${teamId}`
+            notes: `Task ${taskId} ${status} by team ${teamId} at ${locationToUse.latitude}, ${locationToUse.longitude}`
           });
 
           await routeProgress.save();
@@ -1162,7 +1204,548 @@ export class RouteOptimizationService {
     };
   }
 
+  /**
+   * ✅ FIXED: Add weather warnings using WeatherRouteService
+   */
   private async addWeatherWarnings(routes: OptimizedRoute[], businessId: string): Promise<void> {
-    // Weather integration logic here
+    try {
+      this.logger.log(`Adding weather warnings for ${routes.length} routes in business ${businessId}`);
+
+      for (const route of routes) {
+        if (route.tasks.length === 0) continue;
+
+        try {
+          // Extract coordinates from route tasks
+          const coordinates = route.tasks.map(task => ({
+            lat: task.location.latitude,
+            lng: task.location.longitude
+          }));
+
+          // Calculate center coordinates for weather impact analysis
+          const centerCoords = this.calculateCenterCoordinates(coordinates);
+
+          // Get weather impact using your WeatherRouteService
+          const weatherImpact = await this.weatherRouteService.getWeatherImpact(
+            businessId,
+            centerCoords
+          );
+
+          // Add weather warnings to route
+          route.weatherWarnings = [];
+          route.weatherImpact = {
+            riskLevel: weatherImpact.riskLevel,
+            safetyScore: weatherImpact.safetyScore,
+            suggestedDelays: weatherImpact.routeAdjustments.suggestedDelays,
+            equipmentRecommendations: weatherImpact.routeAdjustments.equipmentRecommendations
+          };
+
+          // Generate weather warnings based on impact
+          if (weatherImpact.riskLevel === 'high' || weatherImpact.riskLevel === 'extreme') {
+            route.weatherWarnings.push(`${weatherImpact.riskLevel.toUpperCase()} RISK: Weather conditions may significantly impact this route`);
+          }
+
+          if (weatherImpact.routeAdjustments.suggestedDelays > 0) {
+            route.weatherWarnings.push(`Suggested delay: ${weatherImpact.routeAdjustments.suggestedDelays} minutes due to weather conditions`);
+          }
+
+          // Add specific warnings based on impact factors
+          Object.entries(weatherImpact.impactFactors).forEach(([factor, impact]) => {
+            if (impact.level === 'high' || impact.level === 'medium') {
+              route.weatherWarnings.push(`${factor.toUpperCase()}: ${impact.impact}`);
+            }
+          });
+
+          // Add weather delay to route sequence if applicable
+          if (weatherImpact.routeAdjustments.suggestedDelays > 0) {
+            route.route.forEach(routeStep => {
+              routeStep.weatherDelayMinutes = Math.round(weatherImpact.routeAdjustments.suggestedDelays / route.route.length);
+            });
+          }
+
+          this.logger.log(`Added weather impact for route ${route.routeId}: Risk level ${weatherImpact.riskLevel}, Safety score ${weatherImpact.safetyScore}`);
+
+        } catch (weatherError) {
+          this.logger.warn(`Could not get weather impact for route ${route.routeId}: ${weatherError.message}`);
+          
+          // Add fallback warning
+          route.weatherWarnings = ['Weather data unavailable - monitor conditions manually'];
+          route.weatherImpact = {
+            riskLevel: 'unknown',
+            safetyScore: 50,
+            suggestedDelays: 0,
+            equipmentRecommendations: ['Monitor weather conditions', 'Follow standard safety protocols']
+          };
+        }
+      }
+
+      // Get general weather alerts for the business
+      try {
+        const weatherAlerts = await this.weatherRouteService.getWeatherAlerts(businessId);
+        
+        // Add general alerts to routes that might be affected
+        weatherAlerts.forEach(alert => {
+          if (alert.severity === 'high' || alert.severity === 'critical') {
+            routes.forEach(route => {
+              // Check if route is in affected areas
+              const routeAddresses = route.tasks.map(t => t.location.address.toLowerCase());
+              const hasAffectedArea = alert.affectedAreas.some(area => 
+                routeAddresses.some(address => address.includes(area.toLowerCase()))
+              );
+
+              if (hasAffectedArea || alert.affectedAreas.length === 0) {
+                if (!route.weatherWarnings) route.weatherWarnings = [];
+                route.weatherWarnings.push(`${alert.severity.toUpperCase()} ALERT: ${alert.title} - ${alert.message}`);
+              }
+            });
+          }
+        });
+
+        this.logger.log(`Processed ${weatherAlerts.length} weather alerts for routes`);
+
+      } catch (alertError) {
+        this.logger.warn(`Could not get weather alerts: ${alertError.message}`);
+      }
+
+    } catch (error) {
+      this.logger.error(`Error adding weather warnings: ${error.message}`, error.stack);
+      // Don't throw - weather warnings are optional
+    }
+  }
+
+  /**
+   * ✅ Get route statistics for business
+   */
+  async getRouteStats(
+    businessId: string,
+    date: string
+  ): Promise<{
+    success: boolean;
+    stats: RouteStats;
+    debug: DebugInfo;
+  }> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'getRouteStats',
+      businessId,
+      inputs: { businessId, date },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+      const { startOfDay, endOfDay } = this.createUTCDateRange(date);
+
+      // Get all routes for the date
+      const routes = await this.routeModel.find({
+        businessId: businessObjectId,
+        date: { $gte: startOfDay, $lte: endOfDay },
+        isDeleted: false
+      });
+
+      // Get all tasks for the date
+      const tasks = await this.fieldTaskModel.find({
+        businessId: businessObjectId,
+        scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+        isDeleted: false
+      });
+
+      // Calculate statistics
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(task => task.status === FieldTaskStatus.COMPLETED).length;
+      const totalDistance = routes.reduce((sum, route) => sum + (route.actualDistance || route.estimatedDistance || 0), 0);
+      const totalTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime || 0), 0);
+      const avgExecutionTime = routes.length > 0 ? totalTime / routes.length : 0;
+      const teamsWithRoutes = new Set(routes.map(r => r.teamId)).size;
+
+      // Calculate efficiency (simplified)
+      const estimatedTime = routes.reduce((sum, route) => sum + route.estimatedTotalTime, 0);
+      const actualTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime), 0);
+      const efficiency = estimatedTime > 0 ? Math.round((estimatedTime / actualTime) * 100) : 100;
+
+      // Calculate fuel savings (placeholder)
+      const estimatedFuel = routes.reduce((sum, route) => sum + route.estimatedFuelCost, 0);
+      const actualFuel = routes.reduce((sum, route) => sum + (route.actualFuelCost || route.estimatedFuelCost), 0);
+      const fuelSavings = Math.max(0, estimatedFuel - actualFuel);
+
+      const stats: RouteStats = {
+        totalTasks,
+        completedTasks,
+        avgExecutionTime,
+        totalDistance,
+        fuelSavings,
+        efficiency,
+        teamsWithRoutes
+      };
+
+      debug.queryResults = {
+        routesCount: routes.length,
+        tasksCount: tasks.length,
+        stats
+      };
+      debug.executionTime = Date.now() - startTime;
+
+      return { success: true, stats, debug };
+
+    } catch (error) {
+      debug.errors.push(`Error getting route stats: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+      this.logger.error(`Error getting route stats: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        stats: {
+          totalTasks: 0,
+          completedTasks: 0,
+          avgExecutionTime: 0,
+          totalDistance: 0,
+          fuelSavings: 0,
+          efficiency: 0,
+          teamsWithRoutes: 0
+        },
+        debug
+      };
+    }
+  }
+
+  /**
+   * ✅ Calculate route metrics for specific tasks
+   */
+  async calculateRouteMetrics(
+    businessId: string,
+    taskIds: string[],
+    teamId?: string
+  ): Promise<{
+    success: boolean;
+    metrics: RouteMetrics;
+    debug: DebugInfo;
+  }> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'calculateRouteMetrics',
+      businessId,
+      inputs: { businessId, taskIds, teamId },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+      const taskObjectIds = taskIds.map(id => this.convertToObjectId(id));
+
+      // Get tasks
+      const tasks = await this.fieldTaskModel.find({
+        _id: { $in: taskObjectIds },
+        businessId: businessObjectId,
+        isDeleted: false
+      });
+
+      debug.queryResults.tasksFound = tasks.length;
+
+      if (tasks.length === 0) {
+        throw new NotFoundException('No tasks found for metrics calculation');
+      }
+
+      const metrics = await this.calculateRouteMetricsForTasks(tasks);
+      debug.queryResults.metrics = metrics;
+      debug.executionTime = Date.now() - startTime;
+
+      return { success: true, metrics, debug };
+
+    } catch (error) {
+      debug.errors.push(`Error calculating route metrics: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+      this.logger.error(`Error calculating route metrics: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        metrics: {
+          estimatedTotalTime: 0,
+          estimatedDistance: 0,
+          estimatedFuelCost: 0,
+          optimizationScore: 0,
+          taskCount: 0
+        },
+        debug
+      };
+    }
+  }
+
+  /**
+   * ✅ Re-optimize existing route
+   */
+  async reoptimizeRoute(
+    businessId: string,
+    routeId: string,
+    params?: any
+  ): Promise<{
+    success: boolean;
+    route: OptimizedRoute;
+    debug: DebugInfo;
+  }> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'reoptimizeRoute',
+      businessId,
+      inputs: { businessId, routeId, params },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+      const business = await this.validateBusiness(businessId);
+
+      // Find existing route
+      const existingRoute = await this.routeModel.findOne({
+        routeId,
+        businessId: businessObjectId,
+        isDeleted: false
+      });
+
+      if (!existingRoute) {
+        throw new NotFoundException('Route not found');
+      }
+
+      debug.queryResults.existingRouteFound = true;
+
+      // Get tasks from existing route
+      const taskIds = existingRoute.routeStops.map(stop => this.convertToObjectId(stop.taskId));
+      const tasks = await this.fieldTaskModel.find({
+        _id: { $in: taskIds },
+        isDeleted: false
+      });
+
+      debug.queryResults.tasksInRoute = tasks.length;
+
+      // Get team info
+      const team = business.teams?.find((t: any) => t.id === existingRoute.teamId);
+      if (!team) {
+        throw new NotFoundException('Team not found for route');
+      }
+
+      // Re-optimize tasks
+      const optimizedTasks = this.optimizeTaskOrder(tasks, team);
+      const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks);
+      const routeSequence = this.generateRouteSequence(optimizedTasks);
+
+      // Update existing route
+      existingRoute.routeStops = optimizedTasks.map((task, index) => ({
+        taskId: task._id.toString(),
+        sequenceNumber: index + 1,
+        estimatedArrivalTime: this.parseTimeToDate(routeSequence[index].arrivalTime, existingRoute.date.toISOString().split('T')[0]),
+        estimatedDepartureTime: this.parseTimeToDate(routeSequence[index].departureTime, existingRoute.date.toISOString().split('T')[0]),
+        distanceFromPrevious: routeSequence[index].distance,
+        travelTimeFromPrevious: routeSequence[index].travelTime,
+        serviceTime: task.estimatedDuration,
+        status: 'pending' as const,
+        location: {
+          latitude: task.location.latitude,
+          longitude: task.location.longitude,
+          address: task.location.address
+        }
+      }));
+
+      existingRoute.optimizationScore = metrics.optimizationScore;
+      existingRoute.estimatedTotalTime = metrics.estimatedTotalTime;
+      existingRoute.estimatedDistance = metrics.estimatedDistance;
+      existingRoute.estimatedFuelCost = metrics.estimatedFuelCost;
+
+      await existingRoute.save();
+
+      const optimizedRoute: OptimizedRoute = {
+        routeId: existingRoute.routeId,
+        teamId: existingRoute.teamId,
+        teamName: team.name,
+        tasks: optimizedTasks.map(task => ({
+          taskId: task._id.toString(),
+          name: task.name,
+          location: {
+            latitude: task.location.latitude,
+            longitude: task.location.longitude,
+            address: task.location.address
+          },
+          estimatedDuration: task.estimatedDuration,
+          priority: task.priority,
+          customerInfo: this.extractCustomerInfo(task)
+        })),
+        metrics,
+        route: routeSequence,
+        status: existingRoute.status
+      };
+
+      debug.queryResults.reoptimizedRoute = {
+        routeId: optimizedRoute.routeId,
+        newOptimizationScore: metrics.optimizationScore,
+        taskCount: optimizedRoute.tasks.length
+      };
+      debug.executionTime = Date.now() - startTime;
+
+      return { success: true, route: optimizedRoute, debug };
+
+    } catch (error) {
+      debug.errors.push(`Error re-optimizing route: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+      this.logger.error(`Error re-optimizing route: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        route: null as any,
+        debug
+      };
+    }
+  }
+
+  /**
+   * ✅ Validate route constraints
+   */
+  async validateRouteConstraints(
+    businessId: string,
+    routeData: {
+      taskIds: string[];
+      teamId: string;
+      maxTime?: number;
+      maxDistance?: number;
+    }
+  ): Promise<{
+    success: boolean;
+    valid: boolean;
+    violations: string[];
+    debug: DebugInfo;
+  }> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'validateRouteConstraints',
+      businessId,
+      inputs: { businessId, routeData },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+      const business = await this.validateBusiness(businessId);
+      
+      const violations: string[] = [];
+
+      // Validate team exists
+      const team = business.teams?.find((t: any) => t.id === routeData.teamId);
+      if (!team) {
+        violations.push('Team not found');
+      }
+
+      debug.queryResults.teamFound = !!team;
+
+      // Get tasks
+      const taskObjectIds = routeData.taskIds.map(id => this.convertToObjectId(id));
+      const tasks = await this.fieldTaskModel.find({
+        _id: { $in: taskObjectIds },
+        businessId: businessObjectId,
+        isDeleted: false
+      });
+
+      debug.queryResults.tasksFound = tasks.length;
+      debug.queryResults.tasksRequested = routeData.taskIds.length;
+
+      if (tasks.length !== routeData.taskIds.length) {
+        violations.push(`${routeData.taskIds.length - tasks.length} tasks not found`);
+      }
+
+      // Calculate metrics for validation
+      const metrics = await this.calculateRouteMetricsForTasks(tasks);
+
+      // Validate time constraints
+      const maxTime = routeData.maxTime || team?.maxRouteTime || 480; // 8 hours default
+      if (metrics.estimatedTotalTime > maxTime) {
+        violations.push(`Route exceeds maximum time: ${metrics.estimatedTotalTime} > ${maxTime} minutes`);
+      }
+
+      // Validate distance constraints
+      const maxDistance = routeData.maxDistance || team?.maxRouteDistance || 200; // 200km default
+      if (metrics.estimatedDistance > maxDistance) {
+        violations.push(`Route exceeds maximum distance: ${metrics.estimatedDistance} > ${maxDistance} km`);
+      }
+
+      // Validate task count
+      const maxTasks = team?.maxDailyTasks || 8;
+      if (tasks.length > maxTasks) {
+        violations.push(`Too many tasks for team: ${tasks.length} > ${maxTasks}`);
+      }
+
+      // Validate skills and equipment
+      if (team) {
+        const teamSkills = team.skills || [];
+        const teamEquipment = team.equipment || [];
+
+        tasks.forEach((task, index) => {
+          const missingSkills = task.skillsRequired.filter(skill => !teamSkills.includes(skill));
+          if (missingSkills.length > 0) {
+            violations.push(`Task ${index + 1} requires skills not available in team: ${missingSkills.join(', ')}`);
+          }
+
+          const missingEquipment = task.equipmentRequired.filter(eq => !teamEquipment.includes(eq));
+          if (missingEquipment.length > 0) {
+            violations.push(`Task ${index + 1} requires equipment not available in team: ${missingEquipment.join(', ')}`);
+          }
+        });
+      }
+
+      const valid = violations.length === 0;
+
+      debug.queryResults = {
+        ...debug.queryResults,
+        metrics,
+        violationCount: violations.length,
+        valid
+      };
+      debug.executionTime = Date.now() - startTime;
+
+      return { success: true, valid, violations, debug };
+
+    } catch (error) {
+      debug.errors.push(`Error validating route constraints: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+      this.logger.error(`Error validating route constraints: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        valid: false,
+        violations: [`Validation error: ${error.message}`],
+        debug
+      };
+    }
+  }
+
+  /**
+   * Helper method to calculate center coordinates
+   */
+  private calculateCenterCoordinates(coordinates: Array<{ lat: number; lng: number }>): { lat: number; lng: number } {
+    if (coordinates.length === 0) {
+      return { lat: 0, lng: 0 };
+    }
+
+    if (coordinates.length === 1) {
+      return coordinates[0];
+    }
+
+    const sumLat = coordinates.reduce((sum, coord) => sum + coord.lat, 0);
+    const sumLng = coordinates.reduce((sum, coord) => sum + coord.lng, 0);
+    
+    return {
+      lat: sumLat / coordinates.length,
+      lng: sumLng / coordinates.length
+    };
   }
 }
