@@ -484,9 +484,9 @@ export class RouteOptimizationService {
   }
 
   /**
-   * ✅ FIXED: Update route progress and RouteProgress tracking with actual location
-   */
-  async updateRouteProgress(
+ * ✅ FIXED: Update route progress and ensure FieldTask status is properly updated
+ */
+async updateRouteProgress(
     businessId: string,
     teamId: string,
     taskId: string,
@@ -508,114 +508,195 @@ export class RouteOptimizationService {
       warnings: [],
       executionTime: 0
     };
-
+  
     try {
       const businessObjectId = this.convertToObjectId(businessId);
       const taskObjectId = this.convertToObjectId(taskId);
-
+  
       debug.queryResults.businessObjectId = businessObjectId.toString();
       debug.queryResults.taskObjectId = taskObjectId.toString();
-
+  
       const business = await this.validateBusiness(businessId);
-
-      // Update FieldTask
-      const task = await this.fieldTaskModel.findOne({
+  
+      // 🚀 FIXED: Find task using flexible team ID matching
+      // First try to find the task with the exact teamId provided
+      let task = await this.fieldTaskModel.findOne({
         _id: taskObjectId,
         businessId: businessObjectId,
         assignedTeamId: teamId,
         isDeleted: false
       });
-
+  
+      // If not found, try to find by different team ID formats
+      if (!task) {
+        // Get team info to check for different ID formats
+        const team = business.teams?.find((t: any) => 
+          t.id === teamId || t.metadata?.phpId === teamId
+        );
+        
+        if (team) {
+          // Try all possible team ID formats
+          const possibleTeamIds = [
+            team.id,
+            team.metadata?.phpId,
+            team._id?.toString()
+          ].filter(Boolean);
+  
+          task = await this.fieldTaskModel.findOne({
+            _id: taskObjectId,
+            businessId: businessObjectId,
+            assignedTeamId: { $in: possibleTeamIds },
+            isDeleted: false
+          });
+  
+          debug.queryResults.searchedTeamIds = possibleTeamIds;
+        }
+      }
+  
       if (!task) {
         debug.errors.push('Task not found or not assigned to this team');
         throw new NotFoundException('Task not found or not assigned to this team');
       }
-
+  
       debug.queryResults.taskFound = true;
-      debug.queryResults.currentStatus = task.status;
-
-      // Update task status
+      debug.queryResults.currentTaskStatus = task.status;
+      debug.queryResults.taskAssignedTeamId = task.assignedTeamId;
+  
+      // 🚀 FIXED: Properly update task status with more robust logic
+      const originalStatus = task.status;
+      
       if (status === 'started') {
         task.status = FieldTaskStatus.IN_PROGRESS;
-        task.actualPerformance = {
-          startTime: new Date(),
-          delays: []
-        };
+        if (!task.actualPerformance) {
+          task.actualPerformance = {
+            startTime: new Date(),
+            delays: []
+          };
+        } else if (!task.actualPerformance.startTime) {
+          task.actualPerformance.startTime = new Date();
+        }
+        debug.queryResults.taskAction = 'started';
+        
       } else if (status === 'completed') {
+        // 🚀 CRITICAL FIX: Ensure status is properly set to COMPLETED
         task.status = FieldTaskStatus.COMPLETED;
         task.completedAt = new Date();
         
-        if (task.actualPerformance?.startTime) {
-          task.actualPerformance.endTime = new Date();
+        // Ensure actualPerformance exists and update it
+        if (!task.actualPerformance) {
+          task.actualPerformance = {
+            startTime: new Date(Date.now() - 60 * 60 * 1000), // Default 1 hour ago
+            delays: []
+          };
+        }
+        
+        task.actualPerformance.endTime = new Date();
+        
+        // Calculate actual duration
+        if (task.actualPerformance.startTime) {
           task.actualPerformance.actualDuration = Math.round(
             (new Date().getTime() - task.actualPerformance.startTime.getTime()) / (1000 * 60)
           );
+        } else {
+          // Fallback if no start time
+          task.actualPerformance.actualDuration = task.estimatedDuration || 60;
         }
+        
+        debug.queryResults.taskAction = 'completed';
+        debug.queryResults.actualDuration = task.actualPerformance.actualDuration;
+        
+      } else if (status === 'arrived') {
+        // Don't change status for 'arrived' - just log arrival
+        debug.queryResults.taskAction = 'arrived';
       }
-
-      await task.save();
-
-      // 🚀 FIXED: Get actual location from multiple sources
+  
+      // 🚀 CRITICAL: Save the task with explicit validation
+      try {
+        const savedTask = await task.save();
+        debug.queryResults.taskSaved = true;
+        debug.queryResults.newTaskStatus = savedTask.status;
+        debug.queryResults.taskCompletedAt = savedTask.completedAt;
+        
+        // Verify the save worked
+        const verifyTask = await this.fieldTaskModel.findById(taskObjectId);
+        debug.queryResults.verificationStatus = verifyTask?.status;
+        debug.queryResults.statusChangeSuccessful = (verifyTask?.status === task.status);
+        
+      } catch (saveError) {
+        debug.errors.push(`Failed to save task: ${saveError.message}`);
+        throw new Error(`Failed to update task status: ${saveError.message}`);
+      }
+  
+      // Get location for progress updates
       let locationToUse = currentLocation;
       
       if (!locationToUse) {
-        // Try to get location from various sources
-        const team = business.teams?.find((t: any) => t.id === teamId);
+        const team = business.teams?.find((t: any) => 
+          t.id === teamId || t.metadata?.phpId === teamId
+        );
         
         if (team?.currentLocation) {
-          // Use team's current location if available
           locationToUse = {
             latitude: team.currentLocation.lat || team.currentLocation.latitude,
             longitude: team.currentLocation.lng || team.currentLocation.longitude
           };
           debug.queryResults.locationSource = 'team_current_location';
         } else if (task.location) {
-          // Fall back to task location
           locationToUse = {
             latitude: task.location.latitude,
             longitude: task.location.longitude
           };
           debug.queryResults.locationSource = 'task_location';
         } else {
-          // Use business base location as last resort
-          if (business.baseLocation?.latitude && business.baseLocation?.longitude) {
-            locationToUse = {
-              latitude: business.baseLocation.latitude,
-              longitude: business.baseLocation.longitude
-            };
-            debug.queryResults.locationSource = 'business_base_location';
-          } else {
-            // Default coordinates (this should rarely happen)
-            locationToUse = { latitude: 0, longitude: 0 };
-            debug.warnings.push('No location data available, using default coordinates');
-            debug.queryResults.locationSource = 'default_fallback';
-          }
+          locationToUse = { latitude: 0, longitude: 0 };
+          debug.warnings.push('No location data available, using default coordinates');
+          debug.queryResults.locationSource = 'default_fallback';
         }
       } else {
         debug.queryResults.locationSource = 'provided_parameter';
       }
-
+  
       debug.queryResults.locationUsed = locationToUse;
-
-      // 🚀 UPDATE ROUTE PROGRESS
+  
+      // 🚀 UPDATE ROUTE PROGRESS with flexible team ID matching
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const routeProgress = await this.routeProgressModel.findOne({
+      // Try to find route progress with different team ID formats
+      const team = business.teams?.find((t: any) => 
+        t.id === teamId || t.metadata?.phpId === teamId
+      );
+      
+      const possibleTeamIds = team ? [
+        team.id,
+        team.metadata?.phpId,
+        teamId
+      ].filter(Boolean) : [teamId];
+  
+      let routeProgress = await this.routeProgressModel.findOne({
         businessId,
-        teamId,
+        teamId: { $in: possibleTeamIds },
         routeDate: { 
           $gte: today, 
           $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) 
         },
         isDeleted: false
       });
-
+  
+      debug.queryResults.routeProgressFound = !!routeProgress;
+      debug.queryResults.searchedRouteProgressTeamIds = possibleTeamIds;
+  
       if (routeProgress) {
         // Find and update the specific task
-        const taskIndex = routeProgress.tasks.findIndex(t => t.taskId === taskId);
+        const taskIndex = routeProgress.tasks.findIndex(t => 
+          t.taskId === taskId || t.taskId === taskObjectId.toString()
+        );
+        
+        debug.queryResults.taskIndexInRoute = taskIndex;
+        
         if (taskIndex !== -1) {
           const routeTask = routeProgress.tasks[taskIndex];
+          const originalRouteTaskStatus = routeTask.status;
           
           if (status === 'started') {
             routeTask.status = 'in_progress';
@@ -625,20 +706,30 @@ export class RouteOptimizationService {
             if (!routeProgress.routeStartTime) {
               routeProgress.routeStartTime = new Date();
             }
+            
           } else if (status === 'completed') {
+            // 🚀 CRITICAL FIX: Ensure route task status is set to completed
             routeTask.status = 'completed';
             routeTask.actualEndTime = new Date();
+            
             if (routeTask.actualStartTime) {
               routeTask.actualDuration = Math.round(
                 (new Date().getTime() - routeTask.actualStartTime.getTime()) / (1000 * 60)
               );
+            } else {
+              routeTask.actualDuration = routeTask.estimatedDuration || 60;
             }
             
-            // Update completed count
-            routeProgress.completedTasksCount = routeProgress.tasks.filter(t => t.status === 'completed').length;
+            // 🚀 CRITICAL: Recalculate completed count accurately
+            const completedTasksCount = routeProgress.tasks.filter(t => t.status === 'completed').length;
+            routeProgress.completedTasksCount = completedTasksCount;
+            
+            debug.queryResults.routeTaskAction = 'completed';
+            debug.queryResults.newCompletedCount = completedTasksCount;
+            debug.queryResults.totalRouteTasks = routeProgress.tasks.length;
             
             // Check if route is complete
-            if (routeProgress.completedTasksCount === routeProgress.tasks.length) {
+            if (completedTasksCount === routeProgress.tasks.length) {
               routeProgress.routeStatus = ProgressRouteStatus.COMPLETED;
               routeProgress.routeEndTime = new Date();
               if (routeProgress.routeStartTime) {
@@ -646,11 +737,13 @@ export class RouteOptimizationService {
                   (new Date().getTime() - routeProgress.routeStartTime.getTime()) / (1000 * 60)
                 );
               }
+              debug.queryResults.routeCompleted = true;
             }
+            
           } else if (status === 'arrived') {
             routeTask.status = 'pending'; // Ready to start
           }
-
+  
           // Add progress update with actual location
           routeProgress.progressUpdates.push({
             timestamp: new Date(),
@@ -658,68 +751,93 @@ export class RouteOptimizationService {
             status: `task_${status}`,
             notes: `Task ${taskId} ${status} by team ${teamId} at ${locationToUse.latitude}, ${locationToUse.longitude}`
           });
-
-          await routeProgress.save();
-
-          debug.queryResults.routeProgressUpdated = {
-            progressId: routeProgress._id.toString(),
-            taskIndex,
-            newTaskStatus: routeTask.status,
-            routeStatus: routeProgress.routeStatus,
-            completedCount: routeProgress.completedTasksCount
-          };
-        }
-      }
-
-      // 🚀 UPDATE ROUTE STATUS
-      if (task.assignedRouteId) {
-        const route = await this.routeModel.findById(task.assignedRouteId);
-        if (route) {
-          // Update route stop status
-          const stopIndex = route.routeStops.findIndex(stop => stop.taskId === taskId);
-          if (stopIndex !== -1) {
-            const stop = route.routeStops[stopIndex];
-            
-            if (status === 'started') {
-              stop.status = 'in_service';
-              stop.actualArrivalTime = new Date();
-              if (route.status === RouteStatus.ASSIGNED) {
-                route.status = RouteStatus.IN_PROGRESS;
-                route.startedAt = new Date();
-              }
-            } else if (status === 'completed') {
-              stop.status = 'completed';
-              stop.actualDepartureTime = new Date();
-              
-              // Check if all stops are completed
-              const allCompleted = route.routeStops.every(s => s.status === 'completed');
-              if (allCompleted) {
-                route.status = RouteStatus.COMPLETED;
-                route.completedAt = new Date();
-              }
-            }
-
-            await route.save();
-
-            debug.queryResults.routeUpdated = {
-              routeId: route.routeId,
-              stopIndex,
-              newStopStatus: stop.status,
-              routeStatus: route.status
+  
+          // 🚀 CRITICAL: Save route progress with error handling
+          try {
+            const savedRouteProgress = await routeProgress.save();
+            debug.queryResults.routeProgressSaved = true;
+            debug.queryResults.routeProgressUpdated = {
+              progressId: savedRouteProgress._id.toString(),
+              taskIndex,
+              originalRouteTaskStatus,
+              newRouteTaskStatus: routeTask.status,
+              routeStatus: savedRouteProgress.routeStatus,
+              completedCount: savedRouteProgress.completedTasksCount
             };
+          } catch (routeProgressSaveError) {
+            debug.errors.push(`Failed to save route progress: ${routeProgressSaveError.message}`);
+            // Don't throw - route progress update failure shouldn't stop task update
           }
+        } else {
+          debug.warnings.push(`Task ${taskId} not found in route progress tasks`);
+          debug.queryResults.routeTaskIds = routeProgress.tasks.map(t => t.taskId);
+        }
+      } else {
+        debug.warnings.push('No route progress found for this team/date');
+      }
+  
+      // 🚀 UPDATE ROUTE STATUS in Route collection
+      if (task.assignedRouteId) {
+        try {
+          const route = await this.routeModel.findById(task.assignedRouteId);
+          if (route) {
+            // Update route stop status
+            const stopIndex = route.routeStops.findIndex(stop => 
+              stop.taskId === taskId || stop.taskId === taskObjectId.toString()
+            );
+            
+            if (stopIndex !== -1) {
+              const stop = route.routeStops[stopIndex];
+              const originalStopStatus = stop.status;
+              
+              if (status === 'started') {
+                stop.status = 'in_service';
+                stop.actualArrivalTime = new Date();
+                if (route.status === RouteStatus.ASSIGNED) {
+                  route.status = RouteStatus.IN_PROGRESS;
+                  route.startedAt = new Date();
+                }
+              } else if (status === 'completed') {
+                stop.status = 'completed';
+                stop.actualDepartureTime = new Date();
+                
+                // Check if all stops are completed
+                const allCompleted = route.routeStops.every(s => s.status === 'completed');
+                if (allCompleted) {
+                  route.status = RouteStatus.COMPLETED;
+                  route.completedAt = new Date();
+                }
+              }
+  
+              await route.save();
+  
+              debug.queryResults.routeUpdated = {
+                routeId: route.routeId,
+                stopIndex,
+                originalStopStatus,
+                newStopStatus: stop.status,
+                routeStatus: route.status
+              };
+            } else {
+              debug.warnings.push(`Task ${taskId} not found in route stops`);
+            }
+          }
+        } catch (routeUpdateError) {
+          debug.errors.push(`Failed to update route: ${routeUpdateError.message}`);
+          // Don't throw - route update failure shouldn't stop task update
         }
       }
-
-      debug.queryResults.newTaskStatus = task.status;
+  
+      debug.queryResults.originalTaskStatus = originalStatus;
+      debug.queryResults.finalTaskStatus = task.status;
       debug.executionTime = Date.now() - startTime;
       
       return {
         success: true,
-        message: `Task ${status} successfully and route progress updated`,
+        message: `Task ${status} successfully - status updated from ${originalStatus} to ${task.status}`,
         debug
       };
-
+  
     } catch (error) {
       debug.errors.push(`Error updating route progress: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
