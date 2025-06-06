@@ -120,8 +120,10 @@ import {
   
         return {
           success: true,
-          message: `Generated ${optimizedRoutes.length} optimized routes`,
-          routes: optimizedRoutes
+          // ✅ FIXED: Access routes.length from the service response
+          message: `Generated ${optimizedRoutes.routes.length} optimized routes`,
+          routes: optimizedRoutes.routes,
+          debug: optimizedRoutes.debug
         };
   
       } catch (error) {
@@ -167,7 +169,8 @@ import {
         return {
           success: true,
           date,
-          routes
+          routes: routes.routes,
+          debug: routes.debug
         };
   
       } catch (error) {
@@ -213,7 +216,8 @@ import {
         return {
           success: true,
           date,
-          stats
+          stats: stats.stats,
+          debug: stats.debug
         };
   
       } catch (error) {
@@ -230,16 +234,16 @@ import {
       summary: 'Assign route to team',
       description: 'Assign an optimized route to a specific team'
     })
-    @ApiParam({ name: 'routeId', description: 'Route ID (team ID)' })
+    @ApiParam({ name: 'routeId', description: 'Route ID' })
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
     @ApiBody({
       description: 'Route assignment data',
       schema: {
         type: 'object',
         properties: {
-          taskIds: { type: 'array', items: { type: 'string' } }
+          teamId: { type: 'string' }
         },
-        required: ['taskIds']
+        required: ['teamId']
       }
     })
     @ApiResponse({ 
@@ -254,7 +258,7 @@ import {
       @Query('businessId') businessId: string,
       @Headers('business-x-api-key') apiKey: string,
       @Body() assignmentData: {
-        taskIds: string[];
+        teamId: string;
       }
     ): Promise<any> {
       try {
@@ -266,16 +270,17 @@ import {
           throw new BadRequestException('Route ID is required');
         }
   
-        if (!assignmentData.taskIds?.length) {
-          throw new BadRequestException('Task IDs are required');
+        if (!assignmentData.teamId) {
+          throw new BadRequestException('Team ID is required');
         }
   
         await this.validateBusinessApiKey(businessId, apiKey);
   
+        // ✅ FIXED: Pass parameters in correct order (businessId, teamId, routeId)
         const result = await this.routeOptimizationService.assignRouteToTeam(
           businessId,
-          routeId,
-          assignmentData.taskIds
+          assignmentData.teamId,
+          routeId
         );
   
         return result;
@@ -302,7 +307,14 @@ import {
         type: 'object',
         properties: {
           taskId: { type: 'string' },
-          status: { type: 'string', enum: ['started', 'completed'] }
+          status: { type: 'string', enum: ['started', 'completed', 'paused', 'arrived'] },
+          currentLocation: {
+            type: 'object',
+            properties: {
+              latitude: { type: 'number' },
+              longitude: { type: 'number' }
+            }
+          }
         },
         required: ['taskId', 'status']
       }
@@ -320,7 +332,8 @@ import {
       @Headers('business-x-api-key') apiKey: string,
       @Body() progressData: {
         taskId: string;
-        status: 'started' | 'completed';
+        status: 'started' | 'completed' | 'paused' | 'arrived';
+        currentLocation?: { latitude: number; longitude: number };
       }
     ): Promise<any> {
       try {
@@ -342,11 +355,13 @@ import {
   
         await this.validateBusinessApiKey(businessId, apiKey);
   
+        // ✅ FIXED: Pass currentLocation parameter to service
         const result = await this.routeOptimizationService.updateRouteProgress(
           businessId,
           routeId,
           progressData.taskId,
-          progressData.status
+          progressData.status,
+          progressData.currentLocation
         );
   
         return result;
@@ -401,7 +416,7 @@ import {
   
         await this.validateBusinessApiKey(businessId, apiKey);
   
-        const metrics = await this.routeOptimizationService.calculateRouteMetrics(
+        const result = await this.routeOptimizationService.calculateRouteMetrics(
           businessId,
           taskIds,
           teamId
@@ -411,7 +426,8 @@ import {
           success: true,
           teamId,
           taskIds,
-          metrics
+          metrics: result.metrics,
+          debug: result.debug
         };
   
       } catch (error) {
@@ -423,19 +439,26 @@ import {
       }
     }
   
-    @Post(':teamId/reoptimize')
+    @Post(':routeId/reoptimize')
     @ApiOperation({ 
       summary: 'Re-optimize existing route',
-      description: 'Re-optimize an existing route with optional additional tasks'
+      description: 'Re-optimize an existing route with new parameters'
     })
-    @ApiParam({ name: 'teamId', description: 'Team ID' })
+    @ApiParam({ name: 'routeId', description: 'Route ID' })
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
     @ApiBody({
       description: 'Re-optimization data',
       schema: {
         type: 'object',
         properties: {
-          additionalTaskIds: { type: 'array', items: { type: 'string' } }
+          params: {
+            type: 'object',
+            properties: {
+              prioritizeTime: { type: 'boolean' },
+              prioritizeFuel: { type: 'boolean' },
+              considerWeather: { type: 'boolean' }
+            }
+          }
         }
       }
     })
@@ -446,11 +469,11 @@ import {
     @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
     @ApiResponse({ status: 404, description: 'Business not found' })
     async reoptimizeRoute(
-      @Param('teamId') teamId: string,
+      @Param('routeId') routeId: string,
       @Query('businessId') businessId: string,
       @Headers('business-x-api-key') apiKey: string,
       @Body() reoptimizationData: {
-        additionalTaskIds?: string[];
+        params?: any;
       }
     ): Promise<any> {
       try {
@@ -458,22 +481,24 @@ import {
           throw new BadRequestException('Business ID is required');
         }
   
-        if (!teamId) {
-          throw new BadRequestException('Team ID is required');
+        if (!routeId) {
+          throw new BadRequestException('Route ID is required');
         }
   
         await this.validateBusinessApiKey(businessId, apiKey);
   
-        const optimizedRoute = await this.routeOptimizationService.reoptimizeRoute(
+        // ✅ FIXED: Pass correct parameters (businessId, routeId, params)
+        const result = await this.routeOptimizationService.reoptimizeRoute(
           businessId,
-          teamId,
-          reoptimizationData.additionalTaskIds
+          routeId,
+          reoptimizationData.params
         );
   
         return {
           success: true,
           message: 'Route re-optimized successfully',
-          route: optimizedRoute
+          route: result.route,
+          debug: result.debug
         };
   
       } catch (error) {
@@ -493,6 +518,8 @@ import {
     @ApiParam({ name: 'teamId', description: 'Team ID' })
     @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
     @ApiQuery({ name: 'taskIds', required: true, description: 'Comma-separated task IDs' })
+    @ApiQuery({ name: 'maxTime', required: false, description: 'Maximum route time in minutes' })
+    @ApiQuery({ name: 'maxDistance', required: false, description: 'Maximum route distance in km' })
     @ApiResponse({ 
       status: 200, 
       description: 'Route constraints validated successfully'
@@ -504,7 +531,9 @@ import {
       @Param('teamId') teamId: string,
       @Query('businessId') businessId: string,
       @Query('taskIds') taskIdsQuery: string,
-      @Headers('business-x-api-key') apiKey: string
+      @Headers('business-x-api-key') apiKey: string,
+      @Query('maxTime') maxTime?: string,
+      @Query('maxDistance') maxDistance?: string,
     ): Promise<any> {
       try {
         if (!businessId) {
@@ -526,17 +555,24 @@ import {
   
         await this.validateBusinessApiKey(businessId, apiKey);
   
-        const validation = await this.routeOptimizationService.validateRouteConstraints(
+        // ✅ FIXED: Pass object parameter as expected by service
+        const result = await this.routeOptimizationService.validateRouteConstraints(
           businessId,
-          teamId,
-          taskIds
+          {
+            taskIds,
+            teamId,
+            maxTime: maxTime ? parseInt(maxTime) : undefined,
+            maxDistance: maxDistance ? parseFloat(maxDistance) : undefined
+          }
         );
   
         return {
           success: true,
           teamId,
           taskIds,
-          validation
+          valid: result.valid,
+          violations: result.violations,
+          debug: result.debug
         };
   
       } catch (error) {
@@ -545,6 +581,64 @@ import {
           throw error;
         }
         throw new InternalServerErrorException('Failed to validate route constraints');
+      }
+    }
+
+    @Get(':teamId/progress')
+    @ApiOperation({ 
+      summary: 'Get route progress',
+      description: 'Get current progress of a team\'s route for a specific date'
+    })
+    @ApiParam({ name: 'teamId', description: 'Team ID' })
+    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+    @ApiQuery({ name: 'date', required: true, description: 'Date (YYYY-MM-DD)' })
+    @ApiResponse({ 
+      status: 200, 
+      description: 'Route progress retrieved successfully'
+    })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+    @ApiResponse({ status: 404, description: 'Business not found' })
+    async getRouteProgress(
+      @Param('teamId') teamId: string,
+      @Query('businessId') businessId: string,
+      @Query('date') date: string,
+      @Headers('business-x-api-key') apiKey: string
+    ): Promise<any> {
+      try {
+        if (!businessId) {
+          throw new BadRequestException('Business ID is required');
+        }
+
+        if (!teamId) {
+          throw new BadRequestException('Team ID is required');
+        }
+
+        if (!date) {
+          throw new BadRequestException('Date is required');
+        }
+
+        await this.validateBusinessApiKey(businessId, apiKey);
+
+        const result = await this.routeOptimizationService.getRouteProgress(
+          businessId,
+          teamId,
+          date
+        );
+
+        return {
+          success: true,
+          teamId,
+          date,
+          progress: result.progress,
+          debug: result.debug
+        };
+
+      } catch (error) {
+        this.logger.error(`Error getting route progress: ${error.message}`, error.stack);
+        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new InternalServerErrorException('Failed to get route progress');
       }
     }
   
