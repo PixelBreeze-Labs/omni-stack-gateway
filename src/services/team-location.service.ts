@@ -1285,44 +1285,95 @@ private async getFutureTasksIndicator(
   }
 
   /**
- * FIXED: Get upcoming scheduled tasks with proper PHP ID handling
+ * FIXED: Get upcoming scheduled tasks with proper date handling
+ * Now includes today's remaining tasks and better status filtering
  */
 private async getUpcomingSchedule(
     businessId: string,
     teamId: string,
     fromDate: Date,
-    team: any  // Added team parameter
-  ): Promise<any[]> {
-    const upcomingLimit = new Date(fromDate);
+    team: any
+): Promise<any[]> {
+    // FIXED: Use start of today instead of current time to include today's tasks
+    const startOfToday = new Date(fromDate);
+    startOfToday.setHours(0, 0, 0, 0);
+    
+    const upcomingLimit = new Date(startOfToday);
     upcomingLimit.setDate(upcomingLimit.getDate() + 14); // Next 2 weeks
-  
-    // FIXED: Setup flexible team ID matching for ALL 3 possible formats
-    const phpId = team.metadata?.phpId;           // "19"
-    const generatedId = team.id;                  // "1748608291431"
-    const mongoObjectId = team._id?.toString();   // ObjectId as string
+
+    // Setup flexible team ID matching for ALL 3 possible formats
+    const phpId = team.metadata?.phpId;
+    const generatedId = team.id;
+    const mongoObjectId = team._id?.toString();
     
     const teamIdQuery = [];
     if (phpId) teamIdQuery.push(phpId);
     if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
     if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
     if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-  
+
+    // FIXED: More inclusive status filtering and better date range
     const upcomingTasks = await this.fieldTaskModel.find({
-      businessId,
-      assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
-      scheduledDate: { $gte: fromDate, $lte: upcomingLimit },
-      status: { $in: [FieldTaskStatus.PENDING, FieldTaskStatus.SCHEDULED, FieldTaskStatus.ASSIGNED] },  // FIXED: Include 'assigned' status
-      isDeleted: false
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        scheduledDate: { 
+            $gte: startOfToday,  // FIXED: Use start of today, not current time
+            $lte: upcomingLimit 
+        },
+        status: { 
+            $in: [
+                FieldTaskStatus.PENDING, 
+                FieldTaskStatus.SCHEDULED, 
+                FieldTaskStatus.ASSIGNED,
+                FieldTaskStatus.IN_PROGRESS  // FIXED: Include in-progress tasks
+                // Note: Not including COMPLETED tasks as they shouldn't be "upcoming"
+            ] 
+        },
+        isDeleted: false
     }).sort({ scheduledDate: 1, scheduledTime: 1 }).limit(10);
-  
-    return upcomingTasks.map(task => ({
-      date: task.scheduledDate.toISOString().split('T')[0],
-      time: task.timeWindow?.start || task.scheduledTime || '9:00 AM',
-      task: task.name || task.description || 'Scheduled task',
-      location: task.location?.address || 'Location TBD',
-      duration: Math.round((task.estimatedDuration || 60) / 60 * 10) / 10 // Convert to hours, round to 1 decimal
-    }));
-  }
+
+    // Debug log to help troubleshoot
+    console.log(`[DEBUG] Upcoming schedule query for team ${team.name}:`);
+    console.log(`- Team IDs checked: ${teamIdQuery.join(', ')}`);
+    console.log(`- Date range: ${startOfToday.toISOString()} to ${upcomingLimit.toISOString()}`);
+    console.log(`- Found ${upcomingTasks.length} tasks`);
+    
+    if (upcomingTasks.length > 0) {
+        console.log('- Task details:', upcomingTasks.map(task => ({
+            id: task._id.toString(),
+            name: task.name,
+            scheduledDate: task.scheduledDate.toISOString(),
+            scheduledTime: task.scheduledTime,
+            timeWindow: task.timeWindow,
+            status: task.status,
+            assignedTeamId: task.assignedTeamId
+        })));
+    }
+
+    return upcomingTasks.map(task => {
+        // FIXED: Better time handling with fallbacks
+        let taskTime = '9:00 AM'; // Default fallback
+        
+        if (task.timeWindow?.start) {
+            taskTime = task.timeWindow.start;
+        } else if (task.scheduledTime) {
+            taskTime = task.scheduledTime;
+        } else if (task.timeWindow?.end) {
+            // If only end time is available, estimate start time
+            taskTime = `Before ${task.timeWindow.end}`;
+        }
+
+        return {
+            date: task.scheduledDate.toISOString().split('T')[0],
+            time: taskTime,
+            task: task.name || task.description || 'Scheduled task',
+            location: task.location?.address || 'Location TBD',
+            duration: Math.round((task.estimatedDuration || 60) / 60 * 10) / 10, // Convert to hours
+            taskId: task._id.toString(),  // ADDED: Include task ID for debugging
+            status: task.status  // ADDED: Include status for debugging
+        };
+    });
+}
 
  /**
    * UPDATED: Export location data now includes emergency contact information
