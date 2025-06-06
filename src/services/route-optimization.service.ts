@@ -2,6 +2,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import * as mongoose from 'mongoose';
 import { Business } from '../schemas/business.schema';
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
 import { AppClient } from '../schemas/app-client.schema';
@@ -78,6 +79,17 @@ interface RouteValidation {
   recommendations: string[];
 }
 
+interface DebugInfo {
+  timestamp: string;
+  method: string;
+  businessId: string;
+  inputs: any;
+  queryResults: any;
+  errors?: string[];
+  warnings?: string[];
+  executionTime: number;
+}
+
 @Injectable()
 export class RouteOptimizationService {
   private readonly logger = new Logger(RouteOptimizationService.name);
@@ -92,47 +104,80 @@ export class RouteOptimizationService {
   ) {}
 
   // ============================================================================
-  // REAL ROUTE OPTIMIZATION USING YOUR DATA
+  // IMPROVED ROUTE OPTIMIZATION WITH DEBUG INFO
   // ============================================================================
 
   /**
-   * Optimize routes using real field tasks and teams
+   * Optimize routes using real field tasks and teams - IMPROVED VERSION
    */
   async optimizeRoutes(request: OptimizeRoutesRequest): Promise<OptimizedRoute[]> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'optimizeRoutes',
+      businessId: request.businessId,
+      inputs: request,
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
     try {
+      // ✅ Convert businessId to ObjectId properly
+      const businessObjectId = this.convertToObjectId(request.businessId);
+      debug.queryResults.businessObjectId = businessObjectId.toString();
+
       // Validate business
-      const business = await this.validateBusiness(request.businessId);
+      const business = await this.validateBusinessImproved(businessObjectId, debug);
       
       this.logger.log(`Starting route optimization for business ${request.businessId} on ${request.date}`);
 
       // Get real tasks for the date
       let tasks: FieldTask[];
       if (request.taskIds && request.taskIds.length > 0) {
-        // Get specific tasks
+        // ✅ Convert task IDs to ObjectIds
+        const taskObjectIds = request.taskIds.map(id => this.convertToObjectId(id));
+        debug.queryResults.taskObjectIds = taskObjectIds.map(id => id.toString());
+
         tasks = await this.fieldTaskModel.find({
-          _id: { $in: request.taskIds },
-          businessId: request.businessId,
+          _id: { $in: taskObjectIds },
+          businessId: businessObjectId, // ✅ Use ObjectId
           isDeleted: false
         }).populate('appClientId');
+
+        debug.queryResults.tasksFoundById = tasks.length;
+        debug.queryResults.tasksExpected = request.taskIds.length;
+
+        if (tasks.length !== request.taskIds.length) {
+          const foundIds = tasks.map(t => t._id.toString());
+          const missingIds = request.taskIds.filter(id => !foundIds.includes(id));
+          debug.warnings.push(`Some tasks not found: ${missingIds.join(', ')}`);
+        }
       } else {
         // Get all tasks for the date
-        tasks = await this.fieldTaskService.getTasksForRouting(
-          request.businessId,
+        tasks = await this.getTasksForRoutingImproved(
+          businessObjectId,
           request.date,
-          request.teamIds
+          request.teamIds,
+          debug
         );
-        
-        // Populate customer info for all tasks
-        await this.fieldTaskModel.populate(tasks, { path: 'appClientId' });
       }
 
+      debug.queryResults.finalTasksCount = tasks.length;
+
       if (tasks.length === 0) {
+        debug.errors.push('No tasks found for optimization');
         throw new BadRequestException('No tasks found for optimization');
       }
 
       // Get available teams
       const availableTeams = this.getAvailableTeams(business, request.teamIds);
+      debug.queryResults.availableTeams = availableTeams.length;
+      debug.queryResults.teamNames = availableTeams.map(t => t.name);
+
       if (availableTeams.length === 0) {
+        debug.errors.push('No teams available for routing');
         throw new BadRequestException('No teams available for routing');
       }
 
@@ -142,7 +187,8 @@ export class RouteOptimizationService {
       const optimizedRoutes = await this.generateRealOptimizedRoutes(
         tasks,
         availableTeams,
-        request.params || {}
+        request.params || {},
+        debug
       );
 
       // Add weather warnings if requested
@@ -150,56 +196,94 @@ export class RouteOptimizationService {
         await this.addWeatherWarnings(optimizedRoutes, request.businessId);
       }
 
+      debug.queryResults.generatedRoutes = optimizedRoutes.length;
+      debug.executionTime = Date.now() - startTime;
+
       this.logger.log(`Generated ${optimizedRoutes.length} optimized routes`);
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
+
       return optimizedRoutes;
 
     } catch (error) {
+      debug.errors.push(`Error optimizing routes: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error optimizing routes: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   /**
-   * Re-optimize existing route with optional additional tasks
+   * Re-optimize existing route with optional additional tasks - IMPROVED VERSION
    */
   async reoptimizeRoute(
     businessId: string,
     teamId: string,
     additionalTaskIds?: string[]
   ): Promise<OptimizedRoute> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'reoptimizeRoute',
+      businessId,
+      inputs: { businessId, teamId, additionalTaskIds },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
     try {
-      const business = await this.validateBusiness(businessId);
+      // ✅ Convert businessId to ObjectId
+      const businessObjectId = this.convertToObjectId(businessId);
+      debug.queryResults.businessObjectId = businessObjectId.toString();
+
+      const business = await this.validateBusinessImproved(businessObjectId, debug);
 
       // Get current tasks assigned to this team
       const currentTasks = await this.fieldTaskModel.find({
-        businessId,
+        businessId: businessObjectId, // ✅ Use ObjectId
         assignedTeamId: teamId,
         status: { $in: [FieldTaskStatus.ASSIGNED, FieldTaskStatus.IN_PROGRESS] },
         isDeleted: false
       }).populate('appClientId');
 
+      debug.queryResults.currentTasks = currentTasks.length;
+
       // Get additional tasks if provided
       let additionalTasks: FieldTask[] = [];
       if (additionalTaskIds && additionalTaskIds.length > 0) {
+        // ✅ Convert additional task IDs to ObjectIds
+        const additionalTaskObjectIds = additionalTaskIds.map(id => this.convertToObjectId(id));
+        debug.queryResults.additionalTaskObjectIds = additionalTaskObjectIds.map(id => id.toString());
+
         additionalTasks = await this.fieldTaskModel.find({
-          _id: { $in: additionalTaskIds },
-          businessId,
+          _id: { $in: additionalTaskObjectIds },
+          businessId: businessObjectId, // ✅ Use ObjectId
           isDeleted: false,
           assignedTeamId: { $exists: false } // Only unassigned tasks
         }).populate('appClientId');
+
+        debug.queryResults.additionalTasks = additionalTasks.length;
       }
 
       const allTasks = [...currentTasks, ...additionalTasks];
+      debug.queryResults.totalTasks = allTasks.length;
       
       if (allTasks.length === 0) {
+        debug.errors.push('No tasks found for re-optimization');
         throw new BadRequestException('No tasks found for re-optimization');
       }
 
       // Get the specific team
       const team = business.teams?.find((t: any) => t.id === teamId);
       if (!team) {
+        debug.errors.push(`Team not found: ${teamId}`);
         throw new NotFoundException('Team not found');
       }
+
+      debug.queryResults.teamFound = true;
+      debug.queryResults.teamName = team.name;
 
       // Re-optimize the tasks for this team
       const optimizedTasks = this.optimizeTaskOrder(allTasks, team);
@@ -224,50 +308,93 @@ export class RouteOptimizationService {
         route: this.generateRouteSequence(optimizedTasks)
       };
 
-      // Update task assignments
+      // Update task assignments for additional tasks
       if (additionalTasks.length > 0) {
-        await this.fieldTaskModel.updateMany(
-          { _id: { $in: additionalTaskIds } },
+        const additionalTaskObjectIds = additionalTaskIds.map(id => this.convertToObjectId(id));
+        const updateResult = await this.fieldTaskModel.updateMany(
+          { _id: { $in: additionalTaskObjectIds } },
           { 
             assignedTeamId: teamId,
             assignedAt: new Date(),
             status: FieldTaskStatus.ASSIGNED
           }
         );
+
+        debug.queryResults.additionalTasksUpdateResult = {
+          acknowledged: updateResult.acknowledged,
+          matchedCount: updateResult.matchedCount,
+          modifiedCount: updateResult.modifiedCount
+        };
       }
 
+      debug.executionTime = Date.now() - startTime;
       this.logger.log(`Re-optimized route for team ${teamId} with ${allTasks.length} tasks`);
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
+
       return reoptimizedRoute;
 
     } catch (error) {
+      debug.errors.push(`Error re-optimizing route: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error re-optimizing route: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   /**
-   * Validate route constraints
+   * Validate route constraints - IMPROVED VERSION
    */
   async validateRouteConstraints(
     businessId: string,
     teamId: string,
     taskIds: string[]
   ): Promise<RouteValidation> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'validateRouteConstraints',
+      businessId,
+      inputs: { businessId, teamId, taskIds },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
     try {
-      const business = await this.validateBusiness(businessId);
+      // ✅ Convert businessId to ObjectId
+      const businessObjectId = this.convertToObjectId(businessId);
+      debug.queryResults.businessObjectId = businessObjectId.toString();
+
+      const business = await this.validateBusinessImproved(businessObjectId, debug);
       
       const team = business.teams?.find((t: any) => t.id === teamId);
       if (!team) {
+        debug.errors.push(`Team not found: ${teamId}`);
         throw new NotFoundException('Team not found');
       }
 
+      debug.queryResults.teamFound = true;
+      debug.queryResults.teamName = team.name;
+
+      // ✅ Convert task IDs to ObjectIds
+      const taskObjectIds = taskIds.map(id => this.convertToObjectId(id));
+      debug.queryResults.taskObjectIds = taskObjectIds.map(id => id.toString());
+
       const tasks = await this.fieldTaskModel.find({
-        _id: { $in: taskIds },
-        businessId,
+        _id: { $in: taskObjectIds },
+        businessId: businessObjectId, // ✅ Use ObjectId
         isDeleted: false
       });
 
+      debug.queryResults.tasksFound = tasks.length;
+      debug.queryResults.tasksExpected = taskIds.length;
+
       if (tasks.length !== taskIds.length) {
+        const foundIds = tasks.map(t => t._id.toString());
+        const missingIds = taskIds.filter(id => !foundIds.includes(id));
+        debug.errors.push(`Some tasks not found: ${missingIds.join(', ')}`);
         throw new BadRequestException('Some tasks not found');
       }
 
@@ -352,6 +479,14 @@ export class RouteOptimizationService {
         }
       }
 
+      debug.queryResults.validationResults = {
+        violations: violations.length,
+        recommendations: recommendations.length
+      };
+
+      debug.executionTime = Date.now() - startTime;
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
+
       return {
         isValid: violations.filter(v => v.severity === 'error').length === 0,
         violations,
@@ -359,30 +494,57 @@ export class RouteOptimizationService {
       };
 
     } catch (error) {
+      debug.errors.push(`Error validating route constraints: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error validating route constraints: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   /**
-   * Calculate real route metrics using actual task data
+   * Calculate real route metrics using actual task data - IMPROVED VERSION
    */
   async calculateRouteMetrics(
     businessId: string,
     taskIds: string[],
     teamId: string
   ): Promise<RouteMetrics> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'calculateRouteMetrics',
+      businessId,
+      inputs: { businessId, taskIds, teamId },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
     try {
-      await this.validateBusiness(businessId);
+      // ✅ Convert businessId to ObjectId
+      const businessObjectId = this.convertToObjectId(businessId);
+      debug.queryResults.businessObjectId = businessObjectId.toString();
+
+      await this.validateBusinessImproved(businessObjectId, debug);
+
+      // ✅ Convert task IDs to ObjectIds
+      const taskObjectIds = taskIds.map(id => this.convertToObjectId(id));
+      debug.queryResults.taskObjectIds = taskObjectIds.map(id => id.toString());
 
       // Get real tasks
       const tasks = await this.fieldTaskModel.find({
-        _id: { $in: taskIds },
-        businessId,
+        _id: { $in: taskObjectIds },
+        businessId: businessObjectId, // ✅ Use ObjectId
         isDeleted: false
       });
 
+      debug.queryResults.tasksFound = tasks.length;
+      debug.queryResults.tasksExpected = taskIds.length;
+
       if (tasks.length === 0) {
+        debug.errors.push('No valid tasks found');
         throw new BadRequestException('No valid tasks found');
       }
 
@@ -400,6 +562,18 @@ export class RouteOptimizationService {
       const estimatedFuelCost = this.calculateFuelCost(totalDistance);
       const optimizationScore = this.calculateOptimizationScore(tasks, totalDistance, estimatedTotalTime);
 
+      debug.queryResults.metricsCalculated = {
+        totalDuration,
+        totalDistance,
+        totalTravelTime,
+        estimatedTotalTime,
+        estimatedFuelCost,
+        optimizationScore
+      };
+
+      debug.executionTime = Date.now() - startTime;
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
+
       return {
         estimatedTotalTime,
         estimatedDistance: totalDistance,
@@ -409,42 +583,85 @@ export class RouteOptimizationService {
       };
 
     } catch (error) {
+      debug.errors.push(`Error calculating route metrics: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error calculating route metrics: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   /**
-   * Assign real optimized route to a team
+   * Assign real optimized route to a team - IMPROVED VERSION
    */
   async assignRouteToTeam(
     businessId: string,
     teamId: string,
     taskIds: string[]
   ): Promise<{ success: boolean; message: string }> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'assignRouteToTeam',
+      businessId,
+      inputs: { businessId, teamId, taskIds },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
     try {
-      const business = await this.validateBusiness(businessId);
+      // ✅ Convert all IDs to proper types
+      const businessObjectId = this.convertToObjectId(businessId);
+      const taskObjectIds = taskIds.map(id => this.convertToObjectId(id));
+      
+      debug.queryResults.businessObjectId = businessObjectId.toString();
+      debug.queryResults.taskObjectIds = taskObjectIds.map(id => id.toString());
+      debug.queryResults.teamId = teamId;
+
+      const business = await this.validateBusinessImproved(businessObjectId, debug);
 
       // Validate team exists
       const team = business.teams?.find((t: any) => t.id === teamId);
       if (!team) {
+        debug.errors.push(`Team not found: ${teamId}`);
         throw new NotFoundException('Team not found');
       }
+      debug.queryResults.teamFound = true;
+      debug.queryResults.teamName = team.name;
 
-      // Validate and assign tasks
+      // ✅ Find tasks using ObjectIds
       const tasks = await this.fieldTaskModel.find({
-        _id: { $in: taskIds },
-        businessId,
+        _id: { $in: taskObjectIds },
+        businessId: businessObjectId, // ✅ Use ObjectId
         isDeleted: false
       });
 
+      debug.queryResults.tasksFound = tasks.length;
+      debug.queryResults.tasksExpected = taskIds.length;
+      debug.queryResults.foundTaskIds = tasks.map(t => t._id.toString());
+
       if (tasks.length !== taskIds.length) {
-        throw new BadRequestException('Some tasks not found or already deleted');
+        const foundIds = tasks.map(t => t._id.toString());
+        const missingIds = taskIds.filter(id => !foundIds.includes(id));
+        debug.errors.push(`Some tasks not found: ${missingIds.join(', ')}`);
+        throw new BadRequestException(`Some tasks not found: ${missingIds.join(', ')}`);
       }
 
-      // Update all tasks to be assigned to this team
-      await this.fieldTaskModel.updateMany(
-        { _id: { $in: taskIds } },
+      // Check which tasks are already assigned
+      const alreadyAssigned = tasks.filter(t => t.assignedTeamId);
+      if (alreadyAssigned.length > 0) {
+        debug.warnings.push(`${alreadyAssigned.length} tasks already assigned`);
+        debug.queryResults.alreadyAssignedTasks = alreadyAssigned.map(t => ({
+          taskId: t._id.toString(),
+          assignedTo: t.assignedTeamId
+        }));
+      }
+
+      // ✅ Update all tasks to be assigned to this team using ObjectIds
+      const updateResult = await this.fieldTaskModel.updateMany(
+        { _id: { $in: taskObjectIds } },
         { 
           assignedTeamId: teamId,
           assignedAt: new Date(),
@@ -452,7 +669,27 @@ export class RouteOptimizationService {
         }
       );
 
+      debug.queryResults.updateResult = {
+        acknowledged: updateResult.acknowledged,
+        matchedCount: updateResult.matchedCount,
+        modifiedCount: updateResult.modifiedCount
+      };
+
+      // Verify assignment worked
+      const verifyTasks = await this.fieldTaskModel.find({
+        _id: { $in: taskObjectIds },
+        assignedTeamId: teamId
+      });
+
+      debug.queryResults.verificationResults = {
+        tasksNowAssigned: verifyTasks.length,
+        assignedTaskIds: verifyTasks.map(t => t._id.toString())
+      };
+
+      debug.executionTime = Date.now() - startTime;
+
       this.logger.log(`Assigned ${tasks.length} tasks to team ${teamId} for business ${businessId}`);
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
 
       return {
         success: true,
@@ -460,13 +697,16 @@ export class RouteOptimizationService {
       };
 
     } catch (error) {
+      debug.errors.push(`Error assigning route: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error assigning route: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   /**
-   * Update route progress using real task data
+   * Update route progress using real task data - IMPROVED VERSION
    */
   async updateRouteProgress(
     businessId: string,
@@ -474,19 +714,43 @@ export class RouteOptimizationService {
     taskId: string,
     status: 'started' | 'completed'
   ): Promise<{ success: boolean; message: string }> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'updateRouteProgress',
+      businessId,
+      inputs: { businessId, teamId, taskId, status },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
     try {
-      await this.validateBusiness(businessId);
+      // ✅ Convert IDs to proper types
+      const businessObjectId = this.convertToObjectId(businessId);
+      const taskObjectId = this.convertToObjectId(taskId);
+
+      debug.queryResults.businessObjectId = businessObjectId.toString();
+      debug.queryResults.taskObjectId = taskObjectId.toString();
+      debug.queryResults.teamId = teamId;
+
+      await this.validateBusinessImproved(businessObjectId, debug);
 
       const task = await this.fieldTaskModel.findOne({
-        _id: taskId,
-        businessId,
+        _id: taskObjectId,
+        businessId: businessObjectId, // ✅ Use ObjectId
         assignedTeamId: teamId,
         isDeleted: false
       });
 
       if (!task) {
+        debug.errors.push('Task not found or not assigned to this team');
         throw new NotFoundException('Task not found or not assigned to this team');
       }
+
+      debug.queryResults.taskFound = true;
+      debug.queryResults.currentStatus = task.status;
 
       // Update task status and performance data
       if (status === 'started') {
@@ -508,8 +772,12 @@ export class RouteOptimizationService {
       }
 
       await task.save();
+
+      debug.queryResults.newStatus = task.status;
+      debug.executionTime = Date.now() - startTime;
       
       this.logger.log(`Updated route progress: Team ${teamId}, Task ${taskId} - ${status}`);
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
 
       return {
         success: true,
@@ -517,33 +785,63 @@ export class RouteOptimizationService {
       };
 
     } catch (error) {
+      debug.errors.push(`Error updating route progress: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error updating route progress: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   /**
-   * Get real optimized routes for a date
+   * Get real optimized routes for a date - IMPROVED VERSION
    */
   async getOptimizedRoutes(
     businessId: string,
     date: string
   ): Promise<OptimizedRoute[]> {
-    try {
-      await this.validateBusiness(businessId);
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'getOptimizedRoutes',
+      businessId,
+      inputs: { businessId, date },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
 
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+    try {
+      // ✅ Convert businessId to ObjectId
+      const businessObjectId = this.convertToObjectId(businessId);
+      debug.queryResults.businessObjectId = businessObjectId.toString();
+
+      const business = await this.validateBusinessImproved(businessObjectId, debug);
+
+      // ✅ Handle dates properly in UTC
+      const { startOfDay, endOfDay } = this.createUTCDateRange(date);
+      debug.queryResults.dateRange = {
+        original: date,
+        startOfDay: startOfDay.toISOString(),
+        endOfDay: endOfDay.toISOString()
+      };
 
       // Get all tasks for the date that are assigned
       const tasks = await this.fieldTaskModel.find({
-        businessId,
+        businessId: businessObjectId, // ✅ Use ObjectId
         scheduledDate: { $gte: startOfDay, $lte: endOfDay },
-        assignedTeamId: { $exists: true },
+        assignedTeamId: { $exists: true, $ne: null },
         isDeleted: false
       }).populate('appClientId');
+
+      debug.queryResults.assignedTasksFound = tasks.length;
+      debug.queryResults.assignedTaskDetails = tasks.map(t => ({
+        taskId: t._id.toString(),
+        assignedTeamId: t.assignedTeamId,
+        status: t.status,
+        scheduledDate: t.scheduledDate
+      }));
 
       // Group tasks by team
       const tasksByTeam = new Map();
@@ -555,16 +853,24 @@ export class RouteOptimizationService {
         tasksByTeam.get(teamId).push(task);
       });
 
+      debug.queryResults.teamsWithTasks = Array.from(tasksByTeam.keys());
+      debug.queryResults.taskDistribution = {};
+      tasksByTeam.forEach((teamTasks, teamId) => {
+        debug.queryResults.taskDistribution[teamId] = teamTasks.length;
+      });
+
       // Build optimized routes response
       const routes: OptimizedRoute[] = [];
-      const business = await this.businessModel.findById(businessId);
 
       for (const [teamId, teamTasks] of tasksByTeam) {
         const team = business.teams?.find((t: any) => t.id === teamId);
-        if (!team) continue;
+        if (!team) {
+          debug.warnings.push(`Team not found: ${teamId}`);
+          continue;
+        }
 
         const taskIds = teamTasks.map(t => t._id.toString());
-        const metrics = await this.calculateRouteMetrics(businessId, taskIds, teamId);
+        const metrics = await this.calculateRouteMetricsForTasks(teamTasks);
         
         routes.push({
           teamId,
@@ -586,31 +892,57 @@ export class RouteOptimizationService {
         });
       }
 
+      debug.queryResults.finalRoutes = routes.length;
+      debug.executionTime = Date.now() - startTime;
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
+
       return routes;
 
     } catch (error) {
+      debug.errors.push(`Error getting optimized routes: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error getting optimized routes: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   /**
-   * Get real route statistics using actual data
+   * Get real route statistics using actual data - IMPROVED VERSION
    */
   async getRouteStats(businessId: string, date: string): Promise<RouteStats> {
+    const startTime = Date.now();
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'getRouteStats',
+      businessId,
+      inputs: { businessId, date },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
     try {
-      await this.validateBusiness(businessId);
+      // ✅ Convert businessId to ObjectId
+      const businessObjectId = this.convertToObjectId(businessId);
+      debug.queryResults.businessObjectId = businessObjectId.toString();
 
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+      await this.validateBusinessImproved(businessObjectId, debug);
 
-      // Get real task statistics
+      // ✅ Handle dates properly in UTC
+      const { startOfDay, endOfDay } = this.createUTCDateRange(date);
+      debug.queryResults.dateRange = {
+        original: date,
+        startOfDay: startOfDay.toISOString(),
+        endOfDay: endOfDay.toISOString()
+      };
+
+      // Get real task statistics with proper date and businessId matching
       const pipeline = [
         {
           $match: {
-            businessId,
+            businessId: businessObjectId, // ✅ Use ObjectId
             scheduledDate: { $gte: startOfDay, $lte: endOfDay },
             isDeleted: false
           }
@@ -620,20 +952,44 @@ export class RouteOptimizationService {
             _id: null,
             totalTasks: { $sum: 1 },
             completedTasks: { $sum: { $cond: [{ $eq: ['$status', FieldTaskStatus.COMPLETED] }, 1, 0] } },
+            assignedTasks: { $sum: { $cond: [{ $eq: ['$status', FieldTaskStatus.ASSIGNED] }, 1, 0] } },
+            inProgressTasks: { $sum: { $cond: [{ $eq: ['$status', FieldTaskStatus.IN_PROGRESS] }, 1, 0] } },
             avgEstimatedDuration: { $avg: '$estimatedDuration' },
             avgActualDuration: { $avg: '$actualPerformance.actualDuration' },
-            teamsWithTasks: { $addToSet: '$assignedTeamId' }
+            teamsWithTasks: { $addToSet: '$assignedTeamId' },
+            taskStatuses: { $push: '$status' },
+            taskIds: { $push: '$_id' }
           }
         }
       ];
+
+      debug.queryResults.aggregationPipeline = pipeline;
 
       const result = await this.fieldTaskModel.aggregate(pipeline);
       const stats = result[0] || {
         totalTasks: 0,
         completedTasks: 0,
+        assignedTasks: 0,
+        inProgressTasks: 0,
         avgEstimatedDuration: 0,
         avgActualDuration: 0,
-        teamsWithTasks: []
+        teamsWithTasks: [],
+        taskStatuses: [],
+        taskIds: []
+      };
+
+      debug.queryResults.rawAggregationResult = stats;
+
+      // Also do a direct count query for comparison
+      const directCount = await this.fieldTaskModel.countDocuments({
+        businessId: businessObjectId,
+        scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+        isDeleted: false
+      });
+
+      debug.queryResults.directCountComparison = {
+        aggregationCount: stats.totalTasks,
+        directCount: directCount
       };
 
       // Calculate additional metrics
@@ -641,7 +997,16 @@ export class RouteOptimizationService {
       const efficiency = stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0;
       const fuelSavings = this.calculateFuelSavings(totalDistance, stats.totalTasks);
 
-      return {
+      debug.queryResults.calculatedMetrics = {
+        totalDistance,
+        efficiency,
+        fuelSavings
+      };
+
+      debug.executionTime = Date.now() - startTime;
+      this.logger.log(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
+
+      const finalStats: RouteStats = {
         totalTasks: stats.totalTasks,
         completedTasks: stats.completedTasks,
         avgExecutionTime: Math.round(stats.avgActualDuration || stats.avgEstimatedDuration || 0),
@@ -651,14 +1016,195 @@ export class RouteOptimizationService {
         teamsWithRoutes: stats.teamsWithTasks.filter(t => t != null).length
       };
 
+      return finalStats;
+
     } catch (error) {
+      debug.errors.push(`Error getting route stats: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
       this.logger.error(`Error getting route stats: ${error.message}`, error.stack);
+      this.logger.error(`DEBUG INFO: ${JSON.stringify(debug, null, 2)}`);
       throw error;
     }
   }
 
   // ============================================================================
-  // PRIVATE HELPER METHODS
+  // IMPROVED HELPER METHODS
+  // ============================================================================
+
+  /**
+   * Convert string ID to ObjectId safely
+   */
+  private convertToObjectId(id: string): mongoose.Types.ObjectId {
+    try {
+      return new mongoose.Types.ObjectId(id);
+    } catch (error) {
+      throw new BadRequestException(`Invalid ObjectId format: ${id}`);
+    }
+  }
+
+  /**
+   * Create UTC date range for proper date matching
+   */
+  private createUTCDateRange(date: string): { startOfDay: Date; endOfDay: Date } {
+    // Parse date as UTC to match database format
+    const startOfDay = new Date(date + 'T00:00:00.000Z');
+    const endOfDay = new Date(date + 'T23:59:59.999Z');
+    
+    return { startOfDay, endOfDay };
+  }
+
+  /**
+   * Validate business exists - IMPROVED VERSION
+   */
+  private async validateBusinessImproved(businessObjectId: mongoose.Types.ObjectId, debug: DebugInfo): Promise<any> {
+    const business = await this.businessModel.findById(businessObjectId);
+    
+    debug.queryResults.businessValidation = {
+      businessId: businessObjectId.toString(),
+      found: !!business,
+      businessName: business?.name || 'N/A'
+    };
+
+    if (!business) {
+      debug.errors.push('Business not found');
+      throw new NotFoundException('Business not found');
+    }
+    
+    return business;
+  }
+
+  /**
+   * Get tasks for routing with improved handling
+   */
+  private async getTasksForRoutingImproved(
+    businessObjectId: mongoose.Types.ObjectId,
+    date: string,
+    teamIds: string[] | undefined,
+    debug: DebugInfo
+  ): Promise<FieldTask[]> {
+    const { startOfDay, endOfDay } = this.createUTCDateRange(date);
+    
+    const query: any = {
+      businessId: businessObjectId,
+      scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+      isDeleted: false
+    };
+
+    if (teamIds && teamIds.length > 0) {
+      query.assignedTeamId = { $in: teamIds };
+    }
+
+    debug.queryResults.taskQuery = {
+      query: JSON.stringify(query, null, 2),
+      dateRange: { startOfDay: startOfDay.toISOString(), endOfDay: endOfDay.toISOString() }
+    };
+
+    const tasks = await this.fieldTaskModel.find(query).populate('appClientId');
+    
+    debug.queryResults.tasksFromQuery = {
+      count: tasks.length,
+      taskIds: tasks.map(t => t._id.toString()),
+      statuses: tasks.map(t => t.status),
+      assignedTeams: tasks.map(t => t.assignedTeamId).filter(Boolean)
+    };
+
+    return tasks;
+  }
+
+  /**
+   * Validate business exists - ORIGINAL METHOD FOR COMPATIBILITY
+   */
+  private async validateBusiness(businessId: string): Promise<any> {
+    const businessObjectId = this.convertToObjectId(businessId);
+    const business = await this.businessModel.findById(businessObjectId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+    return business;
+  }
+
+  /**
+   * Generate real optimized routes with debug info
+   */
+  private async generateRealOptimizedRoutes(
+    tasks: FieldTask[],
+    teams: any[],
+    params: any,
+    debug: DebugInfo
+  ): Promise<OptimizedRoute[]> {
+    const routes: OptimizedRoute[] = [];
+    const maxTasksPerTeam = params.maxTasksPerTeam || 8;
+
+    debug.queryResults.routeGeneration = {
+      totalTasks: tasks.length,
+      totalTeams: teams.length,
+      maxTasksPerTeam
+    };
+
+    // Sort tasks by priority and time window
+    const sortedTasks = [...tasks].sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1, urgent: 4, emergency: 5 };
+      const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      
+      // Secondary sort by time window start
+      return a.timeWindow.start.localeCompare(b.timeWindow.start);
+    });
+
+    // Distribute tasks among teams
+    let taskIndex = 0;
+    const teamAssignments = {};
+
+    for (const team of teams) {
+      const teamTasks: FieldTask[] = [];
+      const maxTasks = Math.min(maxTasksPerTeam, team.maxDailyTasks || maxTasksPerTeam);
+
+      // Assign tasks to this team
+      while (teamTasks.length < maxTasks && taskIndex < sortedTasks.length) {
+        const task = sortedTasks[taskIndex];
+        
+        // Check if team can handle task
+        if (this.teamCanHandleTask(team, task)) {
+          teamTasks.push(task);
+        }
+        taskIndex++;
+      }
+
+      teamAssignments[team.id] = teamTasks.length;
+
+      if (teamTasks.length > 0) {
+        // Optimize task order for this team
+        const optimizedTasks = this.optimizeTaskOrder(teamTasks, team);
+        const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks);
+        
+        routes.push({
+          teamId: team.id,
+          teamName: team.name,
+          tasks: optimizedTasks.map(task => ({
+            taskId: task._id.toString(),
+            name: task.name,
+            location: {
+              latitude: task.location.latitude,
+              longitude: task.location.longitude,
+              address: task.location.address
+            },
+            estimatedDuration: task.estimatedDuration,
+            priority: task.priority,
+            customerInfo: this.extractCustomerInfo(task)
+          })),
+          metrics,
+          route: this.generateRouteSequence(optimizedTasks)
+        });
+      }
+    }
+
+    debug.queryResults.teamAssignments = teamAssignments;
+
+    return routes;
+  }
+
+  // ============================================================================
+  // EXISTING HELPER METHODS (UNCHANGED)
   // ============================================================================
 
   /**
@@ -696,17 +1242,6 @@ export class RouteOptimizationService {
   }
 
   /**
-   * Validate business exists
-   */
-  private async validateBusiness(businessId: string): Promise<any> {
-    const business = await this.businessModel.findById(businessId);
-    if (!business) {
-      throw new NotFoundException('Business not found');
-    }
-    return business;
-  }
-
-  /**
    * Get available teams for routing
    */
   private getAvailableTeams(business: any, teamIds?: string[]): any[] {
@@ -718,73 +1253,6 @@ export class RouteOptimizationService {
 
     // Filter for active teams available for routing
     return teams.filter((t: any) => t.isActive && t.isAvailableForRouting);
-  }
-
-  /**
-   * Generate real optimized routes using actual task data
-   */
-  private async generateRealOptimizedRoutes(
-    tasks: FieldTask[],
-    teams: any[],
-    params: any
-  ): Promise<OptimizedRoute[]> {
-    const routes: OptimizedRoute[] = [];
-    const maxTasksPerTeam = params.maxTasksPerTeam || 8;
-
-    // Sort tasks by priority and time window
-    const sortedTasks = [...tasks].sort((a, b) => {
-      const priorityOrder = { high: 3, medium: 2, low: 1, urgent: 4, emergency: 5 };
-      const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-      if (priorityDiff !== 0) return priorityDiff;
-      
-      // Secondary sort by time window start
-      return a.timeWindow.start.localeCompare(b.timeWindow.start);
-    });
-
-    // Distribute tasks among teams
-    let taskIndex = 0;
-    for (const team of teams) {
-      const teamTasks: FieldTask[] = [];
-      const maxTasks = Math.min(maxTasksPerTeam, team.maxDailyTasks || maxTasksPerTeam);
-
-      // Assign tasks to this team
-      while (teamTasks.length < maxTasks && taskIndex < sortedTasks.length) {
-        const task = sortedTasks[taskIndex];
-        
-        // Check if team can handle task
-        if (this.teamCanHandleTask(team, task)) {
-          teamTasks.push(task);
-        }
-        taskIndex++;
-      }
-
-      if (teamTasks.length > 0) {
-        // Optimize task order for this team (simple nearest neighbor for now)
-        const optimizedTasks = this.optimizeTaskOrder(teamTasks, team);
-        const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks);
-        
-        routes.push({
-          teamId: team.id,
-          teamName: team.name,
-          tasks: optimizedTasks.map(task => ({
-            taskId: task._id.toString(),
-            name: task.name,
-            location: {
-              latitude: task.location.latitude,
-              longitude: task.location.longitude,
-              address: task.location.address
-            },
-            estimatedDuration: task.estimatedDuration,
-            priority: task.priority,
-            customerInfo: this.extractCustomerInfo(task)
-          })),
-          metrics,
-          route: this.generateRouteSequence(optimizedTasks)
-        });
-      }
-    }
-
-    return routes;
   }
 
   /**

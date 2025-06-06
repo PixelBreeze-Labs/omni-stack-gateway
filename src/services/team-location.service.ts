@@ -555,7 +555,7 @@ export class TeamLocationService {
       });
 
       const totalTeams = business.teams?.length || 0;
-      const recentThreshold = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
+      const recentThreshold = new Date(Date.now() - 60 * 60 * 8 * 1000); // 8 hour ago
 
       // Calculate real statistics
       const activeTeams = teamLocations.filter(loc => 
@@ -814,6 +814,10 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
           return {
             teamId: team.metadata?.phpId || team.id,
             teamName: team.name,
+            available: location?.status === TeamLocationStatus.ACTIVE,
+            status: location?.status || TeamLocationStatus.OFFLINE,
+            location: location?.location || null,
+            lastUpdated: location?.lastLocationUpdate?.toISOString() || new Date().toISOString(),
             availability: basicAvailability.availability,
             performance: basicAvailability.performance,
             emergencyContact: team.emergencyContact
