@@ -898,7 +898,8 @@ private async calculateTeamAvailabilityDetails(
  * - team.id: Generated ID (e.g., "1748608291431")
  * - team.metadata.phpId: Original PHP system ID (e.g., "19")
  */
-  private async calculateTodayAvailability(
+
+private async calculateTodayAvailability(
     businessId: string,
     teamId: string,
     teamLocation: any,
@@ -920,9 +921,6 @@ private async calculateTeamAvailabilityDetails(
     if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
     if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
 
-    // Debug log to help troubleshoot ID matching issues
-    console.log(`[DEBUG] Today availability for team ${team.name} checking IDs:`, teamIdQuery);
-
     // Get today's tasks using flexible team ID matching
     const todayTasks = await this.fieldTaskModel.find({
         businessId,
@@ -939,13 +937,40 @@ private async calculateTeamAvailabilityDetails(
         isDeleted: false
     });
 
-    // Determine current status
+    // Calculate working hours (default or from team availability)
+    const workingHours = {
+        start: '8:00 AM',
+        end: '5:00 PM'
+    };
+
+    // Calculate task metrics
+    const scheduledTasks = todayTasks.length;
+    const completedTasks = todayTasks.filter(task => 
+        task.status === FieldTaskStatus.COMPLETED
+    ).length;
+    const inProgressTasks = todayTasks.filter(task => 
+        task.status === FieldTaskStatus.IN_PROGRESS
+    ).length;
+
+    // Calculate capacity
+    const maxCapacity = 10; // Maximum tasks per day
+    const currentCapacity = scheduledTasks; // Total tasks assigned today
+    const utilizationPercentage = Math.round((scheduledTasks / maxCapacity) * 100);
+
+    // Better status logic based on capacity and activity
     let currentStatus: 'available' | 'busy' | 'offline' | 'unavailable' = 'offline';
     
     if (teamLocation) {
         switch (teamLocation.status) {
             case TeamLocationStatus.ACTIVE:
-                currentStatus = (teamLocation.currentTaskId || todayTasks.length > 0) ? 'busy' : 'available';
+                // More nuanced status based on workload and progress
+                if (utilizationPercentage >= 80) {
+                    currentStatus = 'busy'; // 80%+ capacity = busy
+                } else if (scheduledTasks > 0 || inProgressTasks > 0) {
+                    currentStatus = 'available'; // Has work but not overwhelmed = available/working
+                } else {
+                    currentStatus = 'available'; // No tasks = available for new work
+                }
                 break;
             case TeamLocationStatus.BREAK:
                 currentStatus = 'unavailable';
@@ -958,38 +983,43 @@ private async calculateTeamAvailabilityDetails(
         }
     }
 
-    // Calculate working hours (default or from team availability)
-    const workingHours = {
-        start: '8:00 AM',
-        end: '5:00 PM'
-    };
-
-    // Calculate task metrics
-    const scheduledTasks = todayTasks.length;
-    const completedTasks = todayTasks.filter(task => 
-        task.status === FieldTaskStatus.COMPLETED
-    ).length;
-
-    // FIXED: Current capacity represents total workload assigned for today
-    // This is more intuitive than just counting completed tasks
-    const maxCapacity = 10; // Maximum tasks per day
-    const currentCapacity = scheduledTasks; // Total tasks assigned today
-
-    // Debug log to show the calculation
-    console.log(`[DEBUG] Capacity calculation for team ${team.name}:`);
-    console.log(`- Total tasks found: ${todayTasks.length}`);
-    console.log(`- Scheduled tasks: ${scheduledTasks}`);
-    console.log(`- Completed tasks: ${completedTasks}`);
-    console.log(`- Current capacity: ${currentCapacity}`);
-    console.log(`- Max capacity: ${maxCapacity}`);
+    // Add more detailed status explanation
+    let statusExplanation = '';
+    switch (currentStatus) {
+        case 'available':
+            if (scheduledTasks > 0) {
+                statusExplanation = `Working within capacity (${utilizationPercentage}% utilized)`;
+            } else {
+                statusExplanation = 'Available for new assignments';
+            }
+            break;
+        case 'busy':
+            statusExplanation = `High workload (${utilizationPercentage}% capacity)`;
+            break;
+        case 'offline':
+            statusExplanation = 'Team is offline or inactive';
+            break;
+        case 'unavailable':
+            statusExplanation = 'Team is on break';
+            break;
+    }
 
     return {
         status: currentStatus,
+        statusExplanation, // NEW: Detailed explanation
         workingHours,
         scheduledTasks,
         completedTasks,
-        currentCapacity,    // Now shows total assigned tasks (1 in your case)
-        maxCapacity
+        inProgressTasks, // NEW: Add in-progress count
+        currentCapacity,
+        maxCapacity,
+        utilizationPercentage, // NEW: Add utilization percentage
+        workloadSummary: { // NEW: Workload breakdown
+            total: scheduledTasks,
+            completed: completedTasks,
+            inProgress: inProgressTasks,
+            pending: scheduledTasks - completedTasks - inProgressTasks
+        }
     };
 }
   
