@@ -157,54 +157,141 @@ export class FieldTaskService {
   }
 
   /**
-   * Update existing field task and sync with task assignment
-   */
-  async updateTask(
+ * Update existing field task and sync with task assignment - FIXED VERSION
+ */
+async updateTask(
     businessId: string,
     taskId: string,
     updateData: UpdateFieldTaskRequest
   ): Promise<{ success: boolean; message: string }> {
     try {
       await this.validateBusiness(businessId);
-
+  
       // Find and update the task
       const task = await this.fieldTaskModel.findOne({
         _id: taskId,
         businessId,
         isDeleted: false
       });
-
+  
       if (!task) {
         throw new NotFoundException('Task not found');
       }
-
-      // Update fields
-      Object.keys(updateData).forEach(key => {
-        if (updateData[key] !== undefined) {
-          if (key === 'location' && updateData.location) {
-            task.location = { ...task.location, ...updateData.location };
-          } else if (key === 'timeWindow' && updateData.timeWindow) {
-            task.timeWindow = { ...task.timeWindow, ...updateData.timeWindow };
-          } else if (key === 'metadata' && updateData.metadata) {
-            task.metadata = { ...task.metadata, ...updateData.metadata };
-          } else {
-            task[key] = updateData[key];
-          }
+  
+      // FIXED: Explicitly update each field instead of generic object assignment
+      if (updateData.name !== undefined) {
+        task.name = updateData.name;
+      }
+      
+      if (updateData.description !== undefined) {
+        task.description = updateData.description;
+      }
+      
+      if (updateData.type !== undefined) {
+        task.type = updateData.type;
+      }
+      
+      if (updateData.priority !== undefined) {
+        task.priority = updateData.priority;
+      }
+      
+      if (updateData.siteId !== undefined) {
+        task.siteId = updateData.siteId;
+      }
+      
+      if (updateData.scheduledDate !== undefined) {
+        task.scheduledDate = updateData.scheduledDate;
+      }
+      
+      if (updateData.estimatedDuration !== undefined) {
+        task.estimatedDuration = updateData.estimatedDuration;
+      }
+      
+      if (updateData.skillsRequired !== undefined) {
+        task.skillsRequired = updateData.skillsRequired;
+      }
+      
+      if (updateData.equipmentRequired !== undefined) {
+        task.equipmentRequired = updateData.equipmentRequired;
+      }
+      
+      if (updateData.specialInstructions !== undefined) {
+        task.specialInstructions = updateData.specialInstructions;
+      }
+      
+      if (updateData.difficultyLevel !== undefined) {
+        task.difficultyLevel = updateData.difficultyLevel;
+      }
+      
+      if (updateData.metadata !== undefined) {
+        task.metadata = { ...task.metadata, ...updateData.metadata };
+      }
+  
+      // Handle nested location object properly
+      if (updateData.location) {
+        if (updateData.location.latitude !== undefined) {
+          task.location.latitude = updateData.location.latitude;
         }
-      });
-
+        if (updateData.location.longitude !== undefined) {
+          task.location.longitude = updateData.location.longitude;
+        }
+        if (updateData.location.address !== undefined) {
+          task.location.address = updateData.location.address;
+        }
+        if (updateData.location.city !== undefined) {
+          task.location.city = updateData.location.city;
+        }
+        if (updateData.location.state !== undefined) {
+          task.location.state = updateData.location.state;
+        }
+        if (updateData.location.zipCode !== undefined) {
+          task.location.zipCode = updateData.location.zipCode;
+        }
+        if (updateData.location.country !== undefined) {
+          task.location.country = updateData.location.country;
+        }
+        if (updateData.location.accessInstructions !== undefined) {
+          task.location.accessInstructions = updateData.location.accessInstructions;
+        }
+        if (updateData.location.parkingNotes !== undefined) {
+          task.location.parkingNotes = updateData.location.parkingNotes;
+        }
+      }
+  
+      // Handle nested timeWindow object properly
+      if (updateData.timeWindow) {
+        if (updateData.timeWindow.start !== undefined) {
+          task.timeWindow.start = updateData.timeWindow.start;
+        }
+        if (updateData.timeWindow.end !== undefined) {
+          task.timeWindow.end = updateData.timeWindow.end;
+        }
+        if (updateData.timeWindow.isFlexible !== undefined) {
+          task.timeWindow.isFlexible = updateData.timeWindow.isFlexible;
+        }
+        if (updateData.timeWindow.preferredTime !== undefined) {
+          task.timeWindow.preferredTime = updateData.timeWindow.preferredTime;
+        }
+      }
+  
+      // Mark the document as modified for nested objects
+      task.markModified('location');
+      task.markModified('timeWindow');
+      task.markModified('metadata');
+  
+      // Save the updated task
       await task.save();
-
+  
       // Update corresponding TaskAssignment
       await this.updateTaskAssignment(task);
-
+  
       this.logger.log(`Updated field task ${taskId} for business ${businessId}`);
-
+  
       return {
         success: true,
         message: 'Task updated successfully'
       };
-
+  
     } catch (error) {
       this.logger.error(`Error updating field task: ${error.message}`, error.stack);
       throw error;
