@@ -844,7 +844,7 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
 
 
   /**
- * NEW: Calculate comprehensive team availability details
+ * FIXED: Calculate comprehensive team availability details with proper team parameter passing
  */
 private async calculateTeamAvailabilityDetails(
     businessId: string,
@@ -856,20 +856,21 @@ private async calculateTeamAvailabilityDetails(
     const now = new Date();
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
   
-    // Calculate today's data
-    const todayData = await this.calculateTodayAvailability(businessId, teamId, teamLocation, today);
+    // FIXED: Pass team object to calculation methods
+    const todayData = await this.calculateTodayAvailability(businessId, teamId, teamLocation, today, team);
     
-    // Calculate week data
-    const weekData = await this.calculateWeekAvailability(businessId, teamId, today);
+    // FIXED: Pass team object to calculation methods
+    const weekData = await this.calculateWeekAvailability(businessId, teamId, today, team);
     
-    // Get upcoming schedule
-    const upcomingSchedule = await this.getUpcomingSchedule(businessId, teamId, now);
+    // Get upcoming schedule with flexible team ID matching
+    const upcomingSchedule = await this.getUpcomingSchedule(businessId, teamId, now, team);
     
-    // Calculate performance metrics
-    const performance = await this.calculatePerformanceMetrics(businessId, teamId);
+    // NEW: Check for tasks beyond current week
+    const futureTasksInfo = await this.getFutureTasksIndicator(businessId, teamId, today, team);
+    
+    // Calculate performance metrics with flexible team ID matching
+    const performance = await this.calculatePerformanceMetrics(businessId, teamId, team);
   
     return {
       teamId,
@@ -877,7 +878,8 @@ private async calculateTeamAvailabilityDetails(
       availability: {
         today: todayData,
         week: weekData,
-        upcomingSchedule
+        upcomingSchedule,
+        futureWork: futureTasksInfo  // NEW: Future tasks indicator
       },
       performance,
       lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || now.toISOString(),
@@ -890,29 +892,55 @@ private async calculateTeamAvailabilityDetails(
   }
   
   /**
-   * NEW: Calculate today's availability details
-   */
-  private async calculateTodayAvailability(
+ * FIXED: Calculate today's availability details with proper 3-ID format handling
+ * Team objects have 3 possible IDs:
+ * - team._id: MongoDB ObjectId (e.g., "6839a523ebf4dc20600760cc")  
+ * - team.id: Generated ID (e.g., "1748608291431")
+ * - team.metadata.phpId: Original PHP system ID (e.g., "19")
+ */
+private async calculateTodayAvailability(
     businessId: string,
     teamId: string,
     teamLocation: any,
-    today: Date
+    today: Date,
+    team: any  // Added team parameter to access both IDs
   ): Promise<any> {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
   
-    // Get today's tasks
+    // FIXED: Check for tasks using ALL 3 possible team ID formats
+    const phpId = team.metadata?.phpId;           // "19"
+    const generatedId = team.id;                  // "1748608291431" 
+    const mongoObjectId = team._id?.toString();   // ObjectId as string
+    
+    // Build query to check ALL possible team ID formats
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+  
+    // Debug log for troubleshooting
+    console.log(`[DEBUG] Upcoming schedule for team ${team.name} checking IDs:`, teamIdQuery);
+  
+    // Debug log for troubleshooting
+    console.log(`[DEBUG] Week availability for team ${team.name} checking IDs:`, teamIdQuery);
+  
+    // Debug log to help troubleshoot ID matching issues
+    console.log(`[DEBUG] Checking tasks for team ${team.name} using IDs:`, teamIdQuery);
+  
+    // Get today's tasks using flexible team ID matching
     const todayTasks = await this.fieldTaskModel.find({
       businessId,
-      assignedTeamId: teamId,
+      assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
       scheduledDate: { $gte: today, $lt: tomorrow },
       isDeleted: false
     });
   
-    // Get today's route progress
+    // Get today's route progress using the same flexible matching
     const routeProgress = await this.routeProgressModel.findOne({
       businessId,
-      teamId,
+      teamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
       routeDate: { $gte: today, $lt: tomorrow },
       isDeleted: false
     });
@@ -923,7 +951,7 @@ private async calculateTeamAvailabilityDetails(
     if (teamLocation) {
       switch (teamLocation.status) {
         case TeamLocationStatus.ACTIVE:
-          currentStatus = teamLocation.currentTaskId ? 'busy' : 'available';
+          currentStatus = (teamLocation.currentTaskId || todayTasks.length > 0) ? 'busy' : 'available';
           break;
         case TeamLocationStatus.BREAK:
           currentStatus = 'unavailable';
@@ -963,15 +991,27 @@ private async calculateTeamAvailabilityDetails(
   }
   
   /**
-   * NEW: Calculate week availability data
-   */
-  private async calculateWeekAvailability(
+ * FIXED: Calculate week availability data with proper PHP ID handling
+ */
+private async calculateWeekAvailability(
     businessId: string,
     teamId: string,
-    startOfWeek: Date
+    startOfWeek: Date,
+    team: any  // Added team parameter to access both IDs
   ): Promise<any[]> {
     const weekData = [];
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  
+    // FIXED: Setup flexible team ID matching for ALL 3 possible formats
+    const phpId = team.metadata?.phpId;           // "19"
+    const generatedId = team.id;                  // "1748608291431"
+    const mongoObjectId = team._id?.toString();   // ObjectId as string
+    
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
   
     for (let i = 0; i < 7; i++) {
       const date = new Date(startOfWeek);
@@ -979,18 +1019,18 @@ private async calculateTeamAvailabilityDetails(
       const nextDay = new Date(date);
       nextDay.setDate(date.getDate() + 1);
   
-      // Get tasks for this day
+      // FIXED: Get tasks for this day using flexible team ID matching
       const dayTasks = await this.fieldTaskModel.find({
         businessId,
-        assignedTeamId: teamId,
+        assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
         scheduledDate: { $gte: date, $lt: nextDay },
         isDeleted: false
       });
   
-      // Get route progress for this day
+      // FIXED: Get route progress for this day using flexible team ID matching
       const routeProgress = await this.routeProgressModel.findOne({
         businessId,
-        teamId,
+        teamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
         routeDate: { $gte: date, $lt: nextDay },
         isDeleted: false
       });
@@ -1026,12 +1066,13 @@ private async calculateTeamAvailabilityDetails(
     return weekData;
   }
   
-  /**
- * NEW: Calculate comprehensive performance metrics for a team
+ /**
+ * FIXED: Calculate comprehensive performance metrics with proper PHP ID handling
  */
 private async calculatePerformanceMetrics(
     businessId: string,
-    teamId: string
+    teamId: string,
+    team: any  // Added team parameter
   ): Promise<{
     efficiency: number;
     completionRate: number;
@@ -1042,10 +1083,24 @@ private async calculatePerformanceMetrics(
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   
-      // Get recent tasks for this team
+      // FIXED: Setup flexible team ID matching for ALL 3 possible formats
+      const phpId = team.metadata?.phpId;           // "19"
+      const generatedId = team.id;                  // "1748608291431"
+      const mongoObjectId = team._id?.toString();   // ObjectId as string
+      
+      const teamIdQuery = [];
+      if (phpId) teamIdQuery.push(phpId);
+      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+  
+      // Debug log for troubleshooting
+      console.log(`[DEBUG] Performance metrics for team ${team.name} checking IDs:`, teamIdQuery);
+  
+      // FIXED: Get recent tasks using flexible team ID matching
       const recentTasks = await this.fieldTaskModel.find({
         businessId,
-        assignedTeamId: teamId,
+        assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
         createdAt: { $gte: thirtyDaysAgo },
         isDeleted: false
       });
@@ -1092,7 +1147,10 @@ private async calculatePerformanceMetrics(
           .map(task => {
             // Calculate time between scheduled time and actual start
             const scheduled = new Date(task.scheduledDate);
-            if (task.scheduledTime) {
+            if (task.timeWindow?.start) {
+              const [hours, minutes] = task.timeWindow.start.split(':').map(Number);
+              scheduled.setHours(hours, minutes, 0, 0);
+            } else if (task.scheduledTime) {
               const [hours, minutes] = task.scheduledTime.split(':').map(Number);
               scheduled.setHours(hours, minutes, 0, 0);
             } else {
@@ -1145,27 +1203,121 @@ private async calculatePerformanceMetrics(
   }
 
   /**
-   * NEW: Get upcoming scheduled tasks
-   */
-  private async getUpcomingSchedule(
+ * NEW: Check for tasks scheduled beyond the current week
+ */
+private async getFutureTasksIndicator(
     businessId: string,
     teamId: string,
-    fromDate: Date
+    currentWeekStart: Date,
+    team: any
+  ): Promise<{
+    hasFutureTasks: boolean;
+    futureTasksCount: number;
+    nextTaskDate?: string;
+    furthestTaskDate?: string;
+  }> {
+    try {
+      // Calculate end of current week (7 days from start)
+      const currentWeekEnd = new Date(currentWeekStart);
+      currentWeekEnd.setDate(currentWeekStart.getDate() + 7);
+      currentWeekEnd.setHours(23, 59, 59, 999);
+  
+      // Setup flexible team ID matching for ALL 3 possible formats
+      const phpId = team.metadata?.phpId;           // "19"
+      const generatedId = team.id;                  // "1748608291431"
+      const mongoObjectId = team._id?.toString();   // ObjectId as string
+      
+      const teamIdQuery = [];
+      if (phpId) teamIdQuery.push(phpId);
+      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+  
+      // Debug log for troubleshooting
+      console.log(`[DEBUG] Future tasks check for team ${team.name} beyond ${currentWeekEnd.toISOString()}`);
+  
+      // Get all future tasks beyond current week
+      const futureTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        scheduledDate: { $gt: currentWeekEnd },
+        status: { 
+          $in: [
+            FieldTaskStatus.PENDING, 
+            FieldTaskStatus.SCHEDULED, 
+            FieldTaskStatus.ASSIGNED,
+            FieldTaskStatus.IN_PROGRESS  // Include in-progress for completeness
+          ] 
+        },
+        isDeleted: false
+      }).sort({ scheduledDate: 1 });
+  
+      const hasFutureTasks = futureTasks.length > 0;
+      const futureTasksCount = futureTasks.length;
+  
+      let nextTaskDate: string | undefined;
+      let furthestTaskDate: string | undefined;
+  
+      if (hasFutureTasks) {
+        // Get next upcoming task date
+        nextTaskDate = futureTasks[0].scheduledDate.toISOString().split('T')[0];
+        
+        // Get furthest task date
+        furthestTaskDate = futureTasks[futureTasks.length - 1].scheduledDate.toISOString().split('T')[0];
+      }
+  
+      return {
+        hasFutureTasks,
+        futureTasksCount,
+        nextTaskDate,
+        furthestTaskDate
+      };
+  
+    } catch (error) {
+      console.warn(`Failed to check future tasks for team ${teamId}: ${error.message}`);
+      
+      // Return default values if check fails
+      return {
+        hasFutureTasks: false,
+        futureTasksCount: 0
+      };
+    }
+  }
+
+  /**
+ * FIXED: Get upcoming scheduled tasks with proper PHP ID handling
+ */
+private async getUpcomingSchedule(
+    businessId: string,
+    teamId: string,
+    fromDate: Date,
+    team: any  // Added team parameter
   ): Promise<any[]> {
     const upcomingLimit = new Date(fromDate);
     upcomingLimit.setDate(upcomingLimit.getDate() + 14); // Next 2 weeks
   
+    // FIXED: Setup flexible team ID matching for ALL 3 possible formats
+    const phpId = team.metadata?.phpId;           // "19"
+    const generatedId = team.id;                  // "1748608291431"
+    const mongoObjectId = team._id?.toString();   // ObjectId as string
+    
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+  
     const upcomingTasks = await this.fieldTaskModel.find({
       businessId,
-      assignedTeamId: teamId,
+      assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
       scheduledDate: { $gte: fromDate, $lte: upcomingLimit },
-      status: { $in: [FieldTaskStatus.PENDING, FieldTaskStatus.SCHEDULED] },
+      status: { $in: [FieldTaskStatus.PENDING, FieldTaskStatus.SCHEDULED, FieldTaskStatus.ASSIGNED] },  // FIXED: Include 'assigned' status
       isDeleted: false
     }).sort({ scheduledDate: 1, scheduledTime: 1 }).limit(10);
   
     return upcomingTasks.map(task => ({
       date: task.scheduledDate.toISOString().split('T')[0],
-      time: task.scheduledTime || '9:00 AM',
+      time: task.timeWindow?.start || task.scheduledTime || '9:00 AM',
       task: task.name || task.description || 'Scheduled task',
       location: task.location?.address || 'Location TBD',
       duration: Math.round((task.estimatedDuration || 60) / 60 * 10) / 10 // Convert to hours, round to 1 decimal
