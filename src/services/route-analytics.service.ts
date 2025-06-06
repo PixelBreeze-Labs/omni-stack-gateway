@@ -541,7 +541,7 @@ private formatPercentage(value: number): number {
    * IMPROVED: Calculate on-time performance using RouteProgress data
    */
   private calculateOnTimePerformanceFromProgress(routeProgressData: any[]): number {
-    if (routeProgressData.length === 0) return 100;
+    if (routeProgressData.length === 0) return 0;
 
     const routesWithPerformance = routeProgressData.filter(p => p.performance?.onTimePerformance !== undefined);
     if (routesWithPerformance.length > 0) {
@@ -556,7 +556,7 @@ private formatPercentage(value: number): number {
       return Math.round((onTimeRoutes.length / routesWithTiming.length) * 100);
     }
 
-    return 100;
+    return 0;
   }
 
   /**
@@ -599,7 +599,7 @@ private formatPercentage(value: number): number {
       return Math.round(avgScore);
     }
 
-    return 85; // Default score
+    return 0; // Default score
   }
 
   /**
@@ -607,7 +607,7 @@ private formatPercentage(value: number): number {
  */
 private calculateFuelEfficiencyFromRoutes(routes: any[]): number {
     const routesWithFuelData = routes.filter(r => r.estimatedFuelCost && r.actualFuelCost);
-    if (routesWithFuelData.length === 0) return 85;
+    if (routesWithFuelData.length === 0) return 0;
   
     const efficiencies = routesWithFuelData.map(route => {
       return Math.min(100, (route.estimatedFuelCost / route.actualFuelCost) * 100);
@@ -636,8 +636,10 @@ private calculateFuelEfficiencyFromRoutes(routes: any[]): number {
   private calculatePeriodCostsFromRoutes(routes: any[]): any {
     const fuelCost = routes.reduce((sum, route) => sum + (route.actualFuelCost || route.estimatedFuelCost || 0), 0);
     const timeCost = routes.reduce((sum, route) => {
-      const timeHours = (route.actualTotalTime || route.estimatedTotalTime || 0) / 60;
-      return sum + (timeHours * 25); // $25 per hour
+      // const timeHours = (route.actualTotalTime || route.estimatedTotalTime || 0) / 60;
+      // return sum + (timeHours * 25); // $25 per hour
+      // we need it 0 for now
+      return 0;
     }, 0);
     const maintenanceCost = routes.reduce((sum, route) => {
       const distance = route.actualDistance || route.estimatedDistance || 0;
@@ -662,7 +664,9 @@ private calculateFuelEfficiencyFromRoutes(routes: any[]): number {
       }
       if (route.estimatedTotalTime && route.actualTotalTime) {
         const timeSavingsHours = Math.max(0, route.estimatedTotalTime - route.actualTotalTime) / 60;
-        savings += timeSavingsHours * 25; // $25 per hour
+         // savings += timeSavingsHours * 25; // $25 per hour
+        // we need it 0 for now
+        savings += 0;
       }
       return savings;
     }, 0);
@@ -878,7 +882,7 @@ private async calculateRealReportMetrics(business: any, dateRange: any): Promise
 
   private calculateCustomerSatisfaction(tasks: any[]): number {
     const tasksWithRating = tasks.filter(t => t.clientSignoff?.satisfactionRating);
-    if (tasksWithRating.length === 0) return 88;
+    if (tasksWithRating.length === 0) return 0;
 
     const avgRating = tasksWithRating.reduce((sum, task) => 
       sum + task.clientSignoff.satisfactionRating, 0) / tasksWithRating.length;
@@ -922,7 +926,7 @@ private async calculateRealReportMetrics(business: any, dateRange: any): Promise
 
   private calculateTeamRatingFromProgress(progressData: any[]): number {
     const progressWithRating = progressData.filter(p => p.performance?.customerSatisfactionAvg);
-    if (progressWithRating.length === 0) return 4.5;
+    if (progressWithRating.length === 0) return 0;
 
     return progressWithRating.reduce((sum, progress) => 
       sum + progress.performance.customerSatisfactionAvg, 0) / progressWithRating.length;
