@@ -899,7 +899,7 @@ private async calculateTeamAvailabilityDetails(
  * - team.metadata.phpId: Original PHP system ID (e.g., "19")
  */
 
-private async calculateTodayAvailability(
+  private async calculateTodayAvailability(
     businessId: string,
     teamId: string,
     teamLocation: any,
@@ -937,10 +937,10 @@ private async calculateTodayAvailability(
         isDeleted: false
     });
 
-    // Calculate working hours (default or from team availability)
+    // Calculate working hours (default or from team data)
     const workingHours = {
-        start: '8:00 AM',
-        end: '5:00 PM'
+        start: team.workingHours?.start || '8:00 AM',
+        end: team.workingHours?.end || '5:00 PM'
     };
 
     // Calculate task metrics
@@ -952,8 +952,8 @@ private async calculateTodayAvailability(
         task.status === FieldTaskStatus.IN_PROGRESS
     ).length;
 
-    // Calculate capacity
-    const maxCapacity = 10; // Maximum tasks per day
+    // FIXED: Use team's configured max daily tasks instead of hardcoded 10
+    const maxCapacity = team.maxDailyTasks || 8; // Default to 8 if not configured
     const currentCapacity = scheduledTasks; // Total tasks assigned today
     const utilizationPercentage = Math.round((scheduledTasks / maxCapacity) * 100);
 
@@ -1004,17 +1004,21 @@ private async calculateTodayAvailability(
             break;
     }
 
+    // Debug log to show capacity source
+    console.log(`[DEBUG] Team ${team.name} capacity: ${currentCapacity}/${maxCapacity} (${utilizationPercentage}%)`);
+    console.log(`[DEBUG] Max capacity source: ${team.maxDailyTasks ? 'team.maxDailyTasks' : 'default fallback'}`);
+
     return {
         status: currentStatus,
-        statusExplanation, // NEW: Detailed explanation
+        statusExplanation, // Detailed explanation
         workingHours,
         scheduledTasks,
         completedTasks,
-        inProgressTasks, // NEW: Add in-progress count
+        inProgressTasks, // Add in-progress count
         currentCapacity,
-        maxCapacity,
-        utilizationPercentage, // NEW: Add utilization percentage
-        workloadSummary: { // NEW: Workload breakdown
+        maxCapacity, // FIXED: Now uses team.maxDailyTasks
+        utilizationPercentage, // Add utilization percentage
+        workloadSummary: { // Workload breakdown
             total: scheduledTasks,
             completed: completedTasks,
             inProgress: inProgressTasks,
