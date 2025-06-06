@@ -112,6 +112,8 @@ export enum BusinessOperationType {
       currentFuelLevel?: number; // percentage
       maintenanceStatus: 'good' | 'needs_service' | 'out_of_service';
       gpsEnabled: boolean;
+      fuelPricePerLiter?: number; // price per liter for gasoline/diesel/hybrid
+      fuelPricePerKwh?: number; // price per kWh for electric
     };
     
     // Service capabilities
@@ -506,7 +508,9 @@ export class Business extends Document {
               enum: ['good', 'needs_service', 'out_of_service'],
               default: 'good'
             },
-            gpsEnabled: { type: Boolean, default: true }
+            gpsEnabled: { type: Boolean, default: true },
+            fuelPricePerLiter: { type: Number },
+            fuelPricePerKwh: { type: Number }
           },
           
           // Service capabilities - ALL OPTIONAL
