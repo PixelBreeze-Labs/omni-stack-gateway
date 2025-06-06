@@ -1020,7 +1020,7 @@ export class RouteOptimizationService {
 
       if (teamTasks.length > 0) {
         const optimizedTasks = this.optimizeTaskOrder(teamTasks, team);
-        const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks);
+        const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks, team);
         
         routes.push({
           teamId: team.id,
@@ -1103,18 +1103,18 @@ export class RouteOptimizationService {
     return degrees * (Math.PI / 180);
   }
 
-  private async calculateRouteMetricsForTasks(tasks: FieldTask[]): Promise<RouteMetrics> {
+  private async calculateRouteMetricsForTasks(tasks: FieldTask[], team?: any): Promise<RouteMetrics> {
     const totalDuration = tasks.reduce((sum, task) => sum + task.estimatedDuration, 0);
     const coordinates = tasks.map(task => ({
       lat: task.location.latitude,
       lng: task.location.longitude
     }));
-
+  
     const { totalDistance, totalTravelTime } = this.calculateRealDistances(coordinates);
     const estimatedTotalTime = totalDuration + totalTravelTime;
-    const estimatedFuelCost = this.calculateFuelCost(totalDistance);
+    const estimatedFuelCost = this.calculateFuelCost(totalDistance, team);
     const optimizationScore = this.calculateOptimizationScore(tasks, totalDistance, estimatedTotalTime);
-
+  
     return {
       estimatedTotalTime,
       estimatedDistance: totalDistance,
@@ -1138,10 +1138,40 @@ export class RouteOptimizationService {
     return { totalDistance, totalTravelTime };
   }
 
-  private calculateFuelCost(distance: number): number {
-    const fuelConsumptionPer100km = 8;
-    const fuelPricePerLiter = 1.5;
-    return (distance / 100) * fuelConsumptionPer100km * fuelPricePerLiter;
+  private calculateFuelCost(distance: number, team?: any): number {
+    if (!team?.vehicleInfo) {
+      // Fallback to default values if no team vehicle info
+      const defaultConsumption = 8; // L/100km
+      const defaultPrice = 1.5; // per liter
+      return (distance / 100) * defaultConsumption * defaultPrice;
+    }
+  
+    const vehicleInfo = team.vehicleInfo;
+    const fuelType = vehicleInfo.fuelType || 'gasoline';
+    const consumption = vehicleInfo.avgFuelConsumption || 8;
+  
+    let fuelCost = 0;
+  
+    switch (fuelType) {
+      case 'electric':
+        // For electric vehicles, use kWh consumption and price per kWh
+        const pricePerKwh = vehicleInfo.fuelPricePerKwh || 0.12; // Default $0.12/kWh
+        const kwhPer100km = consumption; // Assume consumption is in kWh/100km for electric
+        fuelCost = (distance / 100) * kwhPer100km * pricePerKwh;
+        break;
+        
+      case 'gasoline':
+      case 'diesel':
+      case 'hybrid':
+      default:
+        // For fuel-based vehicles, use liters and price per liter
+        const pricePerLiter = vehicleInfo.fuelPricePerLiter || 1.5; // Default $1.50/L
+        const litersPer100km = consumption; // L/100km
+        fuelCost = (distance / 100) * litersPer100km * pricePerLiter;
+        break;
+    }
+  
+    return Math.round(fuelCost * 100) / 100; // Round to 2 decimal places
   }
 
   private calculateOptimizationScore(tasks: FieldTask[], totalDistance: number, totalTime: number): number {
@@ -1437,7 +1467,16 @@ export class RouteOptimizationService {
 
     try {
       const businessObjectId = this.convertToObjectId(businessId);
+      const business = await this.validateBusiness(businessId);
+
       const taskObjectIds = taskIds.map(id => this.convertToObjectId(id));
+
+      // Get team if teamId provided
+    let team = null;
+    if (teamId) {
+      team = business.teams?.find((t: any) => t.id === teamId);
+      debug.queryResults.teamFound = !!team;
+    }
 
       // Get tasks
       const tasks = await this.fieldTaskModel.find({
@@ -1452,7 +1491,7 @@ export class RouteOptimizationService {
         throw new NotFoundException('No tasks found for metrics calculation');
       }
 
-      const metrics = await this.calculateRouteMetricsForTasks(tasks);
+      const metrics = await this.calculateRouteMetricsForTasks(tasks, team);
       debug.queryResults.metrics = metrics;
       debug.executionTime = Date.now() - startTime;
 
@@ -1535,7 +1574,7 @@ export class RouteOptimizationService {
 
       // Re-optimize tasks
       const optimizedTasks = this.optimizeTaskOrder(tasks, team);
-      const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks);
+      const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks, team);
       const routeSequence = this.generateRouteSequence(optimizedTasks);
 
       // Update existing route
@@ -1664,7 +1703,7 @@ export class RouteOptimizationService {
       }
 
       // Calculate metrics for validation
-      const metrics = await this.calculateRouteMetricsForTasks(tasks);
+      const metrics = await this.calculateRouteMetricsForTasks(tasks, team);
 
       // Validate time constraints
       const maxTime = routeData.maxTime || team?.maxRouteTime || 480; // 8 hours default
