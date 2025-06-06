@@ -190,46 +190,47 @@ export class RouteAnalyticsService {
     }
   }
 
-  /**
-   * IMPROVED: Get performance metrics using Route and RouteProgress data
-   */
-  async getPerformanceMetrics(
+  
+/**
+ * FIXED: Get performance metrics with proper percentage formatting
+ */
+async getPerformanceMetrics(
     businessId: string,
     timeframe: string = '30d'
   ): Promise<PerformanceMetrics> {
     try {
       const business = await this.validateBusiness(businessId);
-
+  
       // Calculate date range for timeframe
       const endDate = new Date();
       const startDate = new Date();
       const days = parseInt(timeframe.replace('d', '')) || 30;
       startDate.setDate(endDate.getDate() - days);
-
-      // Get real Route data from database
+  
+      // FIXED: Get real Route data from database (not just tasks)
       const routes = await this.routeModel.find({
         businessId,
         date: { $gte: startDate, $lte: endDate },
         isDeleted: false
       });
-
+  
       // Get RouteProgress data for completed routes
       const routeProgressData = await this.routeProgressModel.find({
         businessId,
         routeDate: { $gte: startDate, $lte: endDate },
         isDeleted: false
       });
-
+  
       // Get task data for additional metrics
       const tasks = await this.fieldTaskModel.find({
         businessId,
         scheduledDate: { $gte: startDate, $lte: endDate },
         isDeleted: false
       });
-
+  
       const completedRoutes = routes.filter(r => r.status === RouteStatus.COMPLETED);
       const completedTasks = tasks.filter(t => t.status === FieldTaskStatus.COMPLETED);
-
+  
       // Calculate real distance savings using Route data
       const totalDistanceSaved = completedRoutes.reduce((sum, route) => {
         if (route.estimatedDistance && route.actualDistance) {
@@ -237,7 +238,7 @@ export class RouteAnalyticsService {
         }
         return sum + (route.estimatedDistance * 0.15 || 0); // Estimate 15% savings
       }, 0);
-
+  
       // Calculate real time savings using RouteProgress data
       const totalTimeSaved = routeProgressData.reduce((sum, progress) => {
         if (progress.totalEstimatedDuration && progress.totalActualDuration) {
@@ -245,14 +246,14 @@ export class RouteAnalyticsService {
         }
         return sum + (progress.totalEstimatedDuration * 0.1 || 0); // Estimate 10% savings
       }, 0);
-
+  
       // Calculate cost savings using actual route data
       const totalCostSaved = this.calculateCostSavingsFromRoutes(completedRoutes);
-
+  
       const metrics: PerformanceMetrics = {
         overview: {
-          totalRoutes: routes.length,
-          avgEfficiency: this.calculateRouteEfficiency(routes, routeProgressData),
+          totalRoutes: routes.length, // FIXED: Use actual routes count
+          avgEfficiency: this.formatPercentage(this.calculateRouteEfficiency(routes, routeProgressData)),
           totalDistanceSaved: Math.round(totalDistanceSaved),
           totalTimeSaved: Math.round(totalTimeSaved),
           totalCostSaved: Math.round(totalCostSaved)
@@ -260,20 +261,20 @@ export class RouteAnalyticsService {
         timeMetrics: {
           avgRouteTime: this.calculateAvgRouteTimeFromProgress(routeProgressData),
           avgTaskTime: this.calculateAvgTaskTime(completedTasks),
-          onTimePercentage: this.calculateOnTimePerformanceFromProgress(routeProgressData),
+          onTimePercentage: this.formatPercentage(this.calculateOnTimePerformanceFromProgress(routeProgressData)),
           delayReasons: await this.calculateDelayReasonsFromProgress(routeProgressData)
         },
         efficiencyMetrics: {
-          routeOptimizationScore: this.calculateOptimizationScoreFromRoutes(routes),
-          fuelEfficiency: this.calculateFuelEfficiencyFromRoutes(completedRoutes),
-          taskCompletionRate: this.calculateCompletionRateFromProgress(routeProgressData),
-          customerSatisfaction: this.calculateCustomerSatisfaction(completedTasks)
+          routeOptimizationScore: this.formatPercentage(this.calculateOptimizationScoreFromRoutes(routes)),
+          fuelEfficiency: this.formatPercentage(this.calculateFuelEfficiencyFromRoutes(completedRoutes)), // FIXED: Format percentage
+          taskCompletionRate: this.formatPercentage(this.calculateCompletionRateFromProgress(routeProgressData)),
+          customerSatisfaction: this.formatPercentage(this.calculateCustomerSatisfaction(completedTasks))
         },
         teamMetrics: await this.calculateRealTeamMetrics(business, startDate, endDate)
       };
-
+  
       return metrics;
-
+  
     } catch (error) {
       this.logger.error(`Error getting performance metrics: ${error.message}`, error.stack);
       throw error;
@@ -485,26 +486,33 @@ export class RouteAnalyticsService {
   // ============================================================================
 
   /**
-   * IMPROVED: Calculate efficiency using Route optimization scores
-   */
-  private calculateRouteEfficiency(routes: any[], routeProgressData: any[]): number {
+ * FIXED: Calculate route efficiency with proper formatting
+ */
+private calculateRouteEfficiency(routes: any[], routeProgressData: any[]): number {
     if (routes.length === 0) return 0;
-
+  
     // Use actual optimization scores from Route data
     const routesWithScores = routes.filter(r => r.optimizationScore);
     if (routesWithScores.length > 0) {
       const avgOptimizationScore = routesWithScores.reduce((sum, route) => sum + route.optimizationScore, 0) / routesWithScores.length;
-      return Math.round(avgOptimizationScore);
+      return this.formatPercentage(avgOptimizationScore);
     }
-
+  
     // Fallback to RouteProgress performance calculation
     const progressWithPerformance = routeProgressData.filter(p => p.performance?.efficiency);
     if (progressWithPerformance.length > 0) {
       const avgEfficiency = progressWithPerformance.reduce((sum, progress) => sum + progress.performance.efficiency, 0) / progressWithPerformance.length;
-      return Math.round(avgEfficiency);
+      return this.formatPercentage(avgEfficiency);
     }
+  
+    return 0; // Default efficiency
+  }
 
-    return 85; // Default efficiency
+  /**
+ * FIXED: Format percentage values properly
+ */
+private formatPercentage(value: number): number {
+    return Math.round(value * 10) / 10; // Round to 1 decimal place
   }
 
   /**
@@ -595,18 +603,20 @@ export class RouteAnalyticsService {
   }
 
   /**
-   * IMPROVED: Calculate fuel efficiency from Route actual vs estimated fuel costs
-   */
-  private calculateFuelEfficiencyFromRoutes(routes: any[]): number {
+ * FIXED: Calculate fuel efficiency with proper formatting
+ */
+private calculateFuelEfficiencyFromRoutes(routes: any[]): number {
     const routesWithFuelData = routes.filter(r => r.estimatedFuelCost && r.actualFuelCost);
     if (routesWithFuelData.length === 0) return 85;
-
+  
     const efficiencies = routesWithFuelData.map(route => {
       return Math.min(100, (route.estimatedFuelCost / route.actualFuelCost) * 100);
     });
-
-    return Math.round(efficiencies.reduce((sum, eff) => sum + eff, 0) / efficiencies.length);
+  
+    const avgEfficiency = efficiencies.reduce((sum, eff) => sum + eff, 0) / efficiencies.length;
+    return this.formatPercentage(avgEfficiency);
   }
+  
 
   /**
    * IMPROVED: Calculate completion rate from RouteProgress data
@@ -706,41 +716,47 @@ export class RouteAnalyticsService {
   // REMAINING HELPER METHODS (UNCHANGED)
   // ============================================================================
 
-  private async calculateRealReportMetrics(business: any, dateRange: any): Promise<any> {
+ /**
+ * FIXED: Calculate real report metrics using Route collection data
+ */
+private async calculateRealReportMetrics(business: any, dateRange: any): Promise<any> {
     const startDate = new Date(dateRange.startDate);
     const endDate = new Date(dateRange.endDate);
     endDate.setHours(23, 59, 59, 999);
-
+  
+    // FIXED: Get actual Route documents, not just tasks
     const routes = await this.routeModel.find({
       businessId: business._id,
       date: { $gte: startDate, $lte: endDate },
       isDeleted: false
     });
-
+  
     const routeProgress = await this.routeProgressModel.find({
       businessId: business._id,
       routeDate: { $gte: startDate, $lte: endDate },
       isDeleted: false
     });
-
+  
     const completedRoutes = routes.filter(r => r.status === RouteStatus.COMPLETED);
     const totalTasks = routeProgress.reduce((sum, p) => sum + (p.tasks?.length || 0), 0);
     const completedTasks = routeProgress.reduce((sum, p) => sum + (p.completedTasksCount || 0), 0);
-
+  
     const totalDistance = completedRoutes.reduce((sum, route) => sum + (route.actualDistance || route.estimatedDistance || 0), 0);
     const totalTime = routeProgress.reduce((sum, progress) => sum + (progress.totalActualDuration || progress.totalEstimatedDuration || 0), 0);
-
+  
+    // FIXED: Use actual routes count, not route progress
     return {
-      totalRoutes: routes.length,
+      totalRoutes: routes.length, // FIXED: Use routes.length instead of route progress
       completedRoutes: completedRoutes.length,
       totalTasks,
       completedTasks,
       totalDistance: Math.round(totalDistance),
       totalTime: Math.round(totalTime),
       fuelCost: this.calculatePeriodCostsFromRoutes(completedRoutes).fuelCost,
-      efficiency: this.calculateRouteEfficiency(routes, routeProgress)
+      efficiency: this.formatPercentage(this.calculateRouteEfficiency(routes, routeProgress)) // FIXED: Format percentage
     };
   }
+  
 
   private async calculateRealTeamPerformance(business: any, dateRange: any): Promise<any[]> {
     const startDate = new Date(dateRange.startDate);
