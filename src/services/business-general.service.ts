@@ -17,6 +17,8 @@ import { GoogleMapsService } from './google-maps.service';
 import { RoutePlanningConfiguration } from '../schemas/business.schema';
 import { AppProject } from '../schemas/app-project.schema';
 import { ConstructionSite } from '../schemas/construction-site.schema';
+import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
+import { RouteProgress } from '../schemas/route-progress.schema';
 
 /**
  * Enhanced team response type for API responses
@@ -53,6 +55,8 @@ export class BusinessGeneralService {
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(AppProject.name) private appProjectModel: Model<AppProject>,
     @InjectModel(ConstructionSite.name) private constructionSiteModel: Model<ConstructionSite>,
+    @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+    @InjectModel(RouteProgress.name) private routeProgressModel: Model<RouteProgress>,
     private readonly googleMapsService: GoogleMapsService,
     private readonly staffluentEmployeeService: StaffluentEmployeeService,
     private readonly staffluentTaskService: StaffluentTaskService,
@@ -1657,7 +1661,7 @@ private isValidTimeFormat(time: string): boolean {
 }
 
 /**
- * Get a specific team by ID with enhanced field operations data
+ * FIXED: Update getTeam method to await the async enhanceTeamWithStats
  */
 async getTeam(businessId: string, teamId: string): Promise<{
   team: EnhancedTeamResponse;
@@ -1680,8 +1684,8 @@ async getTeam(businessId: string, teamId: string): Promise<{
       throw new NotFoundException('Team not found');
     }
 
-    // Enhance team with full stats and data
-    const enhancedTeam = this.enhanceTeamWithStats(team);
+    // FIXED: Await the async method
+    const enhancedTeam = await this.enhanceTeamWithStats(team);
 
     this.logger.log(`Retrieved enhanced team ${team.id} (PHP ID: ${team.metadata?.phpId}) for business ${businessId}`);
 
@@ -1896,7 +1900,7 @@ async updateFieldTeam(
     // Get the updated team for response
     const updatedBusiness = await this.businessModel.findById(businessId);
     const updatedTeam = updatedBusiness.teams[teamIndex];
-    const enhancedTeam = this.enhanceTeamWithStats(updatedTeam);
+    const enhancedTeam = await this.enhanceTeamWithStats(updatedTeam);
 
     debugInfo.step = 'completed';
 
@@ -1921,19 +1925,23 @@ async updateFieldTeam(
   }
 }
 
-private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
+/**
+ * FIXED: Enhanced team with stats calculation - made async and proper awaiting
+ */
+private async enhanceTeamWithStats(team: any): Promise<EnhancedTeamResponse> {
   try {
     // Use _doc if it's a Mongoose document, otherwise use the object directly
     const teamData = team._doc || team;
     
-    const totalTasks = this.calculateTotalTasks(teamData);
-    const completedTasks = this.calculateCompletedTasks(teamData);
-    const totalDistance = this.calculateTotalDistance(teamData);
-    const fuelConsumption = this.calculateFuelConsumption(teamData);
+    // FIXED: Await all async calculations
+    const totalTasks = await this.calculateTotalTasks(teamData);
+    const completedTasks = await this.calculateCompletedTasks(teamData);
+    const totalDistance = await this.calculateTotalDistance(teamData);
+    const fuelConsumption = this.calculateFuelConsumption(teamData, totalDistance); // Pass totalDistance
     const activeHours = this.calculateActiveHours(teamData);
     const serviceAreaCoverage = this.calculateServiceAreaCoverage(teamData);
     const equipmentUtilization = this.calculateEquipmentUtilization(teamData);
-    const recentActivity = this.getRecentActivity(teamData);
+    const recentActivity = await this.getRecentActivity(teamData); // FIXED: Await this
 
     // Return clean enhanced team data
     return {
@@ -1983,74 +1991,297 @@ private enhanceTeamWithStats(team: any): EnhancedTeamResponse {
 // IMPROVED PRIVATE HELPER METHODS FOR TEAM STATS
 // ============================================================================
 
-private calculateTotalTasks(team: any): number {
-  // Use actual performance data if available, otherwise return 0
-  if (team.performanceMetrics?.tasksCompleted) {
-    return team.performanceMetrics.tasksCompleted;
-  }
-  
-  // If we have average per day and a creation date, calculate based on actual time
-  if (team.performanceMetrics?.averageTasksPerDay && team.createdAt) {
-    const creationDate = new Date(team.createdAt);
-    const now = new Date();
-    const daysSinceCreation = Math.floor((now.getTime() - creationDate.getTime()) / (1000 * 60 * 60 * 24));
-    const workingDays = Math.floor(daysSinceCreation * 0.71); // ~5 working days per week
-    return Math.max(0, Math.floor(team.performanceMetrics.averageTasksPerDay * workingDays));
-  }
-  
-  return 0; // No data available
-}
-
-private calculateCompletedTasks(team: any): number {
-  // Use actual completion data if available
-  if (team.performanceMetrics?.tasksOnTime) {
-    return team.performanceMetrics.tasksOnTime;
-  }
-  
-  // Calculate based on total tasks and completion rate
-  const totalTasks = this.calculateTotalTasks(team);
-  if (totalTasks === 0) return 0;
-  
-  const completionRate = team.performanceMetrics?.onTimePerformance || 0;
-  return Math.floor(totalTasks * (completionRate / 100));
-}
-
-private calculateTotalDistance(team: any): number {
-  // Check if we have actual distance tracking data
-  if (team.performanceMetrics?.totalDistanceTraveled) {
-    return team.performanceMetrics.totalDistanceTraveled;
-  }
-  
-  // If we have route history or location updates, use that
-  if (team.routeHistory && Array.isArray(team.routeHistory)) {
-    return team.routeHistory.reduce((total: number, route: any) => {
-      return total + (route.distance || 0);
-    }, 0);
-  }
-  
-  // Estimate based on team activity and working pattern
-  if (team.maxRouteDistance && team.createdAt && team.isActive) {
-    const creationDate = new Date(team.createdAt);
-    const now = new Date();
-    const daysSinceCreation = Math.floor((now.getTime() - creationDate.getTime()) / (1000 * 60 * 60 * 24));
-    const workingDays = Math.floor(daysSinceCreation * 0.71); // ~5 working days per week
+/**
+ * FIXED: Calculate total tasks using ALL possible team ID formats
+ * Teams can be assigned tasks using:
+ * - team.metadata.phpId (e.g., "19")
+ * - team.id (e.g., "1748608291431") 
+ * - team._id (MongoDB ObjectId as string)
+ */
+private async calculateTotalTasks(team: any): Promise<number> {
+  try {
+    // FIXED: Setup flexible team ID matching for ALL 3 possible formats
+    const phpId = team.metadata?.phpId;           // "19"
+    const generatedId = team.id;                  // "1748608291431"
+    const mongoObjectId = team._id?.toString();   // ObjectId as string
     
-    // Estimate based on max route distance with realistic utilization
-    const estimatedDailyDistance = team.maxRouteDistance * 0.4; // 40% utilization seems reasonable
-    return Math.max(0, estimatedDailyDistance * workingDays);
+    // Build array of all possible team IDs to check
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+
+    // Debug log to help troubleshoot
+    console.log(`[DEBUG] Calculating total tasks for team ${team.name} using IDs:`, teamIdQuery);
+
+    if (teamIdQuery.length === 0) {
+      console.log(`[DEBUG] No valid team IDs found for team ${team.name}`);
+      return 0;
+    }
+
+    // FIXED: Query FieldTask collection using flexible team ID matching
+    const totalTasks = await this.fieldTaskModel.countDocuments({
+      assignedTeamId: { $in: teamIdQuery },  // Check ALL possible team ID formats
+      isDeleted: false
+    });
+
+    console.log(`[DEBUG] Found ${totalTasks} total tasks for team ${team.name}`);
+    return totalTasks;
+
+  } catch (error) {
+    this.logger.warn(`Failed to calculate total tasks for team: ${error.message}`);
+    return 0;
   }
-  
-  return 0; // No data to calculate from
 }
 
-private calculateFuelConsumption(team: any): number {
+/**
+ * FIXED: Calculate completed tasks using ALL possible team ID formats
+ */
+private async calculateCompletedTasks(team: any): Promise<number> {
+  try {
+    // FIXED: Setup flexible team ID matching for ALL 3 possible formats  
+    const phpId = team.metadata?.phpId;           // "19"
+    const generatedId = team.id;                  // "1748608291431"
+    const mongoObjectId = team._id?.toString();   // ObjectId as string
+    
+    // Build array of all possible team IDs to check
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+
+    if (teamIdQuery.length === 0) {
+      return 0;
+    }
+
+    // FIXED: Query FieldTask collection for completed tasks
+    const completedTasks = await this.fieldTaskModel.countDocuments({
+      assignedTeamId: { $in: teamIdQuery },  // Check ALL possible team ID formats
+      status: FieldTaskStatus.COMPLETED,
+      isDeleted: false
+    });
+
+    console.log(`[DEBUG] Found ${completedTasks} completed tasks for team ${team.name}`);
+    return completedTasks;
+
+  } catch (error) {
+    this.logger.warn(`Failed to calculate completed tasks for team: ${error.message}`);
+    return 0;
+  }
+}
+
+/**
+ * FIXED: Calculate total distance using route progress and task data
+ */
+private async calculateTotalDistance(team: any): Promise<number> {
+  try {
+    // FIXED: Setup flexible team ID matching
+    const phpId = team.metadata?.phpId;
+    const generatedId = team.id;
+    const mongoObjectId = team._id?.toString();
+    
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+
+    if (teamIdQuery.length === 0) {
+      return 0;
+    }
+
+    // FIXED: Get route progress records to calculate actual distance
+    const routeProgressRecords = await this.routeProgressModel.find({
+      teamId: { $in: teamIdQuery },
+      isDeleted: false
+    });
+
+    let totalDistance = 0;
+    
+    // Sum up distances from route progress
+    for (const route of routeProgressRecords) {
+      if (route.totalDistanceKm) {
+        totalDistance += route.totalDistanceKm;
+      } else if (route.tasks && route.tasks.length > 0) {
+        // Estimate distance if not recorded
+        const estimatedDistance = route.tasks.length * 15; // ~15km average per task
+        totalDistance += estimatedDistance;
+      }
+    }
+
+    console.log(`[DEBUG] Calculated ${totalDistance}km total distance for team ${team.name}`);
+    return Math.round(totalDistance * 100) / 100; // Round to 2 decimal places
+
+  } catch (error) {
+    this.logger.warn(`Failed to calculate total distance for team: ${error.message}`);
+    return 0;
+  }
+}
+
+/**
+ * FIXED: Get recent activity using actual task and location data
+ */
+private async getRecentActivity(team: any): Promise<Array<{
+  date: Date;
+  type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
+  description: string;
+  metadata?: any;
+}>> {
+  const activities: Array<{
+    date: Date;
+    type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
+    description: string;
+    metadata?: any;
+  }> = [];
+
+  try {
+    // FIXED: Setup flexible team ID matching
+    const phpId = team.metadata?.phpId;
+    const generatedId = team.id;
+    const mongoObjectId = team._id?.toString();
+    
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+
+    if (teamIdQuery.length > 0) {
+      // FIXED: Get recent completed tasks
+      const recentTasks = await this.fieldTaskModel.find({
+        assignedTeamId: { $in: teamIdQuery },
+        status: FieldTaskStatus.COMPLETED,
+        completedAt: { $exists: true },
+        isDeleted: false
+      })
+      .sort({ completedAt: -1 })
+      .limit(5);
+
+      // Add task completion activities
+      for (const task of recentTasks) {
+        activities.push({
+          date: task.completedAt,
+          type: 'task_completed',
+          description: `Completed task: ${task.name || task.description || 'Field task'}`,
+          metadata: {
+            taskId: task._id.toString(),
+            location: task.location?.address,
+            duration: task.actualPerformance?.actualDuration,
+            rating: task.clientSignoff?.satisfactionRating
+          }
+        });
+      }
+
+      // FIXED: Get recent route progress updates
+      const recentRoutes = await this.routeProgressModel.find({
+        teamId: { $in: teamIdQuery },
+        isDeleted: false
+      })
+      .sort({ updatedAt: -1 })
+      .limit(3);
+
+      // Add route progress activities
+      for (const route of recentRoutes) {
+        if (route.progressUpdates && route.progressUpdates.length > 0) {
+          const latestUpdate = route.progressUpdates[route.progressUpdates.length - 1];
+          activities.push({
+            date: latestUpdate.timestamp,
+            type: 'status_change',
+            description: latestUpdate.status || `Route progress updated`,
+            metadata: {
+              routeId: route._id.toString(),
+              completedTasks: route.completedTasksCount,
+              totalTasks: route.tasks.length
+            }
+          });
+        }
+      }
+    }
+
+    // Add team configuration activities
+    if (team.lastLocationUpdate) {
+      activities.push({
+        date: new Date(team.lastLocationUpdate),
+        type: 'location_update',
+        description: team.currentLocation ? 
+          `Location updated` : 'Location tracking started',
+        metadata: { coordinates: team.currentLocation }
+      });
+    }
+
+    if (team.performanceMetrics?.lastPerformanceUpdate) {
+      activities.push({
+        date: new Date(team.performanceMetrics.lastPerformanceUpdate),
+        type: 'status_change',
+        description: `Performance metrics updated - ${team.performanceMetrics.customerRating}/5 rating`,
+        metadata: { 
+          rating: team.performanceMetrics.customerRating,
+          onTimePerformance: team.performanceMetrics.onTimePerformance
+        }
+      });
+    }
+
+    if (team.updatedAt) {
+      activities.push({
+        date: new Date(team.updatedAt),
+        type: 'status_change',
+        description: `Team configuration updated`,
+        metadata: { 
+          isActive: team.isActive,
+          isAvailableForRouting: team.isAvailableForRouting
+        }
+      });
+    }
+
+    if (team.vehicleInfo?.maintenanceStatus && team.vehicleInfo.maintenanceStatus !== 'good') {
+      const maintenanceDate = team.vehicleInfo.lastMaintenanceDate ? 
+        new Date(team.vehicleInfo.lastMaintenanceDate) : 
+        new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000); // Random within last week
+        
+      activities.push({
+        date: maintenanceDate,
+        type: 'maintenance',
+        description: `Vehicle maintenance: ${team.vehicleInfo.maintenanceStatus.replace('_', ' ')}`,
+        metadata: { 
+          vehicleType: team.vehicleInfo.type,
+          maintenanceStatus: team.vehicleInfo.maintenanceStatus
+        }
+      });
+    }
+
+    if (team.createdAt) {
+      activities.push({
+        date: new Date(team.createdAt),
+        type: 'status_change',
+        description: 'Team created and configured for field operations',
+        metadata: { teamName: team.name }
+      });
+    }
+
+    // Sort by date (most recent first) and limit to 10
+    const sortedActivities = activities
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, 10);
+
+    console.log(`[DEBUG] Generated ${sortedActivities.length} recent activities for team ${team.name}`);
+    return sortedActivities;
+
+  } catch (error) {
+    this.logger.warn(`Failed to get recent activity for team: ${error.message}`);
+    return activities.slice(0, 10); // Return whatever we have so far
+  }
+}
+
+
+
+/**
+ * FIXED: Calculate fuel consumption - made sync and takes totalDistance as parameter
+ */
+private calculateFuelConsumption(team: any, totalDistance: number): number {
   // Use actual fuel consumption data if tracked
   if (team.performanceMetrics?.totalFuelConsumed) {
     return team.performanceMetrics.totalFuelConsumed;
   }
   
-  // Calculate based on actual distance and vehicle specs
-  const totalDistance = this.calculateTotalDistance(team);
+  // Calculate based on distance and vehicle specs
   if (totalDistance === 0 || !team.vehicleInfo?.avgFuelConsumption) {
     return 0;
   }
@@ -2193,100 +2424,6 @@ private calculateEquipmentUtilization(team: any): number {
   const adjustedUtilization = baseUtilization * activityFactor * routingFactor * performanceFactor;
   
   return Math.round(adjustedUtilization);
-}
-
-private getRecentActivity(team: any): Array<{
-  date: Date;
-  type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
-  description: string;
-  metadata?: any;
-}> {
-  const activities: Array<{
-    date: Date;
-    type: 'task_completed' | 'location_update' | 'status_change' | 'maintenance';
-    description: string;
-    metadata?: any;
-  }> = [];
-  
-  // Use actual activity log if available
-  if (team.activityLog && Array.isArray(team.activityLog)) {
-    return team.activityLog
-      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 10)
-      .map((activity: any) => ({
-        date: new Date(activity.timestamp),
-        type: activity.type,
-        description: activity.description,
-        metadata: activity.metadata
-      }));
-  }
-  
-  // Generate activities from available data
-  if (team.lastLocationUpdate) {
-    activities.push({
-      date: new Date(team.lastLocationUpdate),
-      type: 'location_update',
-      description: team.currentLocation ? 
-        `Location updated to ${team.currentLocation.lat.toFixed(4)}, ${team.currentLocation.lng.toFixed(4)}` :
-        'Location updated',
-      metadata: { coordinates: team.currentLocation }
-    });
-  }
-  
-  if (team.performanceMetrics?.lastPerformanceUpdate) {
-    activities.push({
-      date: new Date(team.performanceMetrics.lastPerformanceUpdate),
-      type: 'task_completed',
-      description: `Performance metrics updated - ${team.performanceMetrics.customerRating}/5 rating`,
-      metadata: { 
-        rating: team.performanceMetrics.customerRating,
-        onTimePerformance: team.performanceMetrics.onTimePerformance
-      }
-    });
-  }
-  
-  if (team.updatedAt) {
-    activities.push({
-      date: new Date(team.updatedAt),
-      type: 'status_change',
-      description: `Team configuration updated`,
-      metadata: { 
-        isActive: team.isActive,
-        isAvailableForRouting: team.isAvailableForRouting
-      }
-    });
-  }
-  
-  if (team.vehicleInfo?.maintenanceStatus && team.vehicleInfo.maintenanceStatus !== 'good') {
-    // Estimate maintenance activity date (if not available)
-    const maintenanceDate = team.vehicleInfo.lastMaintenanceDate ? 
-      new Date(team.vehicleInfo.lastMaintenanceDate) : 
-      new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000); // Random within last week
-      
-    activities.push({
-      date: maintenanceDate,
-      type: 'maintenance',
-      description: `Vehicle maintenance: ${team.vehicleInfo.maintenanceStatus.replace('_', ' ')}`,
-      metadata: { 
-        vehicleType: team.vehicleInfo.type,
-        maintenanceStatus: team.vehicleInfo.maintenanceStatus
-      }
-    });
-  }
-  
-  if (team.createdAt) {
-    activities.push({
-      date: new Date(team.createdAt),
-      type: 'status_change',
-      description: 'Team created and configured for field operations',
-      metadata: { teamName: team.name }
-    });
-  }
-  
-  // Sort by date (most recent first) and limit to 10
-  return activities
-    .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .slice(0, 10);
 }
 
 }
