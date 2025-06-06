@@ -898,17 +898,17 @@ private async calculateTeamAvailabilityDetails(
  * - team.id: Generated ID (e.g., "1748608291431")
  * - team.metadata.phpId: Original PHP system ID (e.g., "19")
  */
-private async calculateTodayAvailability(
+  private async calculateTodayAvailability(
     businessId: string,
     teamId: string,
     teamLocation: any,
     today: Date,
-    team: any  // Added team parameter to access both IDs
-  ): Promise<any> {
+    team: any
+): Promise<any> {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-  
-    // FIXED: Check for tasks using ALL 3 possible team ID formats
+
+    // Setup flexible team ID matching for ALL 3 possible formats
     const phpId = team.metadata?.phpId;           // "19"
     const generatedId = team.id;                  // "1748608291431" 
     const mongoObjectId = team._id?.toString();   // ObjectId as string
@@ -919,76 +919,79 @@ private async calculateTodayAvailability(
     if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
     if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
     if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-  
-    // Debug log for troubleshooting
-    console.log(`[DEBUG] Upcoming schedule for team ${team.name} checking IDs:`, teamIdQuery);
-  
-    // Debug log for troubleshooting
-    console.log(`[DEBUG] Week availability for team ${team.name} checking IDs:`, teamIdQuery);
-  
+
     // Debug log to help troubleshoot ID matching issues
-    console.log(`[DEBUG] Checking tasks for team ${team.name} using IDs:`, teamIdQuery);
-  
+    console.log(`[DEBUG] Today availability for team ${team.name} checking IDs:`, teamIdQuery);
+
     // Get today's tasks using flexible team ID matching
     const todayTasks = await this.fieldTaskModel.find({
-      businessId,
-      assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
-      scheduledDate: { $gte: today, $lt: tomorrow },
-      isDeleted: false
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        scheduledDate: { $gte: today, $lt: tomorrow },
+        isDeleted: false
     });
-  
+
     // Get today's route progress using the same flexible matching
     const routeProgress = await this.routeProgressModel.findOne({
-      businessId,
-      teamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
-      routeDate: { $gte: today, $lt: tomorrow },
-      isDeleted: false
+        businessId,
+        teamId: { $in: teamIdQuery },
+        routeDate: { $gte: today, $lt: tomorrow },
+        isDeleted: false
     });
-  
+
     // Determine current status
     let currentStatus: 'available' | 'busy' | 'offline' | 'unavailable' = 'offline';
     
     if (teamLocation) {
-      switch (teamLocation.status) {
-        case TeamLocationStatus.ACTIVE:
-          currentStatus = (teamLocation.currentTaskId || todayTasks.length > 0) ? 'busy' : 'available';
-          break;
-        case TeamLocationStatus.BREAK:
-          currentStatus = 'unavailable';
-          break;
-        case TeamLocationStatus.INACTIVE:
-        case TeamLocationStatus.OFFLINE:
-        default:
-          currentStatus = 'offline';
-          break;
-      }
+        switch (teamLocation.status) {
+            case TeamLocationStatus.ACTIVE:
+                currentStatus = (teamLocation.currentTaskId || todayTasks.length > 0) ? 'busy' : 'available';
+                break;
+            case TeamLocationStatus.BREAK:
+                currentStatus = 'unavailable';
+                break;
+            case TeamLocationStatus.INACTIVE:
+            case TeamLocationStatus.OFFLINE:
+            default:
+                currentStatus = 'offline';
+                break;
+        }
     }
-  
+
     // Calculate working hours (default or from team availability)
     const workingHours = {
-      start: '8:00 AM',
-      end: '5:00 PM'
+        start: '8:00 AM',
+        end: '5:00 PM'
     };
-  
+
     // Calculate task metrics
     const scheduledTasks = todayTasks.length;
     const completedTasks = todayTasks.filter(task => 
-      task.status === FieldTaskStatus.COMPLETED
+        task.status === FieldTaskStatus.COMPLETED
     ).length;
-  
-    // Calculate capacity (simplified - based on tasks and working hours)
+
+    // FIXED: Current capacity represents total workload assigned for today
+    // This is more intuitive than just counting completed tasks
     const maxCapacity = 10; // Maximum tasks per day
-    const currentCapacity = routeProgress?.completedTasksCount || completedTasks;
-  
+    const currentCapacity = scheduledTasks; // Total tasks assigned today
+
+    // Debug log to show the calculation
+    console.log(`[DEBUG] Capacity calculation for team ${team.name}:`);
+    console.log(`- Total tasks found: ${todayTasks.length}`);
+    console.log(`- Scheduled tasks: ${scheduledTasks}`);
+    console.log(`- Completed tasks: ${completedTasks}`);
+    console.log(`- Current capacity: ${currentCapacity}`);
+    console.log(`- Max capacity: ${maxCapacity}`);
+
     return {
-      status: currentStatus,
-      workingHours,
-      scheduledTasks,
-      completedTasks,
-      currentCapacity,
-      maxCapacity
+        status: currentStatus,
+        workingHours,
+        scheduledTasks,
+        completedTasks,
+        currentCapacity,    // Now shows total assigned tasks (1 in your case)
+        maxCapacity
     };
-  }
+}
   
   /**
  * FIXED: Calculate week availability data with proper PHP ID handling
