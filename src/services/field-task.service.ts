@@ -444,11 +444,11 @@ async getTasks(
           $gte: startOfDay,
           $lte: endOfDay
         };
-      } else if (filters?.month) {
+    } else if (filters?.month) {
         // Month filter (YYYY-MM format)
         const [year, month] = filters.month.split('-');
-        const startOfMonth = new Date(parseInt(year), parseInt(month) - 1, 1);
-        const endOfMonth = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
+        const startOfMonth = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, 1));
+        const endOfMonth = new Date(Date.UTC(parseInt(year), parseInt(month), 0, 23, 59, 59, 999));
         
         query.scheduledDate = {
           $gte: startOfMonth,
