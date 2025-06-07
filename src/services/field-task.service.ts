@@ -160,7 +160,7 @@ export class FieldTaskService {
     businessId: string,
     taskId: string,
     updateData: UpdateFieldTaskRequest
-   ): Promise<{ success: boolean; message: string; debug?: any }> {
+  ): Promise<{ success: boolean; message: string; debug?: any }> {
     try {
       const debugInfo: any = {
         steps: [],
@@ -170,162 +170,166 @@ export class FieldTaskService {
         comparisons: [],
         receivedData: updateData
       };
-   
+  
       debugInfo.steps.push('🚀 Starting update process');
       debugInfo.steps.push(`📦 Received updateData: ${JSON.stringify(updateData)}`);
-   
+  
+      // FIXED: Cast to any and extract nested data
+      const actualUpdateData = (updateData as any).updateData || updateData;
+      debugInfo.steps.push(`📦 Using actualUpdateData: ${JSON.stringify(actualUpdateData)}`);
+  
       await this.validateBusiness(businessId);
       debugInfo.steps.push('✅ Business validated');
-   
+  
       const task = await this.fieldTaskModel.findOne({
         _id: taskId,
         businessId,
         isDeleted: false
       });
-   
+  
       if (!task) {
         throw new NotFoundException('Task not found');
       }
-   
+  
       debugInfo.originalTask = task.toObject();
       debugInfo.steps.push('✅ Task found');
-   
+  
       const updateFields: any = {};
-   
-      // Force update all fields - no comparison
-      if (updateData.name !== undefined) {
-        updateFields.name = updateData.name;
-        debugInfo.comparisons.push(`📝 Name: "${task.name}" → "${updateData.name}" (FORCING UPDATE)`);
+  
+      // Force update all fields - using actualUpdateData
+      if (actualUpdateData.name !== undefined) {
+        updateFields.name = actualUpdateData.name;
+        debugInfo.comparisons.push(`📝 Name: "${task.name}" → "${actualUpdateData.name}" (FORCING UPDATE)`);
       }
       
-      if (updateData.description !== undefined) {
-        updateFields.description = updateData.description;
+      if (actualUpdateData.description !== undefined) {
+        updateFields.description = actualUpdateData.description;
         debugInfo.comparisons.push(`📝 Description: FORCING UPDATE`);
       }
       
-      if (updateData.type !== undefined) {
-        updateFields.type = updateData.type;
-        debugInfo.comparisons.push(`📝 Type: "${task.type}" → "${updateData.type}" (FORCING UPDATE)`);
+      if (actualUpdateData.type !== undefined) {
+        updateFields.type = actualUpdateData.type;
+        debugInfo.comparisons.push(`📝 Type: "${task.type}" → "${actualUpdateData.type}" (FORCING UPDATE)`);
       }
       
-      if (updateData.priority !== undefined) {
-        updateFields.priority = updateData.priority;
-        debugInfo.comparisons.push(`📝 Priority: "${task.priority}" → "${updateData.priority}" (FORCING UPDATE)`);
+      if (actualUpdateData.priority !== undefined) {
+        updateFields.priority = actualUpdateData.priority;
+        debugInfo.comparisons.push(`📝 Priority: "${task.priority}" → "${actualUpdateData.priority}" (FORCING UPDATE)`);
       }
       
-      if (updateData.scheduledDate !== undefined) {
-        updateFields.scheduledDate = updateData.scheduledDate;
-        debugInfo.comparisons.push(`📅 Date: "${task.scheduledDate}" → "${updateData.scheduledDate}" (FORCING UPDATE)`);
+      if (actualUpdateData.scheduledDate !== undefined) {
+        updateFields.scheduledDate = actualUpdateData.scheduledDate;
+        debugInfo.comparisons.push(`📅 Date: "${task.scheduledDate}" → "${actualUpdateData.scheduledDate}" (FORCING UPDATE)`);
       }
       
-      if (updateData.estimatedDuration !== undefined) {
-        updateFields.estimatedDuration = updateData.estimatedDuration;
-        debugInfo.comparisons.push(`⏱️ Duration: ${task.estimatedDuration} → ${updateData.estimatedDuration} (FORCING UPDATE)`);
+      if (actualUpdateData.estimatedDuration !== undefined) {
+        updateFields.estimatedDuration = actualUpdateData.estimatedDuration;
+        debugInfo.comparisons.push(`⏱️ Duration: ${task.estimatedDuration} → ${actualUpdateData.estimatedDuration} (FORCING UPDATE)`);
       }
       
-      if (updateData.difficultyLevel !== undefined) {
-        updateFields.difficultyLevel = updateData.difficultyLevel;
-        debugInfo.comparisons.push(`🎯 Difficulty: ${task.difficultyLevel} → ${updateData.difficultyLevel} (FORCING UPDATE)`);
+      if (actualUpdateData.difficultyLevel !== undefined) {
+        updateFields.difficultyLevel = actualUpdateData.difficultyLevel;
+        debugInfo.comparisons.push(`🎯 Difficulty: ${task.difficultyLevel} → ${actualUpdateData.difficultyLevel} (FORCING UPDATE)`);
       }
-   
+  
       // Handle location
-      if (updateData.location) {
-        if (updateData.location.latitude !== undefined) {
-          updateFields['location.latitude'] = updateData.location.latitude;
-          debugInfo.comparisons.push(`📍 Latitude: ${task.location?.latitude} → ${updateData.location.latitude} (FORCING UPDATE)`);
+      if (actualUpdateData.location) {
+        if (actualUpdateData.location.latitude !== undefined) {
+          updateFields['location.latitude'] = actualUpdateData.location.latitude;
+          debugInfo.comparisons.push(`📍 Latitude: ${task.location?.latitude} → ${actualUpdateData.location.latitude} (FORCING UPDATE)`);
         }
-        if (updateData.location.longitude !== undefined) {
-          updateFields['location.longitude'] = updateData.location.longitude;
-          debugInfo.comparisons.push(`📍 Longitude: ${task.location?.longitude} → ${updateData.location.longitude} (FORCING UPDATE)`);
+        if (actualUpdateData.location.longitude !== undefined) {
+          updateFields['location.longitude'] = actualUpdateData.location.longitude;
+          debugInfo.comparisons.push(`📍 Longitude: ${task.location?.longitude} → ${actualUpdateData.location.longitude} (FORCING UPDATE)`);
         }
-        if (updateData.location.address !== undefined) {
-          updateFields['location.address'] = updateData.location.address;
-          debugInfo.comparisons.push(`📍 Address: "${task.location?.address}" → "${updateData.location.address}" (FORCING UPDATE)`);
+        if (actualUpdateData.location.address !== undefined) {
+          updateFields['location.address'] = actualUpdateData.location.address;
+          debugInfo.comparisons.push(`📍 Address: "${task.location?.address}" → "${actualUpdateData.location.address}" (FORCING UPDATE)`);
         }
-        if (updateData.location.accessInstructions !== undefined) {
-          updateFields['location.accessInstructions'] = updateData.location.accessInstructions;
+        if (actualUpdateData.location.accessInstructions !== undefined) {
+          updateFields['location.accessInstructions'] = actualUpdateData.location.accessInstructions;
           debugInfo.comparisons.push(`📍 Access: FORCING UPDATE`);
         }
-        if (updateData.location.parkingNotes !== undefined) {
-          updateFields['location.parkingNotes'] = updateData.location.parkingNotes;
+        if (actualUpdateData.location.parkingNotes !== undefined) {
+          updateFields['location.parkingNotes'] = actualUpdateData.location.parkingNotes;
           debugInfo.comparisons.push(`📍 Parking: FORCING UPDATE`);
         }
       }
-   
+  
       // Handle timeWindow
-      if (updateData.timeWindow) {
-        if (updateData.timeWindow.start !== undefined) {
-          updateFields['timeWindow.start'] = updateData.timeWindow.start;
-          debugInfo.comparisons.push(`⏰ Start: "${task.timeWindow?.start}" → "${updateData.timeWindow.start}" (FORCING UPDATE)`);
+      if (actualUpdateData.timeWindow) {
+        if (actualUpdateData.timeWindow.start !== undefined) {
+          updateFields['timeWindow.start'] = actualUpdateData.timeWindow.start;
+          debugInfo.comparisons.push(`⏰ Start: "${task.timeWindow?.start}" → "${actualUpdateData.timeWindow.start}" (FORCING UPDATE)`);
         }
-        if (updateData.timeWindow.end !== undefined) {
-          updateFields['timeWindow.end'] = updateData.timeWindow.end;
-          debugInfo.comparisons.push(`⏰ End: "${task.timeWindow?.end}" → "${updateData.timeWindow.end}" (FORCING UPDATE)`);
+        if (actualUpdateData.timeWindow.end !== undefined) {
+          updateFields['timeWindow.end'] = actualUpdateData.timeWindow.end;
+          debugInfo.comparisons.push(`⏰ End: "${task.timeWindow?.end}" → "${actualUpdateData.timeWindow.end}" (FORCING UPDATE)`);
         }
-        if (updateData.timeWindow.isFlexible !== undefined) {
-          updateFields['timeWindow.isFlexible'] = updateData.timeWindow.isFlexible;
+        if (actualUpdateData.timeWindow.isFlexible !== undefined) {
+          updateFields['timeWindow.isFlexible'] = actualUpdateData.timeWindow.isFlexible;
           debugInfo.comparisons.push(`⏰ Flexible: FORCING UPDATE`);
         }
-        if (updateData.timeWindow.preferredTime !== undefined) {
-          updateFields['timeWindow.preferredTime'] = updateData.timeWindow.preferredTime;
+        if (actualUpdateData.timeWindow.preferredTime !== undefined) {
+          updateFields['timeWindow.preferredTime'] = actualUpdateData.timeWindow.preferredTime;
           debugInfo.comparisons.push(`⏰ Preferred: FORCING UPDATE`);
         }
       }
-   
+  
       // Handle arrays
-      if (updateData.skillsRequired !== undefined) {
-        updateFields.skillsRequired = updateData.skillsRequired;
+      if (actualUpdateData.skillsRequired !== undefined) {
+        updateFields.skillsRequired = actualUpdateData.skillsRequired;
         debugInfo.comparisons.push(`🛠️ Skills: FORCING UPDATE`);
       }
       
-      if (updateData.equipmentRequired !== undefined) {
-        updateFields.equipmentRequired = updateData.equipmentRequired;
+      if (actualUpdateData.equipmentRequired !== undefined) {
+        updateFields.equipmentRequired = actualUpdateData.equipmentRequired;
         debugInfo.comparisons.push(`🚛 Equipment: FORCING UPDATE`);
       }
-   
-      if (updateData.specialInstructions !== undefined) {
-        updateFields.specialInstructions = updateData.specialInstructions;
+  
+      if (actualUpdateData.specialInstructions !== undefined) {
+        updateFields.specialInstructions = actualUpdateData.specialInstructions;
         debugInfo.comparisons.push(`📋 Instructions: FORCING UPDATE`);
       }
-   
+  
       debugInfo.updateFields = updateFields;
       debugInfo.steps.push(`🔧 Built ${Object.keys(updateFields).length} update fields`);
       debugInfo.steps.push(`🔧 Update fields: ${JSON.stringify(updateFields)}`);
-   
+  
       if (Object.keys(updateFields).length === 0) {
-        debugInfo.steps.push('❌ No fields to update - updateData might be empty');
+        debugInfo.steps.push('❌ No fields to update - actualUpdateData might be empty');
         return {
           success: false,
           message: 'No fields to update',
           debug: debugInfo
         };
       }
-   
+  
       debugInfo.steps.push('🔄 About to perform MongoDB update...');
-   
+  
       const updatedTask = await this.fieldTaskModel.findOneAndUpdate(
         { _id: taskId, businessId, isDeleted: false },
         { $set: updateFields },
         { new: true, runValidators: true }
       );
-   
+  
       if (!updatedTask) {
         debugInfo.steps.push('❌ MongoDB update failed - task not found or update failed');
         throw new NotFoundException('Task not found or could not be updated');
       }
-   
+  
       debugInfo.finalTask = updatedTask.toObject();
       debugInfo.steps.push('✅ MongoDB update completed successfully');
-   
+  
       await this.updateTaskAssignment(updatedTask);
       debugInfo.steps.push('✅ Task assignment updated');
-   
+  
       return {
         success: true,
         message: 'Task updated successfully',
         debug: debugInfo
       };
-   
+  
     } catch (error) {
       return {
         success: false,
@@ -337,7 +341,7 @@ export class FieldTaskService {
         }
       };
     }
-   }
+  }
 
   /**
    * Delete a field task and corresponding task assignment (soft delete)
