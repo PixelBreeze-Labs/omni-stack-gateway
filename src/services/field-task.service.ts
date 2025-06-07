@@ -157,141 +157,166 @@ export class FieldTaskService {
   }
 
   /**
- * Update existing field task and sync with task assignment - FIXED VERSION
- */
-async updateTask(
+   * Update existing field task and sync with task assignment - FIXED VERSION
+   */
+  async updateTask(
     businessId: string,
     taskId: string,
     updateData: UpdateFieldTaskRequest
   ): Promise<{ success: boolean; message: string }> {
     try {
       await this.validateBusiness(businessId);
-  
-      // Find and update the task
+
+      // Find the task first
       const task = await this.fieldTaskModel.findOne({
         _id: taskId,
         businessId,
         isDeleted: false
       });
-  
+
       if (!task) {
         throw new NotFoundException('Task not found');
       }
-  
-      // FIXED: Explicitly update each field instead of generic object assignment
+
+      console.log('Original task:', task.toObject()); // Debug log
+      console.log('Update data received:', updateData); // Debug log
+
+      // FIXED: Use $set with dot notation for proper nested updates
+      const updateFields: any = {};
+
+      // Simple fields
       if (updateData.name !== undefined) {
-        task.name = updateData.name;
+        updateFields.name = updateData.name;
       }
       
       if (updateData.description !== undefined) {
-        task.description = updateData.description;
+        updateFields.description = updateData.description;
       }
       
       if (updateData.type !== undefined) {
-        task.type = updateData.type;
+        updateFields.type = updateData.type;
       }
       
       if (updateData.priority !== undefined) {
-        task.priority = updateData.priority;
+        updateFields.priority = updateData.priority;
       }
       
       if (updateData.siteId !== undefined) {
-        task.siteId = updateData.siteId;
+        updateFields.siteId = updateData.siteId;
       }
       
       if (updateData.scheduledDate !== undefined) {
-        task.scheduledDate = updateData.scheduledDate;
+        updateFields.scheduledDate = updateData.scheduledDate;
       }
       
       if (updateData.estimatedDuration !== undefined) {
-        task.estimatedDuration = updateData.estimatedDuration;
+        updateFields.estimatedDuration = updateData.estimatedDuration;
       }
       
       if (updateData.skillsRequired !== undefined) {
-        task.skillsRequired = updateData.skillsRequired;
+        updateFields.skillsRequired = updateData.skillsRequired;
       }
       
       if (updateData.equipmentRequired !== undefined) {
-        task.equipmentRequired = updateData.equipmentRequired;
+        updateFields.equipmentRequired = updateData.equipmentRequired;
       }
       
       if (updateData.specialInstructions !== undefined) {
-        task.specialInstructions = updateData.specialInstructions;
+        updateFields.specialInstructions = updateData.specialInstructions;
       }
       
       if (updateData.difficultyLevel !== undefined) {
-        task.difficultyLevel = updateData.difficultyLevel;
+        updateFields.difficultyLevel = updateData.difficultyLevel;
       }
-      
-      if (updateData.metadata !== undefined) {
-        task.metadata = { ...task.metadata, ...updateData.metadata };
-      }
-  
-      // Handle nested location object properly
+
+      // FIXED: Handle nested location object with dot notation
       if (updateData.location) {
         if (updateData.location.latitude !== undefined) {
-          task.location.latitude = updateData.location.latitude;
+          updateFields['location.latitude'] = updateData.location.latitude;
         }
         if (updateData.location.longitude !== undefined) {
-          task.location.longitude = updateData.location.longitude;
+          updateFields['location.longitude'] = updateData.location.longitude;
         }
         if (updateData.location.address !== undefined) {
-          task.location.address = updateData.location.address;
+          updateFields['location.address'] = updateData.location.address;
         }
         if (updateData.location.city !== undefined) {
-          task.location.city = updateData.location.city;
+          updateFields['location.city'] = updateData.location.city;
         }
         if (updateData.location.state !== undefined) {
-          task.location.state = updateData.location.state;
+          updateFields['location.state'] = updateData.location.state;
         }
         if (updateData.location.zipCode !== undefined) {
-          task.location.zipCode = updateData.location.zipCode;
+          updateFields['location.zipCode'] = updateData.location.zipCode;
         }
         if (updateData.location.country !== undefined) {
-          task.location.country = updateData.location.country;
+          updateFields['location.country'] = updateData.location.country;
         }
         if (updateData.location.accessInstructions !== undefined) {
-          task.location.accessInstructions = updateData.location.accessInstructions;
+          updateFields['location.accessInstructions'] = updateData.location.accessInstructions;
         }
         if (updateData.location.parkingNotes !== undefined) {
-          task.location.parkingNotes = updateData.location.parkingNotes;
+          updateFields['location.parkingNotes'] = updateData.location.parkingNotes;
         }
       }
-  
-      // Handle nested timeWindow object properly
+
+      // FIXED: Handle nested timeWindow object with dot notation
       if (updateData.timeWindow) {
         if (updateData.timeWindow.start !== undefined) {
-          task.timeWindow.start = updateData.timeWindow.start;
+          updateFields['timeWindow.start'] = updateData.timeWindow.start;
         }
         if (updateData.timeWindow.end !== undefined) {
-          task.timeWindow.end = updateData.timeWindow.end;
+          updateFields['timeWindow.end'] = updateData.timeWindow.end;
         }
         if (updateData.timeWindow.isFlexible !== undefined) {
-          task.timeWindow.isFlexible = updateData.timeWindow.isFlexible;
+          updateFields['timeWindow.isFlexible'] = updateData.timeWindow.isFlexible;
         }
         if (updateData.timeWindow.preferredTime !== undefined) {
-          task.timeWindow.preferredTime = updateData.timeWindow.preferredTime;
+          updateFields['timeWindow.preferredTime'] = updateData.timeWindow.preferredTime;
         }
       }
-  
-      // Mark the document as modified for nested objects
-      task.markModified('location');
-      task.markModified('timeWindow');
-      task.markModified('metadata');
-  
-      // Save the updated task
-      await task.save();
-  
+
+      // Handle metadata merge
+      if (updateData.metadata !== undefined) {
+        // Get current metadata and merge
+        const currentMetadata = task.metadata || {};
+        updateFields.metadata = { ...currentMetadata, ...updateData.metadata };
+      }
+
+      console.log('Update fields to apply:', updateFields); // Debug log
+
+      // FIXED: Use findOneAndUpdate with $set operator for atomic update
+      const updatedTask = await this.fieldTaskModel.findOneAndUpdate(
+        {
+          _id: taskId,
+          businessId,
+          isDeleted: false
+        },
+        {
+          $set: updateFields
+        },
+        {
+          new: true, // Return the updated document
+          runValidators: true // Run schema validations
+        }
+      );
+
+      if (!updatedTask) {
+        throw new NotFoundException('Task not found or could not be updated');
+      }
+
+      console.log('Updated task:', updatedTask.toObject()); // Debug log
+
       // Update corresponding TaskAssignment
-      await this.updateTaskAssignment(task);
-  
+      await this.updateTaskAssignment(updatedTask);
+
       this.logger.log(`Updated field task ${taskId} for business ${businessId}`);
-  
+
       return {
         success: true,
         message: 'Task updated successfully'
       };
-  
+
     } catch (error) {
       this.logger.error(`Error updating field task: ${error.message}`, error.stack);
       throw error;
