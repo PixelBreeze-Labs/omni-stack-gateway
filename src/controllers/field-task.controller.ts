@@ -147,62 +147,65 @@ import {
     }
   
     @Get()
-    @ApiOperation({ 
-      summary: 'Get field tasks with filters',
-      description: 'Retrieve field tasks with optional filtering by status, type, priority, team, and date'
-    })
-    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiQuery({ name: 'status', required: false, description: 'Filter by status' })
-    @ApiQuery({ name: 'type', required: false, description: 'Filter by task type' })
-    @ApiQuery({ name: 'priority', required: false, description: 'Filter by priority' })
-    @ApiQuery({ name: 'assignedTeam', required: false, description: 'Filter by assigned team' })
-    @ApiQuery({ name: 'date', required: false, description: 'Filter by date (YYYY-MM-DD)' })
-    @ApiResponse({ 
-      status: 200, 
-      description: 'Field tasks retrieved successfully'
-    })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Business not found' })
-    async getTasks(
-      @Query('businessId') businessId: string,
-      @Query('status') status?: string,
-      @Query('type') type?: string,
-      @Query('priority') priority?: string,
-      @Query('assignedTeam') assignedTeam?: string,
-      @Query('date') date?: string,
-      @Headers('business-x-api-key') apiKey?: string
-    ): Promise<any> {
-      try {
-        if (!businessId) {
-          throw new BadRequestException('Business ID is required');
-        }
-  
-        await this.validateBusinessApiKey(businessId, apiKey);
-  
-        const filters = {
-          status,
-          type,
-          priority,
-          assignedTeam,
-          date
-        };
-  
-        const result = await this.fieldTaskService.getTasks(businessId, filters);
-  
-        return {
-          success: true,
-          ...result
-        };
-  
-      } catch (error) {
-        this.logger.error(`Error getting field tasks: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-          throw error;
-        }
-        throw new InternalServerErrorException('Failed to retrieve field tasks');
-      }
+@ApiOperation({ 
+  summary: 'Get field tasks with filters',
+  description: 'Retrieve field tasks with optional filtering by status, type, priority, team, and date'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiQuery({ name: 'status', required: false, description: 'Filter by status' })
+@ApiQuery({ name: 'type', required: false, description: 'Filter by task type' })
+@ApiQuery({ name: 'priority', required: false, description: 'Filter by priority' })
+@ApiQuery({ name: 'assignedTeam', required: false, description: 'Filter by assigned team' })
+@ApiQuery({ name: 'date', required: false, description: 'Filter by date (YYYY-MM-DD)' })
+@ApiQuery({ name: 'month', required: false, description: 'Filter by month (YYYY-MM)' }) // ADD THIS
+@ApiResponse({ 
+  status: 200, 
+  description: 'Field tasks retrieved successfully'
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async getTasks(
+  @Query('businessId') businessId: string,
+  @Query('status') status?: string,
+  @Query('type') type?: string,
+  @Query('priority') priority?: string,
+  @Query('assignedTeam') assignedTeam?: string,
+  @Query('date') date?: string,
+  @Query('month') month?: string, // ADD THIS
+  @Headers('business-x-api-key') apiKey?: string
+): Promise<any> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
     }
-  
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+
+    const filters = {
+      status,
+      type,
+      priority,
+      assignedTeam,
+      date,
+      month // ADD THIS
+    };
+
+    const result = await this.fieldTaskService.getTasks(businessId, filters);
+
+    return {
+      success: true,
+      ...result
+    };
+
+  } catch (error) {
+    this.logger.error(`Error getting field tasks: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve field tasks');
+  }
+}
+
     @Get('date-range')
     @ApiOperation({ 
       summary: 'Get tasks by date range',
