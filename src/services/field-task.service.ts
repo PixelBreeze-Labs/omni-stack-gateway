@@ -337,30 +337,31 @@ async updateTask(
   }
 
   /**
-   * Get field tasks with real database queries and filters
-   */
-  async getTasks(
+ * Get field tasks - shows current month by default, with optional date filtering
+ */
+async getTasks(
     businessId: string,
     filters?: {
       status?: string;
       type?: string;
       priority?: string;
       assignedTeam?: string;
-      date?: string;
+      date?: string;        // If provided, filter by this specific date
+      month?: string;       // If provided, filter by this month (YYYY-MM format)
       projectId?: string;
       siteId?: string;
     }
   ): Promise<{ tasks: FieldTask[]; total: number }> {
     try {
       await this.validateBusiness(businessId);
-
+  
       // Build query
       const query: any = {
         businessId,
         isDeleted: false
       };
-
-      // Apply filters
+  
+      // Apply non-date filters
       if (filters?.status && filters.status !== 'all') {
         query.status = filters.status;
       }
@@ -376,27 +377,50 @@ async updateTask(
       if (filters?.assignedTeam && filters.assignedTeam !== 'all') {
         query.assignedTeamId = filters.assignedTeam;
       }
-
+  
       if (filters?.projectId) {
         query.projectId = filters.projectId;
       }
-
+  
       if (filters?.siteId) {
         query.siteId = filters.siteId;
       }
       
+      // DATE FILTERING LOGIC
       if (filters?.date) {
-        const startOfDay = new Date(filters.date);
+        // Specific date filter (when user selects a specific day)
+        const selectedDate = new Date(filters.date);
+        const startOfDay = new Date(selectedDate);
         startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(filters.date);
+        const endOfDay = new Date(selectedDate);
         endOfDay.setHours(23, 59, 59, 999);
         
         query.scheduledDate = {
           $gte: startOfDay,
           $lte: endOfDay
         };
+      } else if (filters?.month) {
+        // Month filter (YYYY-MM format)
+        const [year, month] = filters.month.split('-');
+        const startOfMonth = new Date(parseInt(year), parseInt(month) - 1, 1);
+        const endOfMonth = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
+        
+        query.scheduledDate = {
+          $gte: startOfMonth,
+          $lte: endOfMonth
+        };
+      } else {
+        // DEFAULT: Show current month if no date/month filter provided
+        const now = new Date();
+        const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        
+        query.scheduledDate = {
+          $gte: startOfCurrentMonth,
+          $lte: endOfCurrentMonth
+        };
       }
-
+  
       // Execute query with sorting
       const tasks = await this.fieldTaskModel
         .find(query)
@@ -406,12 +430,12 @@ async updateTask(
           createdAt: -1 
         })
         .exec();
-
+  
       return {
         tasks,
         total: tasks.length
       };
-
+  
     } catch (error) {
       this.logger.error(`Error getting field tasks: ${error.message}`, error.stack);
       throw error;
