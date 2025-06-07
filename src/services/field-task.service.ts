@@ -166,13 +166,13 @@ export class FieldTaskService {
         steps: [],
         originalTask: null,
         updateFields: null,
-        finalTask: null
+        finalTask: null,
+        comparisons: []
       };
   
       await this.validateBusiness(businessId);
       debugInfo.steps.push('✅ Business validated');
   
-      // Find the task first
       const task = await this.fieldTaskModel.findOne({
         _id: taskId,
         businessId,
@@ -186,131 +186,148 @@ export class FieldTaskService {
       debugInfo.originalTask = task.toObject();
       debugInfo.steps.push('✅ Task found');
   
-      // Build update fields
       const updateFields: any = {};
   
-      if (updateData.name !== undefined) {
+      // ONLY UPDATE IF VALUES ARE DIFFERENT
+      if (updateData.name !== undefined && updateData.name !== task.name) {
         updateFields.name = updateData.name;
-        debugInfo.steps.push(`📝 Name: ${task.name} → ${updateData.name}`);
+        debugInfo.comparisons.push(`📝 Name: "${task.name}" → "${updateData.name}" (CHANGED)`);
+      } else if (updateData.name !== undefined) {
+        debugInfo.comparisons.push(`📝 Name: "${task.name}" → "${updateData.name}" (SAME - SKIPPED)`);
       }
       
-      if (updateData.description !== undefined) {
+      if (updateData.description !== undefined && updateData.description !== task.description) {
         updateFields.description = updateData.description;
-        debugInfo.steps.push(`📝 Description updated`);
+        debugInfo.comparisons.push(`📝 Description: "${task.description}" → "${updateData.description}" (CHANGED)`);
+      } else if (updateData.description !== undefined) {
+        debugInfo.comparisons.push(`📝 Description: SAME - SKIPPED`);
       }
       
-      if (updateData.type !== undefined) {
+      if (updateData.type !== undefined && updateData.type !== task.type) {
         updateFields.type = updateData.type;
-        debugInfo.steps.push(`📝 Type: ${task.type} → ${updateData.type}`);
+        debugInfo.comparisons.push(`📝 Type: "${task.type}" → "${updateData.type}" (CHANGED)`);
+      } else if (updateData.type !== undefined) {
+        debugInfo.comparisons.push(`📝 Type: "${task.type}" → "${updateData.type}" (SAME - SKIPPED)`);
       }
       
-      if (updateData.priority !== undefined) {
+      if (updateData.priority !== undefined && updateData.priority !== task.priority) {
         updateFields.priority = updateData.priority;
-        debugInfo.steps.push(`📝 Priority: ${task.priority} → ${updateData.priority}`);
+        debugInfo.comparisons.push(`📝 Priority: "${task.priority}" → "${updateData.priority}" (CHANGED)`);
+      } else if (updateData.priority !== undefined) {
+        debugInfo.comparisons.push(`📝 Priority: "${task.priority}" → "${updateData.priority}" (SAME - SKIPPED)`);
       }
       
       if (updateData.scheduledDate !== undefined) {
-        updateFields.scheduledDate = updateData.scheduledDate;
-        debugInfo.steps.push(`📝 Date: ${task.scheduledDate} → ${updateData.scheduledDate}`);
+        const newDate = new Date(updateData.scheduledDate).getTime();
+        const oldDate = new Date(task.scheduledDate).getTime();
+        if (newDate !== oldDate) {
+          updateFields.scheduledDate = updateData.scheduledDate;
+          debugInfo.comparisons.push(`📅 Date: "${task.scheduledDate}" → "${updateData.scheduledDate}" (CHANGED)`);
+        } else {
+          debugInfo.comparisons.push(`📅 Date: SAME - SKIPPED`);
+        }
       }
       
-      if (updateData.estimatedDuration !== undefined) {
+      if (updateData.estimatedDuration !== undefined && updateData.estimatedDuration !== task.estimatedDuration) {
         updateFields.estimatedDuration = updateData.estimatedDuration;
-        debugInfo.steps.push(`📝 Duration updated`);
+        debugInfo.comparisons.push(`⏱️ Duration: ${task.estimatedDuration} → ${updateData.estimatedDuration} (CHANGED)`);
+      } else if (updateData.estimatedDuration !== undefined) {
+        debugInfo.comparisons.push(`⏱️ Duration: SAME - SKIPPED`);
       }
       
-      if (updateData.skillsRequired !== undefined) {
-        updateFields.skillsRequired = updateData.skillsRequired;
-        debugInfo.steps.push(`📝 Skills updated`);
-      }
-      
-      if (updateData.equipmentRequired !== undefined) {
-        updateFields.equipmentRequired = updateData.equipmentRequired;
-        debugInfo.steps.push(`📝 Equipment updated`);
-      }
-      
-      if (updateData.specialInstructions !== undefined) {
-        updateFields.specialInstructions = updateData.specialInstructions;
-        debugInfo.steps.push(`📝 Instructions updated`);
-      }
-      
-      if (updateData.difficultyLevel !== undefined) {
+      if (updateData.difficultyLevel !== undefined && updateData.difficultyLevel !== task.difficultyLevel) {
         updateFields.difficultyLevel = updateData.difficultyLevel;
-        debugInfo.steps.push(`📝 Difficulty: ${task.difficultyLevel} → ${updateData.difficultyLevel}`);
+        debugInfo.comparisons.push(`🎯 Difficulty: ${task.difficultyLevel} → ${updateData.difficultyLevel} (CHANGED)`);
+      } else if (updateData.difficultyLevel !== undefined) {
+        debugInfo.comparisons.push(`🎯 Difficulty: SAME - SKIPPED`);
       }
   
-      // Handle location
+      // Handle location with proper comparison
       if (updateData.location) {
-        if (updateData.location.latitude !== undefined) {
+        if (updateData.location.latitude !== undefined && updateData.location.latitude !== task.location?.latitude) {
           updateFields['location.latitude'] = updateData.location.latitude;
-          debugInfo.steps.push(`📍 Latitude updated`);
+          debugInfo.comparisons.push(`📍 Latitude: ${task.location?.latitude} → ${updateData.location.latitude} (CHANGED)`);
         }
-        if (updateData.location.longitude !== undefined) {
+        if (updateData.location.longitude !== undefined && updateData.location.longitude !== task.location?.longitude) {
           updateFields['location.longitude'] = updateData.location.longitude;
-          debugInfo.steps.push(`📍 Longitude updated`);
+          debugInfo.comparisons.push(`📍 Longitude: ${task.location?.longitude} → ${updateData.location.longitude} (CHANGED)`);
         }
-        if (updateData.location.address !== undefined) {
+        if (updateData.location.address !== undefined && updateData.location.address !== task.location?.address) {
           updateFields['location.address'] = updateData.location.address;
-          debugInfo.steps.push(`📍 Address updated`);
+          debugInfo.comparisons.push(`📍 Address: "${task.location?.address}" → "${updateData.location.address}" (CHANGED)`);
         }
-        if (updateData.location.accessInstructions !== undefined) {
+        if (updateData.location.accessInstructions !== undefined && updateData.location.accessInstructions !== task.location?.accessInstructions) {
           updateFields['location.accessInstructions'] = updateData.location.accessInstructions;
-          debugInfo.steps.push(`📍 Access instructions updated`);
+          debugInfo.comparisons.push(`📍 Access: CHANGED`);
         }
-        if (updateData.location.parkingNotes !== undefined) {
+        if (updateData.location.parkingNotes !== undefined && updateData.location.parkingNotes !== task.location?.parkingNotes) {
           updateFields['location.parkingNotes'] = updateData.location.parkingNotes;
-          debugInfo.steps.push(`📍 Parking notes updated`);
+          debugInfo.comparisons.push(`📍 Parking: CHANGED`);
         }
       }
   
-      // Handle timeWindow
+      // Handle timeWindow with proper comparison
       if (updateData.timeWindow) {
-        if (updateData.timeWindow.start !== undefined) {
+        if (updateData.timeWindow.start !== undefined && updateData.timeWindow.start !== task.timeWindow?.start) {
           updateFields['timeWindow.start'] = updateData.timeWindow.start;
-          debugInfo.steps.push(`⏰ Start time updated`);
+          debugInfo.comparisons.push(`⏰ Start: "${task.timeWindow?.start}" → "${updateData.timeWindow.start}" (CHANGED)`);
         }
-        if (updateData.timeWindow.end !== undefined) {
+        if (updateData.timeWindow.end !== undefined && updateData.timeWindow.end !== task.timeWindow?.end) {
           updateFields['timeWindow.end'] = updateData.timeWindow.end;
-          debugInfo.steps.push(`⏰ End time updated`);
+          debugInfo.comparisons.push(`⏰ End: "${task.timeWindow?.end}" → "${updateData.timeWindow.end}" (CHANGED)`);
         }
-        if (updateData.timeWindow.isFlexible !== undefined) {
+        if (updateData.timeWindow.isFlexible !== undefined && updateData.timeWindow.isFlexible !== task.timeWindow?.isFlexible) {
           updateFields['timeWindow.isFlexible'] = updateData.timeWindow.isFlexible;
-          debugInfo.steps.push(`⏰ Flexibility updated`);
+          debugInfo.comparisons.push(`⏰ Flexible: CHANGED`);
         }
-        if (updateData.timeWindow.preferredTime !== undefined) {
+        if (updateData.timeWindow.preferredTime !== undefined && updateData.timeWindow.preferredTime !== task.timeWindow?.preferredTime) {
           updateFields['timeWindow.preferredTime'] = updateData.timeWindow.preferredTime;
-          debugInfo.steps.push(`⏰ Preferred time updated`);
+          debugInfo.comparisons.push(`⏰ Preferred: CHANGED`);
         }
+      }
+  
+      // Handle arrays with proper comparison
+      if (updateData.skillsRequired !== undefined && JSON.stringify(updateData.skillsRequired) !== JSON.stringify(task.skillsRequired)) {
+        updateFields.skillsRequired = updateData.skillsRequired;
+        debugInfo.comparisons.push(`🛠️ Skills: CHANGED`);
+      }
+      
+      if (updateData.equipmentRequired !== undefined && JSON.stringify(updateData.equipmentRequired) !== JSON.stringify(task.equipmentRequired)) {
+        updateFields.equipmentRequired = updateData.equipmentRequired;
+        debugInfo.comparisons.push(`🚛 Equipment: CHANGED`);
+      }
+  
+      if (updateData.specialInstructions !== undefined && updateData.specialInstructions !== task.specialInstructions) {
+        updateFields.specialInstructions = updateData.specialInstructions;
+        debugInfo.comparisons.push(`📋 Instructions: CHANGED`);
       }
   
       debugInfo.updateFields = updateFields;
       debugInfo.steps.push(`🔧 Built ${Object.keys(updateFields).length} update fields`);
   
-      // Perform the update
+      // Only update if there are actual changes
+      if (Object.keys(updateFields).length === 0) {
+        debugInfo.steps.push('ℹ️ No changes detected - skipping database update');
+        return {
+          success: true,
+          message: 'No changes detected',
+          debug: debugInfo
+        };
+      }
+  
       const updatedTask = await this.fieldTaskModel.findOneAndUpdate(
-        {
-          _id: taskId,
-          businessId,
-          isDeleted: false
-        },
-        {
-          $set: updateFields
-        },
-        {
-          new: true,
-          runValidators: true
-        }
+        { _id: taskId, businessId, isDeleted: false },
+        { $set: updateFields },
+        { new: true, runValidators: true }
       );
   
       if (!updatedTask) {
-        debugInfo.steps.push('❌ Update failed - task not found');
         throw new NotFoundException('Task not found or could not be updated');
       }
   
       debugInfo.finalTask = updatedTask.toObject();
       debugInfo.steps.push('✅ Update completed successfully');
   
-      // Update TaskAssignment
       await this.updateTaskAssignment(updatedTask);
       debugInfo.steps.push('✅ Task assignment updated');
   
@@ -324,13 +341,11 @@ export class FieldTaskService {
       return {
         success: false,
         message: error.message,
-        debug: {
-          error: error.message,
-          stack: error.stack
-        }
+        debug: { error: error.message, stack: error.stack }
       };
     }
   }
+  
   /**
    * Delete a field task and corresponding task assignment (soft delete)
    */
