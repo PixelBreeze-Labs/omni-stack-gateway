@@ -156,136 +156,137 @@ export class FieldTaskService {
     }
   }
 
-  /**
-   * Update existing field task and sync with task assignment - FIXED VERSION
-   */
   async updateTask(
     businessId: string,
     taskId: string,
     updateData: UpdateFieldTaskRequest
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; debug?: any }> {
     try {
+      const debugInfo: any = {
+        steps: [],
+        originalTask: null,
+        updateFields: null,
+        finalTask: null
+      };
+  
       await this.validateBusiness(businessId);
-
+      debugInfo.steps.push('✅ Business validated');
+  
       // Find the task first
       const task = await this.fieldTaskModel.findOne({
         _id: taskId,
         businessId,
         isDeleted: false
       });
-
+  
       if (!task) {
         throw new NotFoundException('Task not found');
       }
-
-      console.log('Original task:', task.toObject()); // Debug log
-      console.log('Update data received:', updateData); // Debug log
-
-      // FIXED: Use $set with dot notation for proper nested updates
+  
+      debugInfo.originalTask = task.toObject();
+      debugInfo.steps.push('✅ Task found');
+  
+      // Build update fields
       const updateFields: any = {};
-
-      // Simple fields
+  
       if (updateData.name !== undefined) {
         updateFields.name = updateData.name;
+        debugInfo.steps.push(`📝 Name: ${task.name} → ${updateData.name}`);
       }
       
       if (updateData.description !== undefined) {
         updateFields.description = updateData.description;
+        debugInfo.steps.push(`📝 Description updated`);
       }
       
       if (updateData.type !== undefined) {
         updateFields.type = updateData.type;
+        debugInfo.steps.push(`📝 Type: ${task.type} → ${updateData.type}`);
       }
       
       if (updateData.priority !== undefined) {
         updateFields.priority = updateData.priority;
-      }
-      
-      if (updateData.siteId !== undefined) {
-        updateFields.siteId = updateData.siteId;
+        debugInfo.steps.push(`📝 Priority: ${task.priority} → ${updateData.priority}`);
       }
       
       if (updateData.scheduledDate !== undefined) {
         updateFields.scheduledDate = updateData.scheduledDate;
+        debugInfo.steps.push(`📝 Date: ${task.scheduledDate} → ${updateData.scheduledDate}`);
       }
       
       if (updateData.estimatedDuration !== undefined) {
         updateFields.estimatedDuration = updateData.estimatedDuration;
+        debugInfo.steps.push(`📝 Duration updated`);
       }
       
       if (updateData.skillsRequired !== undefined) {
         updateFields.skillsRequired = updateData.skillsRequired;
+        debugInfo.steps.push(`📝 Skills updated`);
       }
       
       if (updateData.equipmentRequired !== undefined) {
         updateFields.equipmentRequired = updateData.equipmentRequired;
+        debugInfo.steps.push(`📝 Equipment updated`);
       }
       
       if (updateData.specialInstructions !== undefined) {
         updateFields.specialInstructions = updateData.specialInstructions;
+        debugInfo.steps.push(`📝 Instructions updated`);
       }
       
       if (updateData.difficultyLevel !== undefined) {
         updateFields.difficultyLevel = updateData.difficultyLevel;
+        debugInfo.steps.push(`📝 Difficulty: ${task.difficultyLevel} → ${updateData.difficultyLevel}`);
       }
-
-      // FIXED: Handle nested location object with dot notation
+  
+      // Handle location
       if (updateData.location) {
         if (updateData.location.latitude !== undefined) {
           updateFields['location.latitude'] = updateData.location.latitude;
+          debugInfo.steps.push(`📍 Latitude updated`);
         }
         if (updateData.location.longitude !== undefined) {
           updateFields['location.longitude'] = updateData.location.longitude;
+          debugInfo.steps.push(`📍 Longitude updated`);
         }
         if (updateData.location.address !== undefined) {
           updateFields['location.address'] = updateData.location.address;
-        }
-        if (updateData.location.city !== undefined) {
-          updateFields['location.city'] = updateData.location.city;
-        }
-        if (updateData.location.state !== undefined) {
-          updateFields['location.state'] = updateData.location.state;
-        }
-        if (updateData.location.zipCode !== undefined) {
-          updateFields['location.zipCode'] = updateData.location.zipCode;
-        }
-        if (updateData.location.country !== undefined) {
-          updateFields['location.country'] = updateData.location.country;
+          debugInfo.steps.push(`📍 Address updated`);
         }
         if (updateData.location.accessInstructions !== undefined) {
           updateFields['location.accessInstructions'] = updateData.location.accessInstructions;
+          debugInfo.steps.push(`📍 Access instructions updated`);
         }
         if (updateData.location.parkingNotes !== undefined) {
           updateFields['location.parkingNotes'] = updateData.location.parkingNotes;
+          debugInfo.steps.push(`📍 Parking notes updated`);
         }
       }
-
-      // FIXED: Handle nested timeWindow object with dot notation
+  
+      // Handle timeWindow
       if (updateData.timeWindow) {
         if (updateData.timeWindow.start !== undefined) {
           updateFields['timeWindow.start'] = updateData.timeWindow.start;
+          debugInfo.steps.push(`⏰ Start time updated`);
         }
         if (updateData.timeWindow.end !== undefined) {
           updateFields['timeWindow.end'] = updateData.timeWindow.end;
+          debugInfo.steps.push(`⏰ End time updated`);
         }
         if (updateData.timeWindow.isFlexible !== undefined) {
           updateFields['timeWindow.isFlexible'] = updateData.timeWindow.isFlexible;
+          debugInfo.steps.push(`⏰ Flexibility updated`);
         }
         if (updateData.timeWindow.preferredTime !== undefined) {
           updateFields['timeWindow.preferredTime'] = updateData.timeWindow.preferredTime;
+          debugInfo.steps.push(`⏰ Preferred time updated`);
         }
       }
-
-      // Handle metadata merge
-      if (updateData.metadata !== undefined) {
-        // Get current metadata and merge
-        const currentMetadata = task.metadata || {};
-        updateFields.metadata = { ...currentMetadata, ...updateData.metadata };
-      }
-
-      console.log('Update fields to apply:', updateFields); // Debug log
-
-      // FIXED: Use findOneAndUpdate with $set operator for atomic update
+  
+      debugInfo.updateFields = updateFields;
+      debugInfo.steps.push(`🔧 Built ${Object.keys(updateFields).length} update fields`);
+  
+      // Perform the update
       const updatedTask = await this.fieldTaskModel.findOneAndUpdate(
         {
           _id: taskId,
@@ -296,33 +297,40 @@ export class FieldTaskService {
           $set: updateFields
         },
         {
-          new: true, // Return the updated document
-          runValidators: true // Run schema validations
+          new: true,
+          runValidators: true
         }
       );
-
+  
       if (!updatedTask) {
+        debugInfo.steps.push('❌ Update failed - task not found');
         throw new NotFoundException('Task not found or could not be updated');
       }
-
-      console.log('Updated task:', updatedTask.toObject()); // Debug log
-
-      // Update corresponding TaskAssignment
+  
+      debugInfo.finalTask = updatedTask.toObject();
+      debugInfo.steps.push('✅ Update completed successfully');
+  
+      // Update TaskAssignment
       await this.updateTaskAssignment(updatedTask);
-
-      this.logger.log(`Updated field task ${taskId} for business ${businessId}`);
-
+      debugInfo.steps.push('✅ Task assignment updated');
+  
       return {
         success: true,
-        message: 'Task updated successfully'
+        message: 'Task updated successfully',
+        debug: debugInfo
       };
-
+  
     } catch (error) {
-      this.logger.error(`Error updating field task: ${error.message}`, error.stack);
-      throw error;
+      return {
+        success: false,
+        message: error.message,
+        debug: {
+          error: error.message,
+          stack: error.stack
+        }
+      };
     }
   }
-
   /**
    * Delete a field task and corresponding task assignment (soft delete)
    */
