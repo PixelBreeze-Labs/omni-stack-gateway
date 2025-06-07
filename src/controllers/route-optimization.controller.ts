@@ -57,6 +57,7 @@ import {
         type: 'object',
         properties: {
           date: { type: 'string', example: '2024-01-15' },
+          month: { type: 'string', example: '2024-01' },
           taskIds: { type: 'array', items: { type: 'string' } },
           teamIds: { type: 'array', items: { type: 'string' } },
           params: {
@@ -68,22 +69,15 @@ import {
               maxRouteTime: { type: 'number' }
             }
           }
-        },
-        required: ['date', 'taskIds', 'teamIds']
+        }
       }
     })
-    @ApiResponse({ 
-      status: 201, 
-      description: 'Routes optimized successfully'
-    })
-    @ApiResponse({ status: 400, description: 'Bad request - Invalid optimization parameters' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Business not found' })
     async optimizeRoutes(
       @Query('businessId') businessId: string,
       @Headers('business-x-api-key') apiKey: string,
       @Body() optimizationData: {
-        date: string;
+        date?: string;
+        month?: string;
         taskIds: string[];
         teamIds: string[];
         params?: {
@@ -98,34 +92,30 @@ import {
         if (!businessId) {
           throw new BadRequestException('Business ID is required');
         }
-  
-        if (!optimizationData.date) {
-          throw new BadRequestException('Date is required');
+    
+        // Either date or month is required (or taskIds for specific task optimization)
+        if (!optimizationData.date && !optimizationData.month && !optimizationData.taskIds?.length) {
+          throw new BadRequestException('Either date, month, or taskIds is required');
         }
-  
-        if (!optimizationData.taskIds?.length) {
-          throw new BadRequestException('Task IDs are required');
-        }
-  
+    
         if (!optimizationData.teamIds?.length) {
           throw new BadRequestException('Team IDs are required');
         }
-  
+    
         await this.validateBusinessApiKey(businessId, apiKey);
-  
+    
         const optimizedRoutes = await this.routeOptimizationService.optimizeRoutes({
           businessId,
           ...optimizationData
         });
-  
+    
         return {
           success: true,
-          // ✅ FIXED: Access routes.length from the service response
           message: `Generated ${optimizedRoutes.routes.length} optimized routes`,
           routes: optimizedRoutes.routes,
           debug: optimizedRoutes.debug
         };
-  
+    
       } catch (error) {
         this.logger.error(`Error optimizing routes: ${error.message}`, error.stack);
         if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -136,98 +126,95 @@ import {
     }
   
     @Get('optimized')
-    @ApiOperation({ 
-      summary: 'Get optimized routes for a date',
-      description: 'Retrieve existing optimized routes for a specific date'
-    })
-    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiQuery({ name: 'date', required: true, description: 'Date (YYYY-MM-DD)' })
-    @ApiResponse({ 
-      status: 200, 
-      description: 'Optimized routes retrieved successfully'
-    })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Business not found' })
-    async getOptimizedRoutes(
-      @Query('businessId') businessId: string,
-      @Query('date') date: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<any> {
-      try {
-        if (!businessId) {
-          throw new BadRequestException('Business ID is required');
-        }
-  
-        if (!date) {
-          throw new BadRequestException('Date is required');
-        }
-  
-        await this.validateBusinessApiKey(businessId, apiKey);
-  
-        const routes = await this.routeOptimizationService.getOptimizedRoutes(businessId, date);
-  
-        return {
-          success: true,
-          date,
-          routes: routes.routes,
-          debug: routes.debug
-        };
-  
-      } catch (error) {
-        this.logger.error(`Error getting optimized routes: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-          throw error;
-        }
-        throw new InternalServerErrorException('Failed to retrieve optimized routes');
-      }
+@ApiOperation({ 
+  summary: 'Get optimized routes for a date or month',
+  description: 'Retrieve existing optimized routes for a specific date or month'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiQuery({ name: 'date', required: false, description: 'Date (YYYY-MM-DD)' })
+@ApiQuery({ name: 'month', required: false, description: 'Month (YYYY-MM)' })
+@ApiResponse({ status: 200, description: 'Optimized routes retrieved successfully' })
+async getOptimizedRoutes(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Query('date') date?: string,
+  @Query('month') month?: string,
+): Promise<any> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
     }
-  
-    @Get('stats')
-    @ApiOperation({ 
-      summary: 'Get route statistics',
-      description: 'Retrieve route performance statistics for a specific date'
-    })
-    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiQuery({ name: 'date', required: true, description: 'Date (YYYY-MM-DD)' })
-    @ApiResponse({ 
-      status: 200, 
-      description: 'Route statistics retrieved successfully'
-    })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Business not found' })
-    async getRouteStats(
-      @Query('businessId') businessId: string,
-      @Query('date') date: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<any> {
-      try {
-        if (!businessId) {
-          throw new BadRequestException('Business ID is required');
-        }
-  
-        if (!date) {
-          throw new BadRequestException('Date is required');
-        }
-  
-        await this.validateBusinessApiKey(businessId, apiKey);
-  
-        const stats = await this.routeOptimizationService.getRouteStats(businessId, date);
-  
-        return {
-          success: true,
-          date,
-          stats: stats.stats,
-          debug: stats.debug
-        };
-  
-      } catch (error) {
-        this.logger.error(`Error getting route stats: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-          throw error;
-        }
-        throw new InternalServerErrorException('Failed to retrieve route statistics');
-      }
+
+    // Either date or month is required
+    if (!date && !month) {
+      throw new BadRequestException('Either date or month is required');
     }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+
+    const routes = await this.routeOptimizationService.getOptimizedRoutes(businessId, date, month);
+
+    return {
+      success: true,
+      date: routes.date,
+      routes: routes.routes,
+      debug: routes.debug
+    };
+
+  } catch (error) {
+    this.logger.error(`Error getting optimized routes: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve optimized routes');
+  }
+}
+  
+@Get('stats')
+@ApiOperation({ 
+  summary: 'Get route statistics',
+  description: 'Retrieve route performance statistics for a specific date or month'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiQuery({ name: 'date', required: false, description: 'Date (YYYY-MM-DD)' })
+@ApiQuery({ name: 'month', required: false, description: 'Month (YYYY-MM)' })
+@ApiResponse({ status: 200, description: 'Route statistics retrieved successfully' })
+async getRouteStats(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Query('date') date?: string,
+  @Query('month') month?: string,
+): Promise<any> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    // Either date or month is required
+    if (!date && !month) {
+      throw new BadRequestException('Either date or month is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+
+    const stats = await this.routeOptimizationService.getRouteStats(businessId, date, month);
+
+    return {
+      success: true,
+      date: date || month,
+      stats: stats.stats,
+      debug: stats.debug
+    };
+
+  } catch (error) {
+    this.logger.error(`Error getting route stats: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve route statistics');
+  }
+}
+
   
     @Post(':routeId/assign')
     @ApiOperation({ 
@@ -585,62 +572,61 @@ import {
     }
 
     @Get(':teamId/progress')
-    @ApiOperation({ 
-      summary: 'Get route progress',
-      description: 'Get current progress of a team\'s route for a specific date'
-    })
-    @ApiParam({ name: 'teamId', description: 'Team ID' })
-    @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-    @ApiQuery({ name: 'date', required: true, description: 'Date (YYYY-MM-DD)' })
-    @ApiResponse({ 
-      status: 200, 
-      description: 'Route progress retrieved successfully'
-    })
-    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-    @ApiResponse({ status: 404, description: 'Business not found' })
-    async getRouteProgress(
-      @Param('teamId') teamId: string,
-      @Query('businessId') businessId: string,
-      @Query('date') date: string,
-      @Headers('business-x-api-key') apiKey: string
-    ): Promise<any> {
-      try {
-        if (!businessId) {
-          throw new BadRequestException('Business ID is required');
-        }
-
-        if (!teamId) {
-          throw new BadRequestException('Team ID is required');
-        }
-
-        if (!date) {
-          throw new BadRequestException('Date is required');
-        }
-
-        await this.validateBusinessApiKey(businessId, apiKey);
-
-        const result = await this.routeOptimizationService.getRouteProgress(
-          businessId,
-          teamId,
-          date
-        );
-
-        return {
-          success: true,
-          teamId,
-          date,
-          progress: result.progress,
-          debug: result.debug
-        };
-
-      } catch (error) {
-        this.logger.error(`Error getting route progress: ${error.message}`, error.stack);
-        if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-          throw error;
-        }
-        throw new InternalServerErrorException('Failed to get route progress');
-      }
+@ApiOperation({ 
+  summary: 'Get route progress',
+  description: 'Get current progress of a team\'s route for a specific date or month'
+})
+@ApiParam({ name: 'teamId', description: 'Team ID' })
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiQuery({ name: 'date', required: false, description: 'Date (YYYY-MM-DD)' })
+@ApiQuery({ name: 'month', required: false, description: 'Month (YYYY-MM)' })
+@ApiResponse({ status: 200, description: 'Route progress retrieved successfully' })
+async getRouteProgress(
+  @Param('teamId') teamId: string,
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Query('date') date?: string,
+  @Query('month') month?: string,
+): Promise<any> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
     }
+
+    if (!teamId) {
+      throw new BadRequestException('Team ID is required');
+    }
+
+    // Either date or month is required
+    if (!date && !month) {
+      throw new BadRequestException('Either date or month is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+
+    const result = await this.routeOptimizationService.getRouteProgress(
+      businessId,
+      teamId,
+      date,
+      month
+    );
+
+    return {
+      success: true,
+      teamId,
+      date: date || month,
+      progress: result.progress,
+      debug: result.debug
+    };
+
+  } catch (error) {
+    this.logger.error(`Error getting route progress: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to get route progress');
+  }
+}
   
     // ============================================================================
     // PRIVATE HELPER METHODS

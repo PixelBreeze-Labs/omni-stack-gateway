@@ -14,17 +14,18 @@ import { WeatherRouteService } from './weather-route.service';
 import { GoogleMapsService } from './google-maps.service';
 
 interface OptimizeRoutesRequest {
-  businessId: string;
-  date: string;
-  taskIds?: string[];
-  teamIds?: string[];
-  params?: {
-    prioritizeTime?: boolean;
-    prioritizeFuel?: boolean;
-    considerWeather?: boolean;
-    maxRouteTime?: number;
-    maxTasksPerTeam?: number;
-  };
+    businessId: string;
+    date?: string;  // Make optional
+    month?: string; // Add month parameter
+    taskIds?: string[];
+    teamIds?: string[];
+    params?: {
+      prioritizeTime?: boolean;
+      prioritizeFuel?: boolean;
+      considerWeather?: boolean;
+      maxRouteTime?: number;
+      maxTasksPerTeam?: number;
+    };
 }
 
 interface RouteMetrics {
@@ -115,15 +116,12 @@ export class RouteOptimizationService {
   // 🚀 COMPLETE ROUTE OPTIMIZATION WITH PERSISTENCE
   // ============================================================================
 
-  /**
-   * ✅ FIXED: Optimize routes AND persist them to database with RouteProgress
-   */
   async optimizeRoutes(request: OptimizeRoutesRequest): Promise<{
     success: boolean;
     message: string;
     routes: OptimizedRoute[];
     debug: DebugInfo;
-  }> {
+   }> {
     const startTime = Date.now();
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
@@ -137,16 +135,30 @@ export class RouteOptimizationService {
       routesPersisted: [],
       progressCreated: []
     };
-
+   
     try {
       const businessObjectId = this.convertToObjectId(request.businessId);
       debug.queryResults.businessObjectId = businessObjectId.toString();
-
+   
       const business = await this.validateBusiness(request.businessId);
       debug.queryResults.businessName = business.name;
-
+   
+      // Determine the date to use for route creation
+      let routeDate: string;
+      if (request.date) {
+        routeDate = request.date;
+      } else if (request.month) {
+        // Use first day of the month if only month is provided
+        const [year, month] = request.month.split('-');
+        routeDate = `${year}-${month}-01`;
+      } else {
+        // Default to today
+        routeDate = new Date().toISOString().split('T')[0];
+      }
+   
       // Get tasks for optimization
       let tasks: FieldTask[];
+   
       if (request.taskIds && request.taskIds.length > 0) {
         const taskObjectIds = request.taskIds.map(id => this.convertToObjectId(id));
         tasks = await this.fieldTaskModel.find({
@@ -154,51 +166,54 @@ export class RouteOptimizationService {
           businessId: businessObjectId,
           isDeleted: false
         }).populate('appClientId');
-
-        debug.queryResults.tasksFoundById = tasks.length;
       } else {
-        tasks = await this.getTasksForRouting(request.businessId, request.date, request.teamIds);
+        // Support both date and month filtering
+        tasks = await this.getTasksForRouting(
+          request.businessId, 
+          request.date, 
+          request.teamIds,
+          request.month
+        );
         debug.queryResults.tasksFromDate = tasks.length;
       }
-
       debug.queryResults.finalTasksCount = tasks.length;
-
+   
       if (tasks.length === 0) {
         debug.errors.push('No tasks found for optimization');
         throw new BadRequestException('No tasks found for optimization');
       }
-
+   
       const availableTeams = this.getAvailableTeams(business, request.teamIds);
       debug.queryResults.availableTeams = availableTeams.length;
-
+   
       if (availableTeams.length === 0) {
         debug.errors.push('No teams available for routing');
         throw new BadRequestException('No teams available for routing');
       }
-
+   
       // Generate optimized routes (in memory)
       const optimizedRoutes = await this.generateRealOptimizedRoutes(
         tasks,
         availableTeams,
         request.params || {}
       );
-
+   
       debug.queryResults.generatedRoutes = optimizedRoutes.length;
-
-      // 🚀 NEW: PERSIST ROUTES TO DATABASE
+   
+      // Persist routes to database
       const persistedRoutes: OptimizedRoute[] = [];
       
       for (const route of optimizedRoutes) {
         // Create Route document
-        const routeId = `route-${route.teamId}-${request.date}-${Date.now()}`;
+        const routeId = `route-${route.teamId}-${routeDate}-${Date.now()}`;
         
         const routeStops = route.tasks.map((task, index) => {
           const routeStep = route.route[index];
           return {
             taskId: task.taskId,
             sequenceNumber: index + 1,
-            estimatedArrivalTime: this.parseTimeToDate(routeStep.arrivalTime, request.date),
-            estimatedDepartureTime: this.parseTimeToDate(routeStep.departureTime, request.date),
+            estimatedArrivalTime: this.parseTimeToDate(routeStep.arrivalTime, routeDate),
+            estimatedDepartureTime: this.parseTimeToDate(routeStep.departureTime, routeDate),
             distanceFromPrevious: routeStep.distance,
             travelTimeFromPrevious: routeStep.travelTime,
             serviceTime: task.estimatedDuration,
@@ -210,13 +225,13 @@ export class RouteOptimizationService {
             }
           };
         });
-
+   
         const routeDoc = new this.routeModel({
           routeId,
           businessId: businessObjectId,
-          clientId: businessObjectId, // Using businessId as clientId for now
+          clientId: businessObjectId,
           teamId: route.teamId,
-          date: new Date(request.date),
+          date: new Date(routeDate),
           status: RouteStatus.OPTIMIZED,
           optimizationScore: route.metrics.optimizationScore,
           estimatedTotalTime: route.metrics.estimatedTotalTime,
@@ -246,7 +261,7 @@ export class RouteOptimizationService {
           weatherConsiderations: [],
           createdBy: business.adminUserId
         });
-
+   
         // Save Route
         const savedRoute = await routeDoc.save();
         
@@ -257,7 +272,7 @@ export class RouteOptimizationService {
           taskCount: route.tasks.length,
           savedToDb: true
         });
-
+   
         // Update FieldTasks with routeId
         const taskObjectIds = route.tasks.map(t => this.convertToObjectId(t.taskId));
         await this.fieldTaskModel.updateMany(
@@ -269,18 +284,18 @@ export class RouteOptimizationService {
             status: FieldTaskStatus.ASSIGNED
           }
         );
-
-        // 🚀 NEW: CREATE ROUTE PROGRESS TRACKING
+   
+        // Create route progress tracking
         const routeProgress = new this.routeProgressModel({
           businessId: request.businessId,
           teamId: route.teamId,
           teamName: route.teamName,
-          routeDate: new Date(request.date),
+          routeDate: new Date(routeDate),
           tasks: route.tasks.map((task, index) => ({
             taskId: task.taskId,
             scheduledOrder: index + 1,
-            estimatedStartTime: this.parseTimeToDate(route.route[index].arrivalTime, request.date),
-            estimatedEndTime: this.parseTimeToDate(route.route[index].departureTime, request.date),
+            estimatedStartTime: this.parseTimeToDate(route.route[index].arrivalTime, routeDate),
+            estimatedEndTime: this.parseTimeToDate(route.route[index].departureTime, routeDate),
             status: 'pending' as const,
             location: {
               latitude: task.location.latitude,
@@ -294,27 +309,27 @@ export class RouteOptimizationService {
           completedTasksCount: 0,
           estimatedCompletionTime: this.parseTimeToDate(
             route.route[route.route.length - 1].departureTime, 
-            request.date
+            routeDate
           ),
           totalEstimatedDuration: route.metrics.estimatedTotalTime,
           totalDistanceKm: route.metrics.estimatedDistance,
           progressUpdates: [{
             timestamp: new Date(),
-            location: { latitude: 0, longitude: 0 }, // Will be updated when route starts
+            location: { latitude: 0, longitude: 0 },
             status: 'route_created',
             notes: 'Route optimized and assigned to team'
           }],
           createdBy: business.adminUserId
         });
-
+   
         const savedProgress = await routeProgress.save();
-
+   
         debug.progressCreated.push({
           progressId: savedProgress._id.toString(),
           teamId: route.teamId,
           taskCount: route.tasks.length
         });
-
+   
         // Add to response
         persistedRoutes.push({
           ...route,
@@ -322,21 +337,21 @@ export class RouteOptimizationService {
           status: RouteStatus.OPTIMIZED
         });
       }
-
+   
       // Add weather warnings if requested
       if (request.params?.considerWeather) {
         await this.addWeatherWarnings(persistedRoutes, request.businessId);
       }
-
+   
       debug.executionTime = Date.now() - startTime;
-
+   
       return {
         success: true,
         message: `Generated and persisted ${persistedRoutes.length} optimized routes with progress tracking`,
         routes: persistedRoutes,
         debug
       };
-
+   
     } catch (error) {
       debug.errors.push(`Error optimizing routes: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
@@ -349,53 +364,73 @@ export class RouteOptimizationService {
         debug
       };
     }
-  }
+   }
 
   /**
-   * ✅ Get persisted routes from Route collection
-   */
-  async getOptimizedRoutes(
+* ✅ Get persisted routes from Route collection
+*/
+async getOptimizedRoutes(
     businessId: string,
-    date: string
-  ): Promise<{
+    date?: string,
+    month?: string
+   ): Promise<{
     success: boolean;
     date: string;
     routes: OptimizedRoute[];
     debug: DebugInfo;
-  }> {
+   }> {
     const startTime = Date.now();
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'getOptimizedRoutes',
       businessId,
-      inputs: { businessId, date },
+      inputs: { businessId, date, month },
       queryResults: {},
       errors: [],
       warnings: [],
       executionTime: 0
     };
-
+ 
+    // Initialize displayDate outside try block
+    let displayDate: string = '';
+   
     try {
       const businessObjectId = this.convertToObjectId(businessId);
       debug.queryResults.businessObjectId = businessObjectId.toString();
-
+   
       const business = await this.validateBusiness(businessId);
       debug.queryResults.businessName = business.name;
-
-      const { startOfDay, endOfDay } = this.createUTCDateRange(date);
-      debug.queryResults.dateRange = {
-        original: date,
-        startOfDay: startOfDay.toISOString(),
-        endOfDay: endOfDay.toISOString()
-      };
-
+   
+      // Determine date range and display date
+      let dateRange;
+   
+      if (month) {
+        // Month filtering (YYYY-MM format)
+        const [year, monthNum] = month.split('-');
+        const startOfMonth = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const endOfMonth = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+        displayDate = month;
+      } else if (date) {
+        // Single date filtering
+        dateRange = this.createUTCDateRange(date);
+        displayDate = date;
+      } else {
+        // Default to current month
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+        displayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      }
+   
       // Get Routes from Route collection
       const routes = await this.routeModel.find({
         businessId: businessObjectId,
-        date: { $gte: startOfDay, $lte: endOfDay },
+        date: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
         isDeleted: false
       }).sort({ createdAt: -1 });
-
+   
       debug.queryResults.persistedRoutesFound = routes.length;
       debug.queryResults.routeDetails = routes.map(r => ({
         routeId: r.routeId,
@@ -403,25 +438,25 @@ export class RouteOptimizationService {
         status: r.status,
         taskCount: r.routeStops.length
       }));
-
+   
       const optimizedRoutes: OptimizedRoute[] = [];
-
+   
       for (const route of routes) {
         const team = business.teams?.find((t: any) => t.id === route.teamId);
         if (!team) {
           debug.warnings.push(`Team not found: ${route.teamId}`);
           continue;
         }
-
+   
         // Get task details for this route
         const taskIds = route.routeStops.map(stop => this.convertToObjectId(stop.taskId));
         const tasks = await this.fieldTaskModel.find({
           _id: { $in: taskIds },
           isDeleted: false
         }).populate('appClientId');
-
+   
         const taskMap = new Map(tasks.map(t => [t._id.toString(), t]));
-
+   
         optimizedRoutes.push({
           routeId: route.routeId,
           teamId: route.teamId,
@@ -458,17 +493,17 @@ export class RouteOptimizationService {
           status: route.status
         });
       }
-
+   
       debug.queryResults.finalRoutes = optimizedRoutes.length;
       debug.executionTime = Date.now() - startTime;
-
+   
       return {
         success: true,
-        date,
+        date: displayDate,
         routes: optimizedRoutes,
         debug
       };
-
+   
     } catch (error) {
       debug.errors.push(`Error getting optimized routes: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
@@ -476,12 +511,12 @@ export class RouteOptimizationService {
       
       return {
         success: false,
-        date,
+        date: displayDate,
         routes: [],
         debug
       };
     }
-  }
+   }
 
   /**
  * ✅ FIXED: Update route progress and ensure FieldTask status is properly updated
@@ -851,42 +886,56 @@ async updateRouteProgress(
     }
   }
 
-  /**
-   * ✅ Get route progress for a team/date
-   */
   async getRouteProgress(
     businessId: string,
     teamId: string,
-    date: string
-  ): Promise<{
+    date?: string,
+    month?: string
+   ): Promise<{
     success: boolean;
     progress: any;
     debug: DebugInfo;
-  }> {
+   }> {
     const startTime = Date.now();
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'getRouteProgress',
       businessId,
-      inputs: { businessId, teamId, date },
+      inputs: { businessId, teamId, date, month },
       queryResults: {},
       errors: [],
       warnings: [],
       executionTime: 0
     };
-
+   
     try {
-      const { startOfDay, endOfDay } = this.createUTCDateRange(date);
-
+      // Determine date range based on available parameters
+      let dateRange;
+      if (month) {
+        const [year, monthNum] = month.split('-');
+        const startOfMonth = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const endOfMonth = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+      } else if (date) {
+        dateRange = this.createUTCDateRange(date);
+      } else {
+        // Default to today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(today);
+        endOfDay.setHours(23, 59, 59, 999);
+        dateRange = { startOfDay: today, endOfDay: endOfDay };
+      }
+   
       const routeProgress = await this.routeProgressModel.findOne({
         businessId,
         teamId,
-        routeDate: { $gte: startOfDay, $lte: endOfDay },
+        routeDate: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
         isDeleted: false
       });
-
+   
       debug.queryResults.progressFound = !!routeProgress;
-
+   
       if (!routeProgress) {
         debug.warnings.push('No route progress found for this team/date');
         return {
@@ -895,16 +944,16 @@ async updateRouteProgress(
           debug
         };
       }
-
+   
       debug.queryResults.progressDetails = {
         routeStatus: routeProgress.routeStatus,
         currentTaskIndex: routeProgress.currentTaskIndex,
         completedTasksCount: routeProgress.completedTasksCount,
         totalTasks: routeProgress.tasks.length
       };
-
+   
       debug.executionTime = Date.now() - startTime;
-
+   
       return {
         success: true,
         progress: {
@@ -933,7 +982,7 @@ async updateRouteProgress(
         },
         debug
       };
-
+   
     } catch (error) {
       debug.errors.push(`Error getting route progress: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
@@ -945,7 +994,7 @@ async updateRouteProgress(
         debug
       };
     }
-  }
+   }
 
   /**
    * ✅ Assign persisted route to team (update Route status)
@@ -1094,19 +1143,37 @@ async updateRouteProgress(
 
   private async getTasksForRouting(
     businessId: string,
-    date: string,
-    teamIds?: string[]
+    date?: string,
+    teamIds?: string[],
+    month?: string // Add month parameter
   ): Promise<FieldTask[]> {
     const businessObjectId = this.convertToObjectId(businessId);
-    const { startOfDay, endOfDay } = this.createUTCDateRange(date);
+    
+    let dateRange;
+    if (month) {
+      // Month filtering
+      const [year, monthNum] = month.split('-');
+      const startOfMonth = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+      const endOfMonth = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+      dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+    } else if (date) {
+      // Single date filtering
+      dateRange = this.createUTCDateRange(date);
+    } else {
+      // Default to current month
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+    }
     
     const query: any = {
       businessId: businessObjectId,
-      scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+      scheduledDate: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
       isDeleted: false,
-      status: { $in: [FieldTaskStatus.PENDING] } // Only pending tasks for optimization
+      status: { $in: [FieldTaskStatus.PENDING] }
     };
-
+  
     return await this.fieldTaskModel.find(query).populate('appClientId');
   }
 
@@ -1460,47 +1527,63 @@ async updateRouteProgress(
     }
   }
 
-  /**
-   * ✅ Get route statistics for business
-   */
-  async getRouteStats(
+ /**
+* ✅ Get route statistics for business
+*/
+async getRouteStats(
     businessId: string,
-    date: string
-  ): Promise<{
+    date?: string,
+    month?: string
+   ): Promise<{
     success: boolean;
     stats: RouteStats;
     debug: DebugInfo;
-  }> {
+   }> {
     const startTime = Date.now();
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'getRouteStats',
       businessId,
-      inputs: { businessId, date },
+      inputs: { businessId, date, month },
       queryResults: {},
       errors: [],
       warnings: [],
       executionTime: 0
     };
-
+   
     try {
       const businessObjectId = this.convertToObjectId(businessId);
-      const { startOfDay, endOfDay } = this.createUTCDateRange(date);
-
-      // Get all routes for the date
+   
+      let dateRange;
+      if (month) {
+        const [year, monthNum] = month.split('-');
+        const startOfMonth = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const endOfMonth = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+      } else if (date) {
+        dateRange = this.createUTCDateRange(date);
+      } else {
+        // Default to current month
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+      }
+   
+      // Get all routes for the date range
       const routes = await this.routeModel.find({
         businessId: businessObjectId,
-        date: { $gte: startOfDay, $lte: endOfDay },
+        date: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
         isDeleted: false
       });
-
-      // Get all tasks for the date
+   
+      // Get all tasks for the date range
       const tasks = await this.fieldTaskModel.find({
         businessId: businessObjectId,
-        scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+        scheduledDate: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
         isDeleted: false
       });
-
+   
       // Calculate statistics
       const totalTasks = tasks.length;
       const completedTasks = tasks.filter(task => task.status === FieldTaskStatus.COMPLETED).length;
@@ -1508,17 +1591,17 @@ async updateRouteProgress(
       const totalTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime || 0), 0);
       const avgExecutionTime = routes.length > 0 ? totalTime / routes.length : 0;
       const teamsWithRoutes = new Set(routes.map(r => r.teamId)).size;
-
+   
       // Calculate efficiency (simplified)
       const estimatedTime = routes.reduce((sum, route) => sum + route.estimatedTotalTime, 0);
       const actualTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime), 0);
       const efficiency = estimatedTime > 0 ? Math.round((estimatedTime / actualTime) * 100) : 100;
-
+   
       // Calculate fuel savings (placeholder)
       const estimatedFuel = routes.reduce((sum, route) => sum + route.estimatedFuelCost, 0);
       const actualFuel = routes.reduce((sum, route) => sum + (route.actualFuelCost || route.estimatedFuelCost), 0);
       const fuelSavings = Math.max(0, estimatedFuel - actualFuel);
-
+   
       const stats: RouteStats = {
         totalTasks,
         completedTasks,
@@ -1528,16 +1611,16 @@ async updateRouteProgress(
         efficiency,
         teamsWithRoutes
       };
-
+   
       debug.queryResults = {
         routesCount: routes.length,
         tasksCount: tasks.length,
         stats
       };
       debug.executionTime = Date.now() - startTime;
-
+   
       return { success: true, stats, debug };
-
+   
     } catch (error) {
       debug.errors.push(`Error getting route stats: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
@@ -1557,7 +1640,7 @@ async updateRouteProgress(
         debug
       };
     }
-  }
+   }
 
   /**
    * ✅ Calculate route metrics for specific tasks
