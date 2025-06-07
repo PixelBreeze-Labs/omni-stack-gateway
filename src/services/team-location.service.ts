@@ -843,9 +843,7 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
   }
 
 
-  /**
- * FIXED: Calculate comprehensive team availability details with proper team parameter passing
- */
+  // Update the calculateTeamAvailabilityDetails method to include recent tasks
 private async calculateTeamAvailabilityDetails(
     businessId: string,
     teamId: string,
@@ -857,20 +855,15 @@ private async calculateTeamAvailabilityDetails(
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
   
-    // FIXED: Pass team object to calculation methods
+    // Existing calculations...
     const todayData = await this.calculateTodayAvailability(businessId, teamId, teamLocation, today, team);
-    
-    // FIXED: Pass team object to calculation methods
     const weekData = await this.calculateWeekAvailability(businessId, teamId, today, team);
-    
-    // Get upcoming schedule with flexible team ID matching
     const upcomingSchedule = await this.getUpcomingSchedule(businessId, teamId, now, team);
-    
-    // NEW: Check for tasks beyond current week
     const futureTasksInfo = await this.getFutureTasksIndicator(businessId, teamId, today, team);
-    
-    // Calculate performance metrics with flexible team ID matching
     const performance = await this.calculatePerformanceMetrics(businessId, teamId, team);
+  
+    // NEW: Get recent completed tasks
+    const recentCompletedTasks = await this.getRecentCompletedTasks(businessId, teamId, team, 3);
   
     return {
       teamId,
@@ -879,7 +872,8 @@ private async calculateTeamAvailabilityDetails(
         today: todayData,
         week: weekData,
         upcomingSchedule,
-        futureWork: futureTasksInfo  // NEW: Future tasks indicator
+        futureWork: futureTasksInfo,
+        recentCompletedTasks // NEW: Add recent completed tasks
       },
       performance,
       lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || now.toISOString(),
@@ -1124,6 +1118,69 @@ private async calculateWeekAvailability(
     return weekData;
   }
   
+
+
+  /**
+ * NEW: Get recent completed tasks for a team
+ */
+private async getRecentCompletedTasks(
+    businessId: string,
+    teamId: string,
+    team: any,
+    limit: number = 3
+  ): Promise<any[]> {
+    try {
+      // Setup flexible team ID matching for ALL 3 possible formats
+      const phpId = team.metadata?.phpId;
+      const generatedId = team.id;
+      const mongoObjectId = team._id?.toString();
+      
+      const teamIdQuery = [];
+      if (phpId) teamIdQuery.push(phpId);
+      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+  
+      // Get recent completed tasks (last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  
+      const recentTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        status: FieldTaskStatus.COMPLETED,
+        completedAt: { $gte: sevenDaysAgo },
+        isDeleted: false
+      })
+      .sort({ completedAt: -1 }) // Most recent first
+      .limit(limit);
+  
+      return recentTasks.map(task => ({
+        taskId: task._id.toString(),
+        name: task.name || task.description || 'Completed task',
+        description: task.description,
+        completedAt: task.completedAt,
+        location: task.location?.address || 'Location not specified',
+        duration: task.actualPerformance?.actualDuration || task.estimatedDuration,
+        estimatedDuration: task.estimatedDuration,
+        actualDuration: task.actualPerformance?.actualDuration,
+        clientSignoff: task.clientSignoff ? {
+            signedBy: task.clientSignoff.signedBy,
+            satisfactionRating: task.clientSignoff.satisfactionRating,
+            clientNotes: task.clientSignoff.clientNotes,
+            signedAt: task.clientSignoff.signedAt
+        } : undefined,
+        efficiency: task.actualPerformance?.actualDuration && task.estimatedDuration ? 
+          Math.round(((task.estimatedDuration / task.actualPerformance.actualDuration) * 100) * 10) / 10 : undefined
+      }));
+  
+    } catch (error) {
+      console.warn(`Failed to get recent completed tasks for team ${teamId}: ${error.message}`);
+      return [];
+    }
+  }
+
+
  /**
  * FIXED: Calculate comprehensive performance metrics with proper PHP ID handling
  */
