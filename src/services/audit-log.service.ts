@@ -5,6 +5,7 @@ import { Model } from 'mongoose';
 import { AuditLog, AuditAction, ResourceType, AuditSeverity } from '../schemas/audit-log.schema';
 import { Request } from 'express';
 import { Types } from 'mongoose';
+import { User } from '../schemas/user.schema';
 
 export interface CreateAuditLogDto {
   businessId: string;
@@ -37,6 +38,8 @@ export class AuditLogService {
   constructor(
     @InjectModel(AuditLog.name)
     private readonly auditLogModel: Model<AuditLog>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<User>,
   ) {}
 
   /**
@@ -414,10 +417,10 @@ export class AuditLogService {
     return changedFields;
   }
 
-  /**
-   * Get audit logs for a business with filters - 🆕 ENHANCED WITH USER LOOKUP
-   */
-  async getAuditLogs(
+ /**
+ * Get audit logs for a business with filters - 🆕 ENHANCED WITH USER LOOKUP
+ */
+async getAuditLogs(
     businessId: string,
     filters: {
       userId?: string;
@@ -440,53 +443,63 @@ export class AuditLogService {
       page = 1,
       limit = 10,
     } = filters;
-
+  
     // Build match query for MongoDB
     const matchQuery: any = {
-      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
+      businessId: new Types.ObjectId(businessId),
       isDeleted: false,
     };
-
+  
     if (userId) matchQuery.userId = userId;
     if (action) matchQuery.action = action;
     if (resourceType) matchQuery.resourceType = resourceType;
     if (severity) matchQuery.severity = severity;
-
+  
     if (startDate || endDate) {
       matchQuery.createdAt = {};
       if (startDate) matchQuery.createdAt.$gte = startDate;
       if (endDate) matchQuery.createdAt.$lte = endDate;
     }
-
+  
     const skip = (page - 1) * limit;
-
-    // 🆕 Use aggregation pipeline for consistent data handling
-    const pipeline = [
-      { $match: matchQuery },
-      { $sort: { createdAt: -1 } },
-      {
-        $facet: {
-          // Get paginated logs
-          logs: [
-            { $skip: skip },
-            { $limit: limit }
-          ],
-          // Get total count
-          totalCount: [
-            { $count: "count" }
-          ]
+  
+    // Get logs and total count
+    const [logs, total] = await Promise.all([
+      this.auditLogModel.find(matchQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.auditLogModel.countDocuments(matchQuery)
+    ]);
+  
+    // FOR EACH LOG - LOOKUP USER AND ATTACH NAME
+    const enhancedLogs = await Promise.all(
+      logs.map(async (log) => {
+        const logObj = log.toObject();
+        
+        if (logObj.userId) {
+          try {
+            // You need to inject User model in constructor
+            const user = await this.userModel.findById(logObj.userId, 'name surname email');
+            if (user) {
+              logObj.userName = user.name || 
+                `${user.name || ''} ${user.surname || ''}`.trim() || 
+                user.email?.split('@')[0] || 
+                'Unknown User';
+            }
+          } catch (error) {
+            // If user lookup fails, just use email or fallback
+            logObj.userName = logObj.userEmail?.split('@')[0] || 'Unknown User';
+          }
         }
-      }
-    ];
-
-    // @ts-ignore
-    const [result] = await this.auditLogModel.aggregate(pipeline);
-    
-    const logs = result.logs || [];
-    const total = result.totalCount[0]?.count || 0;
-
+        
+        return logObj;
+      })
+    );
+  
     return {
-      logs,
+      logs: enhancedLogs,
       total,
       page,
       limit,
@@ -623,7 +636,7 @@ export class AuditLogService {
       }
     ];
 
-    // @ts-ignore
+     // @ts-ignore
     const [result] = await this.auditLogModel.aggregate(pipeline);
     
     const logs = result.logs || [];
