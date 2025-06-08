@@ -2447,6 +2447,27 @@ async updateRouteProgress(
     return degrees * (Math.PI / 180);
   }
 
+  private async calculateRouteMetricsForTasks(tasks: FieldTask[], team?: any): Promise<RouteMetrics> {
+    const totalDuration = tasks.reduce((sum, task) => sum + task.estimatedDuration, 0);
+    const coordinates = tasks.map(task => ({
+      lat: task.location.latitude,
+      lng: task.location.longitude
+    }));
+
+    const { totalDistance, totalTravelTime } = this.calculateRealDistances(coordinates);
+    const estimatedTotalTime = totalDuration + totalTravelTime;
+    const estimatedFuelCost = this.calculateFuelCost(totalDistance, team);
+    const optimizationScore = this.calculateOptimizationScore(tasks, totalDistance, estimatedTotalTime);
+
+    return {
+      estimatedTotalTime,
+      estimatedDistance: totalDistance,
+      estimatedFuelCost,
+      optimizationScore,
+      taskCount: tasks.length
+    };
+  }
+
   private calculateRealDistances(coordinates: Array<{ lat: number; lng: number }>): { totalDistance: number; totalTravelTime: number } {
     if (coordinates.length <= 1) {
       return { totalDistance: 0, totalTravelTime: 0 };
