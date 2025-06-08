@@ -580,10 +580,9 @@ async getAuditLogs(
                   },
                   { 
                     $project: { 
-                      firstName: 1, 
-                      lastName: 1, 
+                      name: 1, 
+                      surname: 1, 
                       email: 1,
-                      name: 1
                     } 
                   }
                 ],
@@ -605,9 +604,9 @@ async getAuditLogs(
                             then: '$user.name',
                             else: {
                               $concat: [
-                                { $ifNull: ['$user.firstName', ''] },
+                                { $ifNull: ['$user.name', ''] },
                                 ' ',
-                                { $ifNull: ['$user.lastName', ''] }
+                                { $ifNull: ['$user.surname', ''] }
                               ]
                             }
                           }
@@ -654,35 +653,64 @@ async getAuditLogs(
   }
 
   /**
-   * 🆕 Get recent audit logs with user information
-   */
-  async getRecentAuditLogs(businessId: string, limit: number = 20) {
+ * 🆕 Get recent audit logs with user information - ENHANCED WITH USER LOOKUP
+ */
+async getRecentAuditLogs(businessId: string, limit: number = 20) {
     const matchQuery = {
-      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
+      businessId: new Types.ObjectId(businessId),
       isDeleted: false,
     };
-
+  
+    // Get logs first
     const logs = await this.auditLogModel
       .find(matchQuery)
       .sort({ createdAt: -1 })
       .limit(limit)
       .exec();
-
+  
+    // FOR EACH LOG - LOOKUP USER AND ATTACH NAME & EMAIL
+    const enhancedLogs = await Promise.all(
+      logs.map(async (log) => {
+        const logObj = log.toObject();
+        
+        if (logObj.userId) {
+          try {
+            // Lookup user details from users collection
+            const user = await this.userModel.findById(logObj.userId, 'name surname email');
+            if (user) {
+              logObj.userName = user.name || 
+                `${user.name || ''} ${user.surname || ''}`.trim() || 
+                user.email?.split('@')[0] || 
+                'Unknown User';
+  
+              logObj.userEmail = user.email;
+            }
+          } catch (error) {
+            // If user lookup fails, use fallback
+            logObj.userName = logObj.userEmail?.split('@')[0] || 'Unknown User';
+          }
+        }
+        
+        return logObj;
+      })
+    );
+  
     return {
-      logs,
-      total: logs.length,
+      logs: enhancedLogs,
+      total: enhancedLogs.length,
     };
   }
+  
 
   /**
-   * Get security events
-   */
-  async getSecurityEvents(businessId: string, days: number = 7) {
+ * Get security events - ENHANCED WITH USER LOOKUP
+ */
+async getSecurityEvents(businessId: string, days: number = 7) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-
+  
     const matchQuery = {
-      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
+      businessId: new Types.ObjectId(businessId),
       isDeleted: false,
       createdAt: { $gte: startDate },
       $or: [
@@ -696,35 +724,60 @@ async getAuditLogs(
         ]}},
       ],
     };
-
+  
     const [logs, criticalCount, highCount] = await Promise.all([
       this.auditLogModel.find(matchQuery).sort({ createdAt: -1 }).limit(50).exec(),
       this.auditLogModel.countDocuments({ ...matchQuery, severity: AuditSeverity.CRITICAL }),
       this.auditLogModel.countDocuments({ ...matchQuery, severity: AuditSeverity.HIGH }),
     ]);
-
+  
+    // 🆕 ENHANCE LOGS WITH USER INFORMATION
+    const enhancedLogs = await Promise.all(
+      logs.map(async (log) => {
+        const logObj = log.toObject();
+        
+        if (logObj.userId) {
+          try {
+            const user = await this.userModel.findById(logObj.userId, 'name surname email');
+            if (user) {
+              logObj.userName = user.name || 
+                `${user.name || ''} ${user.surname || ''}`.trim() || 
+                user.email?.split('@')[0] || 
+                'Unknown User';
+  
+              logObj.userEmail = user.email;
+            }
+          } catch (error) {
+            logObj.userName = logObj.userEmail?.split('@')[0] || 'Unknown User';
+          }
+        }
+        
+        return logObj;
+      })
+    );
+  
     return {
-      logs,
+      logs: enhancedLogs,
       criticalCount,
       highCount,
-      total: logs.length,
+      total: enhancedLogs.length,
     };
   }
 
   /**
-   * Get user activity
-   */
-  async getUserActivity(businessId: string, userId: string, days: number = 30) {
+ * Get user activity - ENHANCED WITH USER LOOKUP
+ */
+async getUserActivity(businessId: string, userId: string, days: number = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-
+  
     const matchQuery = {
-      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
+      businessId: new Types.ObjectId(businessId),
       userId,
       isDeleted: false,
       createdAt: { $gte: startDate },
     };
-
+  
     const [logs, totalActions, loginCount, dataModifications, failedAttempts] = await Promise.all([
       this.auditLogModel.find(matchQuery).sort({ createdAt: -1 }).limit(100).exec(),
       this.auditLogModel.countDocuments(matchQuery),
@@ -740,9 +793,34 @@ async getAuditLogs(
       }),
       this.auditLogModel.countDocuments({ ...matchQuery, success: false }),
     ]);
-
+  
+    // 🆕 ENHANCE LOGS WITH USER INFORMATION
+    const enhancedLogs = await Promise.all(
+      logs.map(async (log) => {
+        const logObj = log.toObject();
+        
+        if (logObj.userId) {
+          try {
+            const user = await this.userModel.findById(logObj.userId, 'name surname email');
+            if (user) {
+              logObj.userName = user.name || 
+                `${user.name || ''} ${user.surname || ''}`.trim() || 
+                user.email?.split('@')[0] || 
+                'Unknown User';
+  
+              logObj.userEmail = user.email;
+            }
+          } catch (error) {
+            logObj.userName = logObj.userEmail?.split('@')[0] || 'Unknown User';
+          }
+        }
+        
+        return logObj;
+      })
+    );
+  
     return {
-      logs,
+      logs: enhancedLogs,
       summary: {
         totalActions,
         loginCount,
