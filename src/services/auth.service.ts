@@ -18,6 +18,8 @@ import { AppClient } from "../schemas/app-client.schema";
 import { Employee } from "../schemas/employee.schema";
 import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
 import { generateBusinessApiKey } from 'src/utils/business-api-key.utils';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from 'src/schemas/audit-log.schema';
 
 @Injectable()
 export class AuthService {
@@ -29,6 +31,7 @@ export class AuthService {
         private featureAccessService: FeatureAccessService,
         private sidebarFeatureService: SidebarFeatureService,
         private venueBoostService: VenueBoostService,
+        private auditLogService: AuditLogService,
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
@@ -162,7 +165,10 @@ export class AuthService {
         }
     }
 
-    async staffluentsBusinessAdminLogin(loginDto: StaffluentsBusinessAdminLoginDto) {
+    async staffluentsBusinessAdminLogin(loginDto: StaffluentsBusinessAdminLoginDto, req?: any) {
+        const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+        const userAgent = req?.get('User-Agent');
+
         try {
             // Find user by email for Staffluent
             const user = await this.userModel.findOne({
@@ -171,12 +177,34 @@ export class AuthService {
             });
 
             if (!user) {
+                // Log failed login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    undefined,
+                    'User not found'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
             // Verify password
             const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
             if (!isPasswordValid) {
+                // Log failed login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    user._id.toString(),
+                    'Invalid password'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
@@ -185,6 +213,17 @@ export class AuthService {
             if (!business) {
                 throw new NotFoundException('No business found for this user');
             }
+
+            // Log successful login
+            await this.auditLogService.logAuthentication(
+                AuditAction.LOGIN_SUCCESS,
+                loginDto.email,
+                true,
+                ipAddress,
+                userAgent,
+                business._id.toString(),
+                user._id.toString()
+            );
 
             // Get VenueBoost authentication data if available
             let auth_response = null;
@@ -197,7 +236,6 @@ export class AuthService {
                 }
             } catch (error) {
                 this.logger.error(`Error getting VenueBoost connection: ${error.message}`);
-                // Continue even if getting auth response fails
             }
 
             // Get features and subscription details
@@ -217,13 +255,26 @@ export class AuthService {
                 clientId: business.clientId,
                 role: 'business_admin'
             });
-        
+
             // Generate or retrieve business API key
             if (!business.apiKey) {
-                // Generate a new API key if not exists
+                // Log API key generation
+                await this.auditLogService.createAuditLog({
+                    businessId: business._id.toString(),
+                    userId: user._id.toString(),
+                    action: AuditAction.API_KEY_GENERATED,
+                    resourceType: ResourceType.API_KEY,
+                    ipAddress,
+                    userAgent,
+                    metadata: {
+                        reason: 'First login - auto-generated'
+                    }
+                });
+
                 business.apiKey = generateBusinessApiKey();
                 await business.save();
             }
+
             return {
                 status: 'success',
                 message: 'Authentication successful',
@@ -252,10 +303,10 @@ export class AuthService {
         }
     }
 
-    /**
-     * Login for business staff users
-     */
-    async staffluentsBusinessStaffLogin(loginDto: StaffluentsBusinessStaffLoginDto) {
+    async staffluentsBusinessStaffLogin(loginDto: StaffluentsBusinessStaffLoginDto, req?: any) {
+        const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+        const userAgent = req?.get('User-Agent');
+
         try {
             // Find and authenticate user
             const user = await this.userModel.findOne({
@@ -264,12 +315,34 @@ export class AuthService {
             });
 
             if (!user) {
+                // Log failed login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    undefined,
+                    'User not found'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
             // Verify password
             const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
             if (!isPasswordValid) {
+                // Log failed login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    user._id.toString(),
+                    'Invalid password'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
@@ -288,6 +361,17 @@ export class AuthService {
                 throw new NotFoundException('No business found for this employee');
             }
 
+            // Log successful staff login
+            await this.auditLogService.logAuthentication(
+                AuditAction.LOGIN_SUCCESS,
+                loginDto.email,
+                true,
+                ipAddress,
+                userAgent,
+                business._id.toString(),
+                user._id.toString()
+            );
+
             // Get VenueBoost connection data
             let staffConnectionData = null;
             try {
@@ -296,7 +380,6 @@ export class AuthService {
                 );
             } catch (error) {
                 this.logger.error(`Error getting staff connection: ${error.message}`);
-                // Continue even if VenueBoost connection fails
             }
 
             // Determine role from staff connection or employee data
@@ -326,7 +409,6 @@ export class AuthService {
                 role: role
             });
 
-            // Construct final response
             return {
                 status: 'success',
                 message: 'Staff authentication successful',
@@ -364,6 +446,9 @@ export class AuthService {
    /**
      * Login for mobile staff users
      */
+    /**
+     * Login for mobile staff users
+     */
     async staffluentMobileLogin(loginDto: {
         email: string;
         password: string;
@@ -374,7 +459,10 @@ export class AuthService {
         device_model?: string;
         os_version?: string;
         app_version?: string;
-    }) {
+    }, req?: any) {
+        const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+        const userAgent = req?.get('User-Agent') || `${loginDto.device_type}-${loginDto.device_model}`;
+
         try {
             // Find and authenticate user
             const user = await this.userModel.findOne({
@@ -383,12 +471,34 @@ export class AuthService {
             });
 
             if (!user) {
+                // Log failed mobile login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    undefined,
+                    'User not found - mobile login'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
             // Verify password
             const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
             if (!isPasswordValid) {
+                // Log failed mobile login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    user._id.toString(),
+                    'Invalid password - mobile login'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
@@ -428,9 +538,7 @@ export class AuthService {
             }
 
             // Determine role from PHP response or employee data
-            const role =
-                employee.metadata?.get('role') ||
-                'business_staff';
+            const role = employee.metadata?.get('role') || 'business_staff';
 
             // Get features filtered by role
             const featuresInfo = await this.getBusinessFeaturesForLogin(
@@ -453,8 +561,67 @@ export class AuthService {
 
             // If app access is denied, throw an error
             if (!has_app_access) {
+                // Log denied mobile access attempt
+                await this.auditLogService.createAuditLog({
+                    businessId: business._id.toString(),
+                    userId: user._id.toString(),
+                    action: AuditAction.UNAUTHORIZED_ACCESS_ATTEMPT,
+                    resourceType: ResourceType.SYSTEM,
+                    success: false,
+                    errorMessage: 'Mobile app access denied',
+                    severity: AuditSeverity.HIGH,
+                    ipAddress,
+                    userAgent,
+                    metadata: {
+                        mobileLogin: true,
+                        deviceInfo: {
+                            device_type: loginDto.device_type,
+                            device_model: loginDto.device_model,
+                            os_version: loginDto.os_version,
+                            app_version: loginDto.app_version
+                        }
+                    }
+                });
                 throw new UnauthorizedException('You do not have access to the mobile application');
             }
+
+            // Log successful mobile login
+            await this.auditLogService.logAuthentication(
+                AuditAction.LOGIN_SUCCESS,
+                loginDto.email,
+                true,
+                ipAddress,
+                userAgent,
+                business._id.toString(),
+                user._id.toString()
+            );
+
+            // Log additional mobile-specific audit info
+            await this.auditLogService.createAuditLog({
+                businessId: business._id.toString(),
+                userId: user._id.toString(),
+                action: AuditAction.LOGIN_SUCCESS,
+                resourceType: ResourceType.SYSTEM,
+                severity: AuditSeverity.LOW,
+                ipAddress,
+                userAgent,
+                metadata: {
+                    mobileLogin: true,
+                    deviceInfo: {
+                        source_app: loginDto.source_app,
+                        device_id: loginDto.device_id,
+                        device_type: loginDto.device_type,
+                        device_model: loginDto.device_model,
+                        os_version: loginDto.os_version,
+                        app_version: loginDto.app_version
+                    },
+                    capabilities: {
+                        allow_clockinout,
+                        has_app_access,
+                        allow_checkin
+                    }
+                }
+            });
 
             // Return mobile auth data augmented with our business info and features
             return {
@@ -488,11 +655,13 @@ export class AuthService {
             throw new UnauthorizedException(error);
         }
     }
-
     /**
      * Login for client users
      */
-    async staffluentsClientLogin(loginDto: StaffluentsClientLoginDto) {
+    async staffluentsClientLogin(loginDto: StaffluentsClientLoginDto, req?: any) {
+        const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+        const userAgent = req?.get('User-Agent');
+
         try {
             // Find and authenticate user
             const user = await this.userModel.findOne({
@@ -501,12 +670,34 @@ export class AuthService {
             });
 
             if (!user) {
+                // Log failed login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    undefined,
+                    'User not found'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
             // Verify password
             const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
             if (!isPasswordValid) {
+                // Log failed login attempt
+                await this.auditLogService.logAuthentication(
+                    AuditAction.LOGIN_FAILURE,
+                    loginDto.email,
+                    false,
+                    ipAddress,
+                    userAgent,
+                    undefined,
+                    user._id.toString(),
+                    'Invalid password'
+                );
                 throw new UnauthorizedException('Invalid credentials');
             }
 
@@ -516,6 +707,25 @@ export class AuthService {
                 throw new NotFoundException('No client record found for this user');
             }
 
+            // For client login, we need to determine which business they're associated with
+            let businessId = 'client-portal'; // Default for clients not tied to specific business
+            
+            // If appClient has businessId, use that
+            if (appClient.businessId) {
+                businessId = appClient.businessId.toString();
+            }
+
+            // Log successful client login
+            await this.auditLogService.logAuthentication(
+                AuditAction.LOGIN_SUCCESS,
+                loginDto.email,
+                true,
+                ipAddress,
+                userAgent,
+                businessId,
+                user._id.toString()
+            );
+
             // Get VenueBoost connection data
             let clientConnectionData = null;
             try {
@@ -524,7 +734,6 @@ export class AuthService {
                 );
             } catch (error) {
                 this.logger.error(`Error getting client connection: ${error.message}`);
-                // Continue even if VenueBoost connection fails
             }
 
             // Get client-specific sidebar links
@@ -533,7 +742,7 @@ export class AuthService {
                 'app_client'
             );
 
-            // Get client-specific features (without limits and subscription)
+            // Get client-specific features
             const clientFeatures = [
                 STAFFLUENT_FEATURES.CLIENT_PORTAL,
                 STAFFLUENT_FEATURES.CLIENT_COMMUNICATION,
@@ -558,7 +767,6 @@ export class AuthService {
                 role: 'app_client'
             });
 
-            // Construct final response - REMOVED featureLimits and subscription
             return {
                 status: 'success',
                 message: 'Client authentication successful',
@@ -579,7 +787,6 @@ export class AuthService {
                 account_type: clientConnectionData?.account_type || 'client',
                 sidebarLinks,
                 features: clientFeatures
-                // REMOVED: featureLimits, subscription
             };
         } catch (error) {
             this.logger.error(`Error in staffluentsClientLogin: ${error.message}`);
@@ -1038,5 +1245,16 @@ export class AuthService {
             }
             throw new UnauthorizedException('Login failed');
         }
+    }
+
+    // Helper method to extract IP address
+    private extractIpAddress(req: any): string {
+        return (
+            req.headers['x-forwarded-for'] ||
+            req.headers['x-real-ip'] ||
+            req.connection?.remoteAddress ||
+            req.socket?.remoteAddress ||
+            'unknown'
+        ).split(',')[0].trim();
     }
 }
