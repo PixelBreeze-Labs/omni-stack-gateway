@@ -97,12 +97,7 @@ export enum AuditAction {
   UPLOAD_VALIDATION_FAILED = 'upload_validation_failed',
   STORAGE_SERVICE_ERROR = 'storage_service_error',
 
-  // Service Area Operations
-  SERVICE_AREA_CREATED = 'service_area_created',
-  SERVICE_AREA_UPDATED = 'service_area_updated',
-  SERVICE_AREA_DELETED = 'service_area_deleted',
-  SERVICE_AREA_ASSIGNED = 'service_area_assigned',
-  SERVICE_AREA_ACCESSED = 'service_area_accessed',
+  
   TEAM_ASSIGNED = 'team_assigned',
   TICKET_CREATED = 'ticket_created',
   TICKET_UPDATED = 'ticket_updated', 
@@ -120,6 +115,24 @@ export enum AuditAction {
   TEAM_AVAILABILITY_ACCESSED = 'team_availability_accessed',
   ROUTE_PROGRESS_TRACKED = 'route_progress_tracked',
   LOCATION_DATA_EXPORTED = 'location_data_exported',
+
+    // Service Area Operations
+    SERVICE_AREA_CREATED = 'service_area_created',
+    SERVICE_AREA_UPDATED = 'service_area_updated',
+    SERVICE_AREA_DELETED = 'service_area_deleted',
+    SERVICE_AREA_ASSIGNED = 'service_area_assigned',
+    SERVICE_AREA_ACCESSED = 'service_area_accessed',
+    COVERAGE_ANALYSIS_ACCESSED = 'coverage_analysis_accessed',
+    COVERAGE_STATISTICS_ACCESSED = 'coverage_statistics_accessed',
+
+    ROUTE_CONSTRAINTS_VALIDATED = 'route_constraints_validated',
+    ROUTE_OPTIMIZED = 'route_optimized',
+    ROUTE_PROGRESS_UPDATED = 'route_progress_updated',
+    ROUTE_ACCESSED = 'route_accessed',
+    ROUTE_STATS_ACCESSED = 'route_stats_accessed',
+    ROUTE_ASSIGNED = 'route_assigned',
+    ROUTE_REOPTIMIZED = 'route_reoptimized',
+    ROUTE_METRICS_CALCULATED = 'route_metrics_calculated',
 }
 
 export enum AuditSeverity {

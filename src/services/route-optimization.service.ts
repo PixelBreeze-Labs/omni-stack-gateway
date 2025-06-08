@@ -12,6 +12,18 @@ import { FieldTaskService } from './field-task.service';
 import { WeatherService } from './weather.service';
 import { WeatherRouteService } from './weather-route.service';
 import { GoogleMapsService } from './google-maps.service';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
+
+// NOTE: Add these to AuditAction enum in audit-log.schema.ts:
+// ROUTE_OPTIMIZED = 'route_optimized',
+// ROUTE_ACCESSED = 'route_accessed',
+// ROUTE_PROGRESS_UPDATED = 'route_progress_updated',
+// ROUTE_ASSIGNED = 'route_assigned',
+// ROUTE_REOPTIMIZED = 'route_reoptimized',
+// ROUTE_METRICS_CALCULATED = 'route_metrics_calculated',
+// ROUTE_CONSTRAINTS_VALIDATED = 'route_constraints_validated',
+// ROUTE_STATS_ACCESSED = 'route_stats_accessed',
 
 interface OptimizeRoutesRequest {
     businessId: string;
@@ -110,19 +122,40 @@ export class RouteOptimizationService {
     private readonly weatherService: WeatherService,
     private readonly weatherRouteService: WeatherRouteService,
     private readonly googleMapsService: GoogleMapsService,
+    private readonly auditLogService: AuditLogService
   ) {}
 
+  /**
+   * Helper method to extract IP address from request
+   */
+  private extractIpAddress(req: any): string {
+    return (
+      req?.headers?.['x-forwarded-for'] ||
+      req?.headers?.['x-real-ip'] ||
+      req?.connection?.remoteAddress ||
+      req?.socket?.remoteAddress ||
+      'unknown'
+    ).split(',')[0].trim();
+  }
+
   // ============================================================================
-  // 🚀 COMPLETE ROUTE OPTIMIZATION WITH PERSISTENCE
+  // 🚀 COMPLETE ROUTE OPTIMIZATION WITH PERSISTENCE AND AUDIT LOGGING
   // ============================================================================
 
-  async optimizeRoutes(request: OptimizeRoutesRequest): Promise<{
+  async optimizeRoutes(
+    request: OptimizeRoutesRequest,
+    userId?: string,
+    req?: any
+  ): Promise<{
     success: boolean;
     message: string;
     routes: OptimizedRoute[];
     debug: DebugInfo;
    }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
     const startTime = Date.now();
+    
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'optimizeRoutes',
@@ -180,6 +213,30 @@ export class RouteOptimizationService {
    
       if (tasks.length === 0) {
         debug.errors.push('No tasks found for optimization');
+
+        // Log no tasks found
+        await this.auditLogService.createAuditLog({
+          businessId: request.businessId,
+          userId,
+          action: AuditAction.ROUTE_OPTIMIZED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: 'Route optimization',
+          success: false,
+          errorMessage: 'No tasks found for optimization',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            date: request.date,
+            month: request.month,
+            teamIds: request.teamIds,
+            taskIds: request.taskIds,
+            optimizationParams: request.params,
+            errorReason: 'no_tasks_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         throw new BadRequestException('No tasks found for optimization');
       }
    
@@ -188,6 +245,29 @@ export class RouteOptimizationService {
    
       if (availableTeams.length === 0) {
         debug.errors.push('No teams available for routing');
+
+        // Log no teams available
+        await this.auditLogService.createAuditLog({
+          businessId: request.businessId,
+          userId,
+          action: AuditAction.ROUTE_OPTIMIZED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: 'Route optimization',
+          success: false,
+          errorMessage: 'No teams available for routing',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            date: request.date,
+            month: request.month,
+            teamIds: request.teamIds,
+            tasksFound: tasks.length,
+            errorReason: 'no_teams_available',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         throw new BadRequestException('No teams available for routing');
       }
    
@@ -344,6 +424,39 @@ export class RouteOptimizationService {
       }
    
       debug.executionTime = Date.now() - startTime;
+
+      // Log successful route optimization
+      await this.auditLogService.createAuditLog({
+        businessId: request.businessId,
+        userId,
+        action: AuditAction.ROUTE_OPTIMIZED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: 'Route optimization',
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          routeDate,
+          totalTasks: tasks.length,
+          totalTeams: availableTeams.length,
+          routesGenerated: persistedRoutes.length,
+          optimizationParams: {
+            prioritizeTime: request.params?.prioritizeTime,
+            prioritizeFuel: request.params?.prioritizeFuel,
+            considerWeather: request.params?.considerWeather,
+            maxRouteTime: request.params?.maxRouteTime,
+            maxTasksPerTeam: request.params?.maxTasksPerTeam
+          },
+          averageOptimizationScore: persistedRoutes.length > 0 
+            ? Math.round(persistedRoutes.reduce((sum, r) => sum + r.metrics.optimizationScore, 0) / persistedRoutes.length)
+            : 0,
+          totalDistance: persistedRoutes.reduce((sum, r) => sum + r.metrics.estimatedDistance, 0),
+          totalTime: persistedRoutes.reduce((sum, r) => sum + r.metrics.estimatedTotalTime, 0),
+          weatherConsidered: request.params?.considerWeather || false,
+          operationDuration: Date.now() - startTime
+        }
+      });
    
       return {
         success: true,
@@ -355,6 +468,34 @@ export class RouteOptimizationService {
     } catch (error) {
       debug.errors.push(`Error optimizing routes: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
+
+      // Log unexpected errors
+      if (error.name !== 'BadRequestException') {
+        await this.auditLogService.createAuditLog({
+          businessId: request.businessId,
+          userId,
+          action: AuditAction.ROUTE_OPTIMIZED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: 'Route optimization',
+          success: false,
+          errorMessage: 'Unexpected error during route optimization',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            date: request.date,
+            month: request.month,
+            teamIds: request.teamIds,
+            taskIds: request.taskIds,
+            optimizationParams: request.params,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error optimizing routes: ${error.message}`, error.stack);
       
       return {
@@ -367,19 +508,24 @@ export class RouteOptimizationService {
    }
 
   /**
-* ✅ Get persisted routes from Route collection
+* ✅ Get persisted routes from Route collection with audit logging
 */
 async getOptimizedRoutes(
     businessId: string,
     date?: string,
-    month?: string
+    month?: string,
+    userId?: string,
+    req?: any
    ): Promise<{
     success: boolean;
     date: string;
     routes: OptimizedRoute[];
     debug: DebugInfo;
    }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
     const startTime = Date.now();
+    
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'getOptimizedRoutes',
@@ -496,6 +642,35 @@ async getOptimizedRoutes(
    
       debug.queryResults.finalRoutes = optimizedRoutes.length;
       debug.executionTime = Date.now() - startTime;
+
+      // Log route access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: 'Optimized routes',
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          dateFilter: date,
+          monthFilter: month,
+          displayDate,
+          routesRetrieved: optimizedRoutes.length,
+          totalTasks: optimizedRoutes.reduce((sum, r) => sum + r.tasks.length, 0),
+          totalTeams: new Set(optimizedRoutes.map(r => r.teamId)).size,
+          statusBreakdown: optimizedRoutes.reduce((acc, route) => {
+            acc[route.status] = (acc[route.status] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          averageOptimizationScore: optimizedRoutes.length > 0 
+            ? Math.round(optimizedRoutes.reduce((sum, r) => sum + r.metrics.optimizationScore, 0) / optimizedRoutes.length)
+            : 0,
+          operationDuration: Date.now() - startTime
+        }
+      });
    
       return {
         success: true,
@@ -519,20 +694,25 @@ async getOptimizedRoutes(
    }
 
   /**
- * ✅ FIXED: Update route progress and ensure FieldTask status is properly updated
+ * ✅ FIXED: Update route progress and ensure FieldTask status is properly updated with audit logging
  */
 async updateRouteProgress(
     businessId: string,
     teamId: string,
     taskId: string,
     status: 'started' | 'completed' | 'paused' | 'arrived',
-    currentLocation?: { latitude: number; longitude: number }
+    currentLocation?: { latitude: number; longitude: number },
+    userId?: string,
+    req?: any
   ): Promise<{
     success: boolean;
     message: string;
     debug: DebugInfo;
   }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
     const startTime = Date.now();
+    
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'updateRouteProgress',
@@ -590,6 +770,30 @@ async updateRouteProgress(
   
       if (!task) {
         debug.errors.push('Task not found or not assigned to this team');
+
+        // Log task not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_PROGRESS_UPDATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: taskId,
+          resourceName: `Route progress update for task ${taskId}`,
+          success: false,
+          errorMessage: 'Task not found or not assigned to this team',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            taskId,
+            status,
+            currentLocation,
+            errorReason: 'task_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         throw new NotFoundException('Task not found or not assigned to this team');
       }
   
@@ -597,11 +801,23 @@ async updateRouteProgress(
       debug.queryResults.currentTaskStatus = task.status;
       debug.queryResults.taskAssignedTeamId = task.assignedTeamId;
   
+      // Capture old values for audit
+      const oldValues: any = {
+        taskStatus: task.status,
+        completedAt: task.completedAt,
+        actualPerformance: task.actualPerformance
+      };
+      const newValues: any = {};
+      const changedFields: string[] = [];
+
       // 🚀 FIXED: Properly update task status with more robust logic
       const originalStatus = task.status;
       
       if (status === 'started') {
         task.status = FieldTaskStatus.IN_PROGRESS;
+        newValues.taskStatus = task.status;
+        changedFields.push('taskStatus');
+        
         if (!task.actualPerformance) {
           task.actualPerformance = {
             startTime: new Date(),
@@ -610,12 +826,17 @@ async updateRouteProgress(
         } else if (!task.actualPerformance.startTime) {
           task.actualPerformance.startTime = new Date();
         }
+        newValues.actualPerformance = task.actualPerformance;
+        changedFields.push('actualPerformance');
         debug.queryResults.taskAction = 'started';
         
       } else if (status === 'completed') {
         // 🚀 CRITICAL FIX: Ensure status is properly set to COMPLETED
         task.status = FieldTaskStatus.COMPLETED;
         task.completedAt = new Date();
+        newValues.taskStatus = task.status;
+        newValues.completedAt = task.completedAt;
+        changedFields.push('taskStatus', 'completedAt');
         
         // Ensure actualPerformance exists and update it
         if (!task.actualPerformance) {
@@ -636,6 +857,9 @@ async updateRouteProgress(
           // Fallback if no start time
           task.actualPerformance.actualDuration = task.estimatedDuration || 60;
         }
+        
+        newValues.actualPerformance = task.actualPerformance;
+        changedFields.push('actualPerformance');
         
         debug.queryResults.taskAction = 'completed';
         debug.queryResults.actualDuration = task.actualPerformance.actualDuration;
@@ -866,6 +1090,38 @@ async updateRouteProgress(
       debug.queryResults.originalTaskStatus = originalStatus;
       debug.queryResults.finalTaskStatus = task.status;
       debug.executionTime = Date.now() - startTime;
+
+      // Log successful route progress update
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_PROGRESS_UPDATED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: task._id.toString(),
+        resourceName: `Route progress for task ${task.name || taskId}`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        oldValues: Object.keys(oldValues).length > 0 ? oldValues : undefined,
+        newValues: Object.keys(newValues).length > 0 ? newValues : undefined,
+        changedFields,
+        metadata: {
+          teamId,
+          taskId,
+          taskName: task.name,
+          status,
+          progressAction: debug.queryResults.taskAction,
+          originalStatus,
+          finalTaskStatus: task.status,
+          currentLocation: locationToUse,
+          locationSource: debug.queryResults.locationSource,
+          routeProgressUpdated: debug.queryResults.routeProgressSaved,
+          routeCompleted: debug.queryResults.routeCompleted,
+          actualDuration: debug.queryResults.actualDuration,
+          operationDuration: Date.now() - startTime
+        }
+      });
       
       return {
         success: true,
@@ -876,6 +1132,34 @@ async updateRouteProgress(
     } catch (error) {
       debug.errors.push(`Error updating route progress: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
+
+      // Log unexpected errors
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_PROGRESS_UPDATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: taskId,
+          resourceName: `Route progress update for task ${taskId}`,
+          success: false,
+          errorMessage: 'Unexpected error updating route progress',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            taskId,
+            status,
+            currentLocation,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error updating route progress: ${error.message}`, error.stack);
       
       return {
@@ -890,13 +1174,18 @@ async updateRouteProgress(
     businessId: string,
     teamId: string,
     date?: string,
-    month?: string
+    month?: string,
+    userId?: string,
+    req?: any
    ): Promise<{
     success: boolean;
     progress: any;
     debug: DebugInfo;
    }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
     const startTime = Date.now();
+    
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'getRouteProgress',
@@ -938,6 +1227,29 @@ async updateRouteProgress(
    
       if (!routeProgress) {
         debug.warnings.push('No route progress found for this team/date');
+
+        // Log route progress access (no data found)
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_ACCESSED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: teamId,
+          resourceName: `Route progress for team ${teamId}`,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            date,
+            month,
+            progressFound: false,
+            result: 'no_progress_data',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         return {
           success: true,
           progress: null,
@@ -953,33 +1265,62 @@ async updateRouteProgress(
       };
    
       debug.executionTime = Date.now() - startTime;
+
+      const progressData = {
+        progressId: routeProgress._id.toString(),
+        teamId: routeProgress.teamId,
+        teamName: routeProgress.teamName,
+        routeDate: routeProgress.routeDate,
+        routeStatus: routeProgress.routeStatus,
+        currentTaskIndex: routeProgress.currentTaskIndex,
+        completedTasksCount: routeProgress.completedTasksCount,
+        totalTasks: routeProgress.tasks.length,
+        estimatedCompletionTime: routeProgress.estimatedCompletionTime,
+        actualCompletionTime: routeProgress.routeEndTime,
+        efficiency: routeProgress.performance?.efficiency,
+        tasks: routeProgress.tasks.map(task => ({
+          taskId: task.taskId,
+          status: task.status,
+          scheduledOrder: task.scheduledOrder,
+          estimatedStartTime: task.estimatedStartTime,
+          actualStartTime: task.actualStartTime,
+          estimatedDuration: task.estimatedDuration,
+          actualDuration: task.actualDuration,
+          location: task.location
+        })),
+        progressUpdates: routeProgress.progressUpdates
+      };
+
+      // Log route progress access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: routeProgress._id.toString(),
+        resourceName: `Route progress for team ${routeProgress.teamName}`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId,
+          teamName: routeProgress.teamName,
+          date,
+          month,
+          progressFound: true,
+          routeStatus: routeProgress.routeStatus,
+          totalTasks: routeProgress.tasks.length,
+          completedTasks: routeProgress.completedTasksCount,
+          currentTaskIndex: routeProgress.currentTaskIndex,
+          progressPercentage: Math.round((routeProgress.completedTasksCount / routeProgress.tasks.length) * 100),
+          operationDuration: Date.now() - startTime
+        }
+      });
    
       return {
         success: true,
-        progress: {
-          progressId: routeProgress._id.toString(),
-          teamId: routeProgress.teamId,
-          teamName: routeProgress.teamName,
-          routeDate: routeProgress.routeDate,
-          routeStatus: routeProgress.routeStatus,
-          currentTaskIndex: routeProgress.currentTaskIndex,
-          completedTasksCount: routeProgress.completedTasksCount,
-          totalTasks: routeProgress.tasks.length,
-          estimatedCompletionTime: routeProgress.estimatedCompletionTime,
-          actualCompletionTime: routeProgress.routeEndTime,
-          efficiency: routeProgress.performance?.efficiency,
-          tasks: routeProgress.tasks.map(task => ({
-            taskId: task.taskId,
-            status: task.status,
-            scheduledOrder: task.scheduledOrder,
-            estimatedStartTime: task.estimatedStartTime,
-            actualStartTime: task.actualStartTime,
-            estimatedDuration: task.estimatedDuration,
-            actualDuration: task.actualDuration,
-            location: task.location
-          })),
-          progressUpdates: routeProgress.progressUpdates
-        },
+        progress: progressData,
         debug
       };
    
@@ -997,18 +1338,23 @@ async updateRouteProgress(
    }
 
   /**
-   * ✅ Assign persisted route to team (update Route status)
+   * ✅ Assign persisted route to team (update Route status) with audit logging
    */
   async assignRouteToTeam(
     businessId: string,
     teamId: string,
-    routeId: string
+    routeId: string,
+    userId?: string,
+    req?: any
   ): Promise<{
     success: boolean;
     message: string;
     debug: DebugInfo;
   }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
     const startTime = Date.now();
+    
     const debug: DebugInfo = {
       timestamp: new Date().toISOString(),
       method: 'assignRouteToTeam',
@@ -1028,6 +1374,28 @@ async updateRouteProgress(
       const team = business.teams?.find((t: any) => t.id === teamId);
       if (!team) {
         debug.errors.push(`Team not found: ${teamId}`);
+
+        // Log team not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_ASSIGNED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: routeId,
+          resourceName: `Route assignment ${routeId} to team ${teamId}`,
+          success: false,
+          errorMessage: 'Team not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            routeId,
+            errorReason: 'team_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         throw new NotFoundException('Team not found');
       }
 
@@ -1040,11 +1408,41 @@ async updateRouteProgress(
 
       if (!route) {
         debug.errors.push(`Route not found: ${routeId}`);
+
+        // Log route not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_ASSIGNED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: routeId,
+          resourceName: `Route assignment ${routeId} to team ${team.name}`,
+          success: false,
+          errorMessage: 'Route not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            teamName: team.name,
+            routeId,
+            errorReason: 'route_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         throw new NotFoundException('Route not found');
       }
 
       debug.queryResults.routeFound = true;
       debug.queryResults.currentStatus = route.status;
+
+      // Capture old values for audit
+      const oldValues = {
+        status: route.status,
+        assignedAt: route.assignedAt,
+        assignedBy: route.assignedBy
+      };
 
       // Update route status to assigned
       route.status = RouteStatus.ASSIGNED;
@@ -1052,6 +1450,12 @@ async updateRouteProgress(
       route.assignedBy = business.adminUserId;
 
       await route.save();
+
+      const newValues = {
+        status: route.status,
+        assignedAt: route.assignedAt,
+        assignedBy: route.assignedBy
+      };
 
       // Update RouteProgress status
       const routeProgress = await this.routeProgressModel.findOne({
@@ -1077,6 +1481,34 @@ async updateRouteProgress(
       debug.queryResults.newStatus = route.status;
       debug.executionTime = Date.now() - startTime;
 
+      // Log successful route assignment
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_ASSIGNED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: route._id.toString(),
+        resourceName: `Route ${routeId} assigned to team ${team.name}`,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        oldValues,
+        newValues,
+        changedFields: ['status', 'assignedAt', 'assignedBy'],
+        metadata: {
+          routeId,
+          teamId,
+          teamName: team.name,
+          routeDate: route.date.toISOString().split('T')[0],
+          taskCount: route.routeStops.length,
+          estimatedTotalTime: route.estimatedTotalTime,
+          estimatedDistance: route.estimatedDistance,
+          optimizationScore: route.optimizationScore,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       return {
         success: true,
         message: `Route ${routeId} assigned to ${team.name} successfully`,
@@ -1086,6 +1518,32 @@ async updateRouteProgress(
     } catch (error) {
       debug.errors.push(`Error assigning route: ${error.message}`);
       debug.executionTime = Date.now() - startTime;
+
+      // Log unexpected errors
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_ASSIGNED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: routeId,
+          resourceName: `Route assignment ${routeId} to team ${teamId}`,
+          success: false,
+          errorMessage: 'Unexpected error during route assignment',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            routeId,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error assigning route: ${error.message}`, error.stack);
       
       return {
@@ -1097,7 +1555,708 @@ async updateRouteProgress(
   }
 
   // ============================================================================
-  // HELPER METHODS
+  // HELPER METHODS (remaining methods with audit logging where applicable)
+  // ============================================================================
+
+  /**
+   * ✅ Get route statistics for business with audit logging
+   */
+  async getRouteStats(
+    businessId: string,
+    date?: string,
+    month?: string,
+    userId?: string,
+    req?: any
+   ): Promise<{
+    success: boolean;
+    stats: RouteStats;
+    debug: DebugInfo;
+   }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+    
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'getRouteStats',
+      businessId,
+      inputs: { businessId, date, month },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+   
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+   
+      let dateRange;
+      if (month) {
+        const [year, monthNum] = month.split('-');
+        const startOfMonth = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const endOfMonth = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+      } else if (date) {
+        dateRange = this.createUTCDateRange(date);
+      } else {
+        // Default to current month
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
+      }
+   
+      // Get all routes for the date range
+      const routes = await this.routeModel.find({
+        businessId: businessObjectId,
+        date: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
+        isDeleted: false
+      });
+   
+      // Get all tasks for the date range
+      const tasks = await this.fieldTaskModel.find({
+        businessId: businessObjectId,
+        scheduledDate: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
+        isDeleted: false
+      });
+   
+      // Calculate statistics
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(task => task.status === FieldTaskStatus.COMPLETED).length;
+      const totalDistance = routes.reduce((sum, route) => sum + (route.actualDistance || route.estimatedDistance || 0), 0);
+      const totalTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime || 0), 0);
+      const avgExecutionTime = routes.length > 0 ? totalTime / routes.length : 0;
+      const teamsWithRoutes = new Set(routes.map(r => r.teamId)).size;
+   
+      // Calculate efficiency (simplified)
+      const estimatedTime = routes.reduce((sum, route) => sum + route.estimatedTotalTime, 0);
+      const actualTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime), 0);
+      const efficiency = estimatedTime > 0 ? Math.round((estimatedTime / actualTime) * 100) : 100;
+   
+      // Calculate fuel savings (placeholder)
+      const estimatedFuel = routes.reduce((sum, route) => sum + route.estimatedFuelCost, 0);
+      const actualFuel = routes.reduce((sum, route) => sum + (route.actualFuelCost || route.estimatedFuelCost), 0);
+      const fuelSavings = Math.max(0, estimatedFuel - actualFuel);
+   
+      const stats: RouteStats = {
+        totalTasks,
+        completedTasks,
+        avgExecutionTime,
+        totalDistance,
+        fuelSavings,
+        efficiency,
+        teamsWithRoutes
+      };
+   
+      debug.queryResults = {
+        routesCount: routes.length,
+        tasksCount: tasks.length,
+        stats
+      };
+      debug.executionTime = Date.now() - startTime;
+
+      // Log route stats access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_STATS_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: 'Route statistics',
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          dateFilter: date,
+          monthFilter: month,
+          totalRoutes: routes.length,
+          totalTasks,
+          completedTasks,
+          completionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+          totalDistance,
+          avgExecutionTime,
+          efficiency,
+          teamsWithRoutes,
+          fuelSavings,
+          operationDuration: Date.now() - startTime
+        }
+      });
+   
+      return { success: true, stats, debug };
+   
+    } catch (error) {
+      debug.errors.push(`Error getting route stats: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+      this.logger.error(`Error getting route stats: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        stats: {
+          totalTasks: 0,
+          completedTasks: 0,
+          avgExecutionTime: 0,
+          totalDistance: 0,
+          fuelSavings: 0,
+          efficiency: 0,
+          teamsWithRoutes: 0
+        },
+        debug
+      };
+    }
+   }
+
+  /**
+   * ✅ Calculate route metrics for specific tasks with audit logging
+   */
+  async calculateRouteMetrics(
+    businessId: string,
+    taskIds: string[],
+    teamId?: string,
+    userId?: string,
+    req?: any
+  ): Promise<{
+    success: boolean;
+    metrics: RouteMetrics;
+    debug: DebugInfo;
+  }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+    
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'calculateRouteMetrics',
+      businessId,
+      inputs: { businessId, taskIds, teamId },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+      const business = await this.validateBusiness(businessId);
+
+      const taskObjectIds = taskIds.map(id => this.convertToObjectId(id));
+
+      // Get team if teamId provided
+      let team = null;
+      if (teamId) {
+        team = business.teams?.find((t: any) => t.id === teamId);
+        debug.queryResults.teamFound = !!team;
+      }
+
+      // Get tasks
+      const tasks = await this.fieldTaskModel.find({
+        _id: { $in: taskObjectIds },
+        businessId: businessObjectId,
+        isDeleted: false
+      });
+
+      debug.queryResults.tasksFound = tasks.length;
+
+      if (tasks.length === 0) {
+        // Log no tasks found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_METRICS_CALCULATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: 'Route metrics calculation',
+          success: false,
+          errorMessage: 'No tasks found for metrics calculation',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskIds,
+            teamId,
+            errorReason: 'no_tasks_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
+        throw new NotFoundException('No tasks found for metrics calculation');
+      }
+
+      const metrics = await this.calculateRouteMetricsForTasks(tasks, team);
+      debug.queryResults.metrics = metrics;
+      debug.executionTime = Date.now() - startTime;
+
+      // Log successful metrics calculation
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_METRICS_CALCULATED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: 'Route metrics calculation',
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          taskIds,
+          teamId,
+          teamName: team?.name,
+          tasksAnalyzed: tasks.length,
+          metrics: {
+            estimatedTotalTime: metrics.estimatedTotalTime,
+            estimatedDistance: metrics.estimatedDistance,
+            estimatedFuelCost: metrics.estimatedFuelCost,
+            optimizationScore: metrics.optimizationScore,
+            taskCount: metrics.taskCount
+          },
+          taskPriorities: tasks.reduce((acc, task) => {
+            acc[task.priority] = (acc[task.priority] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          operationDuration: Date.now() - startTime
+        }
+      });
+
+      return { success: true, metrics, debug };
+
+    } catch (error) {
+      debug.errors.push(`Error calculating route metrics: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+
+      // Log unexpected errors
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_METRICS_CALCULATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: 'Route metrics calculation',
+          success: false,
+          errorMessage: 'Unexpected error calculating route metrics',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskIds,
+            teamId,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
+      this.logger.error(`Error calculating route metrics: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        metrics: {
+          estimatedTotalTime: 0,
+          estimatedDistance: 0,
+          estimatedFuelCost: 0,
+          optimizationScore: 0,
+          taskCount: 0
+        },
+        debug
+      };
+    }
+  }
+
+  /**
+   * ✅ Re-optimize existing route with audit logging
+   */
+  async reoptimizeRoute(
+    businessId: string,
+    routeId: string,
+    params?: any,
+    userId?: string,
+    req?: any
+  ): Promise<{
+    success: boolean;
+    route: OptimizedRoute;
+    debug: DebugInfo;
+  }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+    
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'reoptimizeRoute',
+      businessId,
+      inputs: { businessId, routeId, params },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+      const business = await this.validateBusiness(businessId);
+
+      // Find existing route
+      const existingRoute = await this.routeModel.findOne({
+        routeId,
+        businessId: businessObjectId,
+        isDeleted: false
+      });
+
+      if (!existingRoute) {
+        // Log route not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_REOPTIMIZED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: routeId,
+          resourceName: `Route re-optimization ${routeId}`,
+          success: false,
+          errorMessage: 'Route not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            routeId,
+            params,
+            errorReason: 'route_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
+        throw new NotFoundException('Route not found');
+      }
+
+      debug.queryResults.existingRouteFound = true;
+
+      // Capture old values for audit
+      const oldValues = {
+        optimizationScore: existingRoute.optimizationScore,
+        estimatedTotalTime: existingRoute.estimatedTotalTime,
+        estimatedDistance: existingRoute.estimatedDistance,
+        estimatedFuelCost: existingRoute.estimatedFuelCost,
+        routeStops: existingRoute.routeStops.map(stop => ({
+          taskId: stop.taskId,
+          sequenceNumber: stop.sequenceNumber
+        }))
+      };
+
+      // Get tasks from existing route
+      const taskIds = existingRoute.routeStops.map(stop => this.convertToObjectId(stop.taskId));
+      const tasks = await this.fieldTaskModel.find({
+        _id: { $in: taskIds },
+        isDeleted: false
+      });
+
+      debug.queryResults.tasksInRoute = tasks.length;
+
+      // Get team info
+      const team = business.teams?.find((t: any) => t.id === existingRoute.teamId);
+      if (!team) {
+        throw new NotFoundException('Team not found for route');
+      }
+
+      // Re-optimize tasks
+      const optimizedTasks = this.optimizeTaskOrder(tasks, team);
+      const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks, team);
+      const routeSequence = this.generateRouteSequence(optimizedTasks);
+
+      // Update existing route
+      existingRoute.routeStops = optimizedTasks.map((task, index) => ({
+        taskId: task._id.toString(),
+        sequenceNumber: index + 1,
+        estimatedArrivalTime: this.parseTimeToDate(routeSequence[index].arrivalTime, existingRoute.date.toISOString().split('T')[0]),
+        estimatedDepartureTime: this.parseTimeToDate(routeSequence[index].departureTime, existingRoute.date.toISOString().split('T')[0]),
+        distanceFromPrevious: routeSequence[index].distance,
+        travelTimeFromPrevious: routeSequence[index].travelTime,
+        serviceTime: task.estimatedDuration,
+        status: 'pending' as const,
+        location: {
+          latitude: task.location.latitude,
+          longitude: task.location.longitude,
+          address: task.location.address
+        }
+      }));
+
+      existingRoute.optimizationScore = metrics.optimizationScore;
+      existingRoute.estimatedTotalTime = metrics.estimatedTotalTime;
+      existingRoute.estimatedDistance = metrics.estimatedDistance;
+      existingRoute.estimatedFuelCost = metrics.estimatedFuelCost;
+
+      await existingRoute.save();
+
+      const newValues = {
+        optimizationScore: existingRoute.optimizationScore,
+        estimatedTotalTime: existingRoute.estimatedTotalTime,
+        estimatedDistance: existingRoute.estimatedDistance,
+        estimatedFuelCost: existingRoute.estimatedFuelCost,
+        routeStops: existingRoute.routeStops.map(stop => ({
+          taskId: stop.taskId,
+          sequenceNumber: stop.sequenceNumber
+        }))
+      };
+
+      const optimizedRoute: OptimizedRoute = {
+        routeId: existingRoute.routeId,
+        teamId: existingRoute.teamId,
+        teamName: team.name,
+        tasks: optimizedTasks.map(task => ({
+          taskId: task._id.toString(),
+          name: task.name,
+          location: {
+            latitude: task.location.latitude,
+            longitude: task.location.longitude,
+            address: task.location.address
+          },
+          estimatedDuration: task.estimatedDuration,
+          priority: task.priority,
+          customerInfo: this.extractCustomerInfo(task)
+        })),
+        metrics,
+        route: routeSequence,
+        status: existingRoute.status
+      };
+
+      debug.queryResults.reoptimizedRoute = {
+        routeId: optimizedRoute.routeId,
+        newOptimizationScore: metrics.optimizationScore,
+        taskCount: optimizedRoute.tasks.length
+      };
+      debug.executionTime = Date.now() - startTime;
+
+      // Log successful route re-optimization
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_REOPTIMIZED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: existingRoute._id.toString(),
+        resourceName: `Route ${routeId} re-optimized for team ${team.name}`,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        oldValues,
+        newValues,
+        changedFields: ['optimizationScore', 'estimatedTotalTime', 'estimatedDistance', 'estimatedFuelCost', 'routeStops'],
+        metadata: {
+          routeId,
+          teamId: existingRoute.teamId,
+          teamName: team.name,
+          reoptimizationParams: params,
+          tasksInRoute: tasks.length,
+          improvementMetrics: {
+            optimizationScoreChange: metrics.optimizationScore - oldValues.optimizationScore,
+            timeChange: metrics.estimatedTotalTime - oldValues.estimatedTotalTime,
+            distanceChange: metrics.estimatedDistance - oldValues.estimatedDistance,
+            fuelCostChange: metrics.estimatedFuelCost - oldValues.estimatedFuelCost
+          },
+          routeDate: existingRoute.date.toISOString().split('T')[0],
+          operationDuration: Date.now() - startTime
+        }
+      });
+
+      return { success: true, route: optimizedRoute, debug };
+
+    } catch (error) {
+      debug.errors.push(`Error re-optimizing route: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+
+      // Log unexpected errors
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_REOPTIMIZED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: routeId,
+          resourceName: `Route re-optimization ${routeId}`,
+          success: false,
+          errorMessage: 'Unexpected error during route re-optimization',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            routeId,
+            params,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
+      this.logger.error(`Error re-optimizing route: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        route: null as any,
+        debug
+      };
+    }
+  }
+
+  /**
+   * ✅ Validate route constraints with audit logging
+   */
+  async validateRouteConstraints(
+    businessId: string,
+    routeData: {
+      taskIds: string[];
+      teamId: string;
+      maxTime?: number;
+      maxDistance?: number;
+    },
+    userId?: string,
+    req?: any
+  ): Promise<{
+    success: boolean;
+    valid: boolean;
+    violations: string[];
+    debug: DebugInfo;
+  }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+    
+    const debug: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      method: 'validateRouteConstraints',
+      businessId,
+      inputs: { businessId, routeData },
+      queryResults: {},
+      errors: [],
+      warnings: [],
+      executionTime: 0
+    };
+
+    try {
+      const businessObjectId = this.convertToObjectId(businessId);
+      const business = await this.validateBusiness(businessId);
+      
+      const violations: string[] = [];
+
+      // Validate team exists
+      const team = business.teams?.find((t: any) => t.id === routeData.teamId);
+      if (!team) {
+        violations.push('Team not found');
+      }
+
+      debug.queryResults.teamFound = !!team;
+
+      // Get tasks
+      const taskObjectIds = routeData.taskIds.map(id => this.convertToObjectId(id));
+      const tasks = await this.fieldTaskModel.find({
+        _id: { $in: taskObjectIds },
+        businessId: businessObjectId,
+        isDeleted: false
+      });
+
+      debug.queryResults.tasksFound = tasks.length;
+      debug.queryResults.tasksRequested = routeData.taskIds.length;
+
+      if (tasks.length !== routeData.taskIds.length) {
+        violations.push(`${routeData.taskIds.length - tasks.length} tasks not found`);
+      }
+
+      // Calculate metrics for validation
+      const metrics = await this.calculateRouteMetricsForTasks(tasks, team);
+
+      // Validate time constraints
+      const maxTime = routeData.maxTime || team?.maxRouteTime || 480; // 8 hours default
+      if (metrics.estimatedTotalTime > maxTime) {
+        violations.push(`Route exceeds maximum time: ${metrics.estimatedTotalTime} > ${maxTime} minutes`);
+      }
+
+      // Validate distance constraints
+      const maxDistance = routeData.maxDistance || team?.maxRouteDistance || 200; // 200km default
+      if (metrics.estimatedDistance > maxDistance) {
+        violations.push(`Route exceeds maximum distance: ${metrics.estimatedDistance} > ${maxDistance} km`);
+      }
+
+      // Validate task count
+      const maxTasks = team?.maxDailyTasks || 8;
+      if (tasks.length > maxTasks) {
+        violations.push(`Too many tasks for team: ${tasks.length} > ${maxTasks}`);
+      }
+
+      // Validate skills and equipment
+      if (team) {
+        const teamSkills = team.skills || [];
+        const teamEquipment = team.equipment || [];
+
+        tasks.forEach((task, index) => {
+          const missingSkills = task.skillsRequired.filter(skill => !teamSkills.includes(skill));
+          if (missingSkills.length > 0) {
+            violations.push(`Task ${index + 1} requires skills not available in team: ${missingSkills.join(', ')}`);
+          }
+
+          const missingEquipment = task.equipmentRequired.filter(eq => !teamEquipment.includes(eq));
+          if (missingEquipment.length > 0) {
+            violations.push(`Task ${index + 1} requires equipment not available in team: ${missingEquipment.join(', ')}`);
+          }
+        });
+      }
+
+      const valid = violations.length === 0;
+
+      debug.queryResults = {
+        ...debug.queryResults,
+        metrics,
+        violationCount: violations.length,
+        valid
+      };
+      debug.executionTime = Date.now() - startTime;
+
+      // Log route constraints validation
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_CONSTRAINTS_VALIDATED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: `Route constraints validation for team ${team?.name || routeData.teamId}`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId: routeData.teamId,
+          teamName: team?.name,
+          taskIds: routeData.taskIds,
+          tasksValidated: tasks.length,
+          constraints: {
+            maxTime: maxTime,
+            maxDistance: maxDistance,
+            maxTasks: team?.maxDailyTasks || 8
+          },
+          metrics,
+          validationResult: {
+            valid,
+            violationCount: violations.length,
+            violations: violations.length > 0 ? violations.slice(0, 3) : [] // Limit violations in metadata
+          },
+          operationDuration: Date.now() - startTime
+        }
+      });
+
+      return { success: true, valid, violations, debug };
+
+    } catch (error) {
+      debug.errors.push(`Error validating route constraints: ${error.message}`);
+      debug.executionTime = Date.now() - startTime;
+      this.logger.error(`Error validating route constraints: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        valid: false,
+        violations: [`Validation error: ${error.message}`],
+        debug
+      };
+    }
+  }
+
+  // ============================================================================
+  // PRIVATE HELPER METHODS (unchanged but keeping for completeness)
   // ============================================================================
 
   private convertToObjectId(id: string): mongoose.Types.ObjectId {
@@ -1286,27 +2445,6 @@ async updateRouteProgress(
 
   private toRadians(degrees: number): number {
     return degrees * (Math.PI / 180);
-  }
-
-  private async calculateRouteMetricsForTasks(tasks: FieldTask[], team?: any): Promise<RouteMetrics> {
-    const totalDuration = tasks.reduce((sum, task) => sum + task.estimatedDuration, 0);
-    const coordinates = tasks.map(task => ({
-      lat: task.location.latitude,
-      lng: task.location.longitude
-    }));
-  
-    const { totalDistance, totalTravelTime } = this.calculateRealDistances(coordinates);
-    const estimatedTotalTime = totalDuration + totalTravelTime;
-    const estimatedFuelCost = this.calculateFuelCost(totalDistance, team);
-    const optimizationScore = this.calculateOptimizationScore(tasks, totalDistance, estimatedTotalTime);
-  
-    return {
-      estimatedTotalTime,
-      estimatedDistance: totalDistance,
-      estimatedFuelCost,
-      optimizationScore,
-      taskCount: tasks.length
-    };
   }
 
   private calculateRealDistances(coordinates: Array<{ lat: number; lng: number }>): { totalDistance: number; totalTravelTime: number } {
@@ -1524,447 +2662,6 @@ async updateRouteProgress(
     } catch (error) {
       this.logger.error(`Error adding weather warnings: ${error.message}`, error.stack);
       // Don't throw - weather warnings are optional
-    }
-  }
-
- /**
-* ✅ Get route statistics for business
-*/
-async getRouteStats(
-    businessId: string,
-    date?: string,
-    month?: string
-   ): Promise<{
-    success: boolean;
-    stats: RouteStats;
-    debug: DebugInfo;
-   }> {
-    const startTime = Date.now();
-    const debug: DebugInfo = {
-      timestamp: new Date().toISOString(),
-      method: 'getRouteStats',
-      businessId,
-      inputs: { businessId, date, month },
-      queryResults: {},
-      errors: [],
-      warnings: [],
-      executionTime: 0
-    };
-   
-    try {
-      const businessObjectId = this.convertToObjectId(businessId);
-   
-      let dateRange;
-      if (month) {
-        const [year, monthNum] = month.split('-');
-        const startOfMonth = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
-        const endOfMonth = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
-        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
-      } else if (date) {
-        dateRange = this.createUTCDateRange(date);
-      } else {
-        // Default to current month
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-        dateRange = { startOfDay: startOfMonth, endOfDay: endOfMonth };
-      }
-   
-      // Get all routes for the date range
-      const routes = await this.routeModel.find({
-        businessId: businessObjectId,
-        date: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
-        isDeleted: false
-      });
-   
-      // Get all tasks for the date range
-      const tasks = await this.fieldTaskModel.find({
-        businessId: businessObjectId,
-        scheduledDate: { $gte: dateRange.startOfDay, $lte: dateRange.endOfDay },
-        isDeleted: false
-      });
-   
-      // Calculate statistics
-      const totalTasks = tasks.length;
-      const completedTasks = tasks.filter(task => task.status === FieldTaskStatus.COMPLETED).length;
-      const totalDistance = routes.reduce((sum, route) => sum + (route.actualDistance || route.estimatedDistance || 0), 0);
-      const totalTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime || 0), 0);
-      const avgExecutionTime = routes.length > 0 ? totalTime / routes.length : 0;
-      const teamsWithRoutes = new Set(routes.map(r => r.teamId)).size;
-   
-      // Calculate efficiency (simplified)
-      const estimatedTime = routes.reduce((sum, route) => sum + route.estimatedTotalTime, 0);
-      const actualTime = routes.reduce((sum, route) => sum + (route.actualTotalTime || route.estimatedTotalTime), 0);
-      const efficiency = estimatedTime > 0 ? Math.round((estimatedTime / actualTime) * 100) : 100;
-   
-      // Calculate fuel savings (placeholder)
-      const estimatedFuel = routes.reduce((sum, route) => sum + route.estimatedFuelCost, 0);
-      const actualFuel = routes.reduce((sum, route) => sum + (route.actualFuelCost || route.estimatedFuelCost), 0);
-      const fuelSavings = Math.max(0, estimatedFuel - actualFuel);
-   
-      const stats: RouteStats = {
-        totalTasks,
-        completedTasks,
-        avgExecutionTime,
-        totalDistance,
-        fuelSavings,
-        efficiency,
-        teamsWithRoutes
-      };
-   
-      debug.queryResults = {
-        routesCount: routes.length,
-        tasksCount: tasks.length,
-        stats
-      };
-      debug.executionTime = Date.now() - startTime;
-   
-      return { success: true, stats, debug };
-   
-    } catch (error) {
-      debug.errors.push(`Error getting route stats: ${error.message}`);
-      debug.executionTime = Date.now() - startTime;
-      this.logger.error(`Error getting route stats: ${error.message}`, error.stack);
-      
-      return {
-        success: false,
-        stats: {
-          totalTasks: 0,
-          completedTasks: 0,
-          avgExecutionTime: 0,
-          totalDistance: 0,
-          fuelSavings: 0,
-          efficiency: 0,
-          teamsWithRoutes: 0
-        },
-        debug
-      };
-    }
-   }
-
-  /**
-   * ✅ Calculate route metrics for specific tasks
-   */
-  async calculateRouteMetrics(
-    businessId: string,
-    taskIds: string[],
-    teamId?: string
-  ): Promise<{
-    success: boolean;
-    metrics: RouteMetrics;
-    debug: DebugInfo;
-  }> {
-    const startTime = Date.now();
-    const debug: DebugInfo = {
-      timestamp: new Date().toISOString(),
-      method: 'calculateRouteMetrics',
-      businessId,
-      inputs: { businessId, taskIds, teamId },
-      queryResults: {},
-      errors: [],
-      warnings: [],
-      executionTime: 0
-    };
-
-    try {
-      const businessObjectId = this.convertToObjectId(businessId);
-      const business = await this.validateBusiness(businessId);
-
-      const taskObjectIds = taskIds.map(id => this.convertToObjectId(id));
-
-      // Get team if teamId provided
-    let team = null;
-    if (teamId) {
-      team = business.teams?.find((t: any) => t.id === teamId);
-      debug.queryResults.teamFound = !!team;
-    }
-
-      // Get tasks
-      const tasks = await this.fieldTaskModel.find({
-        _id: { $in: taskObjectIds },
-        businessId: businessObjectId,
-        isDeleted: false
-      });
-
-      debug.queryResults.tasksFound = tasks.length;
-
-      if (tasks.length === 0) {
-        throw new NotFoundException('No tasks found for metrics calculation');
-      }
-
-      const metrics = await this.calculateRouteMetricsForTasks(tasks, team);
-      debug.queryResults.metrics = metrics;
-      debug.executionTime = Date.now() - startTime;
-
-      return { success: true, metrics, debug };
-
-    } catch (error) {
-      debug.errors.push(`Error calculating route metrics: ${error.message}`);
-      debug.executionTime = Date.now() - startTime;
-      this.logger.error(`Error calculating route metrics: ${error.message}`, error.stack);
-      
-      return {
-        success: false,
-        metrics: {
-          estimatedTotalTime: 0,
-          estimatedDistance: 0,
-          estimatedFuelCost: 0,
-          optimizationScore: 0,
-          taskCount: 0
-        },
-        debug
-      };
-    }
-  }
-
-  /**
-   * ✅ Re-optimize existing route
-   */
-  async reoptimizeRoute(
-    businessId: string,
-    routeId: string,
-    params?: any
-  ): Promise<{
-    success: boolean;
-    route: OptimizedRoute;
-    debug: DebugInfo;
-  }> {
-    const startTime = Date.now();
-    const debug: DebugInfo = {
-      timestamp: new Date().toISOString(),
-      method: 'reoptimizeRoute',
-      businessId,
-      inputs: { businessId, routeId, params },
-      queryResults: {},
-      errors: [],
-      warnings: [],
-      executionTime: 0
-    };
-
-    try {
-      const businessObjectId = this.convertToObjectId(businessId);
-      const business = await this.validateBusiness(businessId);
-
-      // Find existing route
-      const existingRoute = await this.routeModel.findOne({
-        routeId,
-        businessId: businessObjectId,
-        isDeleted: false
-      });
-
-      if (!existingRoute) {
-        throw new NotFoundException('Route not found');
-      }
-
-      debug.queryResults.existingRouteFound = true;
-
-      // Get tasks from existing route
-      const taskIds = existingRoute.routeStops.map(stop => this.convertToObjectId(stop.taskId));
-      const tasks = await this.fieldTaskModel.find({
-        _id: { $in: taskIds },
-        isDeleted: false
-      });
-
-      debug.queryResults.tasksInRoute = tasks.length;
-
-      // Get team info
-      const team = business.teams?.find((t: any) => t.id === existingRoute.teamId);
-      if (!team) {
-        throw new NotFoundException('Team not found for route');
-      }
-
-      // Re-optimize tasks
-      const optimizedTasks = this.optimizeTaskOrder(tasks, team);
-      const metrics = await this.calculateRouteMetricsForTasks(optimizedTasks, team);
-      const routeSequence = this.generateRouteSequence(optimizedTasks);
-
-      // Update existing route
-      existingRoute.routeStops = optimizedTasks.map((task, index) => ({
-        taskId: task._id.toString(),
-        sequenceNumber: index + 1,
-        estimatedArrivalTime: this.parseTimeToDate(routeSequence[index].arrivalTime, existingRoute.date.toISOString().split('T')[0]),
-        estimatedDepartureTime: this.parseTimeToDate(routeSequence[index].departureTime, existingRoute.date.toISOString().split('T')[0]),
-        distanceFromPrevious: routeSequence[index].distance,
-        travelTimeFromPrevious: routeSequence[index].travelTime,
-        serviceTime: task.estimatedDuration,
-        status: 'pending' as const,
-        location: {
-          latitude: task.location.latitude,
-          longitude: task.location.longitude,
-          address: task.location.address
-        }
-      }));
-
-      existingRoute.optimizationScore = metrics.optimizationScore;
-      existingRoute.estimatedTotalTime = metrics.estimatedTotalTime;
-      existingRoute.estimatedDistance = metrics.estimatedDistance;
-      existingRoute.estimatedFuelCost = metrics.estimatedFuelCost;
-
-      await existingRoute.save();
-
-      const optimizedRoute: OptimizedRoute = {
-        routeId: existingRoute.routeId,
-        teamId: existingRoute.teamId,
-        teamName: team.name,
-        tasks: optimizedTasks.map(task => ({
-          taskId: task._id.toString(),
-          name: task.name,
-          location: {
-            latitude: task.location.latitude,
-            longitude: task.location.longitude,
-            address: task.location.address
-          },
-          estimatedDuration: task.estimatedDuration,
-          priority: task.priority,
-          customerInfo: this.extractCustomerInfo(task)
-        })),
-        metrics,
-        route: routeSequence,
-        status: existingRoute.status
-      };
-
-      debug.queryResults.reoptimizedRoute = {
-        routeId: optimizedRoute.routeId,
-        newOptimizationScore: metrics.optimizationScore,
-        taskCount: optimizedRoute.tasks.length
-      };
-      debug.executionTime = Date.now() - startTime;
-
-      return { success: true, route: optimizedRoute, debug };
-
-    } catch (error) {
-      debug.errors.push(`Error re-optimizing route: ${error.message}`);
-      debug.executionTime = Date.now() - startTime;
-      this.logger.error(`Error re-optimizing route: ${error.message}`, error.stack);
-      
-      return {
-        success: false,
-        route: null as any,
-        debug
-      };
-    }
-  }
-
-  /**
-   * ✅ Validate route constraints
-   */
-  async validateRouteConstraints(
-    businessId: string,
-    routeData: {
-      taskIds: string[];
-      teamId: string;
-      maxTime?: number;
-      maxDistance?: number;
-    }
-  ): Promise<{
-    success: boolean;
-    valid: boolean;
-    violations: string[];
-    debug: DebugInfo;
-  }> {
-    const startTime = Date.now();
-    const debug: DebugInfo = {
-      timestamp: new Date().toISOString(),
-      method: 'validateRouteConstraints',
-      businessId,
-      inputs: { businessId, routeData },
-      queryResults: {},
-      errors: [],
-      warnings: [],
-      executionTime: 0
-    };
-
-    try {
-      const businessObjectId = this.convertToObjectId(businessId);
-      const business = await this.validateBusiness(businessId);
-      
-      const violations: string[] = [];
-
-      // Validate team exists
-      const team = business.teams?.find((t: any) => t.id === routeData.teamId);
-      if (!team) {
-        violations.push('Team not found');
-      }
-
-      debug.queryResults.teamFound = !!team;
-
-      // Get tasks
-      const taskObjectIds = routeData.taskIds.map(id => this.convertToObjectId(id));
-      const tasks = await this.fieldTaskModel.find({
-        _id: { $in: taskObjectIds },
-        businessId: businessObjectId,
-        isDeleted: false
-      });
-
-      debug.queryResults.tasksFound = tasks.length;
-      debug.queryResults.tasksRequested = routeData.taskIds.length;
-
-      if (tasks.length !== routeData.taskIds.length) {
-        violations.push(`${routeData.taskIds.length - tasks.length} tasks not found`);
-      }
-
-      // Calculate metrics for validation
-      const metrics = await this.calculateRouteMetricsForTasks(tasks, team);
-
-      // Validate time constraints
-      const maxTime = routeData.maxTime || team?.maxRouteTime || 480; // 8 hours default
-      if (metrics.estimatedTotalTime > maxTime) {
-        violations.push(`Route exceeds maximum time: ${metrics.estimatedTotalTime} > ${maxTime} minutes`);
-      }
-
-      // Validate distance constraints
-      const maxDistance = routeData.maxDistance || team?.maxRouteDistance || 200; // 200km default
-      if (metrics.estimatedDistance > maxDistance) {
-        violations.push(`Route exceeds maximum distance: ${metrics.estimatedDistance} > ${maxDistance} km`);
-      }
-
-      // Validate task count
-      const maxTasks = team?.maxDailyTasks || 8;
-      if (tasks.length > maxTasks) {
-        violations.push(`Too many tasks for team: ${tasks.length} > ${maxTasks}`);
-      }
-
-      // Validate skills and equipment
-      if (team) {
-        const teamSkills = team.skills || [];
-        const teamEquipment = team.equipment || [];
-
-        tasks.forEach((task, index) => {
-          const missingSkills = task.skillsRequired.filter(skill => !teamSkills.includes(skill));
-          if (missingSkills.length > 0) {
-            violations.push(`Task ${index + 1} requires skills not available in team: ${missingSkills.join(', ')}`);
-          }
-
-          const missingEquipment = task.equipmentRequired.filter(eq => !teamEquipment.includes(eq));
-          if (missingEquipment.length > 0) {
-            violations.push(`Task ${index + 1} requires equipment not available in team: ${missingEquipment.join(', ')}`);
-          }
-        });
-      }
-
-      const valid = violations.length === 0;
-
-      debug.queryResults = {
-        ...debug.queryResults,
-        metrics,
-        violationCount: violations.length,
-        valid
-      };
-      debug.executionTime = Date.now() - startTime;
-
-      return { success: true, valid, violations, debug };
-
-    } catch (error) {
-      debug.errors.push(`Error validating route constraints: ${error.message}`);
-      debug.executionTime = Date.now() - startTime;
-      this.logger.error(`Error validating route constraints: ${error.message}`, error.stack);
-      
-      return {
-        success: false,
-        valid: false,
-        violations: [`Validation error: ${error.message}`],
-        debug
-      };
     }
   }
 
