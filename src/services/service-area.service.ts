@@ -5,6 +5,8 @@ import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
 import { ConstructionSite } from '../schemas/construction-site.schema';
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
 
 interface CreateServiceAreaRequest {
   businessId: string;
@@ -93,6 +95,7 @@ export class ServiceAreaService {
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(ConstructionSite.name) private constructionSiteModel: Model<ConstructionSite>,
     @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   // ============================================================================
@@ -108,8 +111,13 @@ export class ServiceAreaService {
       status?: string;
       region?: string;
       priority?: string;
-    }
+    },
+    userId?: string,
+    req?: any
   ): Promise<ServiceAreaResponse[]> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
 
@@ -176,6 +184,28 @@ export class ServiceAreaService {
         })
       );
 
+      // Log access to service areas (only for complex queries or large results)
+      if (enrichedAreas.length > 10 || (filters && Object.keys(filters).length > 1)) {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_ACCESSED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: `Service Areas List (${enrichedAreas.length} areas)`,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            areasCount: enrichedAreas.length,
+            filters: filters || {},
+            hasComplexFilters: filters && Object.keys(filters).length > 1,
+            activeAreas: enrichedAreas.filter(a => a.status === 'active').length,
+            totalCoverage: enrichedAreas.reduce((sum, area) => sum + (area.coverage?.area || 0), 0)
+          }
+        });
+      }
+
       return enrichedAreas;
 
     } catch (error) {
@@ -185,9 +215,17 @@ export class ServiceAreaService {
   }
 
   /**
- * Updated createServiceArea method to handle optional fields with defaults
- */
-async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: boolean; areaId: string; message: string }> {
+   * Updated createServiceArea method to handle optional fields with defaults
+   */
+  async createServiceArea(
+    request: CreateServiceAreaRequest,
+    userId?: string,
+    req?: any
+  ): Promise<{ success: boolean; areaId: string; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const business = await this.validateBusiness(request.businessId);
       
@@ -202,6 +240,27 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       });
       
       if (existingSite) {
+        // Log duplicate name attempt
+        await this.auditLogService.createAuditLog({
+          businessId: request.businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_CREATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: request.name,
+          success: false,
+          errorMessage: 'Service area name already exists',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            serviceName: request.name,
+            region: request.region,
+            priority: request.priority,
+            errorReason: 'duplicate_name',
+            existingAreaId: existingSite._id.toString(),
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new BadRequestException('Service area with this name already exists');
       }
   
@@ -241,6 +300,32 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       });
   
       await constructionSite.save();
+
+      // Log successful service area creation
+      await this.auditLogService.createAuditLog({
+        businessId: request.businessId,
+        userId,
+        action: AuditAction.SERVICE_AREA_CREATED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: constructionSite._id.toString(),
+        resourceName: request.name,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          serviceName: request.name,
+          region: request.region || 'Unknown Region',
+          priority: request.priority || 'medium',
+          status: 'active',
+          coverageArea: request.coverage?.area || 0,
+          population: request.coverage?.population || 0,
+          hasManager: !!request.manager,
+          managerEmail: request.manager?.email,
+          hasCoordinates: !!coordinates,
+          operationDuration: Date.now() - startTime
+        }
+      });
   
       this.logger.log(`Created service area ${constructionSite._id} for business ${request.businessId}`);
   
@@ -251,18 +336,49 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       };
   
     } catch (error) {
+      // Log failed service area creation
+      if (error.name !== 'BadRequestException') {
+        await this.auditLogService.createAuditLog({
+          businessId: request.businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_CREATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: request.name,
+          success: false,
+          errorMessage: error.message,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            serviceName: request.name,
+            region: request.region,
+            priority: request.priority,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error creating service area: ${error.message}`, error.stack);
       throw error;
     }
   }
+
   /**
    * Update an existing service area
    */
   async updateServiceArea(
     businessId: string,
     areaId: string,
-    updateData: UpdateServiceAreaRequest
+    updateData: UpdateServiceAreaRequest,
+    userId?: string,
+    req?: any
   ): Promise<{ success: boolean; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       await this.validateBusiness(businessId);
 
@@ -274,8 +390,37 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       });
 
       if (!constructionSite) {
+        // Log service area not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_UPDATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: areaId,
+          resourceName: 'Unknown Service Area',
+          success: false,
+          errorMessage: 'Service area not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            areaId,
+            errorReason: 'area_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Service area not found');
       }
+
+      // Store original values for audit
+      const originalValues = {
+        name: constructionSite.name,
+        status: constructionSite.status,
+        region: constructionSite.metadata?.region,
+        priority: constructionSite.metadata?.priority,
+        coverage: { ...constructionSite.metadata?.coverage },
+        manager: { ...constructionSite.metadata?.manager }
+      };
 
       // Check name uniqueness if updating name
       if (updateData.name && updateData.name !== constructionSite.name) {
@@ -287,13 +432,43 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
         });
         
         if (nameExists) {
+          // Log duplicate name attempt
+          await this.auditLogService.createAuditLog({
+            businessId,
+            userId,
+            action: AuditAction.SERVICE_AREA_UPDATED,
+            resourceType: ResourceType.SERVICE_AREA,
+            resourceId: areaId,
+            resourceName: constructionSite.name,
+            success: false,
+            errorMessage: 'Service area name already exists',
+            severity: AuditSeverity.MEDIUM,
+            ipAddress,
+            userAgent,
+            metadata: {
+              areaId,
+              currentName: constructionSite.name,
+              attemptedName: updateData.name,
+              errorReason: 'duplicate_name',
+              conflictingAreaId: nameExists._id.toString(),
+              operationDuration: Date.now() - startTime
+            }
+          });
           throw new BadRequestException('Service area with this name already exists');
         }
       }
 
+      const changedFields: string[] = [];
+
       // Update fields
-      if (updateData.name !== undefined) constructionSite.name = updateData.name;
-      if (updateData.status !== undefined) constructionSite.status = updateData.status;
+      if (updateData.name !== undefined) {
+        constructionSite.name = updateData.name;
+        changedFields.push('name');
+      }
+      if (updateData.status !== undefined) {
+        constructionSite.status = updateData.status;
+        changedFields.push('status');
+      }
       
       // Update location data
       if (updateData.region !== undefined) {
@@ -303,11 +478,13 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
           city: updateData.region
         };
         constructionSite.metadata.region = updateData.region;
+        changedFields.push('region');
       }
       
       // Update metadata
       if (updateData.priority !== undefined) {
         constructionSite.metadata.priority = updateData.priority;
+        changedFields.push('priority');
       }
       
       if (updateData.coverage) {
@@ -315,6 +492,7 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
           ...constructionSite.metadata.coverage,
           ...updateData.coverage
         };
+        changedFields.push('coverage');
         
         if (updateData.coverage.population !== undefined) {
           constructionSite.metadata.noOfWorkers = updateData.coverage.population;
@@ -324,6 +502,7 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
           const coord = updateData.coverage.boundaries.coordinates[0];
           constructionSite.location.latitude = coord.lat;
           constructionSite.location.longitude = coord.lng;
+          changedFields.push('coordinates');
         }
       }
       
@@ -332,6 +511,7 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
           ...constructionSite.metadata.manager, 
           ...updateData.manager 
         };
+        changedFields.push('manager');
       }
       
       if (updateData.metadata) {
@@ -339,9 +519,47 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
           ...constructionSite.metadata, 
           ...updateData.metadata 
         };
+        changedFields.push('metadata');
       }
 
       await constructionSite.save();
+
+      // Prepare new values for audit
+      const newValues = {
+        name: constructionSite.name,
+        status: constructionSite.status,
+        region: constructionSite.metadata?.region,
+        priority: constructionSite.metadata?.priority,
+        coverage: { ...constructionSite.metadata?.coverage },
+        manager: { ...constructionSite.metadata?.manager }
+      };
+
+      // Log successful service area update
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.SERVICE_AREA_UPDATED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: areaId,
+        resourceName: constructionSite.name,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        oldValues: originalValues,
+        newValues: newValues,
+        changedFields,
+        metadata: {
+          areaId,
+          serviceName: constructionSite.name,
+          fieldsUpdated: changedFields.length,
+          changedFields,
+          priority: constructionSite.metadata?.priority,
+          status: constructionSite.status,
+          coverageArea: constructionSite.metadata?.coverage?.area,
+          operationDuration: Date.now() - startTime
+        }
+      });
 
       this.logger.log(`Updated service area ${areaId} for business ${businessId}`);
 
@@ -351,6 +569,30 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       };
 
     } catch (error) {
+      // Log unexpected update failure
+      if (error.name !== 'NotFoundException' && error.name !== 'BadRequestException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_UPDATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: areaId,
+          resourceName: 'Unknown Service Area',
+          success: false,
+          errorMessage: error.message,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            areaId,
+            updateData,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error updating service area: ${error.message}`, error.stack);
       throw error;
     }
@@ -359,7 +601,14 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
   /**
    * Analyze coverage for optimization using real data
    */
-  async analyzeCoverage(businessId: string): Promise<{ success: boolean; analysis: any; message: string }> {
+  async analyzeCoverage(
+    businessId: string,
+    userId?: string,
+    req?: any
+  ): Promise<{ success: boolean; analysis: any; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
       
@@ -370,6 +619,23 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       });
       
       if (constructionSites.length === 0) {
+        // Log analysis with no areas
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.COVERAGE_ANALYSIS_ACCESSED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: 'Coverage Analysis (No Areas)',
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            totalAreas: 0,
+            analysisResult: 'no_areas_found'
+          }
+        });
+
         return {
           success: true,
           analysis: { recommendations: ['Create service areas to begin coverage analysis'] },
@@ -379,6 +645,29 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
 
       // Perform real coverage analysis using actual data
       const analysis = await this.performRealCoverageAnalysis(constructionSites, businessId);
+
+      // Log coverage analysis access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.COVERAGE_ANALYSIS_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: `Coverage Analysis (${constructionSites.length} areas)`,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          totalAreas: constructionSites.length,
+          activeAreas: analysis.summary?.activeAreas || 0,
+          avgCoverage: analysis.summary?.avgCoverage || 0,
+          recommendationsCount: analysis.recommendations?.length || 0,
+          issuesCount: analysis.issues?.length || 0,
+          opportunitiesCount: analysis.opportunities?.length || 0,
+          totalAssignedTeams: analysis.summary?.totalAssignedTeams || 0,
+          recentTasksWithoutArea: analysis.summary?.recentTasksWithoutArea || 0
+        }
+      });
 
       this.logger.log(`Completed coverage analysis for business ${businessId}`);
 
@@ -397,7 +686,14 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
   /**
    * Get coverage statistics using real data
    */
-  async getCoverageStats(businessId: string): Promise<CoverageStats> {
+  async getCoverageStats(
+    businessId: string,
+    userId?: string,
+    req?: any
+  ): Promise<CoverageStats> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
       
@@ -452,6 +748,29 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
         stats.growth_rate = Math.round(avgCompletionRate - 85); // Compare to 85% baseline
       }
 
+      // Log coverage statistics access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.COVERAGE_STATISTICS_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: `Coverage Statistics (${stats.total_areas} areas)`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          totalAreas: stats.total_areas,
+          activeAreas: stats.active_areas,
+          totalCoverage: stats.total_coverage,
+          totalPopulation: stats.total_population,
+          avgResponseTime: stats.avg_response_time,
+          avgSatisfaction: stats.avg_satisfaction,
+          monthlyRevenue: stats.monthly_revenue,
+          growthRate: stats.growth_rate
+        }
+      });
+
       return stats;
 
     } catch (error) {
@@ -466,14 +785,40 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
   async assignTeamToArea(
     businessId: string,
     areaId: string,
-    teamId: string
+    teamId: string,
+    userId?: string,
+    req?: any
   ): Promise<{ success: boolean; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const business = await this.validateBusiness(businessId);
 
       // Validate team exists
       const team = business.teams?.find((t: any) => t.id === teamId);
       if (!team) {
+        // Log team not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_ASSIGNED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: areaId,
+          resourceName: 'Unknown Service Area',
+          success: false,
+          errorMessage: 'Team not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            areaId,
+            teamId,
+            errorReason: 'team_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Team not found');
       }
 
@@ -485,6 +830,27 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       });
 
       if (!constructionSite) {
+        // Log area not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_ASSIGNED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: areaId,
+          resourceName: 'Unknown Service Area',
+          success: false,
+          errorMessage: 'Service area not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            areaId,
+            teamId,
+            teamName: team.name,
+            errorReason: 'area_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Service area not found');
       }
 
@@ -496,11 +862,37 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       // Check if team is already assigned
       const existingTeam = constructionSite.metadata.teams.find((t: any) => t.id === teamId);
       if (existingTeam) {
+        // Log team already assigned
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_ASSIGNED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: areaId,
+          resourceName: constructionSite.name,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            areaId,
+            areaName: constructionSite.name,
+            teamId,
+            teamName: team.name,
+            memberCount: team.memberCount || 0,
+            result: 'already_assigned',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         return {
           success: true,
           message: `Team ${team.name} is already assigned to ${constructionSite.name}`
         };
       }
+
+      // Store previous team count for audit
+      const previousTeamCount = constructionSite.metadata.teams.length;
 
       // Assign team to area
       constructionSite.metadata.teams.push({
@@ -511,6 +903,32 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       
       await constructionSite.save();
 
+      // Log successful team assignment
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.SERVICE_AREA_ASSIGNED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: areaId,
+        resourceName: constructionSite.name,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          areaId,
+          areaName: constructionSite.name,
+          teamId,
+          teamName: team.name,
+          memberCount: team.memberCount || 0,
+          previousTeamCount,
+          newTeamCount: constructionSite.metadata.teams.length,
+          areaPriority: constructionSite.metadata?.priority,
+          areaStatus: constructionSite.status,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.log(`Assigned team ${teamId} to service area ${areaId} for business ${businessId}`);
 
       return {
@@ -519,6 +937,30 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
       };
 
     } catch (error) {
+      // Log unexpected assignment failure
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.SERVICE_AREA_ASSIGNED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: areaId,
+          resourceName: 'Unknown Service Area',
+          success: false,
+          errorMessage: error.message,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            areaId,
+            teamId,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error assigning team to area: ${error.message}`, error.stack);
       throw error;
     }
@@ -527,6 +969,19 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
   // ============================================================================
   // PRIVATE HELPER METHODS - CONSTRUCTION SITE TO SERVICE AREA MAPPING
   // ============================================================================
+
+  /**
+   * Extract IP address from request
+   */
+  private extractIpAddress(req: any): string {
+    return (
+      req?.headers?.['x-forwarded-for'] ||
+      req?.headers?.['x-real-ip'] ||
+      req?.connection?.remoteAddress ||
+      req?.socket?.remoteAddress ||
+      'unknown'
+    ).split(',')[0].trim();
+  }
 
   /**
    * Extract region from construction site location
@@ -598,9 +1053,9 @@ async createServiceArea(request: CreateServiceAreaRequest): Promise<{ success: b
   }
 
   /**
- * Updated validateServiceAreaData method - only name is required now
- */
-private validateServiceAreaData(data: CreateServiceAreaRequest): void {
+   * Updated validateServiceAreaData method - only name is required now
+   */
+  private validateServiceAreaData(data: CreateServiceAreaRequest): void {
     // Only validate required fields
     if (!data.name?.trim()) {
       throw new BadRequestException('Service area name is required');
