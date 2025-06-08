@@ -295,6 +295,17 @@ export interface BusinessSkillRequirement {
     customWeight?: number;           // How important is this skill (1-10)
 }
 
+export interface QualityInspectionConfiguration {
+  canInspect: string[];
+  canReview: string[];
+  finalApprover: string;
+  allowSelfReview: boolean;
+  requireClientSignoff: boolean;
+  requirePhotos: boolean;
+  requireSignature: boolean;
+  useDetailedInspections: boolean;
+}
+
 @Schema({ timestamps: true })
 export class Business extends Document {
     @Prop({ required: true })
@@ -586,7 +597,9 @@ export class Business extends Document {
     name: string; // e.g., "Main Office", "Warehouse"
     timezone: string;
   };
-
+  
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  qualityInspectionConfig: QualityInspectionConfiguration;
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);
@@ -606,6 +619,9 @@ BusinessSchema.index({ 'teams.currentLocation.lat': 1, 'teams.currentLocation.ln
 BusinessSchema.index({ 'teams.skills': 1 });
 BusinessSchema.index({ 'teams.vehicleInfo.type': 1 });
 BusinessSchema.index({ 'baseLocation.latitude': 1, 'baseLocation.longitude': 1 });
+BusinessSchema.index({ 'qualityInspectionConfig.useDetailedInspections': 1 });
+BusinessSchema.index({ 'qualityInspectionConfig.canInspect': 1 });
+BusinessSchema.index({ 'qualityInspectionConfig.finalApprover': 1 });
 
 BusinessSchema.virtual('address', {
     ref: 'Address',
