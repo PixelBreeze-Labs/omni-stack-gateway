@@ -385,6 +385,7 @@ import { QualityInspectionService } from './services/quality-inspection.service'
 import { BusinessQualityInspectionController } from './controllers/business-quality-inspection.controller';
 import { StaffQualityInspectionController } from './controllers/staff-quality-inspection.controller';
 import { ReviewerQualityInspectionController } from './controllers/reviewer-quality-inspection.controller';
+import { FinalApproverQualityInspectionController } from './controllers/final-approver-quality-inspection.controller';
 
 // AppClient
 import { AppClientService } from './services/app-client.service';
@@ -634,6 +635,7 @@ import { AppClientService } from './services/app-client.service';
     BusinessQualityInspectionController,
     StaffQualityInspectionController,
     ReviewerQualityInspectionController,
+    FinalApproverQualityInspectionController
   ],
   providers: [
     SnapfoodService,
