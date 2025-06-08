@@ -379,6 +379,11 @@ import { GoogleMapsService } from './services/google-maps.service';
 import { RouteProgress, RouteProgressSchema } from './schemas/route-progress.schema';
 import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availability.schema';
 
+// Quality Inspection (Schema, Service, Controller)
+import { QualityInspection, QualityInspectionSchema } from './schemas/quality-inspection.schema';
+
+// AppClient
+import { AppClientService } from './services/app-client.service';
 
 @Module({
   imports: [
@@ -505,6 +510,7 @@ import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availab
       { name: FieldTask.name, schema: FieldTaskSchema },
       { name: RouteProgress.name, schema: RouteProgressSchema },
       { name: TeamAvailability.name, schema: TeamAvailabilitySchema },
+      { name: QualityInspection.name, schema: QualityInspectionSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -739,6 +745,7 @@ import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availab
     RouteAnalyticsService,
     WeatherRouteService,
     GoogleMapsService,
+    AppClientService,
   ],
 })
 export class AppModule implements NestModule {
