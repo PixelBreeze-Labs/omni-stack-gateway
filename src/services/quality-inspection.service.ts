@@ -72,6 +72,28 @@ export interface FinalApprovalDto {
     overridePreviousReview?: boolean;
   }
 
+  // DTOs for client actions
+export interface ClientReviewDto {
+    feedback: string;
+    rating?: number; // 1-5 client satisfaction rating
+    concerns?: string[];
+    requestedChanges?: string[];
+  }
+  
+  export interface ClientApprovalDto {
+    approved: boolean;
+    clientSignature?: string;
+    notes?: string;
+    satisfactionRating?: number; // 1-5
+  }
+  
+  export interface ClientRejectionDto {
+    reason: string;
+    requestedChanges: string[];
+    priority?: 'low' | 'medium' | 'high';
+    scheduledRevisitDate?: Date;
+  }
+  
   
 @Injectable()
 export class QualityInspectionService {
@@ -1590,5 +1612,440 @@ async getInspectionsForFinalApproval(
     ].includes(mainRole);
   
     return canOverride;
+  }
+
+
+  /**
+ * Get inspections for a specific client
+ */
+async getClientInspections(
+    clientId: string,
+    appProjectId?: string,
+    filters: {
+      status?: string;
+      type?: string;
+      dateRange?: { startDate: Date; endDate: Date };
+      page?: number;
+      limit?: number;
+    } = {}
+  ): Promise<{ inspections: any[]; total: number; page: number; totalPages: number }> {
+    try {
+      this.logger.log(`Getting inspections for client: ${clientId}`);
+  
+      const { status, type, dateRange, page = 1, limit = 10 } = filters;
+      const skip = (page - 1) * limit;
+  
+      // Build filter for client inspections
+      const filter: any = {
+        appClientId: clientId,
+        isDeleted: { $ne: true },
+        status: { $in: ['complete', 'approved'] } // Only show completed or approved inspections to client
+      };
+  
+      // Add project filter if specified
+      if (appProjectId) filter.appProjectId = appProjectId;
+  
+      // Add additional filters
+      if (status) filter.status = status;
+      if (type) filter.type = type;
+      
+      // Add date range filter
+      if (dateRange) {
+        filter.completedDate = {
+          $gte: dateRange.startDate,
+          $lte: dateRange.endDate
+        };
+      }
+  
+      // Get total count
+      const total = await this.qualityInspectionModel.countDocuments(filter);
+      const totalPages = Math.ceil(total / limit);
+  
+      // Get inspections - most recent first
+      const inspections = await this.qualityInspectionModel
+        .find(filter)
+        .sort({ completedDate: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('inspectorId', 'name surname email')
+        .populate('reviewerId', 'name surname email')
+        .populate('approverId', 'name surname email')
+        .populate('appProjectId', 'name description status')
+        .select('-metadata.checklistItems -metadata.photos') // Hide detailed technical data from client
+        .lean();
+  
+      // Format inspections for client view (simplified data)
+      const clientFormattedInspections = inspections.map(inspection => ({
+        _id: inspection._id,
+        type: inspection.type,
+        status: inspection.status,
+        location: inspection.location,
+        inspectionCategory: inspection.inspectionCategory,
+        overallRating: inspection.overallRating,
+        passRate: inspection.totalItems > 0 ? Math.round((inspection.passedItems / inspection.totalItems) * 100) : null,
+        hasCriticalIssues: inspection.hasCriticalIssues,
+        inspectionDate: inspection.inspectionDate,
+        completedDate: inspection.completedDate,
+        project: inspection.appProjectId,
+        inspector: inspection.inspectorId,
+        reviewer: inspection.reviewerId,
+        approver: inspection.approverId,
+        clientFeedback: inspection.metadata?.clientFeedback,
+        clientRating: inspection.metadata?.clientRating,
+        summary: inspection.metadata?.remarks || inspection.metadata?.notes || 'No summary available'
+      }));
+  
+      return {
+        inspections: clientFormattedInspections,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      this.logger.error(`Error getting client inspections: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get detailed inspection for client review
+   */
+  async getInspectionDetailsForClient(
+    inspectionId: string,
+    clientId: string
+  ): Promise<any> {
+    try {
+      this.logger.log(`Getting inspection details for client: ${clientId}, inspection: ${inspectionId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel
+        .findOne({
+          _id: inspectionId,
+          appClientId: clientId,
+          isDeleted: { $ne: true }
+        })
+        .populate('inspectorId', 'name surname email')
+        .populate('reviewerId', 'name surname email')
+        .populate('approverId', 'name surname email')
+        .populate('appProjectId', 'name description status')
+        .lean();
+  
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found or access denied');
+      }
+  
+      // Format for client view - show summary but hide technical details
+      const clientView = {
+        _id: inspection._id,
+        type: inspection.type,
+        status: inspection.status,
+        location: inspection.location,
+        inspectionCategory: inspection.inspectionCategory,
+        overallRating: inspection.overallRating,
+        passedItems: inspection.passedItems,
+        failedItems: inspection.failedItems,
+        totalItems: inspection.totalItems,
+        passRate: inspection.totalItems > 0 ? Math.round((inspection.passedItems / inspection.totalItems) * 100) : null,
+        hasCriticalIssues: inspection.hasCriticalIssues,
+        inspectionDate: inspection.inspectionDate,
+        completedDate: inspection.completedDate,
+        project: inspection.appProjectId,
+        inspector: inspection.inspectorId,
+        reviewer: inspection.reviewerId,
+        approver: inspection.approverId,
+        
+        // Summary information
+        summary: inspection.metadata?.remarks || inspection.metadata?.notes || 'No summary available',
+        improvementSuggestions: inspection.metadata?.improvementSuggestions,
+        
+        // Client-specific data
+        clientFeedback: inspection.metadata?.clientFeedback,
+        clientRating: inspection.metadata?.clientRating,
+        clientApproved: inspection.metadata?.clientApproved,
+        clientApprovedAt: inspection.metadata?.clientApprovedAt,
+        
+        // Photos (if any) - filtered for client viewing
+        hasPhotos: inspection.hasPhotos,
+        photoCount: inspection.metadata?.photos ? JSON.parse(inspection.metadata.photos).length : 0,
+        
+        // Status history (simplified)
+        timeline: {
+          created: inspection.createdAt,
+          completed: inspection.completedDate,
+          clientReviewed: inspection.metadata?.clientReviewedAt
+        }
+      };
+  
+      return clientView;
+    } catch (error) {
+      this.logger.error(`Error getting inspection details for client: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Client review of inspection
+   */
+  async reviewInspectionByClient(
+    inspectionId: string,
+    clientId: string,
+    reviewData: ClientReviewDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Client reviewing inspection: ${inspectionId} by client: ${clientId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findOne({
+        _id: inspectionId,
+        appClientId: clientId,
+        isDeleted: { $ne: true }
+      });
+  
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found or access denied');
+      }
+  
+      // Verify inspection is complete and can be reviewed by client
+      if (inspection.status !== 'complete') {
+        throw new BadRequestException('Only completed inspections can be reviewed by client');
+      }
+  
+      // Validate review data
+      if (!reviewData.feedback) {
+        throw new BadRequestException('Feedback is required for client review');
+      }
+  
+      // Update inspection with client review
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          metadata: {
+            ...inspection.metadata,
+            clientFeedback: reviewData.feedback,
+            clientRating: reviewData.rating,
+            clientConcerns: reviewData.concerns || [],
+            clientRequestedChanges: reviewData.requestedChanges || [],
+            clientReviewedAt: new Date().toISOString(),
+            clientReviewStatus: 'reviewed'
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully recorded client review for inspection: ${inspectionId}`);
+  
+      return {
+        success: true,
+        message: 'Client review recorded successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error recording client review: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Client approval of inspection
+   */
+  async approveInspectionByClient(
+    inspectionId: string,
+    clientId: string,
+    approvalData: ClientApprovalDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Client ${approvalData.approved ? 'approving' : 'handling'} inspection: ${inspectionId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findOne({
+        _id: inspectionId,
+        appClientId: clientId,
+        isDeleted: { $ne: true }
+      });
+  
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found or access denied');
+      }
+  
+      // Verify inspection is complete
+      if (inspection.status !== 'complete') {
+        throw new BadRequestException('Only completed inspections can be approved by client');
+      }
+  
+      // Update inspection with client approval
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          metadata: {
+            ...inspection.metadata,
+            clientApproved: approvalData.approved,
+            clientSignature: approvalData.clientSignature,
+            clientApprovalNotes: approvalData.notes,
+            clientSatisfactionRating: approvalData.satisfactionRating,
+            clientApprovedAt: new Date().toISOString(),
+            clientReviewStatus: approvalData.approved ? 'approved' : 'pending_changes'
+          }
+        },
+        { new: true }
+      );
+  
+      const message = approvalData.approved 
+        ? 'Inspection approved by client successfully'
+        : 'Client approval status updated successfully';
+  
+      this.logger.log(`Client approval recorded for inspection: ${inspectionId} - ${approvalData.approved ? 'APPROVED' : 'NOT APPROVED'}`);
+  
+      return {
+        success: true,
+        message,
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error recording client approval: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Client rejection with requested changes
+   */
+  async rejectInspectionByClient(
+    inspectionId: string,
+    clientId: string,
+    rejectionData: ClientRejectionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Client rejecting inspection: ${inspectionId} by client: ${clientId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findOne({
+        _id: inspectionId,
+        appClientId: clientId,
+        isDeleted: { $ne: true }
+      });
+  
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found or access denied');
+      }
+  
+      // Verify inspection is complete
+      if (inspection.status !== 'complete') {
+        throw new BadRequestException('Only completed inspections can be rejected by client');
+      }
+  
+      // Validate rejection data
+      if (!rejectionData.reason || !rejectionData.requestedChanges?.length) {
+        throw new BadRequestException('Reason and requested changes are required for client rejection');
+      }
+  
+      // Update inspection - this should trigger a new inspection or rework
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          metadata: {
+            ...inspection.metadata,
+            clientApproved: false,
+            clientRejectionReason: rejectionData.reason,
+            clientRequestedChanges: rejectionData.requestedChanges,
+            clientRejectionPriority: rejectionData.priority || 'medium',
+            scheduledRevisitDate: rejectionData.scheduledRevisitDate,
+            clientRejectedAt: new Date().toISOString(),
+            clientReviewStatus: 'rejected',
+            requiresRework: true
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Client rejection recorded for inspection: ${inspectionId}`);
+  
+      return {
+        success: true,
+        message: 'Inspection rejected by client - rework required',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error recording client rejection: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get client inspection summary and statistics
+   */
+  async getClientInspectionSummary(
+    clientId: string,
+    appProjectId?: string
+  ): Promise<any> {
+    try {
+      this.logger.log(`Getting inspection summary for client: ${clientId}`);
+  
+      // Base filter
+      const baseFilter: any = {
+        appClientId: clientId,
+        isDeleted: { $ne: true }
+      };
+  
+      if (appProjectId) baseFilter.appProjectId = appProjectId;
+  
+      // Get summary statistics
+      const [
+        totalInspections,
+        completedInspections,
+        clientApprovedCount,
+        criticalIssuesCount,
+        avgClientRating
+      ] = await Promise.all([
+        this.qualityInspectionModel.countDocuments(baseFilter),
+        this.qualityInspectionModel.countDocuments({ ...baseFilter, status: 'complete' }),
+        this.qualityInspectionModel.countDocuments({ 
+          ...baseFilter, 
+          'metadata.clientApproved': true 
+        }),
+        this.qualityInspectionModel.countDocuments({ 
+          ...baseFilter, 
+          hasCriticalIssues: true 
+        }),
+        this.qualityInspectionModel.aggregate([
+          { $match: { ...baseFilter, 'metadata.clientRating': { $exists: true } } },
+          { $group: { _id: null, avgRating: { $avg: '$metadata.clientRating' } } }
+        ])
+      ]);
+  
+      // Get inspections by status
+      const inspectionsByStatus = await this.qualityInspectionModel.aggregate([
+        { $match: baseFilter },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]);
+  
+      // Get recent activity
+      const recentInspections = await this.qualityInspectionModel
+        .find(baseFilter)
+        .sort({ completedDate: -1 })
+        .limit(5)
+        .populate('appProjectId', 'name')
+        .select('type status location completedDate overallRating appProjectId')
+        .lean();
+  
+      return {
+        summary: {
+          totalInspections,
+          completedInspections,
+          clientApprovedCount,
+          criticalIssuesCount,
+          approvalRate: completedInspections > 0 ? Math.round((clientApprovedCount / completedInspections) * 100) : 0,
+          averageClientRating: avgClientRating[0]?.avgRating || 0
+        },
+        inspectionsByStatus: inspectionsByStatus.reduce((acc, item) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+        recentActivity: recentInspections,
+        projectFilter: appProjectId || 'all'
+      };
+    } catch (error) {
+      this.logger.error(`Error getting client inspection summary: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
