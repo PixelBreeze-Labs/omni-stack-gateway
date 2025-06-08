@@ -7,7 +7,15 @@ import { Business } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
 import { SaasNotificationService } from './saas-notification.service';
 import { EmailService } from './email.service';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
 import { DeliveryChannel, NotificationPriority, NotificationType } from 'src/schemas/saas-notification.schema';
+
+// NOTE: Add these to AuditAction enum in audit-log.schema.ts:
+// TICKET_CREATED = 'ticket_created',
+// TICKET_UPDATED = 'ticket_updated', 
+// TICKET_ACCESSED = 'ticket_accessed',
+// TICKET_DELETED = 'ticket_deleted',
 
 export interface CreateTicketDto {
   title: string;
@@ -71,13 +79,27 @@ export class TicketService {
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(User.name) private userModel: Model<User>,
     private readonly notificationService: SaasNotificationService,
+    private readonly auditLogService: AuditLogService,
     private readonly emailService?: EmailService
   ) {}
 
   /**
- * Send notification to business when support updates ticket
- */
-private async sendTicketUpdateNotification(
+   * Helper method to extract IP address from request
+   */
+  private extractIpAddress(req: any): string {
+    return (
+      req?.headers?.['x-forwarded-for'] ||
+      req?.headers?.['x-real-ip'] ||
+      req?.connection?.remoteAddress ||
+      req?.socket?.remoteAddress ||
+      'unknown'
+    ).split(',')[0].trim();
+  }
+
+  /**
+   * Send notification to business when support updates ticket
+   */
+  private async sendTicketUpdateNotification(
     ticket: Ticket,
     updateType: 'status_changed' | 'message_added' | 'assignment_changed',
     additionalData?: any
@@ -89,20 +111,20 @@ private async sendTicketUpdateNotification(
         this.logger.warn(`Business not found for ticket notification: ${ticket.businessId}`);
         return;
       }
-  
+
       // Get business admin user only
       const adminUser = await this.userModel.findById(business.adminUserId);
-  
+
       if (!adminUser) {
         this.logger.warn(`Admin user not found for business: ${ticket.businessId}`);
         return;
       }
-  
+
       // Prepare notification content based on update type
       let title: string;
       let body: string;
       let priority: NotificationPriority = NotificationPriority.MEDIUM;
-  
+
       switch (updateType) {
         case 'status_changed':
           title = `Ticket Status Updated`;
@@ -126,7 +148,7 @@ private async sendTicketUpdateNotification(
           title = `Ticket Updated`;
           body = `Your support ticket "${ticket.title}" has been updated.`;
       }
-  
+
       // Create action data for deep linking
       const actionData = {
         type: 'support_ticket',
@@ -134,7 +156,7 @@ private async sendTicketUpdateNotification(
         entityType: 'ticket',
         url: `https://app.staffluent.co/help-center`
       };
-  
+
       // Send notification to admin user based on their preferences
       try {
         // Check admin user's individual notification preferences
@@ -145,7 +167,7 @@ private async sendTicketUpdateNotification(
         if (emailEnabled) {
           userChannels.push(DeliveryChannel.EMAIL);
         }
-  
+
         // Send in-app notification (always sent)
         const notification = await this.notificationService.createNotification({
           businessId: ticket.businessId,
@@ -161,27 +183,24 @@ private async sendTicketUpdateNotification(
           },
           actionData
         });
-  
+
         // Send email notification if admin user has email notifications enabled
         if (emailEnabled && adminUser.email) {
           await this.sendTicketUpdateEmail(adminUser, business, ticket, updateType, additionalData);
         }
-  
-    
-  
+
         this.logger.log(`Sent ticket notification to admin user ${adminUser._id} via channels: ${userChannels.join(', ')}`);
-  
+
       } catch (notificationError) {
         this.logger.error(`Failed to send ticket notification to admin user ${adminUser._id}: ${notificationError.message}`);
       }
-  
+
       this.logger.log(`Sent ticket ${updateType} notification for ticket ${ticket._id} to admin user`);
-  
+
     } catch (error) {
       this.logger.error(`Error sending ticket update notification: ${error.message}`, error.stack);
     }
   }
-
 
   /**
    * Send email notification for ticket updates
@@ -275,10 +294,10 @@ private async sendTicketUpdateNotification(
     }
   }
 
-   /**
+  /**
    * Get status color for email templates
    */
-   private getStatusColor(status: string): string {
+  private getStatusColor(status: string): string {
     switch (status.toLowerCase()) {
       case 'open':
         return '#2196f3'; // Blue
@@ -293,18 +312,45 @@ private async sendTicketUpdateNotification(
     }
   }
 
-
   /**
    * Create a new support ticket
    */
   async createTicket(
     businessId: string,
     clientId: string,
-    createTicketDto: CreateTicketDto
+    createTicketDto: CreateTicketDto,
+    userId?: string,
+    req?: any
   ): Promise<Ticket> {
-    try {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
 
-        const business = await this.businessModel.findById(businessId);
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) {
+        // Log business not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TICKET_CREATED,
+          resourceType: ResourceType.TICKET,
+          resourceName: createTicketDto.title,
+          success: false,
+          errorMessage: 'Business not found',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            title: createTicketDto.title,
+            priority: createTicketDto.priority,
+            category: createTicketDto.category,
+            errorReason: 'business_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
+        throw new NotFoundException('Business not found');
+      }
 
       const ticket = new this.ticketModel({
         businessId,
@@ -318,11 +364,61 @@ private async sendTicketUpdateNotification(
       });
 
       const savedTicket = await ticket.save();
-      
+
+      // Log successful ticket creation
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TICKET_CREATED,
+        resourceType: ResourceType.TICKET,
+        resourceId: savedTicket._id.toString(),
+        resourceName: savedTicket.title,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          ticketId: savedTicket._id.toString(),
+          title: savedTicket.title,
+          description: savedTicket.description.substring(0, 200), // Truncate for audit
+          priority: savedTicket.priority,
+          category: savedTicket.category,
+          status: savedTicket.status,
+          assignedTo: savedTicket.assignedTo,
+          tags: savedTicket.tags,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.log(`New ticket created: ${savedTicket._id} for business: ${businessId}`);
       
       return savedTicket;
     } catch (error) {
+      // Log unexpected errors
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TICKET_CREATED,
+          resourceType: ResourceType.TICKET,
+          resourceName: createTicketDto.title,
+          success: false,
+          errorMessage: 'Unexpected error during ticket creation',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            title: createTicketDto.title,
+            priority: createTicketDto.priority,
+            category: createTicketDto.category,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error creating ticket: ${error.message}`, error.stack);
       throw error;
     }
@@ -336,8 +432,13 @@ private async sendTicketUpdateNotification(
     clientId: string,
     filters: TicketFilters = {},
     page: number = 1,
-    limit: number = 20
+    limit: number = 20,
+    userId?: string,
+    req?: any
   ): Promise<TicketListResponse> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const query: any = { businessId, clientId, isDeleted: false };
 
@@ -386,6 +487,32 @@ private async sendTicketUpdateNotification(
         .limit(limit)
         .exec();
 
+      // Log business ticket access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TICKET_ACCESSED,
+        resourceType: ResourceType.TICKET,
+        resourceName: `Business tickets list`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          ticketsRetrieved: tickets.length,
+          totalTickets: total,
+          page,
+          limit,
+          filters: {
+            status: filters.status,
+            priority: filters.priority,
+            category: filters.category,
+            hasDateRange: !!(filters.fromDate || filters.toDate),
+            tagCount: filters.tags?.length || 0
+          }
+        }
+      });
+
       return {
         tickets,
         total,
@@ -399,22 +526,22 @@ private async sendTicketUpdateNotification(
     }
   }
 
-/**
- * Get all tickets (for support team) - FIXED business population
- */
-async getAllTickets(
+  /**
+   * Get all tickets (for support team) - NO AUDIT LOGGING (support team action)
+   */
+  async getAllTickets(
     filters: TicketFilters = {},
     page: number = 1,
     limit: number = 20
   ): Promise<TicketListResponse> {
     try {
       const query: any = { isDeleted: false };
-  
+
       // Apply client filter for support team
       if (filters.clientId) {
         query.clientId = filters.clientId;
       }
-  
+
       // Apply other filters
       if (filters.status) {
         query.status = filters.status;
@@ -435,7 +562,7 @@ async getAllTickets(
       if (filters.createdByEmail) {
         query.createdByEmail = filters.createdByEmail;
       }
-  
+
       if (filters.businessId) {
         query.businessId = filters.businessId;
       }
@@ -453,7 +580,7 @@ async getAllTickets(
           query.createdAt.$lte = filters.toDate;
         }
       }
-  
+
       // Search functionality
       if (filters.search) {
         query.$or = [
@@ -463,10 +590,10 @@ async getAllTickets(
           { createdByEmail: { $regex: filters.search, $options: 'i' } }
         ];
       }
-  
+
       const total = await this.ticketModel.countDocuments(query);
       const skip = (page - 1) * limit;
-  
+
       // Get tickets without populate since businessId is not a ref
       const tickets = await this.ticketModel
         .find(query)
@@ -510,39 +637,6 @@ async getAllTickets(
         success: true
       };
 
-      // METHOD 3: Using aggregation pipeline (most efficient)
-      // const result = await this.ticketModel.aggregate([
-      //   { $match: query },
-      //   { $sort: { createdAt: -1 } },
-      //   { $skip: skip },
-      //   { $limit: limit },
-      //   {
-      //     $lookup: {
-      //       from: 'businesses', // Make sure this matches your collection name
-      //       localField: 'businessId',
-      //       foreignField: '_id',
-      //       as: 'business',
-      //       pipeline: [
-      //         { $project: { name: 1, email: 1 } }
-      //       ]
-      //     }
-      //   },
-      //   {
-      //     $unwind: {
-      //       path: '$business',
-      //       preserveNullAndEmptyArrays: true
-      //     }
-      //   }
-      // ]);
-
-      // return {
-      //   tickets: result,
-      //   total,
-      //   page,
-      //   limit,
-      //   success: true
-      // };
-
     } catch (error) {
       this.logger.error(`Error getting all tickets: ${error.message}`, error.stack);
       throw error;
@@ -550,9 +644,18 @@ async getAllTickets(
   }
 
   /**
- * Get a specific ticket - UPDATED to support client filtering
- */
-async getTicket(ticketId: string, businessId?: string, clientId?: string): Promise<Ticket> {
+   * Get a specific ticket - Log only for business access
+   */
+  async getTicket(
+    ticketId: string, 
+    businessId?: string, 
+    clientId?: string,
+    userId?: string,
+    req?: any
+  ): Promise<Ticket> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const query: any = { _id: ticketId, isDeleted: false };
       
@@ -560,21 +663,65 @@ async getTicket(ticketId: string, businessId?: string, clientId?: string): Promi
       if (businessId) {
         query.businessId = businessId;
       }
-  
+
       // If clientId is provided (support team access), restrict to that client
       if (clientId) {
         query.clientId = clientId;
       }
-  
+
       const ticket = await this.ticketModel
         .findOne(query)
         .populate('businessId', 'name email')
         .exec();
       
       if (!ticket) {
+        // Log ticket not found only for business access
+        if (businessId) {
+          await this.auditLogService.createAuditLog({
+            businessId,
+            userId,
+            action: AuditAction.TICKET_ACCESSED,
+            resourceType: ResourceType.TICKET,
+            resourceId: ticketId,
+            resourceName: `Ticket ${ticketId}`,
+            success: false,
+            errorMessage: 'Ticket not found',
+            severity: AuditSeverity.MEDIUM,
+            ipAddress,
+            userAgent,
+            metadata: {
+              ticketId,
+              errorReason: 'ticket_not_found'
+            }
+          });
+        }
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-  
+
+      // Log successful ticket access only for business
+      if (businessId) {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TICKET_ACCESSED,
+          resourceType: ResourceType.TICKET,
+          resourceId: ticket._id.toString(),
+          resourceName: ticket.title,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            ticketId: ticket._id.toString(),
+            title: ticket.title,
+            status: ticket.status,
+            priority: ticket.priority,
+            category: ticket.category,
+            messageCount: ticket.messages?.length || 0
+          }
+        });
+      }
+
       return ticket;
     } catch (error) {
       this.logger.error(`Error getting ticket: ${error.message}`, error.stack);
@@ -583,13 +730,20 @@ async getTicket(ticketId: string, businessId?: string, clientId?: string): Promi
   }
 
   /**
- * Update ticket details - UPDATED to support client verification
- */
-async updateTicket(
+   * Update ticket details - Log only for business-initiated updates
+   */
+  async updateTicket(
     ticketId: string,
     updateTicketDto: UpdateTicketDto,
-    clientId?: string
+    clientId?: string,
+    businessId?: string,
+    userId?: string,
+    req?: any
   ): Promise<Ticket> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const query: any = { _id: ticketId, isDeleted: false };
       
@@ -597,74 +751,178 @@ async updateTicket(
       if (clientId) {
         query.clientId = clientId;
       }
-  
+
+      // If businessId provided, verify business ownership
+      if (businessId) {
+        query.businessId = businessId;
+      }
+
       const originalTicket = await this.ticketModel.findOne(query).exec();
-  
+
       if (!originalTicket) {
+        // Log ticket not found only for business updates
+        if (businessId) {
+          await this.auditLogService.createAuditLog({
+            businessId,
+            userId,
+            action: AuditAction.TICKET_UPDATED,
+            resourceType: ResourceType.TICKET,
+            resourceId: ticketId,
+            resourceName: `Ticket ${ticketId}`,
+            success: false,
+            errorMessage: 'Ticket not found',
+            severity: AuditSeverity.MEDIUM,
+            ipAddress,
+            userAgent,
+            metadata: {
+              ticketId,
+              updateFields: Object.keys(updateTicketDto),
+              errorReason: 'ticket_not_found',
+              operationDuration: Date.now() - startTime
+            }
+          });
+        }
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-  
+
       const updateData: any = { ...updateTicketDto };
-  
+
       // If marking as resolved, set resolvedAt timestamp
       if (updateTicketDto.status === TicketStatus.RESOLVED) {
         updateData.resolvedAt = new Date();
       }
-  
+
       const ticket = await this.ticketModel.findOneAndUpdate(
         query,
         { $set: updateData },
         { new: true }
       ).exec();
-  
+
       if (!ticket) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-  
-      // Send notification if status changed
-      if (updateTicketDto.status && updateTicketDto.status !== originalTicket.status) {
+
+      // Log successful ticket update only for business updates
+      if (businessId) {
+        // Track changed fields
+        const changedFields: string[] = [];
+        const oldValues: any = {};
+        const newValues: any = {};
+
+        Object.keys(updateTicketDto).forEach(field => {
+          if (originalTicket[field] !== updateTicketDto[field]) {
+            changedFields.push(field);
+            oldValues[field] = originalTicket[field];
+            newValues[field] = updateTicketDto[field];
+          }
+        });
+
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TICKET_UPDATED,
+          resourceType: ResourceType.TICKET,
+          resourceId: ticket._id.toString(),
+          resourceName: ticket.title,
+          success: true,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          oldValues,
+          newValues,
+          changedFields,
+          metadata: {
+            ticketId: ticket._id.toString(),
+            title: ticket.title,
+            updatedFields: changedFields,
+            statusChange: oldValues.status !== newValues.status ? {
+              from: oldValues.status,
+              to: newValues.status
+            } : undefined,
+            priorityChange: oldValues.priority !== newValues.priority ? {
+              from: oldValues.priority,
+              to: newValues.priority
+            } : undefined,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
+      // Send notification if status changed (support team updates only)
+      if (updateTicketDto.status && updateTicketDto.status !== originalTicket.status && !businessId) {
         await this.sendTicketUpdateNotification(ticket, 'status_changed');
       }
-  
-      // Send notification if assignment changed
-      if (updateTicketDto.assignedTo && updateTicketDto.assignedTo !== originalTicket.assignedTo) {
+
+      // Send notification if assignment changed (support team updates only)
+      if (updateTicketDto.assignedTo && updateTicketDto.assignedTo !== originalTicket.assignedTo && !businessId) {
         await this.sendTicketUpdateNotification(ticket, 'assignment_changed');
       }
-  
+
       this.logger.log(`Ticket updated: ${ticketId} - Status: ${ticket.status}`);
       
       return ticket;
     } catch (error) {
+      // Log unexpected errors only for business updates
+      if (businessId && error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TICKET_UPDATED,
+          resourceType: ResourceType.TICKET,
+          resourceId: ticketId,
+          resourceName: `Ticket ${ticketId}`,
+          success: false,
+          errorMessage: 'Unexpected error during ticket update',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            ticketId,
+            updateFields: Object.keys(updateTicketDto),
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error updating ticket: ${error.message}`, error.stack);
       throw error;
     }
   }
 
- /**
- * Add a message to a ticket - UPDATED to support client verification
- */
-async addMessage(
+  /**
+   * Add a message to a ticket - Log only business messages
+   */
+  async addMessage(
     ticketId: string,
     addMessageDto: AddMessageDto,
     sender: 'business' | 'support',
     businessId?: string,
-    clientId?: string
+    clientId?: string,
+    userId?: string,
+    req?: any
   ): Promise<Ticket> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const query: any = { _id: ticketId, isDeleted: false };
       
       if (businessId) {
         query.businessId = businessId;
       }
-  
+
       // If clientId provided (support team), verify client ownership
       if (clientId) {
         query.clientId = clientId;
       }
-  
+
       let senderName = addMessageDto.senderName;
       let senderEmail = addMessageDto.senderEmail;
-  
+
       // If it's a business message, get business details
       if (sender === 'business' && businessId) {
         const business = await this.businessModel.findById(businessId);
@@ -683,7 +941,7 @@ async addMessage(
         timestamp: new Date(),
         metadata: addMessageDto.metadata || {}
       } as TicketMessage;
-  
+
       const ticket = await this.ticketModel.findOneAndUpdate(
         query,
         { 
@@ -697,11 +955,59 @@ async addMessage(
         },
         { new: true }
       ).exec();
-  
+
       if (!ticket) {
+        // Log ticket not found only for business messages
+        if (sender === 'business' && businessId) {
+          await this.auditLogService.createAuditLog({
+            businessId,
+            userId,
+            action: AuditAction.MESSAGE_SENT,
+            resourceType: ResourceType.MESSAGE,
+            resourceName: `Message to ticket ${ticketId}`,
+            success: false,
+            errorMessage: 'Ticket not found',
+            severity: AuditSeverity.MEDIUM,
+            ipAddress,
+            userAgent,
+            metadata: {
+              ticketId,
+              messageLength: addMessageDto.message.length,
+              hasAttachments: !!(addMessageDto.attachments?.length),
+              errorReason: 'ticket_not_found',
+              operationDuration: Date.now() - startTime
+            }
+          });
+        }
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-  
+
+      // Log successful message only for business messages
+      if (sender === 'business' && businessId) {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.MESSAGE_SENT,
+          resourceType: ResourceType.MESSAGE,
+          resourceId: ticket._id.toString(),
+          resourceName: `Message to ticket: ${ticket.title}`,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            ticketId: ticket._id.toString(),
+            ticketTitle: ticket.title,
+            messageLength: addMessageDto.message.length,
+            hasAttachments: !!(addMessageDto.attachments?.length),
+            attachmentCount: addMessageDto.attachments?.length || 0,
+            messagePreview: addMessageDto.message.substring(0, 100), // First 100 chars
+            ticketReopened: ticket.status === TicketStatus.OPEN && ['resolved', 'closed'].includes(query.status),
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       // Send notification when SUPPORT adds a message (reply to business)
       if (sender === 'support') {
         await this.sendTicketUpdateNotification(ticket, 'message_added', {
@@ -709,20 +1015,45 @@ async addMessage(
           senderName
         });
       }
-  
+
       this.logger.log(`Message added to ticket: ${ticketId} by ${sender}`);
       
       return ticket;
     } catch (error) {
+      // Log unexpected errors only for business messages
+      if (sender === 'business' && businessId && error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.MESSAGE_SENT,
+          resourceType: ResourceType.MESSAGE,
+          resourceName: `Message to ticket ${ticketId}`,
+          success: false,
+          errorMessage: 'Unexpected error sending message',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            ticketId,
+            messageLength: addMessageDto.message.length,
+            hasAttachments: !!(addMessageDto.attachments?.length),
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error adding message to ticket: ${error.message}`, error.stack);
       throw error;
     }
   }
   
   /**
- * Delete/archive a ticket - UPDATED to support client verification
- */
-async deleteTicket(ticketId: string, clientId?: string): Promise<{ success: boolean }> {
+   * Delete/archive a ticket - NO AUDIT LOGGING (support team action only)
+   */
+  async deleteTicket(ticketId: string, clientId?: string): Promise<{ success: boolean }> {
     try {
       const query: any = { _id: ticketId };
       
@@ -730,7 +1061,7 @@ async deleteTicket(ticketId: string, clientId?: string): Promise<{ success: bool
       if (clientId) {
         query.clientId = clientId;
       }
-  
+
       const result = await this.ticketModel.updateOne(
         query,
         { 
@@ -740,11 +1071,11 @@ async deleteTicket(ticketId: string, clientId?: string): Promise<{ success: bool
           } 
         }
       ).exec();
-  
+
       if (result.modifiedCount === 0) {
         throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
-  
+
       this.logger.log(`Ticket deleted: ${ticketId}`);
       
       return { success: true };
@@ -755,9 +1086,14 @@ async deleteTicket(ticketId: string, clientId?: string): Promise<{ success: bool
   }
 
   /**
- * Get ticket statistics - UPDATED to support client filtering
- */
-async getTicketStats(businessId?: string, clientId?: string): Promise<{
+   * Get ticket statistics - Log only for business stats access
+   */
+  async getTicketStats(
+    businessId?: string, 
+    clientId?: string,
+    userId?: string,
+    req?: any
+  ): Promise<{
     total: number;
     open: number;
     inProgress: number;
@@ -766,17 +1102,20 @@ async getTicketStats(businessId?: string, clientId?: string): Promise<{
     byPriority: Record<string, number>;
     byCategory: Record<string, number>;
   }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const query: any = { isDeleted: false };
       
       if (businessId) {
         query.businessId = businessId;
       }
-  
+
       if (clientId) {
         query.clientId = clientId;
       }
-  
+
       const [
         total,
         open,
@@ -800,17 +1139,40 @@ async getTicketStats(businessId?: string, clientId?: string): Promise<{
           { $group: { _id: '$category', count: { $sum: 1 } } }
         ])
       ]);
-  
+
       const byPriority = priorityStats.reduce((acc, stat) => {
         acc[stat._id] = stat.count;
         return acc;
       }, {} as Record<string, number>);
-  
+
       const byCategory = categoryStats.reduce((acc, stat) => {
         acc[stat._id] = stat.count;
         return acc;
       }, {} as Record<string, number>);
-  
+
+      // Log stats access only for business
+      if (businessId) {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TICKET_ACCESSED,
+          resourceType: ResourceType.TICKET,
+          resourceName: 'Ticket statistics',
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            statsType: 'business_ticket_stats',
+            totalTickets: total,
+            openTickets: open,
+            resolvedTickets: resolved,
+            byPriority,
+            byCategory
+          }
+        });
+      }
+
       return {
         total,
         open,
@@ -825,5 +1187,4 @@ async getTicketStats(businessId?: string, clientId?: string): Promise<{
       throw error;
     }
   }
-  
 }

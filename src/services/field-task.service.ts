@@ -5,6 +5,8 @@ import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
 import { FieldTask, FieldTaskType, FieldTaskStatus, FieldTaskPriority } from '../schemas/field-task.schema';
 import { TaskAssignment, TaskStatus, TaskPriority } from '../schemas/task-assignment.schema';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
 
 interface CreateFieldTaskRequest {
   businessId: string;
@@ -82,6 +84,7 @@ export class FieldTaskService {
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
     @InjectModel(TaskAssignment.name) private taskAssignmentModel: Model<TaskAssignment>,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   // ============================================================================
@@ -91,7 +94,15 @@ export class FieldTaskService {
   /**
    * Create a new field task and corresponding task assignment
    */
-  async createTask(request: CreateFieldTaskRequest): Promise<{ success: boolean; taskId: string; message: string }> {
+  async createTask(
+    request: CreateFieldTaskRequest,
+    userId?: string,
+    req?: any
+  ): Promise<{ success: boolean; taskId: string; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       // Validate business
       const business = await this.validateBusiness(request.businessId);
@@ -142,6 +153,40 @@ export class FieldTaskService {
       // Create corresponding TaskAssignment
       await this.createTaskAssignment(fieldTask);
 
+      // Log successful task creation
+      await this.auditLogService.createAuditLog({
+        businessId: request.businessId,
+        userId,
+        action: AuditAction.TASK_CREATED,
+        resourceType: ResourceType.TASK,
+        resourceId: fieldTask._id.toString(),
+        resourceName: request.name,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          taskId: fieldTask.taskId,
+          taskType: request.type,
+          priority: request.priority,
+          status: FieldTaskStatus.PENDING,
+          clientId: request.appClientId,
+          projectId: request.projectId,
+          siteId: request.siteId,
+          location: {
+            address: request.location.address,
+            city: request.location.city,
+            state: request.location.state
+          },
+          scheduledDate: request.scheduledDate,
+          estimatedDuration: request.estimatedDuration,
+          skillsRequired: request.skillsRequired,
+          equipmentRequired: request.equipmentRequired,
+          difficultyLevel: request.difficultyLevel,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.log(`Created field task ${taskId} for business ${request.businessId}`);
 
       return {
@@ -151,6 +196,30 @@ export class FieldTaskService {
       };
 
     } catch (error) {
+      // Log failed task creation
+      await this.auditLogService.createAuditLog({
+        businessId: request.businessId,
+        userId,
+        action: AuditAction.TASK_CREATED,
+        resourceType: ResourceType.TASK,
+        resourceName: request.name,
+        success: false,
+        errorMessage: error.message,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          taskType: request.type,
+          priority: request.priority,
+          clientId: request.appClientId,
+          projectId: request.projectId,
+          siteId: request.siteId,
+          errorReason: error.name,
+          validationErrors: error.name === 'BadRequestException' ? error.message : undefined,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.error(`Error creating field task: ${error.message}`, error.stack);
       throw error;
     }
@@ -159,8 +228,14 @@ export class FieldTaskService {
   async updateTask(
     businessId: string,
     taskId: string,
-    updateData: UpdateFieldTaskRequest
+    updateData: UpdateFieldTaskRequest,
+    userId?: string,
+    req?: any
   ): Promise<{ success: boolean; message: string; debug?: any }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const debugInfo: any = {
         steps: [],
@@ -188,47 +263,91 @@ export class FieldTaskService {
       });
   
       if (!task) {
+        // Log task not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_UPDATED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: 'Task not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            errorReason: 'task_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Task not found');
       }
+
+      // Store original values for audit
+      const originalValues = {
+        name: task.name,
+        description: task.description,
+        type: task.type,
+        priority: task.priority,
+        status: task.status,
+        scheduledDate: task.scheduledDate,
+        estimatedDuration: task.estimatedDuration,
+        difficultyLevel: task.difficultyLevel,
+        location: task.location ? { ...task.location } : null,
+        timeWindow: task.timeWindow ? { ...task.timeWindow } : null,
+        skillsRequired: [...task.skillsRequired],
+        equipmentRequired: [...task.equipmentRequired],
+        specialInstructions: task.specialInstructions
+      };
   
       debugInfo.originalTask = task.toObject();
       debugInfo.steps.push('✅ Task found');
   
       const updateFields: any = {};
+      const changedFields: string[] = [];
   
       // Force update all fields - using actualUpdateData
       if (actualUpdateData.name !== undefined) {
         updateFields.name = actualUpdateData.name;
+        changedFields.push('name');
         debugInfo.comparisons.push(`📝 Name: "${task.name}" → "${actualUpdateData.name}" (FORCING UPDATE)`);
       }
       
       if (actualUpdateData.description !== undefined) {
         updateFields.description = actualUpdateData.description;
+        changedFields.push('description');
         debugInfo.comparisons.push(`📝 Description: FORCING UPDATE`);
       }
       
       if (actualUpdateData.type !== undefined) {
         updateFields.type = actualUpdateData.type;
+        changedFields.push('type');
         debugInfo.comparisons.push(`📝 Type: "${task.type}" → "${actualUpdateData.type}" (FORCING UPDATE)`);
       }
       
       if (actualUpdateData.priority !== undefined) {
         updateFields.priority = actualUpdateData.priority;
+        changedFields.push('priority');
         debugInfo.comparisons.push(`📝 Priority: "${task.priority}" → "${actualUpdateData.priority}" (FORCING UPDATE)`);
       }
       
       if (actualUpdateData.scheduledDate !== undefined) {
         updateFields.scheduledDate = actualUpdateData.scheduledDate;
+        changedFields.push('scheduledDate');
         debugInfo.comparisons.push(`📅 Date: "${task.scheduledDate}" → "${actualUpdateData.scheduledDate}" (FORCING UPDATE)`);
       }
       
       if (actualUpdateData.estimatedDuration !== undefined) {
         updateFields.estimatedDuration = actualUpdateData.estimatedDuration;
+        changedFields.push('estimatedDuration');
         debugInfo.comparisons.push(`⏱️ Duration: ${task.estimatedDuration} → ${actualUpdateData.estimatedDuration} (FORCING UPDATE)`);
       }
       
       if (actualUpdateData.difficultyLevel !== undefined) {
         updateFields.difficultyLevel = actualUpdateData.difficultyLevel;
+        changedFields.push('difficultyLevel');
         debugInfo.comparisons.push(`🎯 Difficulty: ${task.difficultyLevel} → ${actualUpdateData.difficultyLevel} (FORCING UPDATE)`);
       }
   
@@ -236,22 +355,27 @@ export class FieldTaskService {
       if (actualUpdateData.location) {
         if (actualUpdateData.location.latitude !== undefined) {
           updateFields['location.latitude'] = actualUpdateData.location.latitude;
+          changedFields.push('location.latitude');
           debugInfo.comparisons.push(`📍 Latitude: ${task.location?.latitude} → ${actualUpdateData.location.latitude} (FORCING UPDATE)`);
         }
         if (actualUpdateData.location.longitude !== undefined) {
           updateFields['location.longitude'] = actualUpdateData.location.longitude;
+          changedFields.push('location.longitude');
           debugInfo.comparisons.push(`📍 Longitude: ${task.location?.longitude} → ${actualUpdateData.location.longitude} (FORCING UPDATE)`);
         }
         if (actualUpdateData.location.address !== undefined) {
           updateFields['location.address'] = actualUpdateData.location.address;
+          changedFields.push('location.address');
           debugInfo.comparisons.push(`📍 Address: "${task.location?.address}" → "${actualUpdateData.location.address}" (FORCING UPDATE)`);
         }
         if (actualUpdateData.location.accessInstructions !== undefined) {
           updateFields['location.accessInstructions'] = actualUpdateData.location.accessInstructions;
+          changedFields.push('location.accessInstructions');
           debugInfo.comparisons.push(`📍 Access: FORCING UPDATE`);
         }
         if (actualUpdateData.location.parkingNotes !== undefined) {
           updateFields['location.parkingNotes'] = actualUpdateData.location.parkingNotes;
+          changedFields.push('location.parkingNotes');
           debugInfo.comparisons.push(`📍 Parking: FORCING UPDATE`);
         }
       }
@@ -260,18 +384,22 @@ export class FieldTaskService {
       if (actualUpdateData.timeWindow) {
         if (actualUpdateData.timeWindow.start !== undefined) {
           updateFields['timeWindow.start'] = actualUpdateData.timeWindow.start;
+          changedFields.push('timeWindow.start');
           debugInfo.comparisons.push(`⏰ Start: "${task.timeWindow?.start}" → "${actualUpdateData.timeWindow.start}" (FORCING UPDATE)`);
         }
         if (actualUpdateData.timeWindow.end !== undefined) {
           updateFields['timeWindow.end'] = actualUpdateData.timeWindow.end;
+          changedFields.push('timeWindow.end');
           debugInfo.comparisons.push(`⏰ End: "${task.timeWindow?.end}" → "${actualUpdateData.timeWindow.end}" (FORCING UPDATE)`);
         }
         if (actualUpdateData.timeWindow.isFlexible !== undefined) {
           updateFields['timeWindow.isFlexible'] = actualUpdateData.timeWindow.isFlexible;
+          changedFields.push('timeWindow.isFlexible');
           debugInfo.comparisons.push(`⏰ Flexible: FORCING UPDATE`);
         }
         if (actualUpdateData.timeWindow.preferredTime !== undefined) {
           updateFields['timeWindow.preferredTime'] = actualUpdateData.timeWindow.preferredTime;
+          changedFields.push('timeWindow.preferredTime');
           debugInfo.comparisons.push(`⏰ Preferred: FORCING UPDATE`);
         }
       }
@@ -279,16 +407,19 @@ export class FieldTaskService {
       // Handle arrays
       if (actualUpdateData.skillsRequired !== undefined) {
         updateFields.skillsRequired = actualUpdateData.skillsRequired;
+        changedFields.push('skillsRequired');
         debugInfo.comparisons.push(`🛠️ Skills: FORCING UPDATE`);
       }
       
       if (actualUpdateData.equipmentRequired !== undefined) {
         updateFields.equipmentRequired = actualUpdateData.equipmentRequired;
+        changedFields.push('equipmentRequired');
         debugInfo.comparisons.push(`🚛 Equipment: FORCING UPDATE`);
       }
   
       if (actualUpdateData.specialInstructions !== undefined) {
         updateFields.specialInstructions = actualUpdateData.specialInstructions;
+        changedFields.push('specialInstructions');
         debugInfo.comparisons.push(`📋 Instructions: FORCING UPDATE`);
       }
   
@@ -298,6 +429,29 @@ export class FieldTaskService {
   
       if (Object.keys(updateFields).length === 0) {
         debugInfo.steps.push('❌ No fields to update - actualUpdateData might be empty');
+        
+        // Log no changes to update
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_UPDATED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: task.name,
+          success: false,
+          errorMessage: 'No fields to update',
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId: task.taskId,
+            taskName: task.name,
+            errorReason: 'no_fields_to_update',
+            receivedData: actualUpdateData,
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         return {
           success: false,
           message: 'No fields to update',
@@ -315,6 +469,30 @@ export class FieldTaskService {
   
       if (!updatedTask) {
         debugInfo.steps.push('❌ MongoDB update failed - task not found or update failed');
+        
+        // Log update failure
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_UPDATED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: task.name,
+          success: false,
+          errorMessage: 'Task could not be updated',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId: task.taskId,
+            taskName: task.name,
+            updateFields,
+            changedFields,
+            errorReason: 'mongodb_update_failed',
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         throw new NotFoundException('Task not found or could not be updated');
       }
   
@@ -323,6 +501,50 @@ export class FieldTaskService {
   
       await this.updateTaskAssignment(updatedTask);
       debugInfo.steps.push('✅ Task assignment updated');
+
+      // Prepare new values for audit
+      const newValues = {
+        name: updatedTask.name,
+        description: updatedTask.description,
+        type: updatedTask.type,
+        priority: updatedTask.priority,
+        status: updatedTask.status,
+        scheduledDate: updatedTask.scheduledDate,
+        estimatedDuration: updatedTask.estimatedDuration,
+        difficultyLevel: updatedTask.difficultyLevel,
+        location: updatedTask.location ? { ...updatedTask.location } : null,
+        timeWindow: updatedTask.timeWindow ? { ...updatedTask.timeWindow } : null,
+        skillsRequired: [...updatedTask.skillsRequired],
+        equipmentRequired: [...updatedTask.equipmentRequired],
+        specialInstructions: updatedTask.specialInstructions
+      };
+
+      // Log successful task update
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TASK_UPDATED,
+        resourceType: ResourceType.TASK,
+        resourceId: taskId,
+        resourceName: updatedTask.name,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        oldValues: originalValues,
+        newValues: newValues,
+        changedFields,
+        metadata: {
+          taskId: updatedTask.taskId,
+          taskName: updatedTask.name,
+          taskType: updatedTask.type,
+          priority: updatedTask.priority,
+          status: updatedTask.status,
+          fieldsUpdated: changedFields.length,
+          updateFields,
+          operationDuration: Date.now() - startTime
+        }
+      });
   
       return {
         success: true,
@@ -331,6 +553,31 @@ export class FieldTaskService {
       };
   
     } catch (error) {
+      // Log unexpected update failure
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_UPDATED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: error.message,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            updateData: updateData,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorStack: error.stack?.substring(0, 500),
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       return {
         success: false,
         message: error.message,
@@ -346,7 +593,16 @@ export class FieldTaskService {
   /**
    * Delete a field task and corresponding task assignment (soft delete)
    */
-  async deleteTask(businessId: string, taskId: string): Promise<{ success: boolean; message: string }> {
+  async deleteTask(
+    businessId: string,
+    taskId: string,
+    userId?: string,
+    req?: any
+  ): Promise<{ success: boolean; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       await this.validateBusiness(businessId);
 
@@ -357,8 +613,39 @@ export class FieldTaskService {
       });
 
       if (!task) {
+        // Log task not found for deletion
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_DELETED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: 'Task not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            errorReason: 'task_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Task not found');
       }
+
+      // Store task info for audit before deletion
+      const taskInfo = {
+        taskId: task.taskId,
+        name: task.name,
+        type: task.type,
+        priority: task.priority,
+        status: task.status,
+        assignedTeamId: task.assignedTeamId,
+        scheduledDate: task.scheduledDate,
+        estimatedDuration: task.estimatedDuration
+      };
 
       // Soft delete FieldTask
       task.isDeleted = true;
@@ -368,6 +655,27 @@ export class FieldTaskService {
       // Soft delete corresponding TaskAssignment
       await this.deleteTaskAssignment(task._id.toString());
 
+      // Log successful task deletion
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TASK_DELETED,
+        resourceType: ResourceType.TASK,
+        resourceId: taskId,
+        resourceName: task.name,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          ...taskInfo,
+          clientId: task.appClientId,
+          projectId: task.projectId,
+          siteId: task.siteId,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.log(`Deleted field task ${taskId} for business ${businessId}`);
 
       return {
@@ -376,6 +684,29 @@ export class FieldTaskService {
       };
 
     } catch (error) {
+      // Log unexpected deletion failure
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_DELETED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: error.message,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error deleting field task: ${error.message}`, error.stack);
       throw error;
     }
@@ -395,8 +726,13 @@ async getTasks(
       month?: string;       // If provided, filter by this month (YYYY-MM format)
       projectId?: string;
       siteId?: string;
-    }
+    },
+    userId?: string,
+    req?: any
   ): Promise<{ tasks: FieldTask[]; total: number }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       await this.validateBusiness(businessId);
   
@@ -475,6 +811,27 @@ async getTasks(
           createdAt: -1 
         })
         .exec();
+
+      // Log task access (optional - only for significant access patterns)
+      if (tasks.length > 50 || (filters && Object.keys(filters).length > 2)) {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_ACCESSED,
+          resourceType: ResourceType.TASK,
+          resourceName: `Task List (${tasks.length} tasks)`,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskCount: tasks.length,
+            filters: filters || {},
+            hasComplexFilters: filters && Object.keys(filters).length > 2,
+            dateRange: filters?.date || filters?.month || 'current_month'
+          }
+        });
+      }
   
       return {
         tasks,
@@ -493,14 +850,40 @@ async getTasks(
   async assignTaskToTeam(
     businessId: string,
     taskId: string,
-    teamId: string
+    teamId: string,
+    userId?: string,
+    req?: any
   ): Promise<{ success: boolean; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const business = await this.validateBusiness(businessId);
 
       // Validate team exists
       const team = business.teams?.find((t: any) => t.id === teamId);
       if (!team) {
+        // Log team not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TEAM_ASSIGNED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: 'Team not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            teamId,
+            errorReason: 'team_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Team not found');
       }
 
@@ -512,8 +895,32 @@ async getTasks(
       });
 
       if (!task) {
+        // Log task not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TEAM_ASSIGNED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: 'Task not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            teamId,
+            teamName: team.name,
+            errorReason: 'task_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Task not found');
       }
+
+      const previousTeamId = task.assignedTeamId;
+      const previousStatus = task.status;
 
       task.assignedTeamId = teamId;
       task.assignedAt = new Date();
@@ -523,6 +930,34 @@ async getTasks(
       // Update TaskAssignment
       await this.updateTaskAssignment(task);
 
+      // Log successful task assignment
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_ASSIGNED,
+        resourceType: ResourceType.TASK,
+        resourceId: taskId,
+        resourceName: task.name,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          taskId: task.taskId,
+          taskName: task.name,
+          teamId,
+          teamName: team.name,
+          previousTeamId,
+          previousStatus,
+          newStatus: FieldTaskStatus.ASSIGNED,
+          assignedAt: task.assignedAt,
+          taskType: task.type,
+          priority: task.priority,
+          scheduledDate: task.scheduledDate,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.log(`Assigned task ${taskId} to team ${teamId} for business ${businessId}`);
 
       return {
@@ -531,6 +966,30 @@ async getTasks(
       };
 
     } catch (error) {
+      // Log unexpected assignment failure
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TEAM_ASSIGNED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: error.message,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            teamId,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error assigning task to team: ${error.message}`, error.stack);
       throw error;
     }
@@ -542,8 +1001,14 @@ async getTasks(
   async updateTaskStatus(
     businessId: string,
     taskId: string,
-    status: string | FieldTaskStatus
+    status: string | FieldTaskStatus,
+    userId?: string,
+    req?: any
   ): Promise<{ success: boolean; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       await this.validateBusiness(businessId);
 
@@ -554,6 +1019,26 @@ async getTasks(
       });
 
       if (!task) {
+        // Log task not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_STATUS_CHANGED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: 'Task not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            newStatus: status,
+            errorReason: 'task_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Task not found');
       }
 
@@ -588,6 +1073,42 @@ async getTasks(
       // Update TaskAssignment status
       await this.updateTaskAssignment(task);
 
+      // Determine severity based on status change
+      let severity = AuditSeverity.LOW;
+      if (validStatus === FieldTaskStatus.COMPLETED || validStatus === FieldTaskStatus.CANCELLED) {
+        severity = AuditSeverity.MEDIUM;
+      }
+
+      // Log successful status change
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TASK_STATUS_CHANGED,
+        resourceType: ResourceType.TASK,
+        resourceId: taskId,
+        resourceName: task.name,
+        success: true,
+        severity,
+        ipAddress,
+        userAgent,
+        oldValues: { status: previousStatus },
+        newValues: { status: validStatus },
+        changedFields: ['status'],
+        metadata: {
+          taskId: task.taskId,
+          taskName: task.name,
+          previousStatus,
+          newStatus: validStatus,
+          taskType: task.type,
+          priority: task.priority,
+          assignedTeamId: task.assignedTeamId,
+          completedAt: task.completedAt,
+          actualDuration: task.actualPerformance?.actualDuration,
+          estimatedDuration: task.estimatedDuration,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.log(`Updated task ${taskId} status from ${previousStatus} to ${validStatus} for business ${businessId}`);
 
       return {
@@ -596,6 +1117,30 @@ async getTasks(
       };
 
     } catch (error) {
+      // Log unexpected status update failure
+      if (error.name !== 'NotFoundException' && error.name !== 'BadRequestException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TASK_STATUS_CHANGED,
+          resourceType: ResourceType.TASK,
+          resourceId: taskId,
+          resourceName: 'Unknown Task',
+          success: false,
+          errorMessage: error.message,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            taskId,
+            newStatus: status,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error updating task status: ${error.message}`, error.stack);
       throw error;
     }
@@ -688,7 +1233,15 @@ async getTasks(
   /**
    * Get task analytics/statistics
    */
-  async getTaskStatistics(businessId: string, timeframe: string = '30d'): Promise<any> {
+  async getTaskStatistics(
+    businessId: string,
+    timeframe: string = '30d',
+    userId?: string,
+    req?: any
+  ): Promise<any> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       await this.validateBusiness(businessId);
 
@@ -729,6 +1282,27 @@ async getTasks(
 
       // Calculate completion rate
       stats.completionRate = stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0;
+
+      // Log statistics access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TASK_STATISTICS_ACCESSED,
+        resourceType: ResourceType.TASK,
+        resourceName: `Task Statistics (${timeframe})`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          timeframe,
+          totalTasks: stats.totalTasks,
+          completedTasks: stats.completedTasks,
+          completionRate: stats.completionRate,
+          highPriorityTasks: stats.highPriorityTasks,
+          avgEstimatedDuration: stats.avgEstimatedDuration
+        }
+      });
 
       return stats;
 
@@ -886,6 +1460,19 @@ async getTasks(
   // ============================================================================
   // PRIVATE HELPER METHODS
   // ============================================================================
+
+  /**
+   * Extract IP address from request
+   */
+  private extractIpAddress(req: any): string {
+    return (
+      req?.headers?.['x-forwarded-for'] ||
+      req?.headers?.['x-real-ip'] ||
+      req?.connection?.remoteAddress ||
+      req?.socket?.remoteAddress ||
+      'unknown'
+    ).split(',')[0].trim();
+  }
 
   /**
    * Validate and convert status string to FieldTaskStatus enum

@@ -7,6 +7,15 @@ import { TeamLocation, TeamLocationStatus, ConnectivityStatus } from '../schemas
 import { RouteProgress, RouteStatus } from '../schemas/route-progress.schema';
 import { TeamAvailability, AvailabilityStatus } from '../schemas/team-availability.schema';
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
+
+// NOTE: Add these to AuditAction enum in audit-log.schema.ts:
+// TEAM_LOCATION_UPDATED = 'team_location_updated',
+// TEAM_LOCATION_ACCESSED = 'team_location_accessed', 
+// TEAM_AVAILABILITY_ACCESSED = 'team_availability_accessed',
+// ROUTE_PROGRESS_TRACKED = 'route_progress_tracked',
+// LOCATION_DATA_EXPORTED = 'location_data_exported',
 
 interface LocationHistoryEntry {
   id: string;
@@ -77,7 +86,6 @@ export interface TeamAvailabilityResponse {
       teamsWithEmergencyContact: number;
     };
   }
-  
 
 interface LocationHistoryResponse {
   history: LocationHistoryEntry[];
@@ -176,16 +184,38 @@ export class TeamLocationService {
     @InjectModel(RouteProgress.name) private routeProgressModel: Model<RouteProgress>,
     @InjectModel(TeamAvailability.name) private teamAvailabilityModel: Model<TeamAvailability>,
     @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
+    private readonly auditLogService: AuditLogService
   ) {}
+
+  /**
+   * Helper method to extract IP address from request
+   */
+  private extractIpAddress(req: any): string {
+    return (
+      req?.headers?.['x-forwarded-for'] ||
+      req?.headers?.['x-real-ip'] ||
+      req?.connection?.remoteAddress ||
+      req?.socket?.remoteAddress ||
+      'unknown'
+    ).split(',')[0].trim();
+  }
 
   // ============================================================================
   // REAL LOCATION TRACKING USING YOUR SCHEMAS WITH PHP ID SUPPORT
   // ============================================================================
 
   /**
-   * Update team location using real TeamLocation schema with PHP ID handling and debug info
+   * Update team location using real TeamLocation schema with PHP ID handling and audit logging
    */
-  async updateTeamLocation(request: UpdateTeamLocationRequest): Promise<{ success: boolean; message: string; debug?: any }> {
+  async updateTeamLocation(
+    request: UpdateTeamLocationRequest,
+    userId?: string,
+    req?: any
+  ): Promise<{ success: boolean; message: string; debug?: any }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     const debugInfo: any = {
       requestTeamId: request.teamId,
       businessId: request.businessId,
@@ -219,6 +249,29 @@ export class TeamLocationService {
           name: t.name
         })) || [];
         debugInfo.step2_findTeam = 'failed - team not found';
+
+        // Log team not found error
+        await this.auditLogService.createAuditLog({
+          businessId: request.businessId,
+          userId,
+          action: AuditAction.TEAM_LOCATION_UPDATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: request.teamId,
+          resourceName: `Team ${request.teamId}`,
+          success: false,
+          errorMessage: 'Team not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            requestedTeamId: request.teamId,
+            coordinates: request.location,
+            errorReason: 'team_not_found',
+            availableTeams: debugInfo.availableTeams,
+            operationDuration: Date.now() - startTime
+          }
+        });
+
         throw new NotFoundException('Team not found');
       }
 
@@ -253,6 +306,22 @@ export class TeamLocationService {
       debugInfo.step5_findExistingLocation = 'completed';
       debugInfo.existingLocationFound = !!teamLocation;
       debugInfo.existingLocationId = teamLocation?._id?.toString();
+
+      // Capture old values for audit
+      const oldValues: any = {};
+      const newValues: any = {};
+      const changedFields: string[] = [];
+
+      if (teamLocation) {
+        oldValues.location = {
+          latitude: teamLocation.location.latitude,
+          longitude: teamLocation.location.longitude,
+          address: teamLocation.location.address
+        };
+        oldValues.status = teamLocation.status;
+        oldValues.batteryLevel = teamLocation.batteryLevel;
+        oldValues.connectivity = teamLocation.connectivity;
+      }
 
       if (!teamLocation) {
         debugInfo.step6_createNewLocation = 'starting';
@@ -291,6 +360,15 @@ export class TeamLocationService {
         
         teamLocation = new this.teamLocationModel(newLocationData);
         debugInfo.step6_createNewLocation = 'model_created';
+
+        // Set new values for audit
+        newValues.location = newLocationData.location;
+        newValues.status = newLocationData.status;
+        newValues.batteryLevel = newLocationData.batteryLevel;
+        newValues.connectivity = newLocationData.connectivity;
+        changedFields.push('location', 'status', 'connectivity');
+        if (newLocationData.batteryLevel) changedFields.push('batteryLevel');
+
       } else {
         debugInfo.step6_updateExistingLocation = 'starting';
         debugInfo.action = 'updating_existing';
@@ -314,8 +392,8 @@ export class TeamLocationService {
           teamLocation.locationHistory = teamLocation.locationHistory.slice(-50);
         }
 
-        // Update existing record
-        teamLocation.location = {
+        // Track changes for audit
+        const newLocation = {
           latitude: request.location.lat,
           longitude: request.location.lng,
           address: request.location.address || teamLocation.location.address,
@@ -325,15 +403,35 @@ export class TeamLocationService {
           heading: request.location.heading
         };
 
+        if (JSON.stringify(teamLocation.location) !== JSON.stringify(newLocation)) {
+          changedFields.push('location');
+          newValues.location = newLocation;
+        }
+
+        // Update existing record
+        teamLocation.location = newLocation;
+
         // Update status if provided and different
         if (request.status !== undefined && request.status !== teamLocation.status) {
+          changedFields.push('status');
+          newValues.status = request.status;
           teamLocation.status = request.status;
           teamLocation.statusChangedAt = new Date();
         }
 
-        if (request.connectivity !== undefined) teamLocation.connectivity = request.connectivity;
+        if (request.connectivity !== undefined && request.connectivity !== teamLocation.connectivity) {
+          changedFields.push('connectivity');
+          newValues.connectivity = request.connectivity;
+          teamLocation.connectivity = request.connectivity;
+        }
+
+        if (request.batteryLevel !== undefined && request.batteryLevel !== teamLocation.batteryLevel) {
+          changedFields.push('batteryLevel');
+          newValues.batteryLevel = request.batteryLevel;
+          teamLocation.batteryLevel = request.batteryLevel;
+        }
+
         if (request.currentTaskId !== undefined) teamLocation.currentTaskId = request.currentTaskId;
-        if (request.batteryLevel !== undefined) teamLocation.batteryLevel = request.batteryLevel;
         if (request.deviceId !== undefined) teamLocation.deviceId = request.deviceId;
         if (request.appVersion !== undefined) teamLocation.appVersion = request.appVersion;
         if (request.metadata !== undefined) {
@@ -370,6 +468,43 @@ export class TeamLocationService {
         debugInfo.step8_updateAvailability = 'skipped - no status provided';
       }
 
+      // Log successful location update
+      await this.auditLogService.createAuditLog({
+        businessId: request.businessId,
+        userId,
+        action: AuditAction.TEAM_LOCATION_UPDATED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: savedLocation._id.toString(),
+        resourceName: `Location for team ${team.name}`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        oldValues: Object.keys(oldValues).length > 0 ? oldValues : undefined,
+        newValues: Object.keys(newValues).length > 0 ? newValues : undefined,
+        changedFields,
+        metadata: {
+          teamId: storageTeamId,
+          teamName: team.name,
+          coordinates: {
+            latitude: request.location.lat,
+            longitude: request.location.lng,
+            accuracy: request.location.accuracy
+          },
+          locationUpdate: debugInfo.action,
+          status: request.status,
+          batteryLevel: request.batteryLevel,
+          connectivity: request.connectivity,
+          currentTaskId: request.currentTaskId,
+          deviceInfo: {
+            deviceId: request.deviceId,
+            appVersion: request.appVersion
+          },
+          locationHistoryCount: savedLocation.locationHistory?.length || 0,
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       debugInfo.completedSuccessfully = true;
       debugInfo.endTimestamp = new Date().toISOString();
 
@@ -391,6 +526,31 @@ export class TeamLocationService {
       
       debugInfo.completedSuccessfully = false;
       debugInfo.errorTimestamp = new Date().toISOString();
+
+      // Log unexpected errors
+      if (error.name !== 'NotFoundException' && error.name !== 'BadRequestException') {
+        await this.auditLogService.createAuditLog({
+          businessId: request.businessId,
+          userId,
+          action: AuditAction.TEAM_LOCATION_UPDATED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: request.teamId,
+          resourceName: `Team ${request.teamId}`,
+          success: false,
+          errorMessage: 'Unexpected error during location update',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            requestedTeamId: request.teamId,
+            coordinates: request.location,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
       
       this.logger.error(`Error updating team location: ${error.message}`, error.stack);
       
@@ -405,11 +565,10 @@ export class TeamLocationService {
       
       throw error;
     }
-}
+  }
 
   /**
-   * Get team locations with filters using real database queries with PHP ID support
-   * UPDATED: Now includes emergency contact information
+   * Get team locations with filters using real database queries with PHP ID support and audit logging
    */
   async getTeamLocations(
     businessId: string,
@@ -417,8 +576,13 @@ export class TeamLocationService {
       status?: string;
       project?: string;
       lastUpdatedSince?: string;
-    }
+    },
+    userId?: string,
+    req?: any
   ): Promise<TeamLocationResponse[]> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
 
@@ -465,13 +629,11 @@ export class TeamLocationService {
             connectivity: ConnectivityStatus.OFFLINE,
             project_name: team.metadata?.project_name,
             route_progress: team.routeProgress,
-            // UPDATED: Include emergency contact from team data
             emergencyContact: team.emergencyContact ? {
               name: team.emergencyContact.name,
               phone: team.emergencyContact.phone,
               relationship: team.emergencyContact.relationship
             } : undefined,
-            // NEW: Include vehicle info from team data
             vehicle_info: team.vehicleInfo ? {
               type: team.vehicleInfo.type,
               license_plate: team.vehicleInfo.licensePlate,
@@ -507,13 +669,11 @@ export class TeamLocationService {
               deviceId: locationRecord.deviceId,
               appVersion: locationRecord.appVersion
             },
-            // UPDATED: Include emergency contact from team data
             emergencyContact: team.emergencyContact ? {
               name: team.emergencyContact.name,
               phone: team.emergencyContact.phone,
               relationship: team.emergencyContact.relationship
             } : undefined,
-            // NEW: Include vehicle info from team data
             vehicle_info: team.vehicleInfo ? {
               type: team.vehicleInfo.type,
               license_plate: team.vehicleInfo.licensePlate,
@@ -531,6 +691,32 @@ export class TeamLocationService {
         filteredLocations = filteredLocations.filter(loc => loc.project_name === filters.project);
       }
 
+      // Log team locations access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_LOCATION_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: 'Team locations list',
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamsRetrieved: filteredLocations.length,
+          totalTeams: business.teams?.length || 0,
+          activeTeams: filteredLocations.filter(t => t.status === TeamLocationStatus.ACTIVE).length,
+          offlineTeams: filteredLocations.filter(t => t.status === TeamLocationStatus.OFFLINE).length,
+          filters: {
+            status: filters?.status,
+            project: filters?.project,
+            hasDateFilter: !!filters?.lastUpdatedSince
+          },
+          emergencyContactsAvailable: filteredLocations.filter(t => t.emergencyContact?.phone).length,
+          vehicleInfoAvailable: filteredLocations.filter(t => t.vehicle_info?.license_plate).length
+        }
+      });
+
       this.logger.log(`Retrieved ${filteredLocations.length} team locations with emergency contact info for business ${businessId}`);
 
       return filteredLocations;
@@ -542,9 +728,16 @@ export class TeamLocationService {
   }
 
   /**
-   * Get location statistics using real data
+   * Get location statistics using real data with audit logging
    */
-  async getLocationStats(businessId: string): Promise<LocationStats> {
+  async getLocationStats(
+    businessId: string,
+    userId?: string,
+    req?: any
+  ): Promise<LocationStats> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
 
@@ -598,6 +791,29 @@ export class TeamLocationService {
           new Date().toISOString()
       };
 
+      // Log location stats access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_LOCATION_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: 'Location statistics',
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          statsType: 'location_statistics',
+          totalTeams: stats.total_teams,
+          activeTeams: stats.active_teams,
+          offlineTeams: stats.offline_teams,
+          teamsOnBreak: stats.teams_on_break,
+          avgResponseTime: stats.avg_response_time,
+          coverageAreas: stats.coverage_areas,
+          avgAccuracy: stats.location_accuracy_avg
+        }
+      });
+
       return stats;
 
     } catch (error) {
@@ -607,7 +823,7 @@ export class TeamLocationService {
   }
 
   /**
-   * Track route progress using real RouteProgress schema with PHP ID support
+   * Track route progress using real RouteProgress schema with PHP ID support and audit logging
    */
   async trackRouteProgress(
     businessId: string,
@@ -617,8 +833,14 @@ export class TeamLocationService {
       currentTaskIndex: number;
       completedTasks: number;
       routeDate?: Date;
-    }
+    },
+    userId?: string,
+    req?: any
   ): Promise<{ success: boolean; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const business = await this.validateBusiness(businessId);
 
@@ -628,6 +850,28 @@ export class TeamLocationService {
         team = business.teams?.find((t: any) => t.id === teamId);
       }
       if (!team) {
+        // Log team not found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_PROGRESS_TRACKED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: teamId,
+          resourceName: `Route progress for team ${teamId}`,
+          success: false,
+          errorMessage: 'Team not found',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            taskIds: routeData.taskIds,
+            currentTaskIndex: routeData.currentTaskIndex,
+            completedTasks: routeData.completedTasks,
+            errorReason: 'team_not_found',
+            operationDuration: Date.now() - startTime
+          }
+        });
         throw new NotFoundException('Team not found');
       }
 
@@ -640,6 +884,11 @@ export class TeamLocationService {
       const endOfDay = new Date(routeDate);
       endOfDay.setHours(23, 59, 59, 999);
 
+      // Capture old values for audit
+      const oldValues: any = {};
+      const newValues: any = {};
+      const changedFields: string[] = [];
+
       // Find existing route progress or create new
       let routeProgress = await this.routeProgressModel.findOne({
         businessId,
@@ -647,6 +896,13 @@ export class TeamLocationService {
         routeDate: { $gte: startOfDay, $lte: endOfDay },
         isDeleted: false
       });
+
+      if (routeProgress) {
+        // Capture old values
+        oldValues.currentTaskIndex = routeProgress.currentTaskIndex;
+        oldValues.completedTasksCount = routeProgress.completedTasksCount;
+        oldValues.routeStatus = routeProgress.routeStatus;
+      }
 
       if (!routeProgress) {
         // Get task details for creating comprehensive route progress
@@ -692,12 +948,35 @@ export class TeamLocationService {
           }],
           createdBy: business.adminUserId
         });
+
+        // Set new values for audit
+        newValues.currentTaskIndex = routeData.currentTaskIndex;
+        newValues.completedTasksCount = routeData.completedTasks;
+        newValues.routeStatus = routeProgress.routeStatus;
+        changedFields.push('currentTaskIndex', 'completedTasksCount', 'routeStatus');
       } else {
-        // Update existing route progress
+        // Update existing route progress and track changes
+        if (routeProgress.currentTaskIndex !== routeData.currentTaskIndex) {
+          changedFields.push('currentTaskIndex');
+          newValues.currentTaskIndex = routeData.currentTaskIndex;
+        }
+        
+        if (routeProgress.completedTasksCount !== routeData.completedTasks) {
+          changedFields.push('completedTasksCount');
+          newValues.completedTasksCount = routeData.completedTasks;
+        }
+
+        const newStatus = routeData.completedTasks === routeData.taskIds.length ? 
+                         RouteStatus.COMPLETED : RouteStatus.IN_PROGRESS;
+        
+        if (routeProgress.routeStatus !== newStatus) {
+          changedFields.push('routeStatus');
+          newValues.routeStatus = newStatus;
+        }
+
         routeProgress.currentTaskIndex = routeData.currentTaskIndex;
         routeProgress.completedTasksCount = routeData.completedTasks;
-        routeProgress.routeStatus = routeData.completedTasks === routeData.taskIds.length ? 
-                                   RouteStatus.COMPLETED : RouteStatus.IN_PROGRESS;
+        routeProgress.routeStatus = newStatus;
         routeProgress.estimatedCompletionTime = this.calculateEstimatedCompletion(routeData);
 
         // Update individual task statuses
@@ -725,6 +1004,35 @@ export class TeamLocationService {
 
       await routeProgress.save();
 
+      // Log successful route progress tracking
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.ROUTE_PROGRESS_TRACKED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: routeProgress._id.toString(),
+        resourceName: `Route progress for team ${team.name}`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        oldValues: Object.keys(oldValues).length > 0 ? oldValues : undefined,
+        newValues: Object.keys(newValues).length > 0 ? newValues : undefined,
+        changedFields,
+        metadata: {
+          teamId: storageTeamId,
+          teamName: team.name,
+          routeDate: startOfDay.toISOString().split('T')[0],
+          totalTasks: routeData.taskIds.length,
+          currentTaskIndex: routeData.currentTaskIndex,
+          completedTasks: routeData.completedTasks,
+          progressPercentage: Math.round((routeData.completedTasks / routeData.taskIds.length) * 100),
+          routeStatus: routeProgress.routeStatus,
+          estimatedCompletion: routeProgress.estimatedCompletionTime?.toISOString(),
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       this.logger.log(`Updated route progress for team ${teamId} (storage: ${storageTeamId}): ${routeData.completedTasks}/${routeData.taskIds.length} tasks completed`);
 
       return {
@@ -733,19 +1041,53 @@ export class TeamLocationService {
       };
 
     } catch (error) {
+      // Log unexpected errors
+      if (error.name !== 'NotFoundException') {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.ROUTE_PROGRESS_TRACKED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: teamId,
+          resourceName: `Route progress for team ${teamId}`,
+          success: false,
+          errorMessage: 'Unexpected error tracking route progress',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            taskIds: routeData.taskIds,
+            currentTaskIndex: routeData.currentTaskIndex,
+            completedTasks: routeData.completedTasks,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
+
       this.logger.error(`Error tracking route progress: ${error.message}`, error.stack);
       throw error;
     }
   }
 
   /**
- * ENHANCED: Get comprehensive team availability with detailed analytics
- * Returns structured data matching frontend expectations
- */
-async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
+   * Get comprehensive team availability with detailed analytics and audit logging
+   */
+  async getTeamAvailability(
+    businessId: string, 
+    teamId?: string,
+    userId?: string,
+    req?: any
+  ): Promise<any> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
-  
+
       if (teamId) {
         // Find team by PHP ID first, then by MongoDB ID as fallback
         let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
@@ -755,22 +1097,22 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
         if (!team) {
           throw new NotFoundException('Team not found');
         }
-  
+
         const storageTeamId = team.metadata?.phpId || teamId;
-  
+
         // Get team location and availability records
         const teamLocation = await this.teamLocationModel.findOne({
           businessId,
           teamId: storageTeamId,
           isDeleted: false
         });
-  
+
         const teamAvailability = await this.teamAvailabilityModel.findOne({
           businessId,
           teamId: storageTeamId,
           isDeleted: false
         });
-  
+
         // Calculate comprehensive availability data
         const availabilityData = await this.calculateTeamAvailabilityDetails(
           businessId, 
@@ -779,21 +1121,46 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
           teamLocation, 
           teamAvailability
         );
-  
+
+        // Log team availability access
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TEAM_AVAILABILITY_ACCESSED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: storageTeamId,
+          resourceName: `Availability for team ${team.name}`,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId: storageTeamId,
+            teamName: team.name,
+            currentStatus: availabilityData.availability.today.status,
+            scheduledTasks: availabilityData.availability.today.scheduledTasks,
+            completedTasks: availabilityData.availability.today.completedTasks,
+            utilization: availabilityData.availability.today.utilizationPercentage,
+            efficiency: availabilityData.performance.efficiency,
+            completionRate: availabilityData.performance.completionRate,
+            hasEmergencyContact: !!availabilityData.emergencyContact
+          }
+        });
+
         return availabilityData;
-  
+
       } else {
         // Get all teams availability summary
         const teamLocations = await this.teamLocationModel.find({
           businessId,
           isDeleted: false
         });
-  
+
         const teamAvailabilities = await this.teamAvailabilityModel.find({
           businessId,
           isDeleted: false
         });
-  
+
         const teams = await Promise.all((business.teams || []).map(async (team: any) => {
           const location = teamLocations.find(loc => 
             loc.teamId === team.metadata?.phpId || loc.teamId === team.id
@@ -801,7 +1168,7 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
           const availability = teamAvailabilities.find(avail => 
             avail.teamId === team.metadata?.phpId || avail.teamId === team.id
           );
-  
+
           const storageTeamId = team.metadata?.phpId || team.id;
           const basicAvailability = await this.calculateTeamAvailabilityDetails(
             businessId, 
@@ -810,7 +1177,7 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
             location, 
             availability
           );
-  
+
           return {
             teamId: team.metadata?.phpId || team.id,
             teamName: team.name,
@@ -823,7 +1190,29 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
             emergencyContact: team.emergencyContact
           };
         }));
-  
+
+        // Log all teams availability access
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TEAM_AVAILABILITY_ACCESSED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceName: 'All teams availability',
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            totalTeams: teams.length,
+            availableTeams: teams.filter(t => t.availability.today.status === 'available').length,
+            busyTeams: teams.filter(t => t.availability.today.status === 'busy').length,
+            offlineTeams: teams.filter(t => t.availability.today.status === 'offline').length,
+            teamsWithEmergencyContact: teams.filter(t => t.emergencyContact?.phone).length,
+            avgEfficiency: teams.reduce((sum, t) => sum + t.performance.efficiency, 0) / teams.length,
+            avgCompletionRate: teams.reduce((sum, t) => sum + t.performance.completionRate, 0) / teams.length
+          }
+        });
+
         return {
           teams,
           summary: {
@@ -835,665 +1224,24 @@ async getTeamAvailability(businessId: string, teamId?: string): Promise<any> {
           }
         };
       }
-  
+
     } catch (error) {
       this.logger.error(`Error getting team availability: ${error.message}`, error.stack);
       throw error;
     }
   }
 
-
-  // Update the calculateTeamAvailabilityDetails method to include recent tasks
-private async calculateTeamAvailabilityDetails(
-    businessId: string,
-    teamId: string,
-    team: any,
-    teamLocation: any,
-    teamAvailability: any
-  ): Promise<any> {
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-  
-    // Existing calculations...
-    const todayData = await this.calculateTodayAvailability(businessId, teamId, teamLocation, today, team);
-    const weekData = await this.calculateWeekAvailability(businessId, teamId, today, team);
-    const upcomingSchedule = await this.getUpcomingSchedule(businessId, teamId, now, team);
-    const futureTasksInfo = await this.getFutureTasksIndicator(businessId, teamId, today, team);
-    const performance = await this.calculatePerformanceMetrics(businessId, teamId, team);
-  
-    // NEW: Get recent completed tasks
-    const recentCompletedTasks = await this.getRecentCompletedTasks(businessId, teamId, team, 3);
-  
-    return {
-      teamId,
-      teamName: team.name,
-      availability: {
-        today: todayData,
-        week: weekData,
-        upcomingSchedule,
-        futureWork: futureTasksInfo,
-        recentCompletedTasks // NEW: Add recent completed tasks
-      },
-      performance,
-      lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || now.toISOString(),
-      emergencyContact: team.emergencyContact ? {
-        name: team.emergencyContact.name,
-        phone: team.emergencyContact.phone,
-        relationship: team.emergencyContact.relationship
-      } : undefined
-    };
-  }
-  
   /**
- * FIXED: Calculate today's availability details with proper 3-ID format handling
- * Team objects have 3 possible IDs:
- * - team._id: MongoDB ObjectId (e.g., "6839a523ebf4dc20600760cc")  
- * - team.id: Generated ID (e.g., "1748608291431")
- * - team.metadata.phpId: Original PHP system ID (e.g., "19")
- */
-
-  private async calculateTodayAvailability(
-    businessId: string,
-    teamId: string,
-    teamLocation: any,
-    today: Date,
-    team: any
-): Promise<any> {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // Setup flexible team ID matching for ALL 3 possible formats
-    const phpId = team.metadata?.phpId;           // "19"
-    const generatedId = team.id;                  // "1748608291431" 
-    const mongoObjectId = team._id?.toString();   // ObjectId as string
-    
-    // Build query to check ALL possible team ID formats
-    const teamIdQuery = [];
-    if (phpId) teamIdQuery.push(phpId);
-    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
-    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
-    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-
-    // Get today's tasks using flexible team ID matching
-    const todayTasks = await this.fieldTaskModel.find({
-        businessId,
-        assignedTeamId: { $in: teamIdQuery },
-        scheduledDate: { $gte: today, $lt: tomorrow },
-        isDeleted: false
-    });
-
-    // Get today's route progress using the same flexible matching
-    const routeProgress = await this.routeProgressModel.findOne({
-        businessId,
-        teamId: { $in: teamIdQuery },
-        routeDate: { $gte: today, $lt: tomorrow },
-        isDeleted: false
-    });
-
-    // Calculate working hours (default or from team data)
-    const workingHours = {
-        start: team.workingHours?.start || '8:00 AM',
-        end: team.workingHours?.end || '5:00 PM'
-    };
-
-    // Calculate task metrics
-    const scheduledTasks = todayTasks.length;
-    const completedTasks = todayTasks.filter(task => 
-        task.status === FieldTaskStatus.COMPLETED
-    ).length;
-    const inProgressTasks = todayTasks.filter(task => 
-        task.status === FieldTaskStatus.IN_PROGRESS
-    ).length;
-
-    // FIXED: Use team's configured max daily tasks instead of hardcoded 10
-    const maxCapacity = team.maxDailyTasks || 8; // Default to 8 if not configured
-    const currentCapacity = scheduledTasks; // Total tasks assigned today
-    const utilizationPercentage = Math.round((scheduledTasks / maxCapacity) * 100);
-
-    // Better status logic based on capacity and activity
-    let currentStatus: 'available' | 'busy' | 'offline' | 'unavailable' = 'offline';
-    
-    if (teamLocation) {
-        switch (teamLocation.status) {
-            case TeamLocationStatus.ACTIVE:
-                // More nuanced status based on workload and progress
-                if (utilizationPercentage >= 80) {
-                    currentStatus = 'busy'; // 80%+ capacity = busy
-                } else if (scheduledTasks > 0 || inProgressTasks > 0) {
-                    currentStatus = 'available'; // Has work but not overwhelmed = available/working
-                } else {
-                    currentStatus = 'available'; // No tasks = available for new work
-                }
-                break;
-            case TeamLocationStatus.BREAK:
-                currentStatus = 'unavailable';
-                break;
-            case TeamLocationStatus.INACTIVE:
-            case TeamLocationStatus.OFFLINE:
-            default:
-                currentStatus = 'offline';
-                break;
-        }
-    }
-
-    // Add more detailed status explanation
-    let statusExplanation = '';
-    switch (currentStatus) {
-        case 'available':
-            if (scheduledTasks > 0) {
-                statusExplanation = `Working within capacity (${utilizationPercentage}% utilized)`;
-            } else {
-                statusExplanation = 'Available for new assignments';
-            }
-            break;
-        case 'busy':
-            statusExplanation = `High workload (${utilizationPercentage}% capacity)`;
-            break;
-        case 'offline':
-            statusExplanation = 'Team is offline or inactive';
-            break;
-        case 'unavailable':
-            statusExplanation = 'Team is on break';
-            break;
-    }
-
-    // Debug log to show capacity source
-    console.log(`[DEBUG] Team ${team.name} capacity: ${currentCapacity}/${maxCapacity} (${utilizationPercentage}%)`);
-    console.log(`[DEBUG] Max capacity source: ${team.maxDailyTasks ? 'team.maxDailyTasks' : 'default fallback'}`);
-
-    return {
-        status: currentStatus,
-        statusExplanation, // Detailed explanation
-        workingHours,
-        scheduledTasks,
-        completedTasks,
-        inProgressTasks, // Add in-progress count
-        currentCapacity,
-        maxCapacity, // FIXED: Now uses team.maxDailyTasks
-        utilizationPercentage, // Add utilization percentage
-        workloadSummary: { // Workload breakdown
-            total: scheduledTasks,
-            completed: completedTasks,
-            inProgress: inProgressTasks,
-            pending: scheduledTasks - completedTasks - inProgressTasks
-        }
-    };
-}
-  
-  /**
- * FIXED: Calculate week availability data with proper completion status logic
- * Now properly reflects when tasks are completed vs just scheduled
- */
-private async calculateWeekAvailability(
-    businessId: string,
-    teamId: string,
-    startOfWeek: Date,
-    team: any
-  ): Promise<any[]> {
-    const weekData = [];
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  
-    // Setup flexible team ID matching for ALL 3 possible formats
-    const phpId = team.metadata?.phpId;
-    const generatedId = team.id;
-    const mongoObjectId = team._id?.toString();
-    
-    const teamIdQuery = [];
-    if (phpId) teamIdQuery.push(phpId);
-    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
-    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
-    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-  
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek);
-      date.setDate(startOfWeek.getDate() + i);
-      const nextDay = new Date(date);
-      nextDay.setDate(date.getDate() + 1);
-  
-      // Get tasks for this day using flexible team ID matching
-      const dayTasks = await this.fieldTaskModel.find({
-        businessId,
-        assignedTeamId: { $in: teamIdQuery },
-        scheduledDate: { $gte: date, $lt: nextDay },
-        isDeleted: false
-      });
-  
-      // 🚀 FIXED: Better day status logic based on actual task completion
-      let dayStatus: 'available' | 'busy' | 'offline' | 'scheduled' = 'available';
-      
-      if (dayTasks.length > 0) {
-        const inProgressTasks = dayTasks.filter(task => task.status === FieldTaskStatus.IN_PROGRESS);
-        const completedTasks = dayTasks.filter(task => task.status === FieldTaskStatus.COMPLETED);
-        const pendingTasks = dayTasks.filter(task => 
-          task.status === FieldTaskStatus.PENDING || 
-          task.status === FieldTaskStatus.SCHEDULED || 
-          task.status === FieldTaskStatus.ASSIGNED
-        );
-        
-        // 🚀 IMPROVED: More accurate status determination
-        if (inProgressTasks.length > 0) {
-          // Team is actively working on tasks
-          dayStatus = 'busy';
-        } else if (completedTasks.length > 0 && pendingTasks.length === 0) {
-          // All tasks for the day are completed - team is available
-          dayStatus = 'available';
-        } else if (pendingTasks.length > 0) {
-          // Has pending/scheduled tasks but not working on them yet
-          dayStatus = 'scheduled';
-        } else if (completedTasks.length > 0) {
-          // Has some completed tasks but no pending - available
-          dayStatus = 'available';
-        } else {
-          // Default case
-          dayStatus = 'scheduled';
-        }
-      }
-  
-      // Calculate scheduled hours (estimated)
-      const scheduledHours = dayTasks.reduce((total, task) => {
-        return total + (task.estimatedDuration || 60) / 60; // Convert minutes to hours
-      }, 0);
-  
-      weekData.push({
-        date: date.toISOString().split('T')[0],
-        dayOfWeek: dayNames[date.getDay()],
-        status: dayStatus,
-        scheduledHours: Math.round(scheduledHours * 10) / 10, // Round to 1 decimal
-        tasks: dayTasks.length,
-        // 🚀 NEW: Add task breakdown for debugging
-        taskBreakdown: {
-          total: dayTasks.length,
-          completed: dayTasks.filter(t => t.status === FieldTaskStatus.COMPLETED).length,
-          inProgress: dayTasks.filter(t => t.status === FieldTaskStatus.IN_PROGRESS).length,
-          pending: dayTasks.filter(t => 
-            t.status === FieldTaskStatus.PENDING || 
-            t.status === FieldTaskStatus.SCHEDULED || 
-            t.status === FieldTaskStatus.ASSIGNED
-          ).length
-        }
-      });
-    }
-  
-    return weekData;
-  }
-  
-
-
-  /**
- * NEW: Get recent completed tasks for a team
- */
-private async getRecentCompletedTasks(
-    businessId: string,
-    teamId: string,
-    team: any,
-    limit: number = 3
-  ): Promise<any[]> {
-    try {
-      // Setup flexible team ID matching for ALL 3 possible formats
-      const phpId = team.metadata?.phpId;
-      const generatedId = team.id;
-      const mongoObjectId = team._id?.toString();
-      
-      const teamIdQuery = [];
-      if (phpId) teamIdQuery.push(phpId);
-      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
-      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
-      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-  
-      // Get recent completed tasks (last 7 days)
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  
-      const recentTasks = await this.fieldTaskModel.find({
-        businessId,
-        assignedTeamId: { $in: teamIdQuery },
-        status: FieldTaskStatus.COMPLETED,
-        completedAt: { $gte: sevenDaysAgo },
-        isDeleted: false
-      })
-      .sort({ completedAt: -1 }) // Most recent first
-      .limit(limit);
-  
-      return recentTasks.map(task => ({
-        taskId: task._id.toString(),
-        name: task.name || task.description || 'Completed task',
-        description: task.description,
-        completedAt: task.completedAt,
-        location: task.location?.address || 'Location not specified',
-        duration: task.actualPerformance?.actualDuration || task.estimatedDuration,
-        estimatedDuration: task.estimatedDuration,
-        actualDuration: task.actualPerformance?.actualDuration,
-        clientSignoff: task.clientSignoff ? {
-            signedBy: task.clientSignoff.signedBy,
-            satisfactionRating: task.clientSignoff.satisfactionRating,
-            clientNotes: task.clientSignoff.clientNotes,
-            signedAt: task.clientSignoff.signedAt
-        } : undefined,
-        efficiency: task.actualPerformance?.actualDuration && task.estimatedDuration ? 
-          Math.round(((task.estimatedDuration / task.actualPerformance.actualDuration) * 100) * 10) / 10 : undefined
-      }));
-  
-    } catch (error) {
-      console.warn(`Failed to get recent completed tasks for team ${teamId}: ${error.message}`);
-      return [];
-    }
-  }
-
-
- /**
- * FIXED: Calculate comprehensive performance metrics with proper PHP ID handling
- */
-private async calculatePerformanceMetrics(
-    businessId: string,
-    teamId: string,
-    team: any  // Added team parameter
-  ): Promise<{
-    efficiency: number;
-    completionRate: number;
-    averageResponseTime: number;
-    rating: number;
-  }> {
-    try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  
-      // FIXED: Setup flexible team ID matching for ALL 3 possible formats
-      const phpId = team.metadata?.phpId;           // "19"
-      const generatedId = team.id;                  // "1748608291431"
-      const mongoObjectId = team._id?.toString();   // ObjectId as string
-      
-      const teamIdQuery = [];
-      if (phpId) teamIdQuery.push(phpId);
-      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
-      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
-      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-  
-      // Debug log for troubleshooting
-      console.log(`[DEBUG] Performance metrics for team ${team.name} checking IDs:`, teamIdQuery);
-  
-      // FIXED: Get recent tasks using flexible team ID matching
-      const recentTasks = await this.fieldTaskModel.find({
-        businessId,
-        assignedTeamId: { $in: teamIdQuery },  // FIXED: Check multiple possible team IDs
-        createdAt: { $gte: thirtyDaysAgo },
-        isDeleted: false
-      });
-  
-      // Get completed tasks
-      const completedTasks = recentTasks.filter(task => 
-        task.status === FieldTaskStatus.COMPLETED
-      );
-  
-      // Calculate completion rate
-      const completionRate = recentTasks.length > 0 ? 
-        (completedTasks.length / recentTasks.length) * 100 : 0;
-  
-      // Calculate efficiency (actual vs estimated duration)
-      let efficiency = 0; // Default to 0%
-      if (completedTasks.length > 0) {
-        const efficiencyReadings = completedTasks
-          .filter(task => 
-            task.actualPerformance?.actualDuration && 
-            task.estimatedDuration
-          )
-          .map(task => {
-            const estimated = task.estimatedDuration;
-            const actual = task.actualPerformance!.actualDuration!;
-            // Efficiency = (estimated / actual) * 100
-            // If actual < estimated, efficiency > 100% (good)
-            // If actual > estimated, efficiency < 100% (needs improvement)
-            return Math.min(200, (estimated / actual) * 100); // Cap at 200%
-          });
-  
-        if (efficiencyReadings.length > 0) {
-          efficiency = efficiencyReadings.reduce((sum, eff) => sum + eff, 0) / efficiencyReadings.length;
-        }
-      }
-  
-      // Calculate average response time
-      let averageResponseTime = 0; // Default 0 minutes
-      if (completedTasks.length > 0) {
-        const responseTimes = completedTasks
-          .filter(task => 
-            task.actualPerformance?.startTime && 
-            task.scheduledDate
-          )
-          .map(task => {
-            // Calculate time between scheduled time and actual start
-            const scheduled = new Date(task.scheduledDate);
-            if (task.timeWindow?.start) {
-              const [hours, minutes] = task.timeWindow.start.split(':').map(Number);
-              scheduled.setHours(hours, minutes, 0, 0);
-            } else if (task.scheduledTime) {
-              const [hours, minutes] = task.scheduledTime.split(':').map(Number);
-              scheduled.setHours(hours, minutes, 0, 0);
-            } else {
-              scheduled.setHours(9, 0, 0, 0); // Default to 9 AM
-            }
-            
-            const actualStart = task.actualPerformance!.startTime!;
-            const diffMinutes = Math.abs(actualStart.getTime() - scheduled.getTime()) / (1000 * 60);
-            
-            return Math.min(120, diffMinutes); // Cap at 2 hours
-          });
-  
-        if (responseTimes.length > 0) {
-          averageResponseTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
-        }
-      }
-  
-      // Calculate rating based on client signoffs
-      let rating = 0; // Default to 0 stars
-      const tasksWithRatings = completedTasks.filter(task => 
-        task.clientSignoff?.satisfactionRating
-      );
-  
-      if (tasksWithRatings.length > 0) {
-        const totalRating = tasksWithRatings.reduce((sum, task) => 
-          sum + (task.clientSignoff!.satisfactionRating! || 5), 0
-        );
-        rating = totalRating / tasksWithRatings.length;
-      }
-  
-      // Round all values appropriately
-      return {
-        efficiency: Math.round(efficiency * 10) / 10, // 1 decimal place
-        completionRate: Math.round(completionRate * 10) / 10, // 1 decimal place
-        averageResponseTime: Math.round(averageResponseTime), // Whole minutes
-        rating: Math.round(rating * 10) / 10 // 1 decimal place
-      };
-  
-    } catch (error) {
-      this.logger.warn(`Failed to calculate performance metrics for team ${teamId}: ${error.message}`);
-      
-      // Return default values if calculation fails
-      return {
-        efficiency: 0,
-        completionRate: 0,
-        averageResponseTime: 0,
-        rating: 0
-      };
-    }
-  }
-
-  /**
- * NEW: Check for tasks scheduled beyond the current week
- */
-private async getFutureTasksIndicator(
-    businessId: string,
-    teamId: string,
-    currentWeekStart: Date,
-    team: any
-  ): Promise<{
-    hasFutureTasks: boolean;
-    futureTasksCount: number;
-    nextTaskDate?: string;
-    furthestTaskDate?: string;
-  }> {
-    try {
-      // Calculate end of current week (7 days from start)
-      const currentWeekEnd = new Date(currentWeekStart);
-      currentWeekEnd.setDate(currentWeekStart.getDate() + 7);
-      currentWeekEnd.setHours(23, 59, 59, 999);
-  
-      // Setup flexible team ID matching for ALL 3 possible formats
-      const phpId = team.metadata?.phpId;           // "19"
-      const generatedId = team.id;                  // "1748608291431"
-      const mongoObjectId = team._id?.toString();   // ObjectId as string
-      
-      const teamIdQuery = [];
-      if (phpId) teamIdQuery.push(phpId);
-      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
-      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
-      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-  
-      // Debug log for troubleshooting
-      console.log(`[DEBUG] Future tasks check for team ${team.name} beyond ${currentWeekEnd.toISOString()}`);
-  
-      // Get all future tasks beyond current week
-      const futureTasks = await this.fieldTaskModel.find({
-        businessId,
-        assignedTeamId: { $in: teamIdQuery },
-        scheduledDate: { $gt: currentWeekEnd },
-        status: { 
-          $in: [
-            FieldTaskStatus.PENDING, 
-            FieldTaskStatus.SCHEDULED, 
-            FieldTaskStatus.ASSIGNED,
-            FieldTaskStatus.IN_PROGRESS  // Include in-progress for completeness
-          ] 
-        },
-        isDeleted: false
-      }).sort({ scheduledDate: 1 });
-  
-      const hasFutureTasks = futureTasks.length > 0;
-      const futureTasksCount = futureTasks.length;
-  
-      let nextTaskDate: string | undefined;
-      let furthestTaskDate: string | undefined;
-  
-      if (hasFutureTasks) {
-        // Get next upcoming task date
-        nextTaskDate = futureTasks[0].scheduledDate.toISOString().split('T')[0];
-        
-        // Get furthest task date
-        furthestTaskDate = futureTasks[futureTasks.length - 1].scheduledDate.toISOString().split('T')[0];
-      }
-  
-      return {
-        hasFutureTasks,
-        futureTasksCount,
-        nextTaskDate,
-        furthestTaskDate
-      };
-  
-    } catch (error) {
-      console.warn(`Failed to check future tasks for team ${teamId}: ${error.message}`);
-      
-      // Return default values if check fails
-      return {
-        hasFutureTasks: false,
-        futureTasksCount: 0
-      };
-    }
-  }
-
-  /**
- * FIXED: Get upcoming scheduled tasks with proper date handling
- * Now includes today's remaining tasks and better status filtering
- */
-private async getUpcomingSchedule(
-    businessId: string,
-    teamId: string,
-    fromDate: Date,
-    team: any
-): Promise<any[]> {
-    // FIXED: Use start of today instead of current time to include today's tasks
-    const startOfToday = new Date(fromDate);
-    startOfToday.setHours(0, 0, 0, 0);
-    
-    const upcomingLimit = new Date(startOfToday);
-    upcomingLimit.setDate(upcomingLimit.getDate() + 14); // Next 2 weeks
-
-    // Setup flexible team ID matching for ALL 3 possible formats
-    const phpId = team.metadata?.phpId;
-    const generatedId = team.id;
-    const mongoObjectId = team._id?.toString();
-    
-    const teamIdQuery = [];
-    if (phpId) teamIdQuery.push(phpId);
-    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
-    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
-    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
-
-    // FIXED: More inclusive status filtering and better date range
-    const upcomingTasks = await this.fieldTaskModel.find({
-        businessId,
-        assignedTeamId: { $in: teamIdQuery },
-        scheduledDate: { 
-            $gte: startOfToday,  // FIXED: Use start of today, not current time
-            $lte: upcomingLimit 
-        },
-        status: { 
-            $in: [
-                FieldTaskStatus.PENDING, 
-                FieldTaskStatus.SCHEDULED, 
-                FieldTaskStatus.ASSIGNED,
-                FieldTaskStatus.IN_PROGRESS  // FIXED: Include in-progress tasks
-                // Note: Not including COMPLETED tasks as they shouldn't be "upcoming"
-            ] 
-        },
-        isDeleted: false
-    }).sort({ scheduledDate: 1, scheduledTime: 1 }).limit(10);
-
-    // Debug log to help troubleshoot
-    console.log(`[DEBUG] Upcoming schedule query for team ${team.name}:`);
-    console.log(`- Team IDs checked: ${teamIdQuery.join(', ')}`);
-    console.log(`- Date range: ${startOfToday.toISOString()} to ${upcomingLimit.toISOString()}`);
-    console.log(`- Found ${upcomingTasks.length} tasks`);
-    
-    if (upcomingTasks.length > 0) {
-        console.log('- Task details:', upcomingTasks.map(task => ({
-            id: task._id.toString(),
-            name: task.name,
-            scheduledDate: task.scheduledDate.toISOString(),
-            scheduledTime: task.scheduledTime,
-            timeWindow: task.timeWindow,
-            status: task.status,
-            assignedTeamId: task.assignedTeamId
-        })));
-    }
-
-    return upcomingTasks.map(task => {
-        // FIXED: Better time handling with fallbacks
-        let taskTime = '9:00 AM'; // Default fallback
-        
-        if (task.timeWindow?.start) {
-            taskTime = task.timeWindow.start;
-        } else if (task.scheduledTime) {
-            taskTime = task.scheduledTime;
-        } else if (task.timeWindow?.end) {
-            // If only end time is available, estimate start time
-            taskTime = `Before ${task.timeWindow.end}`;
-        }
-
-        return {
-            date: task.scheduledDate.toISOString().split('T')[0],
-            time: taskTime,
-            task: task.name || task.description || 'Scheduled task',
-            location: task.location?.address || 'Location TBD',
-            duration: Math.round((task.estimatedDuration || 60) / 60 * 10) / 10, // Convert to hours
-            taskId: task._id.toString(),  // ADDED: Include task ID for debugging
-            status: task.status  // ADDED: Include status for debugging
-        };
-    });
-}
-
- /**
-   * UPDATED: Export location data now includes emergency contact information
+   * Export location data with comprehensive information including emergency contacts and audit logging
    */
- async exportLocationData(businessId: string): Promise<{ success: boolean; data: any[]; message: string }> {
+  async exportLocationData(
+    businessId: string,
+    userId?: string,
+    req?: any
+  ): Promise<{ success: boolean; data: any[]; message: string }> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
       const teamLocations = await this.getTeamLocations(businessId);
@@ -1520,17 +1268,41 @@ private async getUpcomingSchedule(
         app_version: location.deviceInfo?.appVersion || 'N/A',
         route_progress: location.route_progress ? 
           `${location.route_progress.completedTasks}/${location.route_progress.totalTasks}` : 'N/A',
-        // NEW: Emergency contact information in export
         emergency_contact_name: location.emergencyContact?.name || 'N/A',
         emergency_contact_phone: location.emergencyContact?.phone || 'N/A',
         emergency_contact_relationship: location.emergencyContact?.relationship || 'N/A',
-        // NEW: Vehicle information in export
         vehicle_type: location.vehicle_info?.type || 'N/A',
         vehicle_license_plate: location.vehicle_info?.license_plate || 'N/A',
         vehicle_fuel_level: location.vehicle_info?.fuel_level || 'N/A',
         vehicle_model: location.vehicle_info?.model || 'N/A',
         vehicle_year: location.vehicle_info?.year || 'N/A'
       }));
+
+      // Log location data export
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.LOCATION_DATA_EXPORTED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceName: 'Location data export',
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          totalTeamsExported: exportData.length,
+          totalBusinessTeams: business.teams?.length || 0,
+          exportFields: [
+            'team_id', 'team_name', 'status', 'coordinates', 'last_updated',
+            'connectivity', 'route_progress', 'emergency_contact', 'vehicle_info'
+          ],
+          teamsWithEmergencyContacts: exportData.filter(d => d.emergency_contact_phone !== 'N/A').length,
+          teamsWithVehicleInfo: exportData.filter(d => d.vehicle_license_plate !== 'N/A').length,
+          activeTeams: exportData.filter(d => d.status === TeamLocationStatus.ACTIVE).length,
+          offlineTeams: exportData.filter(d => d.status === TeamLocationStatus.OFFLINE).length,
+          exportFormat: 'json'
+        }
+      });
 
       this.logger.log(`Exported location data with emergency contacts and vehicle info for ${exportData.length} teams from business ${businessId}`);
 
@@ -1547,7 +1319,7 @@ private async getUpcomingSchedule(
   }
 
   /**
-   * Get team location history in format expected by frontend table with PHP ID support
+   * Get team location history in format expected by frontend table with PHP ID support and audit logging
    */
   async getTeamLocationHistory(
     businessId: string,
@@ -1556,8 +1328,13 @@ private async getUpcomingSchedule(
       limit: number;
       startDate?: Date;
       endDate?: Date;
-    }
+    },
+    userId?: string,
+    req?: any
   ): Promise<LocationHistoryResponse> {
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+
     try {
       const business = await this.validateBusiness(businessId);
 
@@ -1584,6 +1361,30 @@ private async getUpcomingSchedule(
       const teamLocationRecord = await this.teamLocationModel.findOne(query);
 
       if (!teamLocationRecord) {
+        // Log location history access with no data found
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TEAM_LOCATION_ACCESSED,
+          resourceType: ResourceType.SERVICE_AREA,
+          resourceId: teamId,
+          resourceName: `Location history for team ${team.name}`,
+          success: true,
+          severity: AuditSeverity.LOW,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId: storageTeamId,
+            teamName: team.name,
+            historyEntries: 0,
+            filters: {
+              limit: filters.limit,
+              hasDateRange: !!(filters.startDate || filters.endDate)
+            },
+            result: 'no_location_data'
+          }
+        });
+
         return {
           history: [],
           total: 0,
@@ -1661,10 +1462,45 @@ private async getUpcomingSchedule(
       const uniqueHistory = this.removeDuplicateLocations(formattedHistory);
       uniqueHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-      this.logger.log(`Retrieved ${uniqueHistory.length} location history entries for team ${teamId} (storage: ${storageTeamId})`);
+      const finalHistory = uniqueHistory.slice(0, filters.limit);
+
+      // Log location history access
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_LOCATION_ACCESSED,
+        resourceType: ResourceType.SERVICE_AREA,
+        resourceId: teamLocationRecord._id.toString(),
+        resourceName: `Location history for team ${team.name}`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId: storageTeamId,
+          teamName: team.name,
+          historyEntries: finalHistory.length,
+          totalHistoryAvailable: uniqueHistory.length,
+          rawHistoryCount: locationHistory.length,
+          filters: {
+            limit: filters.limit,
+            startDate: filters.startDate?.toISOString(),
+            endDate: filters.endDate?.toISOString(),
+            hasDateRange: !!(filters.startDate || filters.endDate)
+          },
+          oldestEntry: finalHistory.length > 0 ? finalHistory[finalHistory.length - 1].timestamp : null,
+          newestEntry: finalHistory.length > 0 ? finalHistory[0].timestamp : null,
+          locationSources: finalHistory.reduce((acc, entry) => {
+            acc[entry.source] = (acc[entry.source] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)
+        }
+      });
+
+      this.logger.log(`Retrieved ${finalHistory.length} location history entries for team ${teamId} (storage: ${storageTeamId})`);
 
       return {
-        history: uniqueHistory.slice(0, filters.limit),
+        history: finalHistory,
         total: uniqueHistory.length,
         teamId,
         teamName: team.name
@@ -1677,11 +1513,770 @@ private async getUpcomingSchedule(
   }
 
   // ============================================================================
-  // PRIVATE HELPER METHODS
+  // PRIVATE HELPER METHODS (same as before, but keeping them for completeness)
   // ============================================================================
 
+  // Update the calculateTeamAvailabilityDetails method to include recent tasks
+  private async calculateTeamAvailabilityDetails(
+    businessId: string,
+    teamId: string,
+    team: any,
+    teamLocation: any,
+    teamAvailability: any
+  ): Promise<any> {
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    // Existing calculations...
+    const todayData = await this.calculateTodayAvailability(businessId, teamId, teamLocation, today, team);
+    const weekData = await this.calculateWeekAvailability(businessId, teamId, today, team);
+    const upcomingSchedule = await this.getUpcomingSchedule(businessId, teamId, now, team);
+    const futureTasksInfo = await this.getFutureTasksIndicator(businessId, teamId, today, team);
+    const performance = await this.calculatePerformanceMetrics(businessId, teamId, team);
+
+    // NEW: Get recent completed tasks
+    const recentCompletedTasks = await this.getRecentCompletedTasks(businessId, teamId, team, 3);
+
+    return {
+      teamId,
+      teamName: team.name,
+      availability: {
+        today: todayData,
+        week: weekData,
+        upcomingSchedule,
+        futureWork: futureTasksInfo,
+        recentCompletedTasks // NEW: Add recent completed tasks
+      },
+      performance,
+      lastUpdated: teamLocation?.lastLocationUpdate?.toISOString() || now.toISOString(),
+      emergencyContact: team.emergencyContact ? {
+        name: team.emergencyContact.name,
+        phone: team.emergencyContact.phone,
+        relationship: team.emergencyContact.relationship
+      } : undefined
+    };
+  }
+
   /**
-   * Determine location source from team location record
+   * Calculate today's availability details with proper 3-ID format handling
+   */
+  private async calculateTodayAvailability(
+    businessId: string,
+    teamId: string,
+    teamLocation: any,
+    today: Date,
+    team: any
+  ): Promise<any> {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Setup flexible team ID matching for ALL 3 possible formats
+    const phpId = team.metadata?.phpId;           // "19"
+    const generatedId = team.id;                  // "1748608291431" 
+    const mongoObjectId = team._id?.toString();   // ObjectId as string
+    
+    // Build query to check ALL possible team ID formats
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+
+    // Get today's tasks using flexible team ID matching
+    const todayTasks = await this.fieldTaskModel.find({
+      businessId,
+      assignedTeamId: { $in: teamIdQuery },
+      scheduledDate: { $gte: today, $lt: tomorrow },
+      isDeleted: false
+    });
+
+    // Calculate working hours (default or from team data)
+    const workingHours = {
+      start: team.workingHours?.start || '8:00 AM',
+      end: team.workingHours?.end || '5:00 PM'
+    };
+
+    // Calculate task metrics
+    const scheduledTasks = todayTasks.length;
+    const completedTasks = todayTasks.filter(task => 
+      task.status === FieldTaskStatus.COMPLETED
+    ).length;
+    const inProgressTasks = todayTasks.filter(task => 
+      task.status === FieldTaskStatus.IN_PROGRESS
+    ).length;
+
+    // Use team's configured max daily tasks instead of hardcoded 10
+    const maxCapacity = team.maxDailyTasks || 8; // Default to 8 if not configured
+    const currentCapacity = scheduledTasks; // Total tasks assigned today
+    const utilizationPercentage = Math.round((scheduledTasks / maxCapacity) * 100);
+
+    // Better status logic based on capacity and activity
+    let currentStatus: 'available' | 'busy' | 'offline' | 'unavailable' = 'offline';
+    
+    if (teamLocation) {
+      switch (teamLocation.status) {
+        case TeamLocationStatus.ACTIVE:
+          if (utilizationPercentage >= 80) {
+            currentStatus = 'busy'; // 80%+ capacity = busy
+          } else if (scheduledTasks > 0 || inProgressTasks > 0) {
+            currentStatus = 'available'; // Has work but not overwhelmed = available/working
+          } else {
+            currentStatus = 'available'; // No tasks = available for new work
+          }
+          break;
+        case TeamLocationStatus.BREAK:
+          currentStatus = 'unavailable';
+          break;
+        case TeamLocationStatus.INACTIVE:
+        case TeamLocationStatus.OFFLINE:
+        default:
+          currentStatus = 'offline';
+          break;
+      }
+    }
+
+    // Add more detailed status explanation
+    let statusExplanation = '';
+    switch (currentStatus) {
+      case 'available':
+        if (scheduledTasks > 0) {
+          statusExplanation = `Working within capacity (${utilizationPercentage}% utilized)`;
+        } else {
+          statusExplanation = 'Available for new assignments';
+        }
+        break;
+      case 'busy':
+        statusExplanation = `High workload (${utilizationPercentage}% capacity)`;
+        break;
+      case 'offline':
+        statusExplanation = 'Team is offline or inactive';
+        break;
+      case 'unavailable':
+        statusExplanation = 'Team is on break';
+        break;
+    }
+
+    return {
+      status: currentStatus,
+      statusExplanation,
+      workingHours,
+      scheduledTasks,
+      completedTasks,
+      inProgressTasks,
+      currentCapacity,
+      maxCapacity,
+      utilizationPercentage,
+      workloadSummary: {
+        total: scheduledTasks,
+        completed: completedTasks,
+        inProgress: inProgressTasks,
+        pending: scheduledTasks - completedTasks - inProgressTasks
+      }
+    };
+  }
+
+  /**
+   * Calculate week availability data with proper completion status logic
+   */
+  private async calculateWeekAvailability(
+    businessId: string,
+    teamId: string,
+    startOfWeek: Date,
+    team: any
+  ): Promise<any[]> {
+    const weekData = [];
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    // Setup flexible team ID matching for ALL 3 possible formats
+    const phpId = team.metadata?.phpId;
+    const generatedId = team.id;
+    const mongoObjectId = team._id?.toString();
+    
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + i);
+      const nextDay = new Date(date);
+      nextDay.setDate(date.getDate() + 1);
+
+      // Get tasks for this day using flexible team ID matching
+      const dayTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        scheduledDate: { $gte: date, $lt: nextDay },
+        isDeleted: false
+      });
+
+      // Better day status logic based on actual task completion
+      let dayStatus: 'available' | 'busy' | 'offline' | 'scheduled' = 'available';
+      
+      if (dayTasks.length > 0) {
+        const inProgressTasks = dayTasks.filter(task => task.status === FieldTaskStatus.IN_PROGRESS);
+        const completedTasks = dayTasks.filter(task => task.status === FieldTaskStatus.COMPLETED);
+        const pendingTasks = dayTasks.filter(task => 
+          task.status === FieldTaskStatus.PENDING || 
+          task.status === FieldTaskStatus.SCHEDULED || 
+          task.status === FieldTaskStatus.ASSIGNED
+        );
+        
+        if (inProgressTasks.length > 0) {
+          dayStatus = 'busy';
+        } else if (completedTasks.length > 0 && pendingTasks.length === 0) {
+          dayStatus = 'available';
+        } else if (pendingTasks.length > 0) {
+          dayStatus = 'scheduled';
+        } else if (completedTasks.length > 0) {
+          dayStatus = 'available';
+        } else {
+          dayStatus = 'scheduled';
+        }
+      }
+
+      // Calculate scheduled hours (estimated)
+      const scheduledHours = dayTasks.reduce((total, task) => {
+        return total + (task.estimatedDuration || 60) / 60; // Convert minutes to hours
+      }, 0);
+
+      weekData.push({
+        date: date.toISOString().split('T')[0],
+        dayOfWeek: dayNames[date.getDay()],
+        status: dayStatus,
+        scheduledHours: Math.round(scheduledHours * 10) / 10, // Round to 1 decimal
+        tasks: dayTasks.length,
+        taskBreakdown: {
+          total: dayTasks.length,
+          completed: dayTasks.filter(t => t.status === FieldTaskStatus.COMPLETED).length,
+          inProgress: dayTasks.filter(t => t.status === FieldTaskStatus.IN_PROGRESS).length,
+          pending: dayTasks.filter(t => 
+            t.status === FieldTaskStatus.PENDING || 
+            t.status === FieldTaskStatus.SCHEDULED || 
+            t.status === FieldTaskStatus.ASSIGNED
+          ).length
+        }
+      });
+    }
+
+    return weekData;
+  }
+
+  /**
+   * Get recent completed tasks for a team
+   */
+  private async getRecentCompletedTasks(
+    businessId: string,
+    teamId: string,
+    team: any,
+    limit: number = 3
+  ): Promise<any[]> {
+    try {
+      // Setup flexible team ID matching for ALL 3 possible formats
+      const phpId = team.metadata?.phpId;
+      const generatedId = team.id;
+      const mongoObjectId = team._id?.toString();
+      
+      const teamIdQuery = [];
+      if (phpId) teamIdQuery.push(phpId);
+      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+
+      // Get recent completed tasks (last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const recentTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        status: FieldTaskStatus.COMPLETED,
+        completedAt: { $gte: sevenDaysAgo },
+        isDeleted: false
+      })
+      .sort({ completedAt: -1 }) // Most recent first
+      .limit(limit);
+
+      return recentTasks.map(task => ({
+        taskId: task._id.toString(),
+        name: task.name || task.description || 'Completed task',
+        description: task.description,
+        completedAt: task.completedAt,
+        location: task.location?.address || 'Location not specified',
+        duration: task.actualPerformance?.actualDuration || task.estimatedDuration,
+        estimatedDuration: task.estimatedDuration,
+        actualDuration: task.actualPerformance?.actualDuration,
+        clientSignoff: task.clientSignoff ? {
+          signedBy: task.clientSignoff.signedBy,
+          satisfactionRating: task.clientSignoff.satisfactionRating,
+          clientNotes: task.clientSignoff.clientNotes,
+          signedAt: task.clientSignoff.signedAt
+        } : undefined,
+        efficiency: task.actualPerformance?.actualDuration && task.estimatedDuration ? 
+          Math.round(((task.estimatedDuration / task.actualPerformance.actualDuration) * 100) * 10) / 10 : undefined
+      }));
+
+    } catch (error) {
+      console.warn(`Failed to get recent completed tasks for team ${teamId}: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Calculate comprehensive performance metrics with proper PHP ID handling
+   */
+  private async calculatePerformanceMetrics(
+    businessId: string,
+    teamId: string,
+    team: any
+  ): Promise<{
+    efficiency: number;
+    completionRate: number;
+    averageResponseTime: number;
+    rating: number;
+  }> {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Setup flexible team ID matching for ALL 3 possible formats
+      const phpId = team.metadata?.phpId;
+      const generatedId = team.id;
+      const mongoObjectId = team._id?.toString();
+      
+      const teamIdQuery = [];
+      if (phpId) teamIdQuery.push(phpId);
+      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+
+      // Get recent tasks using flexible team ID matching
+      const recentTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        createdAt: { $gte: thirtyDaysAgo },
+        isDeleted: false
+      });
+
+      // Get completed tasks
+      const completedTasks = recentTasks.filter(task => 
+        task.status === FieldTaskStatus.COMPLETED
+      );
+
+      // Calculate completion rate
+      const completionRate = recentTasks.length > 0 ? 
+        (completedTasks.length / recentTasks.length) * 100 : 0;
+
+      // Calculate efficiency (actual vs estimated duration)
+      let efficiency = 0;
+      if (completedTasks.length > 0) {
+        const efficiencyReadings = completedTasks
+          .filter(task => 
+            task.actualPerformance?.actualDuration && 
+            task.estimatedDuration
+          )
+          .map(task => {
+            const estimated = task.estimatedDuration;
+            const actual = task.actualPerformance!.actualDuration!;
+            return Math.min(200, (estimated / actual) * 100);
+          });
+
+        if (efficiencyReadings.length > 0) {
+          efficiency = efficiencyReadings.reduce((sum, eff) => sum + eff, 0) / efficiencyReadings.length;
+        }
+      }
+
+      // Calculate average response time
+      let averageResponseTime = 0;
+      if (completedTasks.length > 0) {
+        const responseTimes = completedTasks
+          .filter(task => 
+            task.actualPerformance?.startTime && 
+            task.scheduledDate
+          )
+          .map(task => {
+            const scheduled = new Date(task.scheduledDate);
+            if (task.timeWindow?.start) {
+              const [hours, minutes] = task.timeWindow.start.split(':').map(Number);
+              scheduled.setHours(hours, minutes, 0, 0);
+            } else if (task.scheduledTime) {
+              const [hours, minutes] = task.scheduledTime.split(':').map(Number);
+              scheduled.setHours(hours, minutes, 0, 0);
+            } else {
+              scheduled.setHours(9, 0, 0, 0);
+            }
+            
+            const actualStart = task.actualPerformance!.startTime!;
+            const diffMinutes = Math.abs(actualStart.getTime() - scheduled.getTime()) / (1000 * 60);
+            
+            return Math.min(120, diffMinutes);
+          });
+
+        if (responseTimes.length > 0) {
+          averageResponseTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
+        }
+      }
+
+      // Calculate rating based on client signoffs
+      let rating = 0;
+      const tasksWithRatings = completedTasks.filter(task => 
+        task.clientSignoff?.satisfactionRating
+      );
+
+      if (tasksWithRatings.length > 0) {
+        const totalRating = tasksWithRatings.reduce((sum, task) => 
+          sum + (task.clientSignoff!.satisfactionRating! || 5), 0
+        );
+        rating = totalRating / tasksWithRatings.length;
+      }
+
+      return {
+        efficiency: Math.round(efficiency * 10) / 10,
+        completionRate: Math.round(completionRate * 10) / 10,
+        averageResponseTime: Math.round(averageResponseTime),
+        rating: Math.round(rating * 10) / 10
+      };
+
+    } catch (error) {
+      this.logger.warn(`Failed to calculate performance metrics for team ${teamId}: ${error.message}`);
+      
+      return {
+        efficiency: 0,
+        completionRate: 0,
+        averageResponseTime: 0,
+        rating: 0
+      };
+    }
+  }
+
+  /**
+   * Check for tasks scheduled beyond the current week
+   */
+  private async getFutureTasksIndicator(
+    businessId: string,
+    teamId: string,
+    currentWeekStart: Date,
+    team: any
+  ): Promise<{
+    hasFutureTasks: boolean;
+    futureTasksCount: number;
+    nextTaskDate?: string;
+    furthestTaskDate?: string;
+  }> {
+    try {
+      const currentWeekEnd = new Date(currentWeekStart);
+      currentWeekEnd.setDate(currentWeekStart.getDate() + 7);
+      currentWeekEnd.setHours(23, 59, 59, 999);
+
+      // Setup flexible team ID matching
+      const phpId = team.metadata?.phpId;
+      const generatedId = team.id;
+      const mongoObjectId = team._id?.toString();
+      
+      const teamIdQuery = [];
+      if (phpId) teamIdQuery.push(phpId);
+      if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+      if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+      if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+
+      const futureTasks = await this.fieldTaskModel.find({
+        businessId,
+        assignedTeamId: { $in: teamIdQuery },
+        scheduledDate: { $gt: currentWeekEnd },
+        status: { 
+          $in: [
+            FieldTaskStatus.PENDING, 
+            FieldTaskStatus.SCHEDULED, 
+            FieldTaskStatus.ASSIGNED,
+            FieldTaskStatus.IN_PROGRESS
+          ] 
+        },
+        isDeleted: false
+      }).sort({ scheduledDate: 1 });
+
+      const hasFutureTasks = futureTasks.length > 0;
+      const futureTasksCount = futureTasks.length;
+
+      let nextTaskDate: string | undefined;
+      let furthestTaskDate: string | undefined;
+
+      if (hasFutureTasks) {
+        nextTaskDate = futureTasks[0].scheduledDate.toISOString().split('T')[0];
+        furthestTaskDate = futureTasks[futureTasks.length - 1].scheduledDate.toISOString().split('T')[0];
+      }
+
+      return {
+        hasFutureTasks,
+        futureTasksCount,
+        nextTaskDate,
+        furthestTaskDate
+      };
+
+    } catch (error) {
+      console.warn(`Failed to check future tasks for team ${teamId}: ${error.message}`);
+      
+      return {
+        hasFutureTasks: false,
+        futureTasksCount: 0
+      };
+    }
+  }
+
+  /**
+   * Get upcoming scheduled tasks with proper date handling
+   */
+  private async getUpcomingSchedule(
+    businessId: string,
+    teamId: string,
+    fromDate: Date,
+    team: any
+  ): Promise<any[]> {
+    const startOfToday = new Date(fromDate);
+    startOfToday.setHours(0, 0, 0, 0);
+    
+    const upcomingLimit = new Date(startOfToday);
+    upcomingLimit.setDate(upcomingLimit.getDate() + 14);
+
+    // Setup flexible team ID matching
+    const phpId = team.metadata?.phpId;
+    const generatedId = team.id;
+    const mongoObjectId = team._id?.toString();
+    
+    const teamIdQuery = [];
+    if (phpId) teamIdQuery.push(phpId);
+    if (generatedId && !teamIdQuery.includes(generatedId)) teamIdQuery.push(generatedId);
+    if (mongoObjectId && !teamIdQuery.includes(mongoObjectId)) teamIdQuery.push(mongoObjectId);
+    if (teamId && !teamIdQuery.includes(teamId)) teamIdQuery.push(teamId);
+
+    const upcomingTasks = await this.fieldTaskModel.find({
+      businessId,
+      assignedTeamId: { $in: teamIdQuery },
+      scheduledDate: { 
+        $gte: startOfToday,
+        $lte: upcomingLimit 
+      },
+      status: { 
+        $in: [
+          FieldTaskStatus.PENDING, 
+          FieldTaskStatus.SCHEDULED, 
+          FieldTaskStatus.ASSIGNED,
+          FieldTaskStatus.IN_PROGRESS
+        ] 
+      },
+      isDeleted: false
+    }).sort({ scheduledDate: 1, scheduledTime: 1 }).limit(10);
+
+    return upcomingTasks.map(task => {
+      let taskTime = '9:00 AM';
+      
+      if (task.timeWindow?.start) {
+        taskTime = task.timeWindow.start;
+      } else if (task.scheduledTime) {
+        taskTime = task.scheduledTime;
+      } else if (task.timeWindow?.end) {
+        taskTime = `Before ${task.timeWindow.end}`;
+      }
+
+      return {
+        date: task.scheduledDate.toISOString().split('T')[0],
+        time: taskTime,
+        task: task.name || task.description || 'Scheduled task',
+        location: task.location?.address || 'Location TBD',
+        duration: Math.round((task.estimatedDuration || 60) / 60 * 10) / 10,
+        taskId: task._id.toString(),
+        status: task.status
+      };
+    });
+  }
+
+  /**
+   * Validate business exists
+   */
+  private async validateBusiness(businessId: string): Promise<any> {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+    return business;
+  }
+
+  /**
+   * Validate coordinates
+   */
+  private validateCoordinates(lat: number, lng: number): void {
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      throw new BadRequestException('Latitude and longitude must be numbers');
+    }
+
+    if (lat < -90 || lat > 90) {
+      throw new BadRequestException('Latitude must be between -90 and 90 degrees');
+    }
+
+    if (lng < -180 || lng > 180) {
+      throw new BadRequestException('Longitude must be between -180 and 180 degrees');
+    }
+  }
+
+  /**
+   * Get team members from team data
+   */
+  private getTeamMembers(team: any): Array<{ id: string; name: string; role: string; phone?: string }> {
+    if (team.members && Array.isArray(team.members)) {
+      return team.members.map((member: any, index: number) => ({
+        id: member.id,
+        name: member.name,
+        role: member.role,
+        phone: member.phone
+      }));
+    }
+
+    return [];
+  }
+
+  /**
+   * Get route progress for a team using real data with PHP ID support
+   */
+  private async getRouteProgress(teamId: string, businessId: string): Promise<any> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const business = await this.businessModel.findById(businessId);
+    let actualTeamId = teamId;
+    
+    if (business) {
+      const team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
+      if (team) {
+        const routeProgressByPhpId = await this.routeProgressModel.findOne({
+          businessId,
+          teamId: teamId,
+          routeDate: { $gte: today, $lt: tomorrow },
+          isDeleted: false
+        });
+        
+        if (routeProgressByPhpId) {
+          actualTeamId = teamId;
+        } else {
+          actualTeamId = team.id;
+        }
+      }
+    }
+
+    const routeProgress = await this.routeProgressModel.findOne({
+      businessId,
+      teamId: actualTeamId,
+      routeDate: { $gte: today, $lt: tomorrow },
+      isDeleted: false
+    });
+
+    if (!routeProgress) {
+      return undefined;
+    }
+
+    return {
+      currentTaskIndex: routeProgress.currentTaskIndex,
+      totalTasks: routeProgress.tasks.length,
+      completedTasks: routeProgress.completedTasksCount,
+      estimatedCompletion: routeProgress.estimatedCompletionTime?.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit', 
+        hour12: true 
+      }) || 'Unknown'
+    };
+  }
+
+  /**
+   * Update team availability status with PHP ID support
+   */
+  private async updateTeamAvailability(businessId: string, teamId: string, locationStatus: TeamLocationStatus): Promise<void> {
+    try {
+      const business = await this.businessModel.findById(businessId);
+      if (!business) return;
+
+      let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
+      if (!team) {
+        team = business.teams?.find((t: any) => t.id === teamId);
+      }
+      if (!team) return;
+
+      const storageTeamId = team.metadata?.phpId || teamId;
+
+      let availabilityStatus: AvailabilityStatus;
+      
+      switch (locationStatus) {
+        case TeamLocationStatus.ACTIVE:
+          availabilityStatus = AvailabilityStatus.AVAILABLE;
+          break;
+        case TeamLocationStatus.BREAK:
+          availabilityStatus = AvailabilityStatus.BREAK;
+          break;
+        case TeamLocationStatus.OFFLINE:
+        case TeamLocationStatus.INACTIVE:
+        default:
+          availabilityStatus = AvailabilityStatus.OFFLINE;
+          break;
+      }
+
+      await this.teamAvailabilityModel.findOneAndUpdate(
+        { businessId, teamId: storageTeamId, isDeleted: false },
+        { 
+          status: availabilityStatus,
+          statusSince: new Date(),
+          lastStatusUpdate: new Date()
+        },
+        { upsert: true }
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to update team availability for team ${teamId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Calculate real response time from field tasks using actual duration
+   */
+  private async calculateRealResponseTime(businessId: string): Promise<number> {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const completedTasks = await this.fieldTaskModel.find({
+      businessId,
+      status: FieldTaskStatus.COMPLETED,
+      completedAt: { $gte: thirtyDaysAgo },
+      'actualPerformance.actualDuration': { $exists: true },
+      isDeleted: false
+    }).limit(50);
+
+    if (completedTasks.length === 0) return 0;
+
+    const actualDurations = completedTasks
+      .map(task => task.actualPerformance?.actualDuration)
+      .filter(duration => duration !== undefined && duration > 0) as number[];
+
+    if (actualDurations.length === 0) return 25;
+
+    const avgDuration = actualDurations.reduce((sum, duration) => sum + duration, 0) / actualDurations.length;
+    return Math.round(avgDuration);
+  }
+
+  /**
+   * Calculate coverage areas from active teams and service areas
+   */
+  private async calculateCoverageAreas(businessId: string): Promise<number> {
+    const activeTeams = await this.teamLocationModel.countDocuments({
+      businessId,
+      status: TeamLocationStatus.ACTIVE,
+      isDeleted: false
+    });
+
+    return Math.ceil(activeTeams * 1.5);
+  }
+
+  /**
+   * Helper methods for location history processing
    */
   private determineLocationSource(teamLocation: any): 'gps' | 'manual' | 'address' {
     if (teamLocation.metadata?.isCustomEntry) {
@@ -1699,20 +2294,14 @@ private async getUpcomingSchedule(
     return 'gps';
   }
 
-  /**
-   * Determine source for historical entries
-   */
   private determineHistorySource(entry: any): 'gps' | 'manual' | 'address' {
     if (entry.accuracy && entry.accuracy < 20) {
       return 'gps';
     }
     
-    return 'gps'; // Most historical entries are from GPS tracking
+    return 'gps';
   }
 
-  /**
-   * Generate notes for current location
-   */
   private generateLocationNotes(teamLocation: any): string {
     const notes = [];
     
@@ -1735,9 +2324,6 @@ private async getUpcomingSchedule(
     return notes.join(', ') || undefined;
   }
 
-  /**
-   * Generate notes for historical entries
-   */
   private generateHistoryNotes(entry: any, index: number): string {
     const notes = [];
     
@@ -1749,7 +2335,6 @@ private async getUpcomingSchedule(
       notes.push('Low GPS accuracy');
     }
     
-    // Add time-based context
     const hour = new Date(entry.timestamp).getHours();
     if (hour < 8 || hour > 18) {
       notes.push('Outside working hours');
@@ -1758,31 +2343,19 @@ private async getUpcomingSchedule(
     return notes.join(', ') || undefined;
   }
 
-  /**
-   * Simple reverse geocoding placeholder
-   */
   private reverseGeocodeAddress(lat: number, lng: number): string {
-    // In a real implementation, you'd call a geocoding service
-    // For now, return coordinates as address
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
   }
 
-  /**
-   * Interpolate battery level for historical entries
-   */
   private interpolateBatteryLevel(currentBattery?: number, index?: number): number | undefined {
     if (!currentBattery || !index) return currentBattery;
     
-    // Simulate battery drain over time (rough estimation)
-    const drainPerEntry = 2; // 2% per entry
+    const drainPerEntry = 2;
     const estimatedBattery = currentBattery + (index * drainPerEntry);
     
     return Math.min(100, Math.max(0, estimatedBattery));
   }
 
-  /**
-   * Calculate speed between location points
-   */
   private calculateSpeed(history: any[], index: number): number | undefined {
     if (index === 0 || index >= history.length - 1) return undefined;
     
@@ -1791,23 +2364,19 @@ private async getUpcomingSchedule(
     
     if (!current || !previous) return undefined;
     
-    // Calculate distance and time difference
     const distance = this.calculateDistance(
       current.latitude, current.longitude,
       previous.latitude, previous.longitude
     );
     
-    const timeDiff = (new Date(current.timestamp).getTime() - new Date(previous.timestamp).getTime()) / 1000 / 3600; // hours
+    const timeDiff = (new Date(current.timestamp).getTime() - new Date(previous.timestamp).getTime()) / 1000 / 3600;
     
     if (timeDiff === 0) return undefined;
     
-    const speed = distance / timeDiff; // km/h
-    return Math.round(speed * 10) / 10; // Round to 1 decimal place
+    const speed = distance / timeDiff;
+    return Math.round(speed * 10) / 10;
   }
 
-  /**
-   * Calculate heading between location points
-   */
   private calculateHeading(history: any[], index: number): number | undefined {
     if (index === 0 || index >= history.length - 1) return undefined;
     
@@ -1866,196 +2435,6 @@ private async getUpcomingSchedule(
     }
     
     return filtered;
-  }
-
-  /**
-   * Validate business exists
-   */
-  private async validateBusiness(businessId: string): Promise<any> {
-    const business = await this.businessModel.findById(businessId);
-    if (!business) {
-      throw new NotFoundException('Business not found');
-    }
-    return business;
-  }
-
-  /**
-   * Validate coordinates
-   */
-  private validateCoordinates(lat: number, lng: number): void {
-    if (typeof lat !== 'number' || typeof lng !== 'number') {
-      throw new BadRequestException('Latitude and longitude must be numbers');
-    }
-
-    if (lat < -90 || lat > 90) {
-      throw new BadRequestException('Latitude must be between -90 and 90 degrees');
-    }
-
-    if (lng < -180 || lng > 180) {
-      throw new BadRequestException('Longitude must be between -180 and 180 degrees');
-    }
-  }
-
-  /**
-   * Get team members from team data
-   */
-  private getTeamMembers(team: any): Array<{ id: string; name: string; role: string; phone?: string }> {
-    // Use actual team members if available
-    if (team.members && Array.isArray(team.members)) {
-      return team.members.map((member: any, index: number) => ({
-        id: member.id,
-        name: member.name,
-        role: member.role,
-        phone: member.phone
-      }));
-    }
-
-    // if no members are available, return empty array
-    return [];
-  }
-
-  /**
-   * Get route progress for a team using real data with PHP ID support
-   */
-  private async getRouteProgress(teamId: string, businessId: string): Promise<any> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // Check for route progress using both PHP ID and MongoDB ID
-    const business = await this.businessModel.findById(businessId);
-    let actualTeamId = teamId;
-    
-    if (business) {
-      const team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
-      if (team) {
-        // If we found a team by PHP ID, check if route progress exists with either ID
-        const routeProgressByPhpId = await this.routeProgressModel.findOne({
-          businessId,
-          teamId: teamId,
-          routeDate: { $gte: today, $lt: tomorrow },
-          isDeleted: false
-        });
-        
-        if (routeProgressByPhpId) {
-          actualTeamId = teamId; // Use PHP ID
-        } else {
-          actualTeamId = team.id; // Try MongoDB ID
-        }
-      }
-    }
-
-    const routeProgress = await this.routeProgressModel.findOne({
-      businessId,
-      teamId: actualTeamId,
-      routeDate: { $gte: today, $lt: tomorrow },
-      isDeleted: false
-    });
-
-    if (!routeProgress) {
-      return undefined;
-    }
-
-    return {
-      currentTaskIndex: routeProgress.currentTaskIndex,
-      totalTasks: routeProgress.tasks.length,
-      completedTasks: routeProgress.completedTasksCount,
-      estimatedCompletion: routeProgress.estimatedCompletionTime?.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true 
-      }) || 'Unknown'
-    };
-  }
-
-  /**
-   * Update team availability status with PHP ID support
-   */
-  private async updateTeamAvailability(businessId: string, teamId: string, locationStatus: TeamLocationStatus): Promise<void> {
-    try {
-      // Find the team to get consistent ID
-      const business = await this.businessModel.findById(businessId);
-      if (!business) return;
-
-      let team = business.teams?.find((t: any) => t.metadata?.phpId === teamId);
-      if (!team) {
-        team = business.teams?.find((t: any) => t.id === teamId);
-      }
-      if (!team) return;
-
-      const storageTeamId = team.metadata?.phpId || teamId;
-
-      let availabilityStatus: AvailabilityStatus;
-      
-      switch (locationStatus) {
-        case TeamLocationStatus.ACTIVE:
-          availabilityStatus = AvailabilityStatus.AVAILABLE;
-          break;
-        case TeamLocationStatus.BREAK:
-          availabilityStatus = AvailabilityStatus.BREAK;
-          break;
-        case TeamLocationStatus.OFFLINE:
-        case TeamLocationStatus.INACTIVE:
-        default:
-          availabilityStatus = AvailabilityStatus.OFFLINE;
-          break;
-      }
-
-      await this.teamAvailabilityModel.findOneAndUpdate(
-        { businessId, teamId: storageTeamId, isDeleted: false },
-        { 
-          status: availabilityStatus,
-          statusSince: new Date(),
-          lastStatusUpdate: new Date()
-        },
-        { upsert: true }
-      );
-    } catch (error) {
-      this.logger.warn(`Failed to update team availability for team ${teamId}: ${error.message}`);
-    }
-  }
-
-  /**
-   * Calculate real response time from field tasks using actual duration
-   */
-  private async calculateRealResponseTime(businessId: string): Promise<number> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const completedTasks = await this.fieldTaskModel.find({
-      businessId,
-      status: FieldTaskStatus.COMPLETED,
-      completedAt: { $gte: thirtyDaysAgo },
-      'actualPerformance.actualDuration': { $exists: true },
-      isDeleted: false
-    }).limit(50);
-
-    if (completedTasks.length === 0) return 0; // Default 0 minutes
-
-    // Calculate average actual duration as response time
-    const actualDurations = completedTasks
-      .map(task => task.actualPerformance?.actualDuration)
-      .filter(duration => duration !== undefined && duration > 0) as number[];
-
-    if (actualDurations.length === 0) return 25;
-
-    const avgDuration = actualDurations.reduce((sum, duration) => sum + duration, 0) / actualDurations.length;
-    return Math.round(avgDuration);
-  }
-
-  /**
-   * Calculate coverage areas from active teams and service areas
-   */
-  private async calculateCoverageAreas(businessId: string): Promise<number> {
-    const activeTeams = await this.teamLocationModel.countDocuments({
-      businessId,
-      status: TeamLocationStatus.ACTIVE,
-      isDeleted: false
-    });
-
-    // Estimate coverage areas based on active teams
-    return Math.ceil(activeTeams * 1.5);
   }
 
   /**
