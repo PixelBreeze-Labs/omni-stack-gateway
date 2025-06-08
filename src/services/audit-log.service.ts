@@ -481,10 +481,10 @@ async getAuditLogs(
         if (logObj.userId) {
           try {
             // You need to inject User model in constructor
-            const user = await this.userModel.findById(logObj.userId, 'firstName lastName name email');
+            const user = await this.userModel.findById(logObj.userId, 'name surname email');
             if (user) {
               logObj.userName = user.name || 
-                `${user.firstName || ''} ${user.lastName || ''}`.trim() || 
+                `${user.name || ''} ${user.surname || ''}`.trim() || 
                 user.email?.split('@')[0] || 
                 'Unknown User';
             }
