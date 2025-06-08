@@ -388,6 +388,12 @@ import { ReviewerQualityInspectionController } from './controllers/reviewer-qual
 import { FinalApproverQualityInspectionController } from './controllers/final-approver-quality-inspection.controller';
 import { ClientQualityInspectionController } from './controllers/client-quality-inspection.controller';
 
+// Client Feedback
+import { ClientFeedbackService } from './services/client-feedback.service';
+import { ClientFeedbackController } from './controllers/client-feedback.controller';
+import { BusinessClientFeedbackController } from './controllers/business-client-feedback.controller';
+import { ClientFeedback, ClientFeedbackSchema } from './schemas/client-feedback.schema';
+
 // AppClient
 import { AppClientService } from './services/app-client.service';
 
@@ -517,6 +523,7 @@ import { AppClientService } from './services/app-client.service';
       { name: RouteProgress.name, schema: RouteProgressSchema },
       { name: TeamAvailability.name, schema: TeamAvailabilitySchema },
       { name: QualityInspection.name, schema: QualityInspectionSchema },
+      { name: ClientFeedback.name, schema: ClientFeedbackSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -637,7 +644,9 @@ import { AppClientService } from './services/app-client.service';
     StaffQualityInspectionController,
     ReviewerQualityInspectionController,
     FinalApproverQualityInspectionController,
-    ClientQualityInspectionController
+    ClientQualityInspectionController,
+    ClientFeedbackController,
+    BusinessClientFeedbackController,
   ],
   providers: [
     SnapfoodService,
@@ -758,6 +767,7 @@ import { AppClientService } from './services/app-client.service';
     GoogleMapsService,
     AppClientService,
     QualityInspectionService,
+    ClientFeedbackService,
   ],
 })
 export class AppModule implements NestModule {
