@@ -623,7 +623,7 @@ export class AuditLogService {
       }
     ];
 
-     // @ts-ignore
+    // @ts-ignore
     const [result] = await this.auditLogModel.aggregate(pipeline);
     
     const logs = result.logs || [];
