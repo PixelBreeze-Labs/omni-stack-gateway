@@ -35,6 +35,7 @@ import {
   class CreateDetailedInspectionApiDto {
     appProjectId: string;
     appClientId: string;
+    constructionSiteId?: string;
     location: string;
     inspectionCategory?: string;
     checklistItems: any[];
@@ -46,6 +47,7 @@ import {
   class CreateSimpleInspectionApiDto {
     appProjectId: string;
     appClientId: string;
+    constructionSiteId?: string;
     location: string;
     overallRating: number;
     remarks: string;
@@ -176,6 +178,7 @@ import {
     @ApiOperation({ summary: 'Get inspections created by the current inspector' })
     @ApiQuery({ name: 'status', required: false, description: 'Filter by status' })
     @ApiQuery({ name: 'type', required: false, description: 'Filter by type (detailed/simple)' })
+    @ApiQuery({ name: 'constructionSiteId', required: false, description: 'Filter by construction site ID' })
     @ApiQuery({ name: 'page', required: false, description: 'Page number' })
     @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
     @ApiResponse({ status: 200, description: 'Inspections retrieved successfully' })
@@ -183,6 +186,7 @@ import {
     async getMyInspections(
       @Query('status') status?: string,
       @Query('type') type?: string,
+      @Query('constructionSiteId') constructionSiteId?: string,
       @Query('page') page?: string,
       @Query('limit') limit?: string,
       @Request() req?: any
@@ -196,6 +200,7 @@ import {
         const filters = {
           status,
           type,
+          constructionSiteId,
           page: page ? parseInt(page) : 1,
           limit: limit ? parseInt(limit) : 10
         };

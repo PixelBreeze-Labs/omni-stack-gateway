@@ -28,6 +28,9 @@ export class QualityInspection extends Document {
   @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'AppClient' })
   appClientId: string;
 
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'ConstructionSite' })
+  constructionSiteId?: string;
+
   // External IDs for sync with PHP
   @Prop({ type: MongooseSchema.Types.Mixed, default: {} })
   externalIds: {
@@ -122,6 +125,12 @@ export class QualityInspection extends Document {
 
   @Prop({ type: Date })
   deletedAt?: Date;
+
+  @Prop({ type: Date })
+  createdAt: Date;
+
+  @Prop({ type: Date })
+  updatedAt: Date;
 }
 
 export const QualityInspectionSchema = SchemaFactory.createForClass(QualityInspection);
@@ -130,6 +139,7 @@ export const QualityInspectionSchema = SchemaFactory.createForClass(QualityInspe
 QualityInspectionSchema.index({ businessId: 1 });
 QualityInspectionSchema.index({ appProjectId: 1 });
 QualityInspectionSchema.index({ appClientId: 1 });
+QualityInspectionSchema.index({ constructionSiteId: 1 });
 QualityInspectionSchema.index({ inspectorId: 1 });
 QualityInspectionSchema.index({ reviewerId: 1 });
 QualityInspectionSchema.index({ approverId: 1 });

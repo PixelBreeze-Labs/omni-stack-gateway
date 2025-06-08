@@ -10,6 +10,7 @@ import { Employee } from '../schemas/employee.schema';
 export interface CreateDetailedInspectionDto {
     appProjectId: string;
     appClientId: string;
+    constructionSiteId?: string;
     location: string;
     inspectionCategory?: string;
     checklistItems: any[];
@@ -21,6 +22,7 @@ export interface CreateDetailedInspectionDto {
   export interface CreateSimpleInspectionDto {
     appProjectId: string;
     appClientId: string;
+    constructionSiteId?: string;
     location: string;
     overallRating: number;
     remarks: string;
@@ -498,6 +500,7 @@ async createDetailedInspection(
         businessId,
         appProjectId: inspectionData.appProjectId,
         appClientId: inspectionData.appClientId,
+        constructionSiteId: inspectionData.constructionSiteId,
         inspectorId,
         type: 'detailed',
         status: 'draft',
@@ -550,6 +553,7 @@ async createDetailedInspection(
         businessId,
         appProjectId: inspectionData.appProjectId,
         appClientId: inspectionData.appClientId,
+        constructionSiteId: inspectionData.constructionSiteId,
         inspectorId,
         type: 'simple',
         status: 'draft',
@@ -587,6 +591,7 @@ async createDetailedInspection(
     businessId: string,
     filters: {
       status?: string;
+      constructionSiteId?: string;
       type?: string;
       page?: number;
       limit?: number;
@@ -595,7 +600,7 @@ async createDetailedInspection(
     try {
       this.logger.log(`Getting inspections for inspector: ${inspectorId}`);
   
-      const { status, type, page = 1, limit = 10 } = filters;
+      const { status, type, constructionSiteId, page = 1, limit = 10 } = filters;
       const skip = (page - 1) * limit;
   
       // Build filter
@@ -607,7 +612,8 @@ async createDetailedInspection(
   
       if (status) filter.status = status;
       if (type) filter.type = type;
-  
+      if (constructionSiteId) filter.constructionSiteId = constructionSiteId;
+
       // Get total count
       const total = await this.qualityInspectionModel.countDocuments(filter);
       const totalPages = Math.ceil(total / limit);
@@ -620,6 +626,7 @@ async createDetailedInspection(
         .limit(limit)
         .populate('appProjectId', 'name')
         .populate('appClientId', 'name')
+        .populate('constructionSiteId', 'name location status type')
         .populate('reviewerId', 'name surname email')
         .populate('approverId', 'name surname email');
   
@@ -897,6 +904,7 @@ async getInspectionsForReview(
         .populate('inspectorId', 'name surname email')
         .populate('appProjectId', 'name description')
         .populate('appClientId', 'name type')
+        .populate('constructionSiteId', 'name location status type')
         .populate('reviewerId', 'name surname email');
   
       return {
@@ -1272,6 +1280,7 @@ async getInspectionsForFinalApproval(
         .populate('reviewerId', 'name surname email')
         .populate('appProjectId', 'name description status')
         .populate('appClientId', 'name type contact_person')
+        .populate('constructionSiteId', 'name location status type')
         .populate('approverId', 'name surname email');
   
       return {
@@ -1671,6 +1680,7 @@ async getClientInspections(
         .populate('reviewerId', 'name surname email')
         .populate('approverId', 'name surname email')
         .populate('appProjectId', 'name description status')
+        .populate('constructionSiteId', 'name location status type')
         .select('-metadata.checklistItems -metadata.photos') // Hide detailed technical data from client
         .lean();
   
