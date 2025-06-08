@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AuditLog, AuditAction, ResourceType, AuditSeverity } from '../schemas/audit-log.schema';
 import { Request } from 'express';
+import { Types } from 'mongoose';
 
 export interface CreateAuditLogDto {
   businessId: string;
@@ -454,11 +455,11 @@ export class AuditLogService {
   async getAuditLogStats(businessId: string, days: number = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-
+  
     const pipeline = [
       {
         $match: {
-          businessId,
+          businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
           isDeleted: false,
           createdAt: { $gte: startDate },
         },
