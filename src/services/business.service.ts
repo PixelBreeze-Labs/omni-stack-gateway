@@ -2107,4 +2107,27 @@ async updateBusiness(
         isDeleted: { $ne: true }
         });
     }
+
+    // Add these methods to your BusinessService class
+
+    /**
+     * Find business by ID
+     */
+    async findById(businessId: string): Promise<Business | null> {
+        return this.businessModel.findOne({
+        _id: businessId,
+        isActive: true,
+        isDeleted: { $ne: true }
+        });
+    }
+    
+    /**
+     * Find employee by user ID
+     */
+    async findEmployeeByUserId(userId: string): Promise<any | null> {
+        return this.employeeModel.findOne({
+        user_id: userId,
+        isDeleted: { $ne: true }
+        });
+    }
 }
