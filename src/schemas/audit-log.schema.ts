@@ -96,6 +96,30 @@ export enum AuditAction {
   STORAGE_CHECK_FAILED = 'storage_check_failed',
   UPLOAD_VALIDATION_FAILED = 'upload_validation_failed',
   STORAGE_SERVICE_ERROR = 'storage_service_error',
+
+  // Service Area Operations
+  SERVICE_AREA_CREATED = 'service_area_created',
+  SERVICE_AREA_UPDATED = 'service_area_updated',
+  SERVICE_AREA_DELETED = 'service_area_deleted',
+  SERVICE_AREA_ASSIGNED = 'service_area_assigned',
+  SERVICE_AREA_ACCESSED = 'service_area_accessed',
+  TEAM_ASSIGNED = 'team_assigned',
+  TICKET_CREATED = 'ticket_created',
+  TICKET_UPDATED = 'ticket_updated', 
+  TICKET_ACCESSED = 'ticket_accessed',
+  TICKET_DELETED = 'ticket_deleted',
+  TASK_CREATED = 'task_created',
+  TASK_UPDATED = 'task_updated', 
+  TASK_DELETED = 'task_deleted',
+  TASK_STATUS_CHANGED = 'task_status_changed',
+  TASK_STATISTICS_ACCESSED = 'task_statistics_accessed',
+  TASK_ACCESSED = 'task_accessed',
+
+  TEAM_LOCATION_UPDATED = 'team_location_updated',
+  TEAM_LOCATION_ACCESSED = 'team_location_accessed', 
+  TEAM_AVAILABILITY_ACCESSED = 'team_availability_accessed',
+  ROUTE_PROGRESS_TRACKED = 'route_progress_tracked',
+  LOCATION_DATA_EXPORTED = 'location_data_exported',
 }
 
 export enum AuditSeverity {
@@ -124,6 +148,9 @@ export enum ResourceType {
   STORAGE = 'storage', 
   MESSAGE = 'message',
   CONVERSATION = 'conversation',
+  SERVICE_AREA = 'service_area',
+  TICKET = 'ticket',
+  TASK = 'task',
 }
 
 @Schema({ timestamps: true })
