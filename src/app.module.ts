@@ -379,6 +379,17 @@ import { GoogleMapsService } from './services/google-maps.service';
 import { RouteProgress, RouteProgressSchema } from './schemas/route-progress.schema';
 import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availability.schema';
 
+// Quality Inspection (Schema, Service, Controller)
+import { QualityInspection, QualityInspectionSchema } from './schemas/quality-inspection.schema';
+import { QualityInspectionService } from './services/quality-inspection.service';
+import { BusinessQualityInspectionController } from './controllers/business-quality-inspection.controller';
+import { StaffQualityInspectionController } from './controllers/staff-quality-inspection.controller';
+import { ReviewerQualityInspectionController } from './controllers/reviewer-quality-inspection.controller';
+import { FinalApproverQualityInspectionController } from './controllers/final-approver-quality-inspection.controller';
+import { ClientQualityInspectionController } from './controllers/client-quality-inspection.controller';
+
+// AppClient
+import { AppClientService } from './services/app-client.service';
 
 @Module({
   imports: [
@@ -505,6 +516,7 @@ import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availab
       { name: FieldTask.name, schema: FieldTaskSchema },
       { name: RouteProgress.name, schema: RouteProgressSchema },
       { name: TeamAvailability.name, schema: TeamAvailabilitySchema },
+      { name: QualityInspection.name, schema: QualityInspectionSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -621,6 +633,11 @@ import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availab
     ServiceAreaController,
     RouteAnalyticsController,
     WeatherRouteController,
+    BusinessQualityInspectionController,
+    StaffQualityInspectionController,
+    ReviewerQualityInspectionController,
+    FinalApproverQualityInspectionController,
+    ClientQualityInspectionController
   ],
   providers: [
     SnapfoodService,
@@ -739,6 +756,8 @@ import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availab
     RouteAnalyticsService,
     WeatherRouteService,
     GoogleMapsService,
+    AppClientService,
+    QualityInspectionService,
   ],
 })
 export class AppModule implements NestModule {
