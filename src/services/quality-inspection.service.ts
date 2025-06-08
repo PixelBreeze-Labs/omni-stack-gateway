@@ -58,6 +58,20 @@ export interface ApproveInspectionDto {
     priority?: 'low' | 'medium' | 'high';
   }
 
+  // DTOs for final approver actions
+export interface FinalApprovalDto {
+    notes?: string;
+    clientNotificationRequired?: boolean;
+    scheduledCompletionDate?: Date;
+  }
+  
+  export interface OverrideDecisionDto {
+    decision: 'approve' | 'reject';
+    reason: string;
+    justification: string;
+    overridePreviousReview?: boolean;
+  }
+
   
 @Injectable()
 export class QualityInspectionService {
@@ -1172,5 +1186,409 @@ async getInspectionsForReview(
     if (!canReview) {
       throw new BadRequestException('You do not have permission to review inspections');
     }
+  }
+
+  /**
+ * Get inspections requiring final approval
+ */
+async getInspectionsForFinalApproval(
+    approverId: string,
+    businessId: string,
+    filters: {
+      status?: string;
+      type?: string;
+      priority?: string;
+      hasCriticalIssues?: boolean;
+      page?: number;
+      limit?: number;
+    } = {}
+  ): Promise<{ inspections: any[]; total: number; page: number; totalPages: number }> {
+    try {
+      this.logger.log(`Getting inspections for final approval by: ${approverId}`);
+  
+      // Validate approver has permission
+      await this.validateFinalApproverPermissions(businessId, approverId);
+  
+      const { 
+        status = 'approved', 
+        type, 
+        priority, 
+        hasCriticalIssues, 
+        page = 1, 
+        limit = 10 
+      } = filters;
+      const skip = (page - 1) * limit;
+  
+      // Build filter for inspections requiring final approval
+      const filter: any = {
+        businessId,
+        status: 'approved', // Only approved inspections need final approval
+        isDeleted: { $ne: true },
+        completedDate: { $exists: false } // Not yet finally completed
+      };
+  
+      // Add additional filters
+      if (type) filter.type = type;
+      if (priority) filter['metadata.priority'] = priority;
+      if (hasCriticalIssues !== undefined) filter.hasCriticalIssues = hasCriticalIssues;
+  
+      // Get total count
+      const total = await this.qualityInspectionModel.countDocuments(filter);
+      const totalPages = Math.ceil(total / limit);
+  
+      // Get inspections - prioritize critical issues and oldest first
+      const inspections = await this.qualityInspectionModel
+        .find(filter)
+        .sort({ 
+          hasCriticalIssues: -1, // Critical issues first
+          'metadata.priority': -1, // High priority first
+          reviewedDate: 1 // Oldest reviewed first
+        })
+        .skip(skip)
+        .limit(limit)
+        .populate('inspectorId', 'name surname email')
+        .populate('reviewerId', 'name surname email')
+        .populate('appProjectId', 'name description status')
+        .populate('appClientId', 'name type contact_person')
+        .populate('approverId', 'name surname email');
+  
+      return {
+        inspections,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      this.logger.error(`Error getting inspections for final approval: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Give final approval to inspection
+   */
+  async giveInspectionFinalApproval(
+    inspectionId: string,
+    approverId: string,
+    approvalData: FinalApprovalDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Giving final approval to inspection: ${inspectionId} by approver: ${approverId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Validate approver has permission
+      await this.validateFinalApproverPermissions(inspection.businessId, approverId);
+  
+      // Verify inspection can receive final approval
+      if (inspection.status !== 'approved') {
+        throw new BadRequestException('Only approved inspections can receive final approval');
+      }
+  
+      if (inspection.completedDate) {
+        throw new BadRequestException('Inspection has already received final approval');
+      }
+  
+      // Update inspection with final approval
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          status: 'complete',
+          approverId,
+          approvedDate: new Date(),
+          completedDate: new Date(),
+          metadata: {
+            ...inspection.metadata,
+            finalApprovalNotes: approvalData.notes || '',
+            clientNotificationRequired: approvalData.clientNotificationRequired || false,
+            scheduledCompletionDate: approvalData.scheduledCompletionDate,
+            finalApprovedAt: new Date().toISOString(),
+            finalApproverId: approverId,
+            finalApprovalAction: 'approved'
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully gave final approval to inspection: ${inspectionId}`);
+  
+      // If client notification is required, mark it for notification
+      if (approvalData.clientNotificationRequired) {
+        // This could trigger a notification service or email
+        this.logger.log(`Client notification required for inspection: ${inspectionId}`);
+      }
+  
+      return {
+        success: true,
+        message: 'Final approval given successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error giving final approval: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Override previous review decision
+   */
+  async overrideInspectionDecision(
+    inspectionId: string,
+    approverId: string,
+    overrideData: OverrideDecisionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Overriding inspection decision: ${inspectionId} by approver: ${approverId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Validate approver has permission
+      await this.validateFinalApproverPermissions(inspection.businessId, approverId);
+  
+      // Verify approver has override permission
+      const hasOverridePermission = await this.validateOverridePermission(inspection.businessId, approverId);
+      if (!hasOverridePermission) {
+        throw new BadRequestException('You do not have permission to override decisions');
+      }
+  
+      // Validate override data
+      if (!overrideData.reason || !overrideData.justification) {
+        throw new BadRequestException('Reason and justification are required for override');
+      }
+  
+      // Determine new status based on override decision
+      const newStatus = overrideData.decision === 'approve' ? 'complete' : 'rejected';
+      const updateData: any = {
+        status: newStatus,
+        approverId,
+        metadata: {
+          ...inspection.metadata,
+          overrideReason: overrideData.reason,
+          overrideJustification: overrideData.justification,
+          overridePreviousReview: overrideData.overridePreviousReview || false,
+          overriddenAt: new Date().toISOString(),
+          overriddenBy: approverId,
+          originalStatus: inspection.status,
+          originalReviewerId: inspection.reviewerId
+        }
+      };
+  
+      // Set appropriate date fields
+      if (overrideData.decision === 'approve') {
+        updateData.approvedDate = new Date();
+        updateData.completedDate = new Date();
+        updateData.metadata.finalApprovalAction = 'override_approved';
+      } else {
+        updateData.metadata.finalApprovalAction = 'override_rejected';
+      }
+  
+      // Update inspection
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        updateData,
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully overrode inspection decision: ${inspectionId} to ${overrideData.decision}`);
+  
+      return {
+        success: true,
+        message: `Inspection decision overridden to ${overrideData.decision}`,
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error overriding inspection decision: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get inspection approval history and analytics
+   */
+  async getApprovalAnalytics(
+    businessId: string,
+    approverId: string,
+    dateRange?: { startDate: Date; endDate: Date }
+  ): Promise<any> {
+    try {
+      this.logger.log(`Getting approval analytics for business: ${businessId}`);
+  
+      // Validate approver has permission
+      await this.validateFinalApproverPermissions(businessId, approverId);
+  
+      // Build date filter
+      const dateFilter: any = {};
+      if (dateRange) {
+        dateFilter.completedDate = {
+          $gte: dateRange.startDate,
+          $lte: dateRange.endDate
+        };
+      }
+  
+      // Base filter
+      const baseFilter = {
+        businessId,
+        isDeleted: { $ne: true },
+        ...dateFilter
+      };
+  
+      // Get overall statistics
+      const [
+        totalInspections,
+        completedInspections,
+        pendingApproval,
+        criticalIssues,
+        overriddenDecisions
+      ] = await Promise.all([
+        this.qualityInspectionModel.countDocuments(baseFilter),
+        this.qualityInspectionModel.countDocuments({ ...baseFilter, status: 'complete' }),
+        this.qualityInspectionModel.countDocuments({ 
+          businessId, 
+          status: 'approved', 
+          completedDate: { $exists: false } 
+        }),
+        this.qualityInspectionModel.countDocuments({ ...baseFilter, hasCriticalIssues: true }),
+        this.qualityInspectionModel.countDocuments({ 
+          ...baseFilter, 
+          'metadata.overriddenBy': { $exists: true } 
+        })
+      ]);
+  
+      // Get inspections by type
+      const inspectionsByType = await this.qualityInspectionModel.aggregate([
+        { $match: baseFilter },
+        { $group: { _id: '$type', count: { $sum: 1 } } }
+      ]);
+  
+      // Get average approval time
+      const avgApprovalTime = await this.qualityInspectionModel.aggregate([
+        { 
+          $match: { 
+            ...baseFilter, 
+            status: 'complete',
+            reviewedDate: { $exists: true },
+            completedDate: { $exists: true }
+          } 
+        },
+        {
+          $addFields: {
+            approvalTimeHours: {
+              $divide: [
+                { $subtract: ['$completedDate', '$reviewedDate'] },
+                1000 * 60 * 60
+              ]
+            }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            avgHours: { $avg: '$approvalTimeHours' }
+          }
+        }
+      ]);
+  
+      return {
+        summary: {
+          totalInspections,
+          completedInspections,
+          pendingApproval,
+          criticalIssues,
+          overriddenDecisions,
+          completionRate: totalInspections > 0 ? Math.round((completedInspections / totalInspections) * 100) : 0
+        },
+        inspectionsByType: inspectionsByType.reduce((acc, item) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+        averageApprovalTimeHours: avgApprovalTime[0]?.avgHours || 0,
+        dateRange: dateRange || { startDate: null, endDate: null }
+      };
+    } catch (error) {
+      this.logger.error(`Error getting approval analytics: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Validate final approver permissions
+   */
+  private async validateFinalApproverPermissions(
+    businessId: string,
+    approverId: string
+  ): Promise<void> {
+    // Get business config
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+  
+    const config = business.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+    // Find employee/approver
+    const employee = await this.employeeModel.findOne({
+      user_id: approverId,
+      businessId,
+      isDeleted: { $ne: true }
+    });
+  
+    if (!employee) {
+      throw new NotFoundException('Approver not found in business');
+    }
+  
+    // Get approver's quality role and main role
+    const qualityRole = employee.metadata?.get('qualityRole');
+    const mainRole = employee.metadata?.get('role') || 'business_staff';
+  
+    // Check if approver is the designated final approver
+    const isFinalApprover = config.finalApprover === qualityRole || config.finalApprover === mainRole;
+  
+    if (!isFinalApprover) {
+      throw new BadRequestException('You do not have permission to give final approval');
+    }
+  }
+  
+  /**
+   * Validate override permission
+   */
+  private async validateOverridePermission(
+    businessId: string,
+    approverId: string
+  ): Promise<boolean> {
+    // Find employee/approver
+    const employee = await this.employeeModel.findOne({
+      user_id: approverId,
+      businessId,
+      isDeleted: { $ne: true }
+    });
+  
+    if (!employee) {
+      return false;
+    }
+  
+    // Get approver's quality role
+    const qualityRole = employee.metadata?.get('qualityRole');
+    const mainRole = employee.metadata?.get('role') || 'business_staff';
+  
+    // Only operations managers and above can override decisions
+    const canOverride = [
+      'operations_manager', 
+      'general_manager', 
+      'business_admin'
+    ].includes(qualityRole) || [
+      'operations_manager', 
+      'general_manager', 
+      'business_admin'
+    ].includes(mainRole);
+  
+    return canOverride;
   }
 }
