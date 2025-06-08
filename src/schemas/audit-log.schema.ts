@@ -91,6 +91,11 @@ export enum AuditAction {
   MESSAGE_READ = 'message_read',
   CONVERSATION_ACCESSED = 'conversation_accessed',
   MESSAGE_DELETED = 'message_deleted',
+
+  FILE_ACCESSED = 'file_accessed',
+  STORAGE_CHECK_FAILED = 'storage_check_failed',
+  UPLOAD_VALIDATION_FAILED = 'upload_validation_failed',
+  STORAGE_SERVICE_ERROR = 'storage_service_error',
 }
 
 export enum AuditSeverity {
