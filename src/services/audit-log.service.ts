@@ -487,6 +487,8 @@ async getAuditLogs(
                 `${user.name || ''} ${user.surname || ''}`.trim() || 
                 user.email?.split('@')[0] || 
                 'Unknown User';
+
+            logObj.userEmail = user.email;
             }
           } catch (error) {
             // If user lookup fails, just use email or fallback
