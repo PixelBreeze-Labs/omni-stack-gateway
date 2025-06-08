@@ -15,6 +15,8 @@ import {
 } from '../dtos/business-onboarding.dto';
 import { User } from 'src/schemas/user.schema';
 import { NotificationPreferencesResponse, UpdateNotificationPreferencesDto } from 'src/dtos/user-notification-preferences.dto';
+import { ActivityType } from 'src/schemas/app-activity.schema';
+import { AppActivityService } from 'src/services/app-activity.service';
 
 @Injectable()
 export class BusinessOnboardingService {
@@ -24,7 +26,8 @@ export class BusinessOnboardingService {
     @InjectModel(BusinessOnboarding.name) 
     private businessOnboardingModel: Model<BusinessOnboarding>,
     @InjectModel(User.name) 
-    private userModel: Model<User>
+    private userModel: Model<User>,
+    private appActivityService: AppActivityService
   ) {}
 
   async initialize(createDto: CreateBusinessOnboardingDto): Promise<BusinessOnboarding> {
@@ -439,6 +442,27 @@ async updateNotificationPreferences(
       },
       { new: true }
     ).exec();
+
+    await this.appActivityService.createActivity({
+      businessId,
+      userId: business.adminUserId,
+      userName: updatedUser.name || updatedUser.email.split('@')[0],
+      userEmail: updatedUser.email,
+      type: ActivityType.BUSINESS_SETTINGS_CHANGED,
+      action: `Updated notification preferences`,
+      description: `Email: ${updateDto.emailNotificationsEnabled ? 'enabled' : 'disabled'}, SMS: ${updateDto.smsNotificationsEnabled ? 'enabled' : 'disabled'}`,
+      resourceType: 'business_settings',
+      resourceId: businessId,
+      resourceName: 'Notification Preferences',
+      data: {
+        emailNotificationsEnabled: updateDto.emailNotificationsEnabled,
+        smsNotificationsEnabled: updateDto.smsNotificationsEnabled,
+        previousSettings: {
+          email: user.metadata?.get('emailNotificationsEnabled') !== 'false',
+          sms: user.metadata?.get('smsNotificationsEnabled') === 'true'
+        }
+      }
+    });
 
     if (!updatedUser) {
       throw new NotFoundException('Failed to update admin user preferences');

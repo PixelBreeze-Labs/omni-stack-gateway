@@ -402,6 +402,11 @@ import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema';
 // AppClient
 import { AppClientService } from './services/app-client.service';
 
+// App Activity
+import { AppActivity, AppActivitySchema } from './schemas/app-activity.schema';
+import { AppActivityService } from './services/app-activity.service';
+import { BusinessActivityController } from './controllers/business-activity.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -530,6 +535,7 @@ import { AppClientService } from './services/app-client.service';
       { name: QualityInspection.name, schema: QualityInspectionSchema },
       { name: ClientFeedback.name, schema: ClientFeedbackSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
+      { name: AppActivity.name, schema: AppActivitySchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -654,6 +660,7 @@ import { AppClientService } from './services/app-client.service';
     ClientFeedbackController,
     BusinessClientFeedbackController,
     BusinessAuditController,
+    BusinessActivityController,
   ],
   providers: [
     SnapfoodService,
@@ -776,6 +783,7 @@ import { AppClientService } from './services/app-client.service';
     QualityInspectionService,
     ClientFeedbackService,
     AuditLogService,
+    AppActivityService,
   ],
 })
 export class AppModule implements NestModule {
