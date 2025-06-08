@@ -5,6 +5,8 @@ import { Model } from 'mongoose';
 import { Business } from '../schemas/business.schema';
 import { SupabaseService, BusinessFileInfo, StorageUsage } from './supabase.service';
 import { TIER_LIMITS } from '../constants/features.constants';
+import { AuditLogService } from '../services/audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
 
 export interface UploadResult {
     success: boolean;
@@ -39,7 +41,8 @@ export class BusinessStorageService {
 
     constructor(
         @InjectModel(Business.name) private businessModel: Model<Business>,
-        private readonly supabaseService: SupabaseService
+        private readonly supabaseService: SupabaseService,
+        private readonly auditLogService: AuditLogService 
     ) {}
 
     /**
@@ -49,60 +52,124 @@ export class BusinessStorageService {
         businessId: string,
         file: Buffer,
         filename: string,
-        category: string = 'other'
+        category: string = 'other',
+        userId?: string,
+        req?: any
     ): Promise<UploadResult> {
+        const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+        const userAgent = req?.get('User-Agent');
+    
         try {
             this.logger.log(`Uploading image for business ${businessId}: ${filename} (${file.length} bytes)`);
-
+    
             // Get business and storage settings
             const business = await this.businessModel.findById(businessId);
             if (!business) {
                 throw new NotFoundException('Business not found');
             }
-
+    
             const storageSettings = this.getStorageSettings(business);
-
+    
             // Validate file type
             if (!this.validateFileType(filename, storageSettings.allowedFileTypes)) {
+                // Log failed upload attempt
+                await this.auditLogService.createAuditLog({
+                    businessId,
+                    userId,
+                    action: AuditAction.FILE_UPLOADED,
+                    resourceType: ResourceType.FILE,
+                    resourceName: filename,
+                    success: false,
+                    errorMessage: 'Invalid file type',
+                    severity: AuditSeverity.MEDIUM,
+                    ipAddress,
+                    userAgent,
+                    metadata: {
+                        fileName: filename,
+                        fileSize: file.length,
+                        category,
+                        errorReason: 'invalid_file_type',
+                        allowedTypes: storageSettings.allowedFileTypes
+                    }
+                });
+    
                 throw new BadRequestException(
                     `File type not allowed. Allowed types: ${storageSettings.allowedFileTypes.join(', ')}`
                 );
             }
-
+    
             // Validate file size
             const fileSizeMB = file.length / (1024 * 1024);
             if (fileSizeMB > storageSettings.maxFileSizeMB) {
+                // Log failed upload attempt
+                await this.auditLogService.createAuditLog({
+                    businessId,
+                    userId,
+                    action: AuditAction.FILE_UPLOADED,
+                    resourceType: ResourceType.FILE,
+                    resourceName: filename,
+                    success: false,
+                    errorMessage: 'File too large',
+                    severity: AuditSeverity.MEDIUM,
+                    ipAddress,
+                    userAgent,
+                    metadata: {
+                        fileName: filename,
+                        fileSize: file.length,
+                        fileSizeMB: fileSizeMB.toFixed(2),
+                        maxAllowedMB: storageSettings.maxFileSizeMB,
+                        category,
+                        errorReason: 'file_too_large'
+                    }
+                });
+    
                 throw new PayloadTooLargeException(
                     `File size (${fileSizeMB.toFixed(2)}MB) exceeds maximum allowed size (${storageSettings.maxFileSizeMB}MB)`
                 );
             }
-
+    
             // Check storage limit
             const canUpload = await this.supabaseService.canUploadFile(
                 businessId,
                 file.length,
                 storageSettings.limitMB
             );
-
+    
             if (!canUpload) {
                 const usage = await this.supabaseService.getBusinessStorageUsage(
                     businessId,
                     storageSettings.limitMB
                 );
+    
+                // Log storage limit exceeded
+                await this.auditLogService.createAuditLog({
+                    businessId,
+                    userId,
+                    action: AuditAction.STORAGE_LIMIT_EXCEEDED,
+                    resourceType: ResourceType.STORAGE,
+                    resourceName: filename,
+                    success: false,
+                    errorMessage: 'Storage limit exceeded',
+                    severity: AuditSeverity.HIGH,
+                    ipAddress,
+                    userAgent,
+                    metadata: {
+                        fileName: filename,
+                        fileSize: file.length,
+                        fileSizeMB: fileSizeMB.toFixed(2),
+                        currentUsageMB: usage.totalSizeMB,
+                        limitMB: usage.limitMB,
+                        remainingMB: usage.remainingMB,
+                        category
+                    }
+                });
+    
                 throw new PayloadTooLargeException(
                     `Storage limit exceeded. Used: ${usage.totalSizeMB}MB / ${usage.limitMB}MB. ` +
                     `Remaining: ${usage.remainingMB}MB. File size: ${fileSizeMB.toFixed(2)}MB`
                 );
             }
-
-            // Validate category
-            const validCategories = ['sites', 'general', 'compliance', 'management', 'business', 'legal', 'hr', 'other'];
-            if (!validCategories.includes(category)) {
-                throw new BadRequestException(
-                    `Invalid category. Valid categories: ${validCategories.join(', ')}`
-                );
-            }
-
+    
             // Upload file
             const fileInfo = await this.supabaseService.uploadBusinessImage(
                 businessId,
@@ -110,22 +177,46 @@ export class BusinessStorageService {
                 filename,
                 category
             );
-
+    
             // Get updated storage usage
             const storageUsage = await this.supabaseService.getBusinessStorageUsage(
                 businessId,
                 storageSettings.limitMB
             );
-
+    
+            // Log successful upload
+            await this.auditLogService.createAuditLog({
+                businessId,
+                userId,
+                action: AuditAction.FILE_UPLOADED,
+                resourceType: ResourceType.FILE,
+                resourceId: fileInfo.name,
+                resourceName: filename,
+                success: true,
+                severity: AuditSeverity.LOW,
+                ipAddress,
+                userAgent,
+                metadata: {
+                    fileName: filename,
+                    fileSize: file.length,
+                    fileSizeMB: fileSizeMB.toFixed(2),
+                    category,
+                    fileUrl: fileInfo.url,
+                    storageUsed: storageUsage.totalSizeMB,
+                    storageLimit: storageUsage.limitMB,
+                    storageRemaining: storageUsage.remainingMB
+                }
+            });
+    
             this.logger.log(`Successfully uploaded image for business ${businessId}: ${fileInfo.url}`);
-
+    
             return {
                 success: true,
                 file: fileInfo,
                 message: 'File uploaded successfully',
                 storageUsage
             };
-
+    
         } catch (error) {
             this.logger.error(`Failed to upload image for business ${businessId}:`, error);
             throw error;
@@ -135,40 +226,90 @@ export class BusinessStorageService {
     /**
      * Delete a file for a business
      */
-    async deleteFile(businessId: string, fileName: string): Promise<DeleteResult> {
+    async deleteFile(businessId: string, fileName: string, userId?: string, req?: any): Promise<DeleteResult> {
+        const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+        const userAgent = req?.get('User-Agent');
+    
         try {
             this.logger.log(`Deleting file for business ${businessId}: ${fileName}`);
-
+    
             // Verify business exists
             const business = await this.businessModel.findById(businessId);
             if (!business) {
                 throw new NotFoundException('Business not found');
             }
-
-            // Delete file (the supabase service will handle finding the file)
+    
+            // Get file info before deletion
+            let fileInfo: any = null;
+            try {
+                fileInfo = await this.supabaseService.getBusinessFile(businessId, fileName);
+            } catch (error) {
+                // File not found
+            }
+    
+            // Delete file
             await this.supabaseService.deleteBusinessFile(businessId, fileName);
-
+    
             // Get updated storage usage
             const storageSettings = this.getStorageSettings(business);
             const storageUsage = await this.supabaseService.getBusinessStorageUsage(
                 businessId,
                 storageSettings.limitMB
             );
-
+    
+            // Log successful deletion
+            await this.auditLogService.createAuditLog({
+                businessId,
+                userId,
+                action: AuditAction.FILE_DELETED,
+                resourceType: ResourceType.FILE,
+                resourceId: fileName,
+                resourceName: fileName,
+                success: true,
+                severity: AuditSeverity.MEDIUM,
+                ipAddress,
+                userAgent,
+                metadata: {
+                    fileName,
+                    fileSize: fileInfo?.size || 'unknown',
+                    category: fileInfo?.category || 'unknown',
+                    storageUsed: storageUsage.totalSizeMB,
+                    storageLimit: storageUsage.limitMB,
+                    storageFreed: fileInfo?.size ? (fileInfo.size / (1024 * 1024)).toFixed(2) : 'unknown'
+                }
+            });
+    
             this.logger.log(`Successfully deleted file for business ${businessId}: ${fileName}`);
-
+    
             return {
                 success: true,
                 message: 'File deleted successfully',
                 storageUsage
             };
-
+    
         } catch (error) {
+            // Log failed deletion
+            await this.auditLogService.createAuditLog({
+                businessId,
+                userId,
+                action: AuditAction.FILE_DELETED,
+                resourceType: ResourceType.FILE,
+                resourceName: fileName,
+                success: false,
+                errorMessage: error.message,
+                severity: AuditSeverity.MEDIUM,
+                ipAddress,
+                userAgent,
+                metadata: {
+                    fileName,
+                    errorReason: error.name
+                }
+            });
+    
             this.logger.error(`Failed to delete file for business ${businessId}:`, error);
             throw error;
         }
     }
-
     /**
      * List all files for a business
      */
@@ -296,22 +437,23 @@ export class BusinessStorageService {
             enableOverride: boolean;
             storageLimitMB?: number;
             maxFileSizeMB?: number;
-        }
-    ): Promise<{
-        success: boolean;
-        message: string;
-        business: Business;
-        storageSettings: StorageSettings;
-        storageUsage?: StorageUsage;
-    }> {
+        },
+        userId?: string,
+        req?: any
+    ): Promise<any> {
+        const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+        const userAgent = req?.get('User-Agent');
+    
         try {
             this.logger.log(`Overriding storage settings for business ${businessId}:`, settings);
-
+    
             const business = await this.businessModel.findById(businessId);
             if (!business) {
                 throw new NotFoundException('Business not found');
             }
-
+    
+            const previousSettings = this.getStorageSettings(business);
+    
             if (settings.enableOverride) {
                 // Enable override and set custom limits
                 business.metadata.set('storage_overriden', 'true');
@@ -322,35 +464,71 @@ export class BusinessStorageService {
                     }
                     business.metadata.set('storageLimitMB', settings.storageLimitMB.toString());
                 }
-
+    
                 if (settings.maxFileSizeMB !== undefined) {
                     if (settings.maxFileSizeMB <= 0) {
                         throw new BadRequestException('Max file size must be greater than 0');
                     }
                     business.metadata.set('maxFileSizeMB', settings.maxFileSizeMB.toString());
                 }
+    
+                // Log override enabled
+                await this.auditLogService.createAuditLog({
+                    businessId,
+                    userId,
+                    action: AuditAction.STORAGE_OVERRIDE_ENABLED,
+                    resourceType: ResourceType.STORAGE,
+                    success: true,
+                    severity: AuditSeverity.HIGH,
+                    ipAddress,
+                    userAgent,
+                    metadata: {
+                        previousLimitMB: previousSettings.limitMB,
+                        newLimitMB: settings.storageLimitMB,
+                        previousMaxFileSizeMB: previousSettings.maxFileSizeMB,
+                        newMaxFileSizeMB: settings.maxFileSizeMB,
+                        customSettings: settings
+                    }
+                });
             } else {
                 // Disable override - remove custom settings
                 business.metadata.delete('storage_overriden');
                 business.metadata.delete('storageLimitMB');
                 business.metadata.delete('maxFileSizeMB');
+    
+                // Log override disabled
+                await this.auditLogService.createAuditLog({
+                    businessId,
+                    userId,
+                    action: AuditAction.STORAGE_OVERRIDE_DISABLED,
+                    resourceType: ResourceType.STORAGE,
+                    success: true,
+                    severity: AuditSeverity.MEDIUM,
+                    ipAddress,
+                    userAgent,
+                    metadata: {
+                        previousLimitMB: previousSettings.limitMB,
+                        previousMaxFileSizeMB: previousSettings.maxFileSizeMB,
+                        revertedToPlanLimits: true
+                    }
+                });
             }
-
+    
             await business.save();
-
+    
             // Get updated storage settings and usage
             const storageSettings = this.getStorageSettings(business);
             const storageUsage = await this.supabaseService.getBusinessStorageUsage(
                 businessId,
                 storageSettings.limitMB
             );
-
+    
             const message = settings.enableOverride 
                 ? 'Storage override enabled with custom settings'
                 : 'Storage override disabled, using plan-based limits';
-
+    
             this.logger.log(`Successfully updated storage override for business ${businessId}`);
-
+    
             return {
                 success: true,
                 message,
@@ -358,7 +536,7 @@ export class BusinessStorageService {
                 storageSettings,
                 storageUsage
             };
-
+    
         } catch (error) {
             this.logger.error(`Failed to override storage settings for business ${businessId}:`, error);
             throw error;
@@ -420,6 +598,17 @@ export class BusinessStorageService {
             throw error;
         }
     }
+
+    // Add helper method
+        private extractIpAddress(req: any): string {
+            return (
+                req?.headers?.['x-forwarded-for'] ||
+                req?.headers?.['x-real-ip'] ||
+                req?.connection?.remoteAddress ||
+                req?.socket?.remoteAddress ||
+                'unknown'
+            ).split(',')[0].trim();
+        }
 
     /**
      * Get storage settings for a business based on plan or override

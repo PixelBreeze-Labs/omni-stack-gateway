@@ -72,7 +72,25 @@ export enum AuditAction {
   // Security Events
   UNAUTHORIZED_ACCESS_ATTEMPT = 'unauthorized_access_attempt',
   SUSPICIOUS_ACTIVITY = 'suspicious_activity',
-  SECURITY_VIOLATION = 'security_violation'
+  SECURITY_VIOLATION = 'security_violation',
+
+  // Storage Operations
+  FILE_UPLOADED = 'file_uploaded',
+  FILE_DOWNLOADED = 'file_downloaded', 
+  FILE_DELETED = 'file_deleted',
+  BULK_FILE_DELETE = 'bulk_file_delete',
+  STORAGE_LIMIT_UPDATED = 'storage_limit_updated',
+  STORAGE_OVERRIDE_ENABLED = 'storage_override_enabled',
+  STORAGE_OVERRIDE_DISABLED = 'storage_override_disabled',
+  STORAGE_LIMIT_EXCEEDED = 'storage_limit_exceeded',
+  STORAGE_INITIALIZED = 'storage_initialized',
+
+  // Messaging Operations  
+  MESSAGE_SENT = 'message_sent',
+  MESSAGE_RECEIVED = 'message_received',
+  MESSAGE_READ = 'message_read',
+  CONVERSATION_ACCESSED = 'conversation_accessed',
+  MESSAGE_DELETED = 'message_deleted',
 }
 
 export enum AuditSeverity {
@@ -96,7 +114,11 @@ export enum ResourceType {
   SYSTEM = 'system',
   API_KEY = 'api_key',
   ROLE = 'role',
-  PERMISSION = 'permission'
+  PERMISSION = 'permission',
+  FILE = 'file',
+  STORAGE = 'storage', 
+  MESSAGE = 'message',
+  CONVERSATION = 'conversation',
 }
 
 @Schema({ timestamps: true })
