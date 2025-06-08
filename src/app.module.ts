@@ -394,6 +394,11 @@ import { ClientFeedbackController } from './controllers/client-feedback.controll
 import { BusinessClientFeedbackController } from './controllers/business-client-feedback.controller';
 import { ClientFeedback, ClientFeedbackSchema } from './schemas/client-feedback.schema';
 
+// Audit Logs
+import { AuditLogService } from './services/audit-log.service';
+import { BusinessAuditController } from './controllers/business-audit.controller';
+import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema';
+
 // AppClient
 import { AppClientService } from './services/app-client.service';
 
@@ -524,6 +529,7 @@ import { AppClientService } from './services/app-client.service';
       { name: TeamAvailability.name, schema: TeamAvailabilitySchema },
       { name: QualityInspection.name, schema: QualityInspectionSchema },
       { name: ClientFeedback.name, schema: ClientFeedbackSchema },
+      { name: AuditLog.name, schema: AuditLogSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -647,6 +653,7 @@ import { AppClientService } from './services/app-client.service';
     ClientQualityInspectionController,
     ClientFeedbackController,
     BusinessClientFeedbackController,
+    BusinessAuditController,
   ],
   providers: [
     SnapfoodService,
@@ -768,6 +775,7 @@ import { AppClientService } from './services/app-client.service';
     AppClientService,
     QualityInspectionService,
     ClientFeedbackService,
+    AuditLogService,
   ],
 })
 export class AppModule implements NestModule {
