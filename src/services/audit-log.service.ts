@@ -9,6 +9,8 @@ import { Types } from 'mongoose';
 export interface CreateAuditLogDto {
   businessId: string;
   userId?: string;
+  userName?: string;
+  userEmail?: string;
   action: AuditAction;
   resourceType: ResourceType;
   resourceId?: string;
@@ -46,6 +48,8 @@ export class AuditLogService {
       const auditLog = new this.auditLogModel({
         businessId: dto.businessId,
         userId: dto.userId,
+        userName: dto.userName,
+        userEmail: dto.userEmail,
         action: dto.action,
         resourceType: dto.resourceType,
         resourceId: dto.resourceId,
@@ -84,10 +88,13 @@ export class AuditLogService {
   ): Promise<void> {
     const businessId = this.extractBusinessId(req);
     const userId = this.extractUserId(req);
+    const userInfo = this.extractUserInfo(req);
     
     await this.createAuditLog({
       businessId,
       userId,
+      userName: userInfo.name,
+      userEmail: userInfo.email,
       action,
       resourceType,
       ipAddress: this.extractIpAddress(req),
@@ -99,23 +106,27 @@ export class AuditLogService {
   }
 
   /**
-   * Authentication-specific audit logs
+   * Authentication-specific audit logs - UPDATED SIGNATURE
    */
   async logAuthentication(
     action: AuditAction,
+    resourceType: ResourceType, // 🆕 Added resourceType parameter
     email: string,
     success: boolean,
     ipAddress: string,
     userAgent?: string,
     businessId?: string,
     userId?: string,
+    userName?: string, // 🆕 Added userName parameter
     errorMessage?: string
   ): Promise<void> {
     await this.createAuditLog({
       businessId: businessId || 'system',
       userId,
+      userName,
+      userEmail: email,
       action,
-      resourceType: ResourceType.USER,
+      resourceType, // 🆕 Now using the resourceType parameter
       success,
       errorMessage,
       severity: success ? AuditSeverity.LOW : AuditSeverity.HIGH,
@@ -134,6 +145,7 @@ export class AuditLogService {
   async logDataModification(
     businessId: string,
     userId: string,
+    userName: string, // 🆕 Added userName parameter
     action: AuditAction,
     resourceType: ResourceType,
     resourceId: string,
@@ -147,6 +159,7 @@ export class AuditLogService {
     await this.createAuditLog({
       businessId,
       userId,
+      userName, // 🆕 Store userName
       action,
       resourceType,
       resourceId,
@@ -166,6 +179,7 @@ export class AuditLogService {
   async logDataAccess(
     businessId: string,
     userId: string,
+    userName: string, // 🆕 Added userName parameter
     resourceType: ResourceType,
     resourceId: string,
     resourceName: string,
@@ -174,6 +188,7 @@ export class AuditLogService {
     await this.createAuditLog({
       businessId,
       userId,
+      userName, // 🆕 Store userName
       action: AuditAction.CLIENT_DATA_VIEWED,
       resourceType,
       resourceId,
@@ -194,6 +209,7 @@ export class AuditLogService {
   async logBulkOperation(
     businessId: string,
     userId: string,
+    userName: string, // 🆕 Added userName parameter
     action: AuditAction,
     resourceType: ResourceType,
     affectedCount: number,
@@ -202,6 +218,7 @@ export class AuditLogService {
     await this.createAuditLog({
       businessId,
       userId,
+      userName, // 🆕 Store userName
       action,
       resourceType,
       severity: AuditSeverity.HIGH,
@@ -220,6 +237,7 @@ export class AuditLogService {
   async logSecurityEvent(
     businessId: string,
     userId: string,
+    userName: string, // 🆕 Added userName parameter
     action: AuditAction,
     description: string,
     req?: Request,
@@ -228,6 +246,7 @@ export class AuditLogService {
     await this.createAuditLog({
       businessId,
       userId,
+      userName, // 🆕 Store userName
       action,
       resourceType: ResourceType.SYSTEM,
       severity,
@@ -277,6 +296,16 @@ export class AuditLogService {
     }
     
     return undefined;
+  }
+
+  /**
+   * 🆕 Extract user information from request
+   */
+  private extractUserInfo(req: Request & { user?: any; business?: any }): { name?: string; email?: string } {
+    return {
+      name: req.user?.name || req.user?.firstName || req.business?.adminUserName,
+      email: req.user?.email || req.business?.adminUserEmail,
+    };
   }
 
   /**
@@ -386,7 +415,7 @@ export class AuditLogService {
   }
 
   /**
-   * Get audit logs for a business with filters
+   * Get audit logs for a business with filters - 🆕 ENHANCED WITH USER LOOKUP
    */
   async getAuditLogs(
     businessId: string,
@@ -412,33 +441,49 @@ export class AuditLogService {
       limit = 10,
     } = filters;
 
-    const query: any = {
-      businessId,
+    // Build match query for MongoDB
+    const matchQuery: any = {
+      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
       isDeleted: false,
     };
 
-    if (userId) query.userId = userId;
-    if (action) query.action = action;
-    if (resourceType) query.resourceType = resourceType;
-    if (severity) query.severity = severity;
+    if (userId) matchQuery.userId = userId;
+    if (action) matchQuery.action = action;
+    if (resourceType) matchQuery.resourceType = resourceType;
+    if (severity) matchQuery.severity = severity;
 
     if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = startDate;
-      if (endDate) query.createdAt.$lte = endDate;
+      matchQuery.createdAt = {};
+      if (startDate) matchQuery.createdAt.$gte = startDate;
+      if (endDate) matchQuery.createdAt.$lte = endDate;
     }
 
     const skip = (page - 1) * limit;
 
-    const [logs, total] = await Promise.all([
-      this.auditLogModel
-        .find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.auditLogModel.countDocuments(query),
-    ]);
+    // 🆕 Use aggregation pipeline for consistent data handling
+    const pipeline = [
+      { $match: matchQuery },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          // Get paginated logs
+          logs: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+          // Get total count
+          totalCount: [
+            { $count: "count" }
+          ]
+        }
+      }
+    ];
+
+    // @ts-ignore
+    const [result] = await this.auditLogModel.aggregate(pipeline);
+    
+    const logs = result.logs || [];
+    const total = result.totalCount[0]?.count || 0;
 
     return {
       logs,
@@ -446,6 +491,249 @@ export class AuditLogService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * 🆕 OPTIONAL: Get audit logs with user population from users collection
+   * Use this version if you want to populate user data from a separate users collection
+   */
+  async getAuditLogsWithUserPopulation(
+    businessId: string,
+    filters: {
+      userId?: string;
+      action?: AuditAction;
+      resourceType?: ResourceType;
+      severity?: AuditSeverity;
+      startDate?: Date;
+      endDate?: Date;
+      page?: number;
+      limit?: number;
+    } = {}
+  ) {
+    const {
+      userId,
+      action,
+      resourceType,
+      severity,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 10,
+    } = filters;
+
+    // Build match query for MongoDB
+    const matchQuery: any = {
+      businessId: new Types.ObjectId(businessId),
+      isDeleted: false,
+    };
+
+    if (userId) matchQuery.userId = userId;
+    if (action) matchQuery.action = action;
+    if (resourceType) matchQuery.resourceType = resourceType;
+    if (severity) matchQuery.severity = severity;
+
+    if (startDate || endDate) {
+      matchQuery.createdAt = {};
+      if (startDate) matchQuery.createdAt.$gte = startDate;
+      if (endDate) matchQuery.createdAt.$lte = endDate;
+    }
+
+    const skip = (page - 1) * limit;
+
+    // Aggregation pipeline with user lookup
+    const pipeline = [
+      { $match: matchQuery },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          logs: [
+            { $skip: skip },
+            { $limit: limit },
+            // 🔄 Lookup user data from users collection
+            {
+              $lookup: {
+                from: 'users', // Make sure this matches your users collection name
+                let: { userIdStr: '$userId' },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $eq: [{ $toString: '$_id' }, '$userIdStr']
+                      }
+                    }
+                  },
+                  { 
+                    $project: { 
+                      firstName: 1, 
+                      lastName: 1, 
+                      email: 1,
+                      name: 1
+                    } 
+                  }
+                ],
+                as: 'userDetails'
+              }
+            },
+            // 🔄 Merge user data into main document
+            {
+              $addFields: {
+                userName: {
+                  $cond: {
+                    if: { $gt: [{ $size: '$userDetails' }, 0] },
+                    then: {
+                      $let: {
+                        vars: { user: { $arrayElemAt: ['$userDetails', 0] } },
+                        in: {
+                          $cond: {
+                            if: '$user.name',
+                            then: '$user.name',
+                            else: {
+                              $concat: [
+                                { $ifNull: ['$user.firstName', ''] },
+                                ' ',
+                                { $ifNull: ['$user.lastName', ''] }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    else: '$userName' // Keep existing userName if no user found
+                  }
+                },
+                userEmail: {
+                  $cond: {
+                    if: { $gt: [{ $size: '$userDetails' }, 0] },
+                    then: { $arrayElemAt: ['$userDetails.email', 0] },
+                    else: '$userEmail' // Keep existing userEmail if no user found
+                  }
+                }
+              }
+            },
+            // 🧹 Remove temporary userDetails field
+            {
+              $unset: 'userDetails'
+            }
+          ],
+          totalCount: [
+            { $count: "count" }
+          ]
+        }
+      }
+    ];
+
+     // @ts-ignore
+    const [result] = await this.auditLogModel.aggregate(pipeline);
+    
+    const logs = result.logs || [];
+    const total = result.totalCount[0]?.count || 0;
+
+    return {
+      logs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * 🆕 Get recent audit logs with user information
+   */
+  async getRecentAuditLogs(businessId: string, limit: number = 20) {
+    const matchQuery = {
+      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
+      isDeleted: false,
+    };
+
+    const logs = await this.auditLogModel
+      .find(matchQuery)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .exec();
+
+    return {
+      logs,
+      total: logs.length,
+    };
+  }
+
+  /**
+   * Get security events
+   */
+  async getSecurityEvents(businessId: string, days: number = 7) {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const matchQuery = {
+      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
+      isDeleted: false,
+      createdAt: { $gte: startDate },
+      $or: [
+        { severity: { $in: [AuditSeverity.HIGH, AuditSeverity.CRITICAL] } },
+        { 'metadata.securityEvent': true },
+        { action: { $in: [
+          AuditAction.LOGIN_FAILURE,
+          AuditAction.UNAUTHORIZED_ACCESS_ATTEMPT,
+          AuditAction.SECURITY_VIOLATION,
+          AuditAction.API_KEY_REVOKED,
+        ]}},
+      ],
+    };
+
+    const [logs, criticalCount, highCount] = await Promise.all([
+      this.auditLogModel.find(matchQuery).sort({ createdAt: -1 }).limit(50).exec(),
+      this.auditLogModel.countDocuments({ ...matchQuery, severity: AuditSeverity.CRITICAL }),
+      this.auditLogModel.countDocuments({ ...matchQuery, severity: AuditSeverity.HIGH }),
+    ]);
+
+    return {
+      logs,
+      criticalCount,
+      highCount,
+      total: logs.length,
+    };
+  }
+
+  /**
+   * Get user activity
+   */
+  async getUserActivity(businessId: string, userId: string, days: number = 30) {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const matchQuery = {
+      businessId: new Types.ObjectId(businessId), // 🔧 Convert to ObjectId
+      userId,
+      isDeleted: false,
+      createdAt: { $gte: startDate },
+    };
+
+    const [logs, totalActions, loginCount, dataModifications, failedAttempts] = await Promise.all([
+      this.auditLogModel.find(matchQuery).sort({ createdAt: -1 }).limit(100).exec(),
+      this.auditLogModel.countDocuments(matchQuery),
+      this.auditLogModel.countDocuments({ ...matchQuery, action: AuditAction.LOGIN_SUCCESS }),
+      this.auditLogModel.countDocuments({ 
+        ...matchQuery, 
+        action: { $in: [
+          AuditAction.CLIENT_CREATED,
+          AuditAction.CLIENT_UPDATED,
+          AuditAction.PROJECT_CREATED,
+          AuditAction.PROJECT_UPDATED,
+        ]}
+      }),
+      this.auditLogModel.countDocuments({ ...matchQuery, success: false }),
+    ]);
+
+    return {
+      logs,
+      summary: {
+        totalActions,
+        loginCount,
+        dataModifications,
+        failedAttempts,
+      },
     };
   }
 

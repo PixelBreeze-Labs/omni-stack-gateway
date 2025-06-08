@@ -180,6 +180,7 @@ export class AuthService {
                 // Log failed login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.USER,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -197,6 +198,7 @@ export class AuthService {
                 // Log failed login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.USER,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -217,6 +219,7 @@ export class AuthService {
             // Log successful login
             await this.auditLogService.logAuthentication(
                 AuditAction.LOGIN_SUCCESS,
+                ResourceType.USER,
                 loginDto.email,
                 true,
                 ipAddress,
@@ -318,6 +321,7 @@ export class AuthService {
                 // Log failed login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.EMPLOYEE,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -335,6 +339,7 @@ export class AuthService {
                 // Log failed login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.EMPLOYEE,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -364,6 +369,7 @@ export class AuthService {
             // Log successful staff login
             await this.auditLogService.logAuthentication(
                 AuditAction.LOGIN_SUCCESS,
+                ResourceType.EMPLOYEE,
                 loginDto.email,
                 true,
                 ipAddress,
@@ -474,6 +480,7 @@ export class AuthService {
                 // Log failed mobile login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.EMPLOYEE,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -491,6 +498,7 @@ export class AuthService {
                 // Log failed mobile login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.EMPLOYEE,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -588,6 +596,7 @@ export class AuthService {
             // Log successful mobile login
             await this.auditLogService.logAuthentication(
                 AuditAction.LOGIN_SUCCESS,
+                ResourceType.EMPLOYEE,
                 loginDto.email,
                 true,
                 ipAddress,
@@ -673,6 +682,7 @@ export class AuthService {
                 // Log failed login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.CLIENT,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -690,6 +700,7 @@ export class AuthService {
                 // Log failed login attempt
                 await this.auditLogService.logAuthentication(
                     AuditAction.LOGIN_FAILURE,
+                    ResourceType.CLIENT,
                     loginDto.email,
                     false,
                     ipAddress,
@@ -718,6 +729,7 @@ export class AuthService {
             // Log successful client login
             await this.auditLogService.logAuthentication(
                 AuditAction.LOGIN_SUCCESS,
+                ResourceType.CLIENT,
                 loginDto.email,
                 true,
                 ipAddress,
