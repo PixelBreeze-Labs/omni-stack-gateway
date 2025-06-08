@@ -6,6 +6,40 @@ import { Business, QualityInspectionConfiguration } from '../schemas/business.sc
 import { QualityInspection } from '../schemas/quality-inspection.schema';
 import { Employee } from '../schemas/employee.schema';
 
+// DTOs for inspection creation
+export interface CreateDetailedInspectionDto {
+    appProjectId: string;
+    appClientId: string;
+    location: string;
+    inspectionCategory?: string;
+    checklistItems: any[];
+    photos?: string[];
+    signature?: string;
+    notes?: string;
+  }
+  
+  export interface CreateSimpleInspectionDto {
+    appProjectId: string;
+    appClientId: string;
+    location: string;
+    overallRating: number;
+    remarks: string;
+    improvementSuggestions?: string;
+    notes?: string;
+  }
+  
+  export interface UpdateInspectionDto {
+    location?: string;
+    inspectionCategory?: string;
+    checklistItems?: any[];
+    photos?: string[];
+    signature?: string;
+    notes?: string;
+    overallRating?: number;
+    remarks?: string;
+    improvementSuggestions?: string;
+  }
+
 @Injectable()
 export class QualityInspectionService {
   private readonly logger = new Logger(QualityInspectionService.name);
@@ -380,5 +414,371 @@ async getQualityTeam(businessId: string): Promise<any[]> {
     };
 
     return permissions[role] || permissions.quality_staff;
+  }
+
+  /**
+ * Create detailed inspection (construction with photos/signature)
+ */
+async createDetailedInspection(
+    businessId: string,
+    inspectorId: string,
+    inspectionData: CreateDetailedInspectionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Creating detailed inspection for business: ${businessId}, inspector: ${inspectorId}`);
+  
+      // Validate inspector has permission
+      await this.validateInspectorPermissions(businessId, inspectorId, 'detailed');
+  
+      // Calculate passed/failed items from checklist
+      const totalItems = inspectionData.checklistItems?.length || 0;
+      const passedItems = inspectionData.checklistItems?.filter(item => item.status === 'pass').length || 0;
+      const failedItems = inspectionData.checklistItems?.filter(item => item.status === 'fail').length || 0;
+      const hasCriticalIssues = inspectionData.checklistItems?.some(item => 
+        item.status === 'fail' && item.critical === true
+      ) || false;
+  
+      // Create inspection record
+      const inspection = await this.qualityInspectionModel.create({
+        businessId,
+        appProjectId: inspectionData.appProjectId,
+        appClientId: inspectionData.appClientId,
+        inspectorId,
+        type: 'detailed',
+        status: 'draft',
+        location: inspectionData.location,
+        inspectionCategory: inspectionData.inspectionCategory,
+        passedItems,
+        failedItems,
+        totalItems,
+        hasPhotos: (inspectionData.photos?.length || 0) > 0,
+        hasSignature: !!inspectionData.signature,
+        hasCriticalIssues,
+        inspectionDate: new Date(),
+        metadata: {
+          checklistItems: JSON.stringify(inspectionData.checklistItems || []),
+          photos: JSON.stringify(inspectionData.photos || []),
+          signature: inspectionData.signature || '',
+          notes: inspectionData.notes || ''
+        }
+      });
+  
+      this.logger.log(`Successfully created detailed inspection: ${inspection._id}`);
+  
+      return {
+        success: true,
+        message: 'Detailed inspection created successfully',
+        inspection
+      };
+    } catch (error) {
+      this.logger.error(`Error creating detailed inspection: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Create simple inspection (basic quality review)
+   */
+  async createSimpleInspection(
+    businessId: string,
+    inspectorId: string,
+    inspectionData: CreateSimpleInspectionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Creating simple inspection for business: ${businessId}, inspector: ${inspectorId}`);
+  
+      // Validate inspector has permission
+      await this.validateInspectorPermissions(businessId, inspectorId, 'simple');
+  
+      // Create inspection record
+      const inspection = await this.qualityInspectionModel.create({
+        businessId,
+        appProjectId: inspectionData.appProjectId,
+        appClientId: inspectionData.appClientId,
+        inspectorId,
+        type: 'simple',
+        status: 'draft',
+        location: inspectionData.location,
+        overallRating: inspectionData.overallRating,
+        hasPhotos: false,
+        hasSignature: false,
+        hasCriticalIssues: inspectionData.overallRating <= 2, // Rating 1-2 considered critical
+        inspectionDate: new Date(),
+        metadata: {
+          remarks: inspectionData.remarks,
+          improvementSuggestions: inspectionData.improvementSuggestions || '',
+          notes: inspectionData.notes || ''
+        }
+      });
+  
+      this.logger.log(`Successfully created simple inspection: ${inspection._id}`);
+  
+      return {
+        success: true,
+        message: 'Simple inspection created successfully',
+        inspection
+      };
+    } catch (error) {
+      this.logger.error(`Error creating simple inspection: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get inspections for a specific inspector
+   */
+  async getMyInspections(
+    inspectorId: string,
+    businessId: string,
+    filters: {
+      status?: string;
+      type?: string;
+      page?: number;
+      limit?: number;
+    } = {}
+  ): Promise<{ inspections: any[]; total: number; page: number; totalPages: number }> {
+    try {
+      this.logger.log(`Getting inspections for inspector: ${inspectorId}`);
+  
+      const { status, type, page = 1, limit = 10 } = filters;
+      const skip = (page - 1) * limit;
+  
+      // Build filter
+      const filter: any = {
+        inspectorId,
+        businessId,
+        isDeleted: { $ne: true }
+      };
+  
+      if (status) filter.status = status;
+      if (type) filter.type = type;
+  
+      // Get total count
+      const total = await this.qualityInspectionModel.countDocuments(filter);
+      const totalPages = Math.ceil(total / limit);
+  
+      // Get inspections
+      const inspections = await this.qualityInspectionModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('appProjectId', 'name')
+        .populate('appClientId', 'name')
+        .populate('reviewerId', 'name surname email')
+        .populate('approverId', 'name surname email');
+  
+      return {
+        inspections,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      this.logger.error(`Error getting inspector inspections: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update inspection
+   */
+  async updateInspection(
+    inspectionId: string,
+    inspectorId: string,
+    updates: UpdateInspectionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Updating inspection: ${inspectionId} by inspector: ${inspectorId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Verify inspector owns this inspection
+      if (inspection.inspectorId !== inspectorId) {
+        throw new BadRequestException('You can only update your own inspections');
+      }
+  
+      // Verify inspection is still editable
+      if (inspection.status !== 'draft' && inspection.status !== 'rejected') {
+        throw new BadRequestException('Cannot update inspection in current status');
+      }
+  
+      // Prepare update data
+      const updateData: any = {};
+      const metadataUpdates: any = { ...inspection.metadata };
+  
+      // Update basic fields
+      if (updates.location) updateData.location = updates.location;
+      if (updates.inspectionCategory) updateData.inspectionCategory = updates.inspectionCategory;
+      if (updates.overallRating) updateData.overallRating = updates.overallRating;
+  
+      // Update metadata
+      if (updates.checklistItems) {
+        // Recalculate stats for detailed inspections
+        const totalItems = updates.checklistItems.length;
+        const passedItems = updates.checklistItems.filter(item => item.status === 'pass').length;
+        const failedItems = updates.checklistItems.filter(item => item.status === 'fail').length;
+        const hasCriticalIssues = updates.checklistItems.some(item => 
+          item.status === 'fail' && item.critical === true
+        );
+  
+        updateData.totalItems = totalItems;
+        updateData.passedItems = passedItems;
+        updateData.failedItems = failedItems;
+        updateData.hasCriticalIssues = hasCriticalIssues;
+        metadataUpdates.checklistItems = JSON.stringify(updates.checklistItems);
+      }
+  
+      if (updates.photos) {
+        updateData.hasPhotos = updates.photos.length > 0;
+        metadataUpdates.photos = JSON.stringify(updates.photos);
+      }
+  
+      if (updates.signature) {
+        updateData.hasSignature = true;
+        metadataUpdates.signature = updates.signature;
+      }
+  
+      if (updates.notes) metadataUpdates.notes = updates.notes;
+      if (updates.remarks) metadataUpdates.remarks = updates.remarks;
+      if (updates.improvementSuggestions) metadataUpdates.improvementSuggestions = updates.improvementSuggestions;
+  
+      updateData.metadata = metadataUpdates;
+  
+      // Update inspection
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        updateData,
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully updated inspection: ${inspectionId}`);
+  
+      return {
+        success: true,
+        message: 'Inspection updated successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error updating inspection: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Submit inspection for review
+   */
+  async submitInspectionForReview(
+    inspectionId: string,
+    inspectorId: string
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Submitting inspection for review: ${inspectionId} by inspector: ${inspectorId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Verify inspector owns this inspection
+      if (inspection.inspectorId !== inspectorId) {
+        throw new BadRequestException('You can only submit your own inspections');
+      }
+  
+      // Verify inspection is in draft status
+      if (inspection.status !== 'draft') {
+        throw new BadRequestException('Only draft inspections can be submitted for review');
+      }
+  
+      // Get business config to check requirements
+      const business = await this.businessModel.findById(inspection.businessId);
+      if (!business) {
+        throw new NotFoundException('Business not found');
+      }
+  
+      const config = business.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+      // Validate inspection completeness based on config
+      if (config.requirePhotos && inspection.type === 'detailed' && !inspection.hasPhotos) {
+        throw new BadRequestException('Photos are required for this inspection');
+      }
+  
+      if (config.requireSignature && inspection.type === 'detailed' && !inspection.hasSignature) {
+        throw new BadRequestException('Signature is required for this inspection');
+      }
+  
+      // Update inspection status
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        { 
+          status: 'pending',
+          metadata: {
+            ...inspection.metadata,
+            submittedForReviewAt: new Date().toISOString()
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully submitted inspection for review: ${inspectionId}`);
+  
+      return {
+        success: true,
+        message: 'Inspection submitted for review successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error submitting inspection for review: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Validate inspector permissions
+   */
+  private async validateInspectorPermissions(
+    businessId: string,
+    inspectorId: string,
+    inspectionType: 'detailed' | 'simple'
+  ): Promise<void> {
+    // Get business config
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+  
+    const config = business.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+    // Find employee/inspector
+    const employee = await this.employeeModel.findOne({
+      user_id: inspectorId,
+      businessId,
+      isDeleted: { $ne: true }
+    });
+  
+    if (!employee) {
+      throw new NotFoundException('Inspector not found in business');
+    }
+  
+    // Get inspector's quality role
+    const qualityRole = employee.metadata?.get('qualityRole');
+    const mainRole = employee.metadata?.get('role') || 'business_staff';
+  
+    // Check if inspector has permission to create inspections
+    const canInspect = config.canInspect.includes(qualityRole) || config.canInspect.includes(mainRole);
+  
+    if (!canInspect) {
+      throw new BadRequestException('You do not have permission to create inspections');
+    }
+  
+    // Check specific inspection type requirements
+    if (inspectionType === 'detailed' && !config.useDetailedInspections) {
+      throw new BadRequestException('Detailed inspections are not enabled for this business');
+    }
   }
 }
