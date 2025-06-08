@@ -381,6 +381,8 @@ import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availab
 
 // Quality Inspection (Schema, Service, Controller)
 import { QualityInspection, QualityInspectionSchema } from './schemas/quality-inspection.schema';
+import { QualityInspectionService } from './services/quality-inspection.service';
+import { BusinessQualityInspectionController } from './controllers/business-quality-inspection.controller';
 
 // AppClient
 import { AppClientService } from './services/app-client.service';
@@ -627,6 +629,7 @@ import { AppClientService } from './services/app-client.service';
     ServiceAreaController,
     RouteAnalyticsController,
     WeatherRouteController,
+    BusinessQualityInspectionController,
   ],
   providers: [
     SnapfoodService,
@@ -746,6 +749,7 @@ import { AppClientService } from './services/app-client.service';
     WeatherRouteService,
     GoogleMapsService,
     AppClientService,
+    QualityInspectionService,
   ],
 })
 export class AppModule implements NestModule {
