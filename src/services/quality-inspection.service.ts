@@ -40,6 +40,25 @@ export interface CreateDetailedInspectionDto {
     improvementSuggestions?: string;
   }
 
+  // DTOs for reviewer actions
+export interface ApproveInspectionDto {
+    notes?: string;
+    reviewComments?: string;
+  }
+  
+  export interface RejectInspectionDto {
+    reason: string;
+    feedback: string;
+    requiredChanges?: string[];
+  }
+  
+  export interface RequestRevisionDto {
+    feedback: string;
+    requiredChanges: string[];
+    priority?: 'low' | 'medium' | 'high';
+  }
+
+  
 @Injectable()
 export class QualityInspectionService {
   private readonly logger = new Logger(QualityInspectionService.name);
@@ -779,6 +798,379 @@ async createDetailedInspection(
     // Check specific inspection type requirements
     if (inspectionType === 'detailed' && !config.useDetailedInspections) {
       throw new BadRequestException('Detailed inspections are not enabled for this business');
+    }
+  }
+
+  /**
+ * Get inspections assigned for review
+ */
+async getInspectionsForReview(
+    reviewerId: string,
+    businessId: string,
+    filters: {
+      status?: string;
+      type?: string;
+      priority?: string;
+      page?: number;
+      limit?: number;
+    } = {}
+  ): Promise<{ inspections: any[]; total: number; page: number; totalPages: number }> {
+    try {
+      this.logger.log(`Getting inspections for review by: ${reviewerId}`);
+  
+      // Validate reviewer has permission
+      await this.validateReviewerPermissions(businessId, reviewerId);
+  
+      const { status = 'pending', type, priority, page = 1, limit = 10 } = filters;
+      const skip = (page - 1) * limit;
+  
+      // Build filter for inspections pending review
+      const filter: any = {
+        businessId,
+        status: { $in: ['pending', 'under_review'] },
+        isDeleted: { $ne: true }
+      };
+  
+      // Add additional filters
+      if (status && status !== 'pending') filter.status = status;
+      if (type) filter.type = type;
+      if (priority) filter['metadata.priority'] = priority;
+  
+      // Get business config to check self-review policy
+      const business = await this.businessModel.findById(businessId);
+      const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+      // If self-review is not allowed, exclude own inspections
+      if (!config.allowSelfReview) {
+        filter.inspectorId = { $ne: reviewerId };
+      }
+  
+      // Get total count
+      const total = await this.qualityInspectionModel.countDocuments(filter);
+      const totalPages = Math.ceil(total / limit);
+  
+      // Get inspections
+      const inspections = await this.qualityInspectionModel
+        .find(filter)
+        .sort({ 
+          'metadata.priority': -1, // High priority first
+          createdAt: 1 // Oldest first
+        })
+        .skip(skip)
+        .limit(limit)
+        .populate('inspectorId', 'name surname email')
+        .populate('appProjectId', 'name description')
+        .populate('appClientId', 'name type')
+        .populate('reviewerId', 'name surname email');
+  
+      return {
+        inspections,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      this.logger.error(`Error getting inspections for review: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Approve inspection
+   */
+  async approveInspection(
+    inspectionId: string,
+    reviewerId: string,
+    approvalData: ApproveInspectionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Approving inspection: ${inspectionId} by reviewer: ${reviewerId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Validate reviewer has permission
+      await this.validateReviewerPermissions(inspection.businessId, reviewerId);
+  
+      // Verify inspection can be reviewed
+      if (!['pending', 'under_review'].includes(inspection.status)) {
+        throw new BadRequestException('Inspection cannot be reviewed in current status');
+      }
+  
+      // Check self-review policy
+      const business = await this.businessModel.findById(inspection.businessId);
+      const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+      if (!config.allowSelfReview && inspection.inspectorId === reviewerId) {
+        throw new BadRequestException('Self-review is not allowed');
+      }
+  
+      // Update inspection
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          status: 'approved',
+          reviewerId,
+          reviewedDate: new Date(),
+          metadata: {
+            ...inspection.metadata,
+            reviewNotes: approvalData.notes || '',
+            reviewComments: approvalData.reviewComments || '',
+            reviewAction: 'approved',
+            reviewedAt: new Date().toISOString(),
+            reviewerId: reviewerId
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully approved inspection: ${inspectionId}`);
+  
+      return {
+        success: true,
+        message: 'Inspection approved successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error approving inspection: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Reject inspection
+   */
+  async rejectInspection(
+    inspectionId: string,
+    reviewerId: string,
+    rejectionData: RejectInspectionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Rejecting inspection: ${inspectionId} by reviewer: ${reviewerId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Validate reviewer has permission
+      await this.validateReviewerPermissions(inspection.businessId, reviewerId);
+  
+      // Verify inspection can be reviewed
+      if (!['pending', 'under_review'].includes(inspection.status)) {
+        throw new BadRequestException('Inspection cannot be reviewed in current status');
+      }
+  
+      // Check self-review policy
+      const business = await this.businessModel.findById(inspection.businessId);
+      const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+      if (!config.allowSelfReview && inspection.inspectorId === reviewerId) {
+        throw new BadRequestException('Self-review is not allowed');
+      }
+  
+      // Validate rejection data
+      if (!rejectionData.reason || !rejectionData.feedback) {
+        throw new BadRequestException('Reason and feedback are required for rejection');
+      }
+  
+      // Update inspection
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          status: 'rejected',
+          reviewerId,
+          reviewedDate: new Date(),
+          metadata: {
+            ...inspection.metadata,
+            rejectionReason: rejectionData.reason,
+            rejectionFeedback: rejectionData.feedback,
+            requiredChanges: rejectionData.requiredChanges || [],
+            reviewAction: 'rejected',
+            reviewedAt: new Date().toISOString(),
+            reviewerId: reviewerId
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully rejected inspection: ${inspectionId}`);
+  
+      return {
+        success: true,
+        message: 'Inspection rejected successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error rejecting inspection: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Request inspection revision
+   */
+  async requestInspectionRevision(
+    inspectionId: string,
+    reviewerId: string,
+    revisionData: RequestRevisionDto
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Requesting revision for inspection: ${inspectionId} by reviewer: ${reviewerId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Validate reviewer has permission
+      await this.validateReviewerPermissions(inspection.businessId, reviewerId);
+  
+      // Verify inspection can be reviewed
+      if (!['pending', 'under_review'].includes(inspection.status)) {
+        throw new BadRequestException('Inspection cannot be reviewed in current status');
+      }
+  
+      // Check self-review policy
+      const business = await this.businessModel.findById(inspection.businessId);
+      const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+      if (!config.allowSelfReview && inspection.inspectorId === reviewerId) {
+        throw new BadRequestException('Self-review is not allowed');
+      }
+  
+      // Validate revision data
+      if (!revisionData.feedback || !revisionData.requiredChanges?.length) {
+        throw new BadRequestException('Feedback and required changes are required for revision request');
+      }
+  
+      // Update inspection - set back to draft for inspector to fix
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          status: 'draft',
+          reviewerId,
+          reviewedDate: new Date(),
+          metadata: {
+            ...inspection.metadata,
+            revisionFeedback: revisionData.feedback,
+            requiredChanges: revisionData.requiredChanges,
+            revisionPriority: revisionData.priority || 'medium',
+            reviewAction: 'revision_requested',
+            reviewedAt: new Date().toISOString(),
+            reviewerId: reviewerId,
+            revisionCount: (inspection.metadata?.revisionCount || 0) + 1
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully requested revision for inspection: ${inspectionId}`);
+  
+      return {
+        success: true,
+        message: 'Inspection revision requested successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error requesting inspection revision: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Assign inspection to reviewer (for workflow management)
+   */
+  async assignInspectionToReviewer(
+    inspectionId: string,
+    reviewerId: string,
+    assignedBy: string
+  ): Promise<{ success: boolean; message: string; inspection: any }> {
+    try {
+      this.logger.log(`Assigning inspection ${inspectionId} to reviewer: ${reviewerId}`);
+  
+      // Find inspection
+      const inspection = await this.qualityInspectionModel.findById(inspectionId);
+      if (!inspection) {
+        throw new NotFoundException('Inspection not found');
+      }
+  
+      // Validate assignedBy has permission (could be admin or operations manager)
+      await this.validateReviewerPermissions(inspection.businessId, assignedBy);
+  
+      // Verify inspection is pending
+      if (inspection.status !== 'pending') {
+        throw new BadRequestException('Only pending inspections can be assigned');
+      }
+  
+      // Update inspection
+      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+        inspectionId,
+        {
+          status: 'under_review',
+          reviewerId,
+          metadata: {
+            ...inspection.metadata,
+            assignedToReviewerAt: new Date().toISOString(),
+            assignedBy: assignedBy
+          }
+        },
+        { new: true }
+      );
+  
+      this.logger.log(`Successfully assigned inspection to reviewer: ${reviewerId}`);
+  
+      return {
+        success: true,
+        message: 'Inspection assigned to reviewer successfully',
+        inspection: updatedInspection
+      };
+    } catch (error) {
+      this.logger.error(`Error assigning inspection to reviewer: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
+  /**
+   * Validate reviewer permissions
+   */
+  private async validateReviewerPermissions(
+    businessId: string,
+    reviewerId: string
+  ): Promise<void> {
+    // Get business config
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+  
+    const config = business.qualityInspectionConfig || this.getDefaultConfiguration();
+  
+    // Find employee/reviewer
+    const employee = await this.employeeModel.findOne({
+      user_id: reviewerId,
+      businessId,
+      isDeleted: { $ne: true }
+    });
+  
+    if (!employee) {
+      throw new NotFoundException('Reviewer not found in business');
+    }
+  
+    // Get reviewer's quality role and main role
+    const qualityRole = employee.metadata?.get('qualityRole');
+    const mainRole = employee.metadata?.get('role') || 'business_staff';
+  
+    // Check if reviewer has permission to review inspections
+    const canReview = config.canReview.includes(qualityRole) || config.canReview.includes(mainRole);
+  
+    if (!canReview) {
+      throw new BadRequestException('You do not have permission to review inspections');
     }
   }
 }
