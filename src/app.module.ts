@@ -383,6 +383,8 @@ import { TeamAvailability, TeamAvailabilitySchema } from './schemas/team-availab
 import { QualityInspection, QualityInspectionSchema } from './schemas/quality-inspection.schema';
 import { QualityInspectionService } from './services/quality-inspection.service';
 import { BusinessQualityInspectionController } from './controllers/business-quality-inspection.controller';
+import { StaffQualityInspectionController } from './controllers/staff-quality-inspection.controller';
+
 
 // AppClient
 import { AppClientService } from './services/app-client.service';
@@ -630,6 +632,7 @@ import { AppClientService } from './services/app-client.service';
     RouteAnalyticsController,
     WeatherRouteController,
     BusinessQualityInspectionController,
+    StaffQualityInspectionController,
   ],
   providers: [
     SnapfoodService,
