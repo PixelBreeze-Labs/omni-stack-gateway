@@ -745,164 +745,508 @@ async removeDepartment(
   // ============================================================================
 
   /**
-   * Create a new team for a business
-   */
-  async createTeam(
-    businessId: string,
-    teamData: {
-      name: string;
-      metadata?: any;
+ * Create a new team for a business
+ */
+async createTeam(
+  businessId: string,
+  teamData: {
+    name: string;
+    metadata?: any;
+  },
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; teamId: string; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
+
+  try {
+    this.logger.log(`Creating team for business ${businessId}: ${teamData.name}`);
+
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      // Log business not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_CREATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceName: `Team creation: ${teamData.name}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamName: teamData.name,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Business not found');
     }
-  ): Promise<{ success: boolean; teamId: string; message: string }> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
 
-      // Check if team name already exists
-      const existingTeam = business.teams.find(
-        (team: any) => team.name.toLowerCase() === teamData.name.toLowerCase()
-      );
-      
-      if (existingTeam) {
-        throw new Error('Team with this name already exists');
-      }
+    // Check if team name already exists
+    const existingTeam = business.teams.find(
+      (team: any) => team.name.toLowerCase() === teamData.name.toLowerCase()
+    );
+    
+    if (existingTeam) {
+      // Log duplicate team name
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_CREATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceName: `Team creation: ${teamData.name}`,
+        success: false,
+        errorMessage: 'Team with this name already exists',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamName: teamData.name,
+          existingTeamId: existingTeam.id,
+          errorReason: 'duplicate_team_name',
+          totalTeams: business.teams.length,
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new Error('Team with this name already exists');
+    }
 
-      // Generate a unique ID for the team
-      const teamId = new Date().getTime().toString();
-      const now = new Date();
-      
-      // Create new team object
-      const newTeam = {
-        id: teamId,
-        name: teamData.name,
-        metadata: teamData.metadata || {},
-        createdAt: now,
-        updatedAt: now
-      };
+    // Generate a unique ID for the team
+    const teamId = new Date().getTime().toString();
+    const now = new Date();
+    
+    // Create new team object
+    const newTeam = {
+      id: teamId,
+      name: teamData.name,
+      metadata: teamData.metadata || {},
+      createdAt: now,
+      updatedAt: now
+    };
 
-      // Add team to business
-      business.teams.push(newTeam as EnhancedTeam);
-      business.markModified('teams');
-      await business.save();
+    // Add team to business
+    business.teams.push(newTeam as EnhancedTeam);
+    business.markModified('teams');
+    await business.save();
 
-      return {
-        success: true,
+    // Log successful team creation
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.TEAM_CREATED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: teamId,
+      resourceName: `Team: ${teamData.name}`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      metadata: {
         teamId,
-        message: `Team '${teamData.name}' created successfully`
-      };
-    } catch (error) {
-      this.logger.error(`Error creating team: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
-  /**
-   * Update an existing team
-   */
-  async updateTeam(
-    businessId: string,
-    teamId: string,
-    updateData: {
-      name?: string;
-      metadata?: any;
-    }
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
-
-      // Find team by ID
-      const teamIndex = business.teams.findIndex(
-        (team: any) => team.id === teamId
-      );
-
-      if (teamIndex === -1) {
-        throw new NotFoundException('Team not found');
-      }
-
-      // Check if new name conflicts with existing teams (if name is being updated)
-      if (updateData.name) {
-        const nameConflict = business.teams.find(
-          (team: any, index: number) => 
-            index !== teamIndex && 
-            team.name.toLowerCase() === updateData.name.toLowerCase()
-        );
-        
-        if (nameConflict) {
-          throw new Error('Team with this name already exists');
+        teamName: teamData.name,
+        hasMetadata: !!teamData.metadata,
+        metadataKeys: Object.keys(teamData.metadata || {}),
+        totalTeamsAfter: business.teams.length,
+        operationDuration: Date.now() - startTime,
+        newTeamData: {
+          name: teamData.name,
+          metadata: teamData.metadata || {}
         }
       }
+    });
 
-      // Update team data
-      const team = business.teams[teamIndex] as any;
-      
-      if (updateData.name !== undefined) team.name = updateData.name;
-      if (updateData.metadata !== undefined) {
-        // Merge metadata instead of replacing
-        team.metadata = { ...team.metadata, ...updateData.metadata };
-      }
-      
-      // Always update the timestamp
-      team.updatedAt = new Date();
+    this.logger.log(`Successfully created team ${teamId} (${teamData.name}) for business ${businessId}`);
 
-      // Mark the teams array as modified for Mongoose
-      business.markModified('teams');
-      await business.save();
-
-      return {
-        success: true,
-        message: `Team updated successfully`
-      };
-    } catch (error) {
-      this.logger.error(`Error updating team: ${error.message}`, error.stack);
-      throw error;
+    return {
+      success: true,
+      teamId,
+      message: `Team '${teamData.name}' created successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException' && error.message !== 'Team with this name already exists') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_CREATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceName: `Team creation: ${teamData.name}`,
+        success: false,
+        errorMessage: 'Unexpected error during team creation',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamName: teamData.name,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
     }
+
+    this.logger.error(`Error creating team: ${error.message}`, error.stack);
+    throw error;
   }
+}
 
-  /**
-   * Remove a team from a business
-   */
-  async removeTeam(
-    businessId: string,
-    teamId: string
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
+/**
+ * Update an existing team
+ */
+async updateTeam(
+  businessId: string,
+  teamId: string,
+  updateData: {
+    name?: string;
+    metadata?: any;
+  },
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
 
-      // Find team by ID
-      const teamIndex = business.teams.findIndex(
-        (team: any) => team.id === teamId
+  try {
+    this.logger.log(`Updating team ${teamId} for business ${businessId}`);
+
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      // Log business not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: teamId,
+        resourceName: `Team update: ${teamId}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find team by ID
+    const teamIndex = business.teams.findIndex(
+      (team: any) => team.id === teamId
+    );
+
+    if (teamIndex === -1) {
+      // Log team not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: teamId,
+        resourceName: `Team update: ${teamId}`,
+        success: false,
+        errorMessage: 'Team not found',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId,
+          errorReason: 'team_not_found',
+          totalTeams: business.teams.length,
+          availableTeamIds: business.teams.map((t: any) => t.id),
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Team not found');
+    }
+
+    const team = business.teams[teamIndex] as any;
+
+    // Track what changed BEFORE making changes
+    const oldValues = {
+      name: team.name,
+      metadata: { ...(team.metadata || {}) }
+    };
+
+    // Check if new name conflicts with existing teams (if name is being updated)
+    if (updateData.name && updateData.name !== team.name) {
+      const nameConflict = business.teams.find(
+        (t: any, index: number) => 
+          index !== teamIndex && 
+          t.name.toLowerCase() === updateData.name.toLowerCase()
       );
-
-      if (teamIndex === -1) {
-        throw new NotFoundException('Team not found');
-      }
-
-      const teamName = (business.teams[teamIndex] as any).name;
-
-      // Remove team from array
-      business.teams.splice(teamIndex, 1);
       
-      // Mark as modified and save
-      business.markModified('teams');
-      await business.save();
-
-      return {
-        success: true,
-        message: `Team '${teamName}' removed successfully`
-      };
-    } catch (error) {
-      this.logger.error(`Error removing team: ${error.message}`, error.stack);
-      throw error;
+      if (nameConflict) {
+        // Log name conflict
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.TEAM_UPDATED,
+          resourceType: ResourceType.BUSINESS,
+          resourceId: teamId,
+          resourceName: `Team: ${team.name}`,
+          success: false,
+          errorMessage: 'Team with this name already exists',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            teamId,
+            oldName: team.name,
+            newName: updateData.name,
+            conflictingTeamId: nameConflict.id,
+            errorReason: 'duplicate_team_name',
+            operationDuration: Date.now() - startTime
+          }
+        });
+        throw new Error('Team with this name already exists');
+      }
     }
+
+    // Track changed fields
+    const changedFields: string[] = [];
+    
+    // Update team data and track changes
+    if (updateData.name !== undefined && updateData.name !== team.name) {
+      team.name = updateData.name;
+      changedFields.push('name');
+    }
+    if (updateData.metadata !== undefined) {
+      // Merge metadata instead of replacing
+      team.metadata = { ...team.metadata, ...updateData.metadata };
+      changedFields.push('metadata');
+    }
+    
+    // Always update the timestamp
+    team.updatedAt = new Date();
+
+    // Mark the teams array as modified for Mongoose
+    business.markModified('teams');
+    await business.save();
+
+    // Prepare new values for audit log
+    const newValues = {
+      name: team.name,
+      metadata: team.metadata
+    };
+
+    // Log successful team update
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.TEAM_UPDATED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: teamId,
+      resourceName: `Team: ${team.name}`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      oldValues,
+      newValues,
+      changedFields,
+      metadata: {
+        teamId,
+        teamName: team.name,
+        changedFieldsCount: changedFields.length,
+        metadataKeys: Object.keys(team.metadata || {}),
+        operationDuration: Date.now() - startTime,
+        changedFields
+      }
+    });
+
+    this.logger.log(`Successfully updated team ${teamId} (${team.name}) for business ${businessId}. Changed fields: ${changedFields.join(', ')}`);
+
+    return {
+      success: true,
+      message: `Team updated successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException' && error.message !== 'Team with this name already exists') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: teamId,
+        resourceName: `Team update: ${teamId}`,
+        success: false,
+        errorMessage: 'Unexpected error during team update',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error updating team: ${error.message}`, error.stack);
+    throw error;
   }
+}
+
+/**
+ * Remove a team from a business
+ */
+async removeTeam(
+  businessId: string,
+  teamId: string,
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
+
+  try {
+    this.logger.log(`Removing team ${teamId} for business ${businessId}`);
+
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      // Log business not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_DELETED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: teamId,
+        resourceName: `Team deletion: ${teamId}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find team by ID
+    const teamIndex = business.teams.findIndex(
+      (team: any) => team.id === teamId
+    );
+
+    if (teamIndex === -1) {
+      // Log team not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_DELETED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: teamId,
+        resourceName: `Team deletion: ${teamId}`,
+        success: false,
+        errorMessage: 'Team not found',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId,
+          errorReason: 'team_not_found',
+          totalTeams: business.teams.length,
+          availableTeamIds: business.teams.map((t: any) => t.id),
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Team not found');
+    }
+
+    const team = business.teams[teamIndex] as any;
+    const teamName = team.name;
+
+    // Store team data before deletion for audit log
+    const deletedTeamData = {
+      id: team.id,
+      name: team.name,
+      metadata: team.metadata || {},
+      createdAt: team.createdAt,
+      updatedAt: team.updatedAt
+    };
+
+    // Remove team from array
+    business.teams.splice(teamIndex, 1);
+    
+    // Mark as modified and save
+    business.markModified('teams');
+    await business.save();
+
+    // Log successful team deletion
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.TEAM_DELETED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: teamId,
+      resourceName: `Team: ${teamName}`,
+      success: true,
+      severity: AuditSeverity.HIGH, // Higher severity for deletions
+      ipAddress,
+      userAgent,
+      oldValues: deletedTeamData,
+      metadata: {
+        teamId,
+        teamName,
+        metadataKeys: Object.keys(deletedTeamData.metadata || {}),
+        totalTeamsAfter: business.teams.length,
+        operationDuration: Date.now() - startTime,
+        deletedTeamData
+      }
+    });
+
+    this.logger.log(`Successfully deleted team ${teamId} (${teamName}) for business ${businessId}`);
+
+    return {
+      success: true,
+      message: `Team '${teamName}' removed successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.TEAM_DELETED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: teamId,
+        resourceName: `Team deletion: ${teamId}`,
+        success: false,
+        errorMessage: 'Unexpected error during team deletion',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          teamId,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error removing team: ${error.message}`, error.stack);
+    throw error;
+  }
+}
 
   /**
    * Get all teams for a business
