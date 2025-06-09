@@ -61,6 +61,13 @@ export enum ActivityType {
    TEAM_CREATED = 'team_created',
    TEAM_UPDATED = 'team_updated',
    TEAM_DELETED = 'team_deleted',
+
+   // Task Management
+   TASK_CREATED = 'task_created',
+   TASK_UPDATED = 'task_updated', 
+   TASK_DELETED = 'task_deleted',
+   TASK_ASSIGNED = 'task_assigned',
+   TASK_STATUS_CHANGED = 'task_status_changed',
 }
 
 export enum ActivityStatus {
