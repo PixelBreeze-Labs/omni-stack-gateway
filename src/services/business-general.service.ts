@@ -19,6 +19,8 @@ import { AppProject } from '../schemas/app-project.schema';
 import { ConstructionSite } from '../schemas/construction-site.schema';
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
 import { RouteProgress } from '../schemas/route-progress.schema';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from 'src/schemas/audit-log.schema';
 
 /**
  * Enhanced team response type for API responses
@@ -60,6 +62,7 @@ export class BusinessGeneralService {
     private readonly googleMapsService: GoogleMapsService,
     private readonly staffluentEmployeeService: StaffluentEmployeeService,
     private readonly staffluentTaskService: StaffluentTaskService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   // ============================================================================
@@ -237,8 +240,15 @@ export class BusinessGeneralService {
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
       metadata?: any;
-    }
+    },
+    userId?: string,
+    req?: any
   ): Promise<{ success: boolean; departmentId: string; message: string }> {
+
+    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+    const userAgent = req?.get('User-Agent');
+    const startTime = Date.now();
+
     try {
       const business = await this.businessModel.findById(businessId);
       if (!business) {
@@ -275,128 +285,441 @@ export class BusinessGeneralService {
       business.markModified('departments');
       await business.save();
 
+      await this.auditLogService.createAuditLog({
+        businessId,                                    // ENSURES BUSINESS ISOLATION
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,   // Use appropriate action
+        resourceType: ResourceType.BUSINESS,          // Department is part of business config
+        resourceId: departmentId,
+        resourceName: `Department: ${departmentData.name}`,
+        success: true,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentId,
+          departmentName: departmentData.name,
+          requiredSkillsCount: (departmentData.requiredSkills || []).length,
+          optionalSkillsCount: (departmentData.optionalSkills || []).length,
+          totalDepartmentsAfter: business.departments.length,
+          operationDuration: Date.now() - startTime,
+          newDepartmentData: departmentData  // Store the new data
+        }
+      });
+      
       return {
         success: true,
         departmentId,
         message: `Department '${departmentData.name}' created successfully`
       };
     } catch (error) {
+      // ❌ ERROR LOGS (only for unexpected errors, not validation errors)
+      if (error.name !== 'NotFoundException' && error.message !== 'Department with this name already exists') {
+        await this.auditLogService.createAuditLog({
+          businessId,                                    // CRITICAL: Always use businessId
+          userId,
+          action: AuditAction.BUSINESS_CONFIG_UPDATED,
+          resourceType: ResourceType.BUSINESS,
+          resourceName: `Department creation: ${departmentData.name}`,
+          success: false,
+          errorMessage: 'Unexpected error during department creation',
+          severity: AuditSeverity.HIGH,
+          ipAddress,
+          userAgent,
+          metadata: {
+            departmentName: departmentData.name,
+            errorReason: 'unexpected_error',
+            errorName: error.name,
+            errorMessage: error.message,
+            operationDuration: Date.now() - startTime
+          }
+        });
+      }
       this.logger.error(`Error creating department: ${error.message}`, error.stack);
       throw error;
     }
   }
 
   /**
-   * Update an existing department
-   */
-  async updateDepartment(
-    businessId: string,
-    departmentId: string,
-    updateData: {
-      name?: string;
-      requiredSkills?: string[];
-      optionalSkills?: string[];
-      skillWeights?: Record<string, number>;
-      metadata?: any;
-    }
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
+ * Update an existing department
+ */
+async updateDepartment(
+  businessId: string,
+  departmentId: string,
+  updateData: {
+    name?: string;
+    requiredSkills?: string[];
+    optionalSkills?: string[];
+    skillWeights?: Record<string, number>;
+    metadata?: any;
+  },
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
 
-      // Find department by ID
-      const departmentIndex = business.departments.findIndex(
-        (dept: any) => dept.id === departmentId
-      );
+  try {
+    this.logger.log(`Updating department ${departmentId} for business ${businessId}`);
 
-      if (departmentIndex === -1) {
-        throw new NotFoundException('Department not found');
-      }
-
-      // Check if new name conflicts with existing departments (if name is being updated)
-      if (updateData.name) {
-        const nameConflict = business.departments.find(
-          (dept: any, index: number) => 
-            index !== departmentIndex && 
-            dept.name.toLowerCase() === updateData.name.toLowerCase()
-        );
-        
-        if (nameConflict) {
-          throw new Error('Department with this name already exists');
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      // Log business not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.DEPARTMENT_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: departmentId,
+        resourceName: `Department update: ${departmentId}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentId,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
         }
-      }
-
-      // Update department data
-      const department = business.departments[departmentIndex] as any;
-      
-      if (updateData.name !== undefined) department.name = updateData.name;
-      if (updateData.requiredSkills !== undefined) department.requiredSkills = updateData.requiredSkills;
-      if (updateData.optionalSkills !== undefined) department.optionalSkills = updateData.optionalSkills;
-      if (updateData.skillWeights !== undefined) department.skillWeights = updateData.skillWeights;
-      if (updateData.metadata !== undefined) {
-        // Merge metadata instead of replacing
-        department.metadata = { ...department.metadata, ...updateData.metadata };
-      }
-      
-      // Always update the timestamp
-      department.updatedAt = new Date();
-
-      // Mark the departments array as modified for Mongoose
-      business.markModified('departments');
-      await business.save();
-
-      return {
-        success: true,
-        message: `Department updated successfully`
-      };
-    } catch (error) {
-      this.logger.error(`Error updating department: ${error.message}`, error.stack);
-      throw error;
+      });
+      throw new NotFoundException('Business not found');
     }
+
+    // Find department by ID
+    const departmentIndex = business.departments.findIndex(
+      (dept: any) => dept.id === departmentId
+    );
+
+    if (departmentIndex === -1) {
+      // Log department not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.DEPARTMENT_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: departmentId,
+        resourceName: `Department update: ${departmentId}`,
+        success: false,
+        errorMessage: 'Department not found',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentId,
+          errorReason: 'department_not_found',
+          totalDepartments: business.departments.length,
+          availableDepartmentIds: business.departments.map((d: any) => d.id),
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Department not found');
+    }
+
+    const department = business.departments[departmentIndex] as any;
+
+    // Track what changed BEFORE making changes
+    const oldValues = {
+      name: department.name,
+      requiredSkills: [...(department.requiredSkills || [])],
+      optionalSkills: [...(department.optionalSkills || [])],
+      skillWeights: { ...(department.skillWeights || {}) },
+      metadata: { ...(department.metadata || {}) }
+    };
+
+    // Check if new name conflicts with existing departments (if name is being updated)
+    if (updateData.name && updateData.name !== department.name) {
+      const nameConflict = business.departments.find(
+        (dept: any, index: number) => 
+          index !== departmentIndex && 
+          dept.name.toLowerCase() === updateData.name.toLowerCase()
+      );
+      
+      if (nameConflict) {
+        // Log name conflict
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.DEPARTMENT_UPDATED,
+          resourceType: ResourceType.BUSINESS,
+          resourceId: departmentId,
+          resourceName: `Department: ${department.name}`,
+          success: false,
+          errorMessage: 'Department with this name already exists',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            departmentId,
+            oldName: department.name,
+            newName: updateData.name,
+            conflictingDepartmentId: nameConflict.id,
+            errorReason: 'duplicate_department_name',
+            operationDuration: Date.now() - startTime
+          }
+        });
+        throw new Error('Department with this name already exists');
+      }
+    }
+
+    // Track changed fields
+    const changedFields: string[] = [];
+    
+    // Update department data and track changes
+    if (updateData.name !== undefined && updateData.name !== department.name) {
+      department.name = updateData.name;
+      changedFields.push('name');
+    }
+    if (updateData.requiredSkills !== undefined) {
+      department.requiredSkills = updateData.requiredSkills;
+      changedFields.push('requiredSkills');
+    }
+    if (updateData.optionalSkills !== undefined) {
+      department.optionalSkills = updateData.optionalSkills;
+      changedFields.push('optionalSkills');
+    }
+    if (updateData.skillWeights !== undefined) {
+      department.skillWeights = updateData.skillWeights;
+      changedFields.push('skillWeights');
+    }
+    if (updateData.metadata !== undefined) {
+      // Merge metadata instead of replacing
+      department.metadata = { ...department.metadata, ...updateData.metadata };
+      changedFields.push('metadata');
+    }
+    
+    // Always update the timestamp
+    department.updatedAt = new Date();
+
+    // Mark the departments array as modified for Mongoose
+    business.markModified('departments');
+    await business.save();
+
+    // Prepare new values for audit log
+    const newValues = {
+      name: department.name,
+      requiredSkills: department.requiredSkills,
+      optionalSkills: department.optionalSkills,
+      skillWeights: department.skillWeights,
+      metadata: department.metadata
+    };
+
+    // Log successful department update
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.DEPARTMENT_UPDATED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: departmentId,
+      resourceName: `Department: ${department.name}`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      oldValues,
+      newValues,
+      changedFields,
+      metadata: {
+        departmentId,
+        departmentName: department.name,
+        changedFieldsCount: changedFields.length,
+        requiredSkillsCount: (department.requiredSkills || []).length,
+        optionalSkillsCount: (department.optionalSkills || []).length,
+        skillWeightsCount: Object.keys(department.skillWeights || {}).length,
+        operationDuration: Date.now() - startTime,
+        changedFields
+      }
+    });
+
+    this.logger.log(`Successfully updated department ${departmentId} for business ${businessId}. Changed fields: ${changedFields.join(', ')}`);
+
+    return {
+      success: true,
+      message: `Department updated successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException' && error.message !== 'Department with this name already exists') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.DEPARTMENT_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: departmentId,
+        resourceName: `Department update: ${departmentId}`,
+        success: false,
+        errorMessage: 'Unexpected error during department update',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentId,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error updating department: ${error.message}`, error.stack);
+    throw error;
   }
+}
 
   /**
-   * Remove a department from a business
-   */
-  async removeDepartment(
-    businessId: string,
-    departmentId: string
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
+ * Remove a department from a business
+ */
+async removeDepartment(
+  businessId: string,
+  departmentId: string,
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
 
-      // Find department by ID
-      const departmentIndex = business.departments.findIndex(
-        (dept: any) => dept.id === departmentId
-      );
+  try {
+    this.logger.log(`Removing department ${departmentId} for business ${businessId}`);
 
-      if (departmentIndex === -1) {
-        throw new NotFoundException('Department not found');
-      }
-
-      const departmentName = (business.departments[departmentIndex] as any).name;
-
-      // Remove department from array
-      business.departments.splice(departmentIndex, 1);
-      
-      // Mark as modified and save
-      business.markModified('departments');
-      await business.save();
-
-      return {
-        success: true,
-        message: `Department '${departmentName}' removed successfully`
-      };
-    } catch (error) {
-      this.logger.error(`Error removing department: ${error.message}`, error.stack);
-      throw error;
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      // Log business not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.DEPARTMENT_DELETED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: departmentId,
+        resourceName: `Department deletion: ${departmentId}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentId,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Business not found');
     }
+
+    // Find department by ID
+    const departmentIndex = business.departments.findIndex(
+      (dept: any) => dept.id === departmentId
+    );
+
+    if (departmentIndex === -1) {
+      // Log department not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.DEPARTMENT_DELETED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: departmentId,
+        resourceName: `Department deletion: ${departmentId}`,
+        success: false,
+        errorMessage: 'Department not found',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentId,
+          errorReason: 'department_not_found',
+          totalDepartments: business.departments.length,
+          availableDepartmentIds: business.departments.map((d: any) => d.id),
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Department not found');
+    }
+
+    const department = business.departments[departmentIndex] as any;
+    const departmentName = department.name;
+
+    // Store department data before deletion for audit log
+    const deletedDepartmentData = {
+      id: department.id,
+      name: department.name,
+      requiredSkills: department.requiredSkills || [],
+      optionalSkills: department.optionalSkills || [],
+      skillWeights: department.skillWeights || {},
+      metadata: department.metadata || {},
+      createdAt: department.createdAt,
+      updatedAt: department.updatedAt
+    };
+
+    // Remove department from array
+    business.departments.splice(departmentIndex, 1);
+    
+    // Mark as modified and save
+    business.markModified('departments');
+    await business.save();
+
+    // Log successful department deletion
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.DEPARTMENT_DELETED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: departmentId,
+      resourceName: `Department: ${departmentName}`,
+      success: true,
+      severity: AuditSeverity.HIGH, // Higher severity for deletions
+      ipAddress,
+      userAgent,
+      oldValues: deletedDepartmentData,
+      metadata: {
+        departmentId,
+        departmentName,
+        requiredSkillsCount: (deletedDepartmentData.requiredSkills || []).length,
+        optionalSkillsCount: (deletedDepartmentData.optionalSkills || []).length,
+        skillWeightsCount: Object.keys(deletedDepartmentData.skillWeights || {}).length,
+        totalDepartmentsAfter: business.departments.length,
+        operationDuration: Date.now() - startTime,
+        deletedDepartmentData
+      }
+    });
+
+    this.logger.log(`Successfully deleted department ${departmentId} (${departmentName}) for business ${businessId}`);
+
+    return {
+      success: true,
+      message: `Department '${departmentName}' removed successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.DEPARTMENT_DELETED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: departmentId,
+        resourceName: `Department deletion: ${departmentId}`,
+        success: false,
+        errorMessage: 'Unexpected error during department deletion',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentId,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error removing department: ${error.message}`, error.stack);
+    throw error;
   }
+}
 
   /**
    * Get all departments for a business
@@ -825,6 +1148,17 @@ export class BusinessGeneralService {
   // PRIVATE HELPER METHODS
   // ============================================================================
 
+  private extractIpAddress(req: any): string {
+    return (
+      req?.headers?.['x-forwarded-for'] ||
+      req?.headers?.['x-real-ip'] ||
+      req?.connection?.remoteAddress ||
+      req?.socket?.remoteAddress ||
+      'unknown'
+    ).split(',')[0].trim();
+  }
+
+  
   /**
    * Process skills data for display
    */
