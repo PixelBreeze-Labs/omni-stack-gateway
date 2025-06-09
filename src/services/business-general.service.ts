@@ -21,6 +21,8 @@ import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
 import { RouteProgress } from '../schemas/route-progress.schema';
 import { AuditLogService } from './audit-log.service';
 import { AuditAction, AuditSeverity, ResourceType } from 'src/schemas/audit-log.schema';
+import { AppActivityService } from './app-activity.service';
+import { ActivityType } from 'src/schemas/app-activity.schema';
 
 /**
  * Enhanced team response type for API responses
@@ -63,6 +65,7 @@ export class BusinessGeneralService {
     private readonly staffluentEmployeeService: StaffluentEmployeeService,
     private readonly staffluentTaskService: StaffluentTaskService,
     private readonly auditLogService: AuditLogService,
+    private readonly appActivityService: AppActivityService,
   ) {}
 
   // ============================================================================
@@ -228,119 +231,153 @@ export class BusinessGeneralService {
   // ============================================================================
   // DEPARTMENT MANAGEMENT
   // ============================================================================
+/**
+ * Create a new department for a business
+ */
+async createDepartment(
+  businessId: string,
+  departmentData: {
+    name: string;
+    requiredSkills?: string[];
+    optionalSkills?: string[];
+    skillWeights?: Record<string, number>;
+    metadata?: any;
+  },
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; departmentId: string; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
 
-  /**
-   * Create a new department for a business
-   */
-  async createDepartment(
-    businessId: string,
-    departmentData: {
-      name: string;
-      requiredSkills?: string[];
-      optionalSkills?: string[];
-      skillWeights?: Record<string, number>;
-      metadata?: any;
-    },
-    userId?: string,
-    req?: any
-  ): Promise<{ success: boolean; departmentId: string; message: string }> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
 
-    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
-    const userAgent = req?.get('User-Agent');
-    const startTime = Date.now();
+    // Check if department name already exists
+    const existingDept = business.departments.find(
+      (dept: any) => dept.name.toLowerCase() === departmentData.name.toLowerCase()
+    );
+    
+    if (existingDept) {
+      throw new Error('Department with this name already exists');
+    }
 
-    try {
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
 
-      // Check if department name already exists
-      const existingDept = business.departments.find(
-        (dept: any) => dept.name.toLowerCase() === departmentData.name.toLowerCase()
-      );
-      
-      if (existingDept) {
-        throw new Error('Department with this name already exists');
-      }
+    // Generate a unique ID for the department
+    const departmentId = new Date().getTime().toString();
+    const now = new Date();
+    
+    // Create new department object with all fields
+    const newDepartment = {
+      id: departmentId,
+      name: departmentData.name,
+      requiredSkills: departmentData.requiredSkills || [],
+      optionalSkills: departmentData.optionalSkills || [],
+      skillWeights: departmentData.skillWeights || {},
+      metadata: departmentData.metadata || {},
+      createdAt: now,
+      updatedAt: now
+    };
 
-      // Generate a unique ID for the department
-      const departmentId = new Date().getTime().toString();
-      const now = new Date();
-      
-      // Create new department object with all fields
-      const newDepartment = {
-        id: departmentId,
-        name: departmentData.name,
-        requiredSkills: departmentData.requiredSkills || [],
-        optionalSkills: departmentData.optionalSkills || [],
-        skillWeights: departmentData.skillWeights || {},
-        metadata: departmentData.metadata || {},
-        createdAt: now,
-        updatedAt: now
-      };
+    // Add department to business
+    business.departments.push(newDepartment);
+    business.markModified('departments');
+    await business.save();
 
-      // Add department to business
-      business.departments.push(newDepartment);
-      business.markModified('departments');
-      await business.save();
-
-      await this.auditLogService.createAuditLog({
-        businessId,                                    // ENSURES BUSINESS ISOLATION
+    // Create App Activity
+    if (user) {
+      await this.appActivityService.createActivity({
+        businessId,
         userId,
-        action: AuditAction.BUSINESS_CONFIG_UPDATED,   // Use appropriate action
-        resourceType: ResourceType.BUSINESS,          // Department is part of business config
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.DEPARTMENT_CREATED,
+        action: `Created department "${departmentData.name}"`,
+        description: `Department with ${(departmentData.requiredSkills || []).length} required skills and ${(departmentData.optionalSkills || []).length} optional skills`,
+        resourceType: 'department',
         resourceId: departmentId,
-        resourceName: `Department: ${departmentData.name}`,
-        success: true,
-        severity: AuditSeverity.MEDIUM,
-        ipAddress,
-        userAgent,
-        metadata: {
+        resourceName: departmentData.name,
+        data: {
           departmentId,
           departmentName: departmentData.name,
           requiredSkillsCount: (departmentData.requiredSkills || []).length,
           optionalSkillsCount: (departmentData.optionalSkills || []).length,
+          skillWeightsCount: Object.keys(departmentData.skillWeights || {}).length,
           totalDepartmentsAfter: business.departments.length,
-          operationDuration: Date.now() - startTime,
-          newDepartmentData: departmentData  // Store the new data
+          skills: {
+            required: departmentData.requiredSkills || [],
+            optional: departmentData.optionalSkills || [],
+            weights: departmentData.skillWeights || {}
+          }
         }
       });
-      
-      return {
-        success: true,
-        departmentId,
-        message: `Department '${departmentData.name}' created successfully`
-      };
-    } catch (error) {
-      // ❌ ERROR LOGS (only for unexpected errors, not validation errors)
-      if (error.name !== 'NotFoundException' && error.message !== 'Department with this name already exists') {
-        await this.auditLogService.createAuditLog({
-          businessId,                                    // CRITICAL: Always use businessId
-          userId,
-          action: AuditAction.BUSINESS_CONFIG_UPDATED,
-          resourceType: ResourceType.BUSINESS,
-          resourceName: `Department creation: ${departmentData.name}`,
-          success: false,
-          errorMessage: 'Unexpected error during department creation',
-          severity: AuditSeverity.HIGH,
-          ipAddress,
-          userAgent,
-          metadata: {
-            departmentName: departmentData.name,
-            errorReason: 'unexpected_error',
-            errorName: error.name,
-            errorMessage: error.message,
-            operationDuration: Date.now() - startTime
-          }
-        });
-      }
-      this.logger.error(`Error creating department: ${error.message}`, error.stack);
-      throw error;
     }
-  }
 
-  /**
+    // Create Audit Log
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.BUSINESS_CONFIG_UPDATED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: departmentId,
+      resourceName: `Department: ${departmentData.name}`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      metadata: {
+        departmentId,
+        departmentName: departmentData.name,
+        requiredSkillsCount: (departmentData.requiredSkills || []).length,
+        optionalSkillsCount: (departmentData.optionalSkills || []).length,
+        totalDepartmentsAfter: business.departments.length,
+        operationDuration: Date.now() - startTime,
+        newDepartmentData: departmentData
+      }
+    });
+    
+    return {
+      success: true,
+      departmentId,
+      message: `Department '${departmentData.name}' created successfully`
+    };
+  } catch (error) {
+    // ERROR LOGS (only for unexpected errors, not validation errors)
+    if (error.name !== 'NotFoundException' && error.message !== 'Department with this name already exists') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceName: `Department creation: ${departmentData.name}`,
+        success: false,
+        errorMessage: 'Unexpected error during department creation',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          departmentName: departmentData.name,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+    this.logger.error(`Error creating department: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
  * Update an existing department
  */
 async updateDepartment(
@@ -419,6 +456,12 @@ async updateDepartment(
 
     const department = business.departments[departmentIndex] as any;
 
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
     // Track what changed BEFORE making changes
     const oldValues = {
       name: department.name,
@@ -496,6 +539,39 @@ async updateDepartment(
     business.markModified('departments');
     await business.save();
 
+    // Create App Activity for the update
+    if (user && changedFields.length > 0) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.DEPARTMENT_UPDATED,
+        action: `Updated department "${department.name}"`,
+        description: `Modified ${changedFields.join(', ')} for department`,
+        resourceType: 'department',
+        resourceId: departmentId,
+        resourceName: department.name,
+        data: {
+          departmentId,
+          departmentName: department.name,
+          changedFields,
+          previousValues: {
+            name: oldValues.name,
+            requiredSkillsCount: oldValues.requiredSkills.length,
+            optionalSkillsCount: oldValues.optionalSkills.length,
+            skillWeightsCount: Object.keys(oldValues.skillWeights).length
+          },
+          newValues: {
+            name: department.name,
+            requiredSkillsCount: (department.requiredSkills || []).length,
+            optionalSkillsCount: (department.optionalSkills || []).length,
+            skillWeightsCount: Object.keys(department.skillWeights || {}).length
+          }
+        }
+      });
+    }
+
     // Prepare new values for audit log
     const newValues = {
       name: department.name,
@@ -568,7 +644,7 @@ async updateDepartment(
   }
 }
 
-  /**
+/**
  * Remove a department from a business
  */
 async removeDepartment(
@@ -641,6 +717,12 @@ async removeDepartment(
     const department = business.departments[departmentIndex] as any;
     const departmentName = department.name;
 
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
     // Store department data before deletion for audit log
     const deletedDepartmentData = {
       id: department.id,
@@ -659,6 +741,37 @@ async removeDepartment(
     // Mark as modified and save
     business.markModified('departments');
     await business.save();
+
+    // Create App Activity for deletion
+    if (user) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.DEPARTMENT_DELETED,
+        action: `Deleted department "${departmentName}"`,
+        description: `Removed department with ${deletedDepartmentData.requiredSkills.length} required skills and ${deletedDepartmentData.optionalSkills.length} optional skills`,
+        resourceType: 'department',
+        resourceId: departmentId,
+        resourceName: departmentName,
+        data: {
+          departmentId,
+          departmentName,
+          totalDepartmentsAfter: business.departments.length,
+          deletedDepartmentData: {
+            requiredSkillsCount: deletedDepartmentData.requiredSkills.length,
+            optionalSkillsCount: deletedDepartmentData.optionalSkills.length,
+            skillWeightsCount: Object.keys(deletedDepartmentData.skillWeights).length,
+            skills: {
+              required: deletedDepartmentData.requiredSkills,
+              optional: deletedDepartmentData.optionalSkills,
+              weights: deletedDepartmentData.skillWeights
+            }
+          }
+        }
+      });
+    }
 
     // Log successful department deletion
     await this.auditLogService.createAuditLog({
@@ -744,7 +857,7 @@ async removeDepartment(
   // TEAM MANAGEMENT (NEW)
   // ============================================================================
 
-  /**
+ /**
  * Create a new team for a business
  */
 async createTeam(
@@ -815,6 +928,12 @@ async createTeam(
       throw new Error('Team with this name already exists');
     }
 
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
     // Generate a unique ID for the team
     const teamId = new Date().getTime().toString();
     const now = new Date();
@@ -832,6 +951,32 @@ async createTeam(
     business.teams.push(newTeam as EnhancedTeam);
     business.markModified('teams');
     await business.save();
+
+    // Create App Activity
+    if (user) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.TEAM_CREATED,
+        action: `Created team "${teamData.name}"`,
+        description: `New team with ${Object.keys(teamData.metadata || {}).length} metadata properties`,
+        resourceType: 'team',
+        resourceId: teamId,
+        resourceName: teamData.name,
+        data: {
+          teamId,
+          teamName: teamData.name,
+          totalTeamsAfter: business.teams.length,
+          metadataKeys: Object.keys(teamData.metadata || {}),
+          teamData: {
+            name: teamData.name,
+            metadata: teamData.metadata || {}
+          }
+        }
+      });
+    }
 
     // Log successful team creation
     await this.auditLogService.createAuditLog({
@@ -971,6 +1116,12 @@ async updateTeam(
 
     const team = business.teams[teamIndex] as any;
 
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
     // Track what changed BEFORE making changes
     const oldValues = {
       name: team.name,
@@ -1032,6 +1183,35 @@ async updateTeam(
     // Mark the teams array as modified for Mongoose
     business.markModified('teams');
     await business.save();
+
+    // Create App Activity for the update
+    if (user && changedFields.length > 0) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.TEAM_UPDATED,
+        action: `Updated team "${team.name}"`,
+        description: `Modified ${changedFields.join(', ')} for team`,
+        resourceType: 'team',
+        resourceId: teamId,
+        resourceName: team.name,
+        data: {
+          teamId,
+          teamName: team.name,
+          changedFields,
+          previousValues: {
+            name: oldValues.name,
+            metadataKeys: Object.keys(oldValues.metadata)
+          },
+          newValues: {
+            name: team.name,
+            metadataKeys: Object.keys(team.metadata || {})
+          }
+        }
+      });
+    }
 
     // Prepare new values for audit log
     const newValues = {
@@ -1173,6 +1353,12 @@ async removeTeam(
     const team = business.teams[teamIndex] as any;
     const teamName = team.name;
 
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
     // Store team data before deletion for audit log
     const deletedTeamData = {
       id: team.id,
@@ -1188,6 +1374,31 @@ async removeTeam(
     // Mark as modified and save
     business.markModified('teams');
     await business.save();
+
+    // Create App Activity for deletion
+    if (user) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.TEAM_DELETED,
+        action: `Deleted team "${teamName}"`,
+        description: `Removed team with ${Object.keys(deletedTeamData.metadata).length} metadata properties`,
+        resourceType: 'team',
+        resourceId: teamId,
+        resourceName: teamName,
+        data: {
+          teamId,
+          teamName,
+          totalTeamsAfter: business.teams.length,
+          deletedTeamData: {
+            metadataKeys: Object.keys(deletedTeamData.metadata),
+            metadata: deletedTeamData.metadata
+          }
+        }
+      });
+    }
 
     // Log successful team deletion
     await this.auditLogService.createAuditLog({
