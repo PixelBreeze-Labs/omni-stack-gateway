@@ -1,4 +1,4 @@
-// src/controllers/business-general.controller.ts (Updated with Team Endpoints)
+// src/controllers/business-general.controller.ts (Updated with User ID passing)
 import { 
   Controller, 
   Get, 
@@ -13,7 +13,8 @@ import {
   Post,
   Delete,
   Body,
-  Put
+  Put,
+  Req
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -129,7 +130,7 @@ export class BusinessGeneralController {
   }
 
   // ============================================================================
-  // DEPARTMENT MANAGEMENT ENDPOINTS
+  // DEPARTMENT MANAGEMENT ENDPOINTS WITH USER ID
   // ============================================================================
 
   @Post('departments')
@@ -154,7 +155,8 @@ export class BusinessGeneralController {
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
       metadata?: any;
-    }
+    },
+    @Req() req: any
   ): Promise<{ success: boolean; departmentId: string; message: string }> {
     try {
       if (!businessId) {
@@ -165,8 +167,17 @@ export class BusinessGeneralController {
         throw new BadRequestException('Department name is required');
       }
 
-      await this.validateBusinessApiKey(businessId, apiKey);
-      return await this.businessGeneralService.createDepartment(businessId, departmentData);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
+
+      // 🎯 PASS USER ID TO SERVICE
+      return await this.businessGeneralService.createDepartment(
+        businessId, 
+        departmentData,
+        adminUserId, // Pass admin user ID for activity tracking
+        req // Pass request for IP/UserAgent
+      );
     } catch (error) {
       this.logger.error(`Error creating department: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -200,7 +211,8 @@ export class BusinessGeneralController {
       optionalSkills?: string[];
       skillWeights?: Record<string, number>;
       metadata?: any;
-    }
+    },
+    @Req() req: any
   ): Promise<{ success: boolean; message: string }> {
     try {
       if (!businessId) {
@@ -211,8 +223,18 @@ export class BusinessGeneralController {
         throw new BadRequestException('Department ID is required');
       }
 
-      await this.validateBusinessApiKey(businessId, apiKey);
-      return await this.businessGeneralService.updateDepartment(businessId, departmentId, updateData);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
+
+      // 🎯 PASS USER ID TO SERVICE
+      return await this.businessGeneralService.updateDepartment(
+        businessId, 
+        departmentId, 
+        updateData,
+        adminUserId, // Pass admin user ID for activity tracking
+        req // Pass request for IP/UserAgent
+      );
     } catch (error) {
       this.logger.error(`Error updating department: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -238,7 +260,8 @@ export class BusinessGeneralController {
   async removeDepartment(
     @Param('departmentId') departmentId: string,
     @Query('businessId') businessId: string,
-    @Headers('business-x-api-key') apiKey: string
+    @Headers('business-x-api-key') apiKey: string,
+    @Req() req: any
   ): Promise<{ success: boolean; message: string }> {
     try {
       if (!businessId) {
@@ -249,8 +272,17 @@ export class BusinessGeneralController {
         throw new BadRequestException('Department ID is required');
       }
 
-      await this.validateBusinessApiKey(businessId, apiKey);
-      return await this.businessGeneralService.removeDepartment(businessId, departmentId);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
+
+      // 🎯 PASS USER ID TO SERVICE
+      return await this.businessGeneralService.removeDepartment(
+        businessId, 
+        departmentId,
+        adminUserId, // Pass admin user ID for activity tracking
+        req // Pass request for IP/UserAgent
+      );
     } catch (error) {
       this.logger.error(`Error removing department: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -291,7 +323,7 @@ export class BusinessGeneralController {
   }
 
   // ============================================================================
-  // TEAM MANAGEMENT ENDPOINTS (NEW)
+  // TEAM MANAGEMENT ENDPOINTS WITH USER ID
   // ============================================================================
 
   @Post('teams')
@@ -313,7 +345,8 @@ export class BusinessGeneralController {
     @Body() teamData: {
       name: string;
       metadata?: any;
-    }
+    },
+    @Req() req: any
   ): Promise<{ success: boolean; teamId: string; message: string }> {
     try {
       if (!businessId) {
@@ -324,8 +357,17 @@ export class BusinessGeneralController {
         throw new BadRequestException('Team name is required');
       }
 
-      await this.validateBusinessApiKey(businessId, apiKey);
-      return await this.businessGeneralService.createTeam(businessId, teamData);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
+
+      // 🎯 PASS USER ID TO SERVICE
+      return await this.businessGeneralService.createTeam(
+        businessId, 
+        teamData,
+        adminUserId, // Pass admin user ID for activity tracking
+        req // Pass request for IP/UserAgent
+      );
     } catch (error) {
       this.logger.error(`Error creating team: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -356,7 +398,8 @@ export class BusinessGeneralController {
     @Body() updateData: {
       name?: string;
       metadata?: any;
-    }
+    },
+    @Req() req: any
   ): Promise<{ success: boolean; message: string }> {
     try {
       if (!businessId) {
@@ -367,8 +410,18 @@ export class BusinessGeneralController {
         throw new BadRequestException('Team ID is required');
       }
 
-      await this.validateBusinessApiKey(businessId, apiKey);
-      return await this.businessGeneralService.updateTeam(businessId, teamId, updateData);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
+
+      // 🎯 PASS USER ID TO SERVICE
+      return await this.businessGeneralService.updateTeam(
+        businessId, 
+        teamId, 
+        updateData,
+        adminUserId, // Pass admin user ID for activity tracking
+        req // Pass request for IP/UserAgent
+      );
     } catch (error) {
       this.logger.error(`Error updating team: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -394,7 +447,8 @@ export class BusinessGeneralController {
   async removeTeam(
     @Param('teamId') teamId: string,
     @Query('businessId') businessId: string,
-    @Headers('business-x-api-key') apiKey: string
+    @Headers('business-x-api-key') apiKey: string,
+    @Req() req: any
   ): Promise<{ success: boolean; message: string }> {
     try {
       if (!businessId) {
@@ -405,8 +459,17 @@ export class BusinessGeneralController {
         throw new BadRequestException('Team ID is required');
       }
 
-      await this.validateBusinessApiKey(businessId, apiKey);
-      return await this.businessGeneralService.removeTeam(businessId, teamId);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
+
+      // 🎯 PASS USER ID TO SERVICE
+      return await this.businessGeneralService.removeTeam(
+        businessId, 
+        teamId,
+        adminUserId, // Pass admin user ID for activity tracking
+        req // Pass request for IP/UserAgent
+      );
     } catch (error) {
       this.logger.error(`Error removing team: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -447,7 +510,7 @@ export class BusinessGeneralController {
   }
 
   // ============================================================================
-  // SYNC OPERATION ENDPOINTS
+  // SYNC OPERATION ENDPOINTS (NO USER ID NEEDED - READ OPERATIONS)
   // ============================================================================
 
   @Post('sync/employees')
@@ -529,20 +592,174 @@ export class BusinessGeneralController {
   }
 
   // ============================================================================
-  // DEPARTMENT SKILLS ENDPOINTS (Existing - keeping as is)
+  // OTHER ENDPOINTS (GET operations don't need user ID, but UPDATE operations do)
   // ============================================================================
 
-  @Put('departments/:departmentId/skills')
+  @Get('teams/:teamId')
   @ApiOperation({ 
-    summary: 'Update department skill requirements',
-    description: 'Update skill requirements for a specific department'
+    summary: 'Get a single team with enhanced data and stats',
+    description: 'Retrieve comprehensive team information including performance stats and recent activity'
   })
-  @ApiParam({ name: 'departmentId', description: 'Department ID' })
+  @ApiParam({ name: 'teamId', description: 'Team ID' })
   @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
   @ApiResponse({ 
     status: 200, 
-    description: 'Department skills updated successfully'
+    description: 'Team retrieved successfully with stats and activity'
   })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or team not found' })
+  async getTeam(
+    @Param('teamId') teamId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{
+    team: any;
+    stats: any;
+    recentActivity: any[];
+  }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!teamId) {
+        throw new BadRequestException('Team ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.getTeam(businessId, teamId);
+    } catch (error) {
+      this.logger.error(`Error getting team: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve team');
+    }
+  }
+
+  @Put('teams/:teamId/field-update')
+  @ApiOperation({ 
+    summary: 'Update field team with enhanced data',
+    description: 'Update comprehensive team information including location, vehicle, performance, and operational data'
+  })
+  @ApiParam({ name: 'teamId', description: 'Team ID (PHP ID or MongoDB ID)' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Field team updated successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business or team not found' })
+  async updateFieldTeam(
+    @Param('teamId') teamId: string,
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() updateData: any
+  ): Promise<{
+    success: boolean;
+    message: string;
+    updatedTeam?: any;
+    changesApplied?: string[];
+    debugInfo: any;
+    error?: any;
+  }> {
+    const debugInfo = {
+      timestamp: new Date().toISOString(),
+      businessId,
+      teamId,
+      updateDataKeys: Object.keys(updateData || {}),
+      updateDataSize: JSON.stringify(updateData || {}).length
+    };
+
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!teamId) {
+        throw new BadRequestException('Team ID is required');
+      }
+
+      if (!updateData || Object.keys(updateData).length === 0) {
+        throw new BadRequestException('Update data is required');
+      }
+
+      debugInfo['validationPassed'] = true;
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      debugInfo['authPassed'] = true;
+
+      const result = await this.businessGeneralService.updateFieldTeam(businessId, teamId, updateData);
+      debugInfo['serviceCallSuccess'] = true;
+
+      return {
+        success: result.success,
+        message: result.message,
+        updatedTeam: result.updatedTeam,
+        changesApplied: result.changesApplied,
+        debugInfo
+      };
+
+    } catch (error) {
+      debugInfo['error'] = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack?.split('\n').slice(0, 5), // First 5 lines of stack
+        type: error.constructor.name
+      };
+
+      this.logger.error(`Error updating field team: ${error.message}`, error.stack);
+      this.logger.error(`Debug info:`, debugInfo);
+
+      // Return debug info in error response instead of throwing
+      return {
+        success: false,
+        message: 'Failed to update field team',
+        debugInfo,
+        error: {
+          name: error.name,
+          message: error.message,
+          statusCode: error instanceof BadRequestException ? 400 : 
+                     error instanceof UnauthorizedException ? 401 :
+                     error instanceof NotFoundException ? 404 : 500
+        }
+      };
+    }
+  }
+
+  // ============================================================================
+  // PRIVATE HELPER METHOD - UPDATED TO RETURN BUSINESS WITH ADMIN USER ID
+  // ============================================================================
+
+  /**
+   * Validate business API key and return business with adminUserId
+   */
+  private async validateBusinessApiKey(businessId: string, apiKey: string) {
+    if (!apiKey) {
+      throw new UnauthorizedException('Business API key missing');
+    }
+    
+    const business = await this.businessService.findByIdAndApiKey(businessId, apiKey);
+    if (!business) {
+      throw new UnauthorizedException('Invalid API key for this business');
+    }
+
+    // Ensure business has adminUserId
+    if (!business.adminUserId) {
+      this.logger.warn(`Business ${businessId} missing adminUserId - activities will not be tracked`);
+    }
+    
+    return business;
+  }
+
+  // ============================================================================
+  // REMAINING ENDPOINTS (keeping as-is since they don't require user tracking)
+  // Note: Add user ID to any additional CREATE/UPDATE/DELETE operations
+  // ============================================================================
+
+  // Department skills endpoints (keeping existing implementation)
+  @Put('departments/:departmentId/skills')
   async updateDepartmentSkills(
     @Param('departmentId') departmentId: string,
     @Query('businessId') businessId: string,
@@ -640,27 +857,7 @@ export class BusinessGeneralController {
   }
 
   // ============================================================================
-  // PRIVATE HELPER METHODS
-  // ============================================================================
-
-  /**
-   * Validate business API key (reused from business-skills controller)
-   */
-  private async validateBusinessApiKey(businessId: string, apiKey: string) {
-    if (!apiKey) {
-      throw new UnauthorizedException('Business API key missing');
-    }
-    
-    const business = await this.businessService.findByIdAndApiKey(businessId, apiKey);
-    if (!business) {
-      throw new UnauthorizedException('Invalid API key for this business');
-    }
-    
-    return business;
-  }
-
-  // ============================================================================
-  // PROJECTS MANAGEMENT ENDPOINTS (NEW)
+  // PROJECTS MANAGEMENT ENDPOINTS (GET operations don't need user ID)
   // ============================================================================
 
   @Get('projects')
@@ -799,7 +996,7 @@ export class BusinessGeneralController {
   }
 
   // ============================================================================
-  // CONSTRUCTION SITES MANAGEMENT ENDPOINTS (NEW)
+  // CONSTRUCTION SITES MANAGEMENT ENDPOINTS
   // ============================================================================
 
   @Get('construction-sites')
@@ -942,385 +1139,240 @@ export class BusinessGeneralController {
     }
   }
 
+  // ============================================================================
+  // ROUTE PLANNING CONFIGURATION ENDPOINTS
+  // ============================================================================
 
   @Get('route-planning/config')
-@ApiOperation({ 
-  summary: 'Get route planning configuration',
-  description: 'Retrieve current route planning configuration for the business'
-})
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Route planning configuration retrieved successfully'
-})
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business not found' })
-async getRoutePlanningConfig(
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string
-): Promise<{ config: RoutePlanningConfiguration | null }> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    const business = await this.validateBusinessApiKey(businessId, apiKey);
-    return { config: business.routePlanningConfig || null };
-  } catch (error) {
-    this.logger.error(`Error getting route planning config: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to retrieve route planning configuration');
-  }
-}
-
-@Put('route-planning/config')
-@ApiOperation({ 
-  summary: 'Update route planning configuration',
-  description: 'Update route planning configuration for the business'
-})
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Route planning configuration updated successfully'
-})
-@ApiResponse({ status: 400, description: 'Bad request - Invalid configuration data' })
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business not found' })
-async updateRoutePlanningConfig(
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string,
-  @Body() configData: Partial<RoutePlanningConfiguration>
-): Promise<{ success: boolean; message: string }> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    if (!configData || Object.keys(configData).length === 0) {
-      throw new BadRequestException('Configuration data is required');
-    }
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-    return await this.businessGeneralService.updateRoutePlanningConfig(businessId, configData);
-  } catch (error) {
-    this.logger.error(`Error updating route planning config: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to update route planning configuration');
-  }
-}
-
-@Post('route-planning/config/reset')
-@ApiOperation({ 
-  summary: 'Reset route planning configuration to defaults',
-  description: 'Reset route planning configuration to default values'
-})
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Route planning configuration reset successfully'
-})
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business not found' })
-async resetRoutePlanningConfig(
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string
-): Promise<{ success: boolean; message: string; config: RoutePlanningConfiguration }> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-    return await this.businessGeneralService.resetRoutePlanningConfig(businessId);
-  } catch (error) {
-    this.logger.error(`Error resetting route planning config: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to reset route planning configuration');
-  }
-}
-
-@Put('route-planning/config/integrations/google-maps')
-@ApiOperation({ 
-  summary: 'Update Google Maps integration settings',
-  description: 'Update Google Maps API integration configuration'
-})
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Google Maps integration updated successfully'
-})
-@ApiResponse({ status: 400, description: 'Bad request - Invalid Google Maps configuration' })
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business not found' })
-async updateGoogleMapsConfig(
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string,
-  @Body() googleMapsConfig: {
-    apiKey?: string;
-    enabled: boolean;
-    geocodingEnabled?: boolean;
-    directionsEnabled?: boolean;
-    trafficEnabled?: boolean;
-  }
-): Promise<{ success: boolean; message: string; isValid?: boolean; errors?: string[] }> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    if (googleMapsConfig.enabled === undefined) {
-      throw new BadRequestException('Enabled status is required');
-    }
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-    return await this.businessGeneralService.updateGoogleMapsConfig(businessId, googleMapsConfig);
-  } catch (error) {
-    this.logger.error(`Error updating Google Maps config: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to update Google Maps configuration');
-  }
-}
-
-@Put('route-planning/config/integrations/weather')
-@ApiOperation({ 
-  summary: 'Update weather integration settings',
-  description: 'Update weather API integration configuration'
-})
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Weather integration updated successfully'
-})
-@ApiResponse({ status: 400, description: 'Bad request - Invalid weather configuration' })
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business not found' })
-async updateWeatherConfig(
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string,
-  @Body() weatherConfig: {
-    enabled: boolean;
-    considerInRouting?: boolean;
-    delayThresholds?: {
-      rain?: number;
-      snow?: number;
-      wind?: number;
-      temperature?: { min: number; max: number };
-    };
-  }
-): Promise<{ success: boolean; message: string }> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    if (weatherConfig.enabled === undefined) {
-      throw new BadRequestException('Enabled status is required');
-    }
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-    return await this.businessGeneralService.updateWeatherConfig(businessId, weatherConfig);
-  } catch (error) {
-    this.logger.error(`Error updating weather config: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to update weather configuration');
-  }
-}
-
-@Post('route-planning/config/validate')
-@ApiOperation({ 
-  summary: 'Validate route planning configuration',
-  description: 'Validate current route planning configuration and integrations'
-})
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Configuration validation completed'
-})
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business not found' })
-async validateRoutePlanningConfig(
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string
-): Promise<{
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-  integrationStatus: {
-    googleMaps: { enabled: boolean; valid: boolean; errors?: string[] };
-    weather: { enabled: boolean; valid: boolean; errors?: string[] };
-  };
-}> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-    return await this.businessGeneralService.validateRoutePlanningConfig(businessId);
-  } catch (error) {
-    this.logger.error(`Error validating route planning config: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to validate route planning configuration');
-  }
-}
-
-@Get('teams/:teamId')
-@ApiOperation({ 
-  summary: 'Get a single team with enhanced data and stats',
-  description: 'Retrieve comprehensive team information including performance stats and recent activity'
-})
-@ApiParam({ name: 'teamId', description: 'Team ID' })
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Team retrieved successfully with stats and activity'
-})
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business or team not found' })
-async getTeam(
-  @Param('teamId') teamId: string,
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string
-): Promise<{
-  team: any;
-  stats: {
-    totalTasks: number;
-    completedTasks: number;
-    onTimePerformance: number;
-    averageRating: number;
-    totalDistanceTraveled: number;
-    fuelConsumption: number;
-    activeHours: number;
-    lastActivityDate: Date;
-    serviceAreaCoverage: number;
-    equipmentUtilization: number;
-  };
-  recentActivity: Array<{
-    date: Date;
-    type: string;
-    description: string;
-    metadata?: any;
-  }>;
-}> {
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    if (!teamId) {
-      throw new BadRequestException('Team ID is required');
-    }
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-    return await this.businessGeneralService.getTeam(businessId, teamId);
-  } catch (error) {
-    this.logger.error(`Error getting team: ${error.message}`, error.stack);
-    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;
-    }
-    throw new InternalServerErrorException('Failed to retrieve team');
-  }
-}
-@Put('teams/:teamId/field-update')
-@ApiOperation({ 
-  summary: 'Update field team with enhanced data',
-  description: 'Update comprehensive team information including location, vehicle, performance, and operational data'
-})
-@ApiParam({ name: 'teamId', description: 'Team ID (PHP ID or MongoDB ID)' })
-@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
-@ApiResponse({ 
-  status: 200, 
-  description: 'Field team updated successfully'
-})
-@ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
-@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
-@ApiResponse({ status: 404, description: 'Business or team not found' })
-async updateFieldTeam(
-  @Param('teamId') teamId: string,
-  @Query('businessId') businessId: string,
-  @Headers('business-x-api-key') apiKey: string,
-  @Body() updateData: any
-): Promise<{
-  success: boolean;
-  message: string;
-  updatedTeam?: any;
-  changesApplied?: string[];
-  debugInfo: any;
-  error?: any;
-}> {
-  const debugInfo = {
-    timestamp: new Date().toISOString(),
-    businessId,
-    teamId,
-    updateDataKeys: Object.keys(updateData || {}),
-    updateDataSize: JSON.stringify(updateData || {}).length
-  };
-
-  try {
-    if (!businessId) {
-      throw new BadRequestException('Business ID is required');
-    }
-
-    if (!teamId) {
-      throw new BadRequestException('Team ID is required');
-    }
-
-    if (!updateData || Object.keys(updateData).length === 0) {
-      throw new BadRequestException('Update data is required');
-    }
-
-    debugInfo['validationPassed'] = true;
-
-    await this.validateBusinessApiKey(businessId, apiKey);
-    debugInfo['authPassed'] = true;
-
-    const result = await this.businessGeneralService.updateFieldTeam(businessId, teamId, updateData);
-    debugInfo['serviceCallSuccess'] = true;
-
-    return {
-      success: result.success,
-      message: result.message,
-      updatedTeam: result.updatedTeam,
-      changesApplied: result.changesApplied,
-      debugInfo
-    };
-
-  } catch (error) {
-    debugInfo['error'] = {
-      name: error.name,
-      message: error.message,
-      stack: error.stack?.split('\n').slice(0, 5), // First 5 lines of stack
-      type: error.constructor.name
-    };
-
-    this.logger.error(`Error updating field team: ${error.message}`, error.stack);
-    this.logger.error(`Debug info:`, debugInfo);
-
-    // Return debug info in error response instead of throwing
-    return {
-      success: false,
-      message: 'Failed to update field team',
-      debugInfo,
-      error: {
-        name: error.name,
-        message: error.message,
-        statusCode: error instanceof BadRequestException ? 400 : 
-                   error instanceof UnauthorizedException ? 401 :
-                   error instanceof NotFoundException ? 404 : 500
+  @ApiOperation({ 
+    summary: 'Get route planning configuration',
+    description: 'Retrieve current route planning configuration for the business'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Route planning configuration retrieved successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async getRoutePlanningConfig(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ config: RoutePlanningConfiguration | null }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
       }
-    };
+
+      const business = await this.validateBusinessApiKey(businessId, apiKey);
+      return { config: business.routePlanningConfig || null };
+    } catch (error) {
+      this.logger.error(`Error getting route planning config: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve route planning configuration');
+    }
   }
-}
+
+  @Put('route-planning/config')
+  @ApiOperation({ 
+    summary: 'Update route planning configuration',
+    description: 'Update route planning configuration for the business'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Route planning configuration updated successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid configuration data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async updateRoutePlanningConfig(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() configData: Partial<RoutePlanningConfiguration>
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (!configData || Object.keys(configData).length === 0) {
+        throw new BadRequestException('Configuration data is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.updateRoutePlanningConfig(businessId, configData);
+    } catch (error) {
+      this.logger.error(`Error updating route planning config: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update route planning configuration');
+    }
+  }
+
+  @Post('route-planning/config/reset')
+  @ApiOperation({ 
+    summary: 'Reset route planning configuration to defaults',
+    description: 'Reset route planning configuration to default values'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Route planning configuration reset successfully'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async resetRoutePlanningConfig(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{ success: boolean; message: string; config: RoutePlanningConfiguration }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.resetRoutePlanningConfig(businessId);
+    } catch (error) {
+      this.logger.error(`Error resetting route planning config: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to reset route planning configuration');
+    }
+  }
+
+  @Put('route-planning/config/integrations/google-maps')
+  @ApiOperation({ 
+    summary: 'Update Google Maps integration settings',
+    description: 'Update Google Maps API integration configuration'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Google Maps integration updated successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid Google Maps configuration' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async updateGoogleMapsConfig(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() googleMapsConfig: {
+      apiKey?: string;
+      enabled: boolean;
+      geocodingEnabled?: boolean;
+      directionsEnabled?: boolean;
+      trafficEnabled?: boolean;
+    }
+  ): Promise<{ success: boolean; message: string; isValid?: boolean; errors?: string[] }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (googleMapsConfig.enabled === undefined) {
+        throw new BadRequestException('Enabled status is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.updateGoogleMapsConfig(businessId, googleMapsConfig);
+    } catch (error) {
+      this.logger.error(`Error updating Google Maps config: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update Google Maps configuration');
+    }
+  }
+
+  @Put('route-planning/config/integrations/weather')
+  @ApiOperation({ 
+    summary: 'Update weather integration settings',
+    description: 'Update weather API integration configuration'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Weather integration updated successfully'
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid weather configuration' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async updateWeatherConfig(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string,
+    @Body() weatherConfig: {
+      enabled: boolean;
+      considerInRouting?: boolean;
+      delayThresholds?: {
+        rain?: number;
+        snow?: number;
+        wind?: number;
+        temperature?: { min: number; max: number };
+      };
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      if (weatherConfig.enabled === undefined) {
+        throw new BadRequestException('Enabled status is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.updateWeatherConfig(businessId, weatherConfig);
+    } catch (error) {
+      this.logger.error(`Error updating weather config: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update weather configuration');
+    }
+  }
+
+  @Post('route-planning/config/validate')
+  @ApiOperation({ 
+    summary: 'Validate route planning configuration',
+    description: 'Validate current route planning configuration and integrations'
+  })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Configuration validation completed'
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async validateRoutePlanningConfig(
+    @Query('businessId') businessId: string,
+    @Headers('business-x-api-key') apiKey: string
+  ): Promise<{
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+    integrationStatus: {
+      googleMaps: { enabled: boolean; valid: boolean; errors?: string[] };
+      weather: { enabled: boolean; valid: boolean; errors?: string[] };
+    };
+  }> {
+    try {
+      if (!businessId) {
+        throw new BadRequestException('Business ID is required');
+      }
+
+      await this.validateBusinessApiKey(businessId, apiKey);
+      return await this.businessGeneralService.validateRoutePlanningConfig(businessId);
+    } catch (error) {
+      this.logger.error(`Error validating route planning config: ${error.message}`, error.stack);
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to validate route planning configuration');
+    }
+  }
 }
