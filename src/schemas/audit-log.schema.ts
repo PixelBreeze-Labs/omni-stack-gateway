@@ -138,6 +138,11 @@ export enum AuditAction {
     DEPARTMENT_CREATED = 'department_created',
     DEPARTMENT_UPDATED = 'department_updated',
     DEPARTMENT_DELETED = 'department_deleted',
+
+    // Team Operations
+    TEAM_CREATED = 'team_created',
+    TEAM_UPDATED = 'team_updated',
+    TEAM_DELETED = 'team_deleted',
 }
 
 export enum AuditSeverity {
