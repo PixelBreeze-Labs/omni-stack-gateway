@@ -51,6 +51,16 @@ export enum ActivityType {
   BUSINESS_CONFIG_UPDATED = 'business_config_updated',
   BUSINESS_SETTINGS_CHANGED = 'business_settings_changed',
   NOTIFICATION_PREFERENCES_UPDATED = 'notification_preferences_updated',
+
+   // Department Management
+   DEPARTMENT_CREATED = 'department_created',
+   DEPARTMENT_UPDATED = 'department_updated', 
+   DEPARTMENT_DELETED = 'department_deleted',
+   
+   // Team Management  
+   TEAM_CREATED = 'team_created',
+   TEAM_UPDATED = 'team_updated',
+   TEAM_DELETED = 'team_deleted',
 }
 
 export enum ActivityStatus {
