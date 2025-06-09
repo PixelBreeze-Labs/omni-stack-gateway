@@ -133,6 +133,11 @@ export enum AuditAction {
     ROUTE_ASSIGNED = 'route_assigned',
     ROUTE_REOPTIMIZED = 'route_reoptimized',
     ROUTE_METRICS_CALCULATED = 'route_metrics_calculated',
+
+    // Department Operations
+    DEPARTMENT_CREATED = 'department_created',
+    DEPARTMENT_UPDATED = 'department_updated',
+    DEPARTMENT_DELETED = 'department_deleted',
 }
 
 export enum AuditSeverity {
