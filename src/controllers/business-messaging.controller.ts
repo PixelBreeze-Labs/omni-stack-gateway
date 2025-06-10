@@ -1,4 +1,4 @@
-// src/controllers/business-messaging.controller.ts (Fixed - Proper User ID Tracking)
+// src/controllers/business-messaging.controller.ts (Updated with Admin User ID for specific functions)
 import { 
   Controller, 
   Get, 
@@ -74,20 +74,23 @@ export class BusinessMessagingController {
     @Req() req: any
   ): Promise<SendMessageResponse> {
     try {
-      // Validate API key
-      await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+      
+
+        // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+        const business = await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+        const adminUserId = business.adminUserId; // Extract admin user ID
 
       if (!body.content || body.content.trim().length === 0) {
         throw new BadRequestException('Message content cannot be empty');
       }
 
-      // ✅ KEEP USING senderUserId FROM REQUEST BODY (CORRECT - tracks actual sender)
+      
       return await this.messagingService.sendMessageToClient(
         businessId,
         appClientId,
         body.content.trim(),
         body.messageType || MessageType.TEXT,
-        body.senderUserId, // Use sender from request body
+        body.senderUserId || adminUserId,
         undefined, // no file data
         req // Pass request for IP/UserAgent
       );
@@ -143,8 +146,11 @@ export class BusinessMessagingController {
     @Req() req: any
   ): Promise<SendMessageResponse> {
     try {
-      // Validate API key
-      await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+      
+
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
 
       if (!file) {
         throw new BadRequestException('File is required');
@@ -175,13 +181,13 @@ export class BusinessMessagingController {
         }
       }
 
-      // ✅ KEEP USING senderUserId FROM REQUEST BODY (CORRECT - tracks actual sender)
+      // ✅ KEEP USING senderUserId FROM REQUEST BODY (not admin ID)
       return await this.messagingService.sendMessageToClient(
         businessId,
         appClientId,
         content,
         messageType,
-        body.senderUserId, // Use sender from request body
+        body.senderUserId || adminUserId, // Use sender from request body
         {
           fileName: file.originalname,
           fileUrl: fileInfo.url,
@@ -218,16 +224,17 @@ export class BusinessMessagingController {
     @Req() req?: any
   ): Promise<ConversationResponse> {
     try {
-      // ✅ ONLY VALIDATE API KEY - DON'T override user ID
-      await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
 
-      // ✅ FIXED: Don't pass adminUserId - let service use natural user tracking
+      // 🎯 PASS ADMIN USER ID TO SERVICE FOR ACTIVITY TRACKING
       return await this.messagingService.getConversation(
         businessId,
         appClientId,
         page ? parseInt(page.toString()) : 1,
         limit ? parseInt(limit.toString()) : 50,
-        undefined, // ⬅️ REMOVED adminUserId override - let frontend/service handle user ID naturally
+        adminUserId, // Pass admin user ID for activity tracking
         req // Pass request for IP/UserAgent
       );
     } catch (error) {
@@ -267,15 +274,16 @@ export class BusinessMessagingController {
     @Req() req?: any
   ): Promise<{ success: boolean; markedCount: number }> {
     try {
-      // ✅ ONLY VALIDATE API KEY - DON'T override user ID
-      await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
+      const business = await this.messagingService.validateBusinessApiKey(businessId, apiKey);
+      const adminUserId = business.adminUserId; // Extract admin user ID
 
-      // ✅ FIXED: Don't pass adminUserId - let service use natural user tracking
+      // 🎯 PASS ADMIN USER ID TO SERVICE FOR ACTIVITY TRACKING
       return await this.messagingService.markMessagesAsRead(
         businessId,
         appClientId,
         body?.messageIds,
-        undefined, // ⬅️ REMOVED adminUserId override - let frontend/service handle user ID naturally
+        adminUserId, // Pass admin user ID for activity tracking
         req // Pass request for IP/UserAgent
       );
     } catch (error) {
@@ -286,5 +294,30 @@ export class BusinessMessagingController {
         throw new InternalServerErrorException('Failed to mark messages as read');
       }
     }
+  }
+
+  // ============================================================================
+  // PRIVATE HELPER METHOD - VALIDATE BUSINESS AND GET ADMIN USER ID
+  // ============================================================================
+
+  /**
+   * Validate business API key and return business with adminUserId
+   */
+  private async validateBusinessApiKey(businessId: string, apiKey: string) {
+    if (!apiKey) {
+      throw new UnauthorizedException('Business API key missing');
+    }
+    
+    const business = await this.businessService.findByIdAndApiKey(businessId, apiKey);
+    if (!business) {
+      throw new UnauthorizedException('Invalid API key for this business');
+    }
+
+    // Ensure business has adminUserId
+    if (!business.adminUserId) {
+      this.logger.warn(`Business ${businessId} missing adminUserId - activities will not be tracked`);
+    }
+    
+    return business;
   }
 }
