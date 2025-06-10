@@ -1,4 +1,4 @@
-// src/controllers/business-messaging.controller.ts (Updated with Admin User ID for specific functions)
+// src/controllers/business-messaging.controller.ts (Fixed - Proper User ID Tracking)
 import { 
   Controller, 
   Get, 
@@ -81,7 +81,7 @@ export class BusinessMessagingController {
         throw new BadRequestException('Message content cannot be empty');
       }
 
-      // ✅ KEEP USING senderUserId FROM REQUEST BODY (not admin ID)
+      // ✅ KEEP USING senderUserId FROM REQUEST BODY (CORRECT - tracks actual sender)
       return await this.messagingService.sendMessageToClient(
         businessId,
         appClientId,
@@ -175,7 +175,7 @@ export class BusinessMessagingController {
         }
       }
 
-      // ✅ KEEP USING senderUserId FROM REQUEST BODY (not admin ID)
+      // ✅ KEEP USING senderUserId FROM REQUEST BODY (CORRECT - tracks actual sender)
       return await this.messagingService.sendMessageToClient(
         businessId,
         appClientId,
@@ -218,17 +218,16 @@ export class BusinessMessagingController {
     @Req() req?: any
   ): Promise<ConversationResponse> {
     try {
-      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
-      const business = await this.validateBusinessApiKey(businessId, apiKey);
-      const adminUserId = business.adminUserId; // Extract admin user ID
+      // ✅ ONLY VALIDATE API KEY - DON'T override user ID
+      await this.messagingService.validateBusinessApiKey(businessId, apiKey);
 
-      // 🎯 PASS ADMIN USER ID TO SERVICE FOR ACTIVITY TRACKING
+      // ✅ FIXED: Don't pass adminUserId - let service use natural user tracking
       return await this.messagingService.getConversation(
         businessId,
         appClientId,
         page ? parseInt(page.toString()) : 1,
         limit ? parseInt(limit.toString()) : 50,
-        adminUserId, // Pass admin user ID for activity tracking
+        undefined, // ⬅️ REMOVED adminUserId override - let frontend/service handle user ID naturally
         req // Pass request for IP/UserAgent
       );
     } catch (error) {
@@ -268,16 +267,15 @@ export class BusinessMessagingController {
     @Req() req?: any
   ): Promise<{ success: boolean; markedCount: number }> {
     try {
-      // 🎯 VALIDATE AND GET BUSINESS WITH ADMIN USER ID
-      const business = await this.validateBusinessApiKey(businessId, apiKey);
-      const adminUserId = business.adminUserId; // Extract admin user ID
+      // ✅ ONLY VALIDATE API KEY - DON'T override user ID
+      await this.messagingService.validateBusinessApiKey(businessId, apiKey);
 
-      // 🎯 PASS ADMIN USER ID TO SERVICE FOR ACTIVITY TRACKING
+      // ✅ FIXED: Don't pass adminUserId - let service use natural user tracking
       return await this.messagingService.markMessagesAsRead(
         businessId,
         appClientId,
         body?.messageIds,
-        adminUserId, // Pass admin user ID for activity tracking
+        undefined, // ⬅️ REMOVED adminUserId override - let frontend/service handle user ID naturally
         req // Pass request for IP/UserAgent
       );
     } catch (error) {
@@ -288,30 +286,5 @@ export class BusinessMessagingController {
         throw new InternalServerErrorException('Failed to mark messages as read');
       }
     }
-  }
-
-  // ============================================================================
-  // PRIVATE HELPER METHOD - VALIDATE BUSINESS AND GET ADMIN USER ID
-  // ============================================================================
-
-  /**
-   * Validate business API key and return business with adminUserId
-   */
-  private async validateBusinessApiKey(businessId: string, apiKey: string) {
-    if (!apiKey) {
-      throw new UnauthorizedException('Business API key missing');
-    }
-    
-    const business = await this.businessService.findByIdAndApiKey(businessId, apiKey);
-    if (!business) {
-      throw new UnauthorizedException('Invalid API key for this business');
-    }
-
-    // Ensure business has adminUserId
-    if (!business.adminUserId) {
-      this.logger.warn(`Business ${businessId} missing adminUserId - activities will not be tracked`);
-    }
-    
-    return business;
   }
 }
