@@ -154,6 +154,13 @@ export enum AuditAction {
     PROJECT_ASSIGNMENTS_VIEWED = 'project_assignments_viewed',
     PROJECT_STATS_VIEWED = 'project_stats_viewed',
     PROJECT_ASSIGNMENT_UPDATED = 'project_assignment_updated',
+
+    PROJECT_COMMENT_CREATED = 'project_comment_created',
+    PROJECT_COMMENT_UPDATED = 'project_comment_updated',
+    PROJECT_COMMENT_DELETED = 'project_comment_deleted',
+    PROJECT_COMMENT_STATS_VIEWED = 'project_comment_stats_viewed',
+    PROJECT_COMMENTS_VIEWED = 'project_comments_viewed',
+    PROJECT_COMMENT_WITH_IMAGE_CREATED = 'project_comment_with_image_created',
 }
 
 export enum AuditSeverity {

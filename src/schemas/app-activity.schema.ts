@@ -68,6 +68,18 @@ export enum ActivityType {
    TASK_DELETED = 'task_deleted',
    TASK_ASSIGNED = 'task_assigned',
    TASK_STATUS_CHANGED = 'task_status_changed',
+
+   // Project Management
+   PROJECT_CREATED = 'project_created',
+   PROJECT_UPDATED = 'project_updated', 
+   PROJECT_UPDATE = 'project_update',
+   PROJECT_DELETED = 'project_deleted',
+   PROJECT_ASSIGNED = 'project_assigned',
+   PROJECT_STATUS_CHANGED = 'project_status_changed',
+   PROJECT_COMMENT_CREATED = 'project_comment_created',
+   PROJECT_COMMENT_UPDATED = 'project_comment_updated',
+   PROJECT_COMMENT_DELETED = 'project_comment_deleted',
+   PROJECT_COMMENT_STATS_VIEWED = 'project_comment_stats_viewed',
 }
 
 export enum ActivityStatus {
