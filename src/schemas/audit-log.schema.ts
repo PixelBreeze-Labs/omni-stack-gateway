@@ -180,6 +180,14 @@ export enum AuditAction {
     SUPPLY_REQUEST_CREATED = 'supply_request_created',
     SUPPLY_REQUESTS_VIEWED = 'supply_requests_viewed',
     SUPPLY_REQUEST_UPDATED = 'supply_request_updated',
+
+    PROJECT_CHAT_STATS_VIEWED = 'project_chat_stats_viewed',
+    PROJECT_MESSAGE_SENT = 'project_message_sent',
+    PROJECT_MESSAGE_WITH_FILE_SENT = 'project_message_with_file_sent',
+    PROJECT_MESSAGES_VIEWED = 'project_messages_viewed',
+    PROJECT_MESSAGE_UPDATED = 'project_message_updated',
+    PROJECT_MESSAGE_DELETED = 'project_message_deleted',
+    PROJECT_MESSAGES_READ = 'project_messages_read',
     
 }
 
