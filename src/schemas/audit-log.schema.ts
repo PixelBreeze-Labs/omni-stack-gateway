@@ -143,6 +143,17 @@ export enum AuditAction {
     TEAM_CREATED = 'team_created',
     TEAM_UPDATED = 'team_updated',
     TEAM_DELETED = 'team_deleted',
+
+    // Project Operations
+    
+    PROJECT_USER_ASSIGNED = 'project_user_assigned',
+    PROJECT_USER_UNASSIGNED = 'project_user_unassigned', 
+    PROJECT_USER_ROLE_UPDATED = 'project_user_role_updated',
+    PROJECT_TEAM_ASSIGNED = 'project_team_assigned',
+    PROJECT_TEAM_UNASSIGNED = 'project_team_unassigned',
+    PROJECT_ASSIGNMENTS_VIEWED = 'project_assignments_viewed',
+    PROJECT_STATS_VIEWED = 'project_stats_viewed',
+    PROJECT_ASSIGNMENT_UPDATED = 'project_assignment_updated',
 }
 
 export enum AuditSeverity {
