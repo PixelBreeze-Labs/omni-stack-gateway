@@ -83,6 +83,15 @@ export enum ActivityType {
 
    ISSUE_REPORTED = 'issue_reported',
    ISSUE_UPDATED = 'issue_updated', 
+
+   SUPPLY_REQUEST_DELETED = 'supply_request_deleted',
+   SUPPLY_REQUEST_DELIVERED = 'supply_request_delivered',
+   SUPPLY_REQUEST_REJECTED = 'supply_request_rejected',
+   SUPPLY_REQUEST_APPROVED = 'supply_request_approved',
+   SUPPLY_REQUEST_STATS_VIEWED = 'supply_request_stats_viewed',
+   SUPPLY_REQUEST_CREATED = 'supply_request_created',
+   SUPPLY_REQUESTS_VIEWED = 'supply_requests_viewed',
+   SUPPLY_REQUEST_UPDATED = 'supply_request_updated',
    
 }
 

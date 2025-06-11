@@ -171,6 +171,16 @@ export enum AuditAction {
     PROJECT_ISSUE_REPORTED = 'project_issue_reported',
     PROJECT_ISSUE_WITH_PHOTOS_REPORTED = 'project_issue_with_photos_reported',
     PROJECT_ISSUES_VIEWED = 'project_issues_viewed',
+    
+    SUPPLY_REQUEST_DELETED = 'supply_request_deleted',
+    SUPPLY_REQUEST_DELIVERED = 'supply_request_delivered',
+    SUPPLY_REQUEST_REJECTED = 'supply_request_rejected',
+    SUPPLY_REQUEST_APPROVED = 'supply_request_approved',
+    SUPPLY_REQUEST_STATS_VIEWED = 'supply_request_stats_viewed',
+    SUPPLY_REQUEST_CREATED = 'supply_request_created',
+    SUPPLY_REQUESTS_VIEWED = 'supply_requests_viewed',
+    SUPPLY_REQUEST_UPDATED = 'supply_request_updated',
+    
 }
 
 export enum AuditSeverity {
