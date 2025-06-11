@@ -99,7 +99,10 @@ export enum ActivityType {
    PROJECT_MESSAGE_UPDATED = 'project_message_updated',
    PROJECT_MESSAGE_DELETED = 'project_message_deleted',
    PROJECT_MESSAGES_READ = 'project_messages_read',
-   
+   PROJECT_CHECKLIST_CREATED = 'project_checklist_created',
+   CHECKLIST_ITEM_COMPLETED = 'checklist_item_completed',
+   CHECKLIST_ITEM_CREATED = 'checklist_item_created',
+   CHECKLIST_ITEM_UPDATED = 'checklist_item_updated',
 }
 
 export enum ActivityStatus {
