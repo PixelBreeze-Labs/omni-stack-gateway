@@ -149,6 +149,12 @@ export class AppProject extends Document {
   
   @Prop({ type: Date })
   deletedAt?: Date;
+
+  @Prop({ type: Date })
+  updatedAt?: Date;
+
+  @Prop({ type: Date })
+  createdAt?: Date;
 }
 
 export const AppProjectSchema = SchemaFactory.createForClass(AppProject);
