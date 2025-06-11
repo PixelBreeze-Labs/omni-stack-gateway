@@ -432,6 +432,11 @@ import { SupplyRequestController } from './controllers/supply-request.controller
 import { SupplyRequest, SupplyRequestSchema } from './schemas/supply-request.schema';
 import { Equipment, EquipmentSchema } from './schemas/equipment.schema';
 
+// Project Message
+import { ProjectMessageService } from './services/project-message.service';
+import { ProjectMessageController } from './controllers/project-message.controller';
+import { ProjectMessage, ProjectMessageSchema } from './schemas/project-message.schema';
+
 
 @Module({
   imports: [
@@ -567,6 +572,7 @@ import { Equipment, EquipmentSchema } from './schemas/equipment.schema';
       { name: ProjectGallery.name, schema: ProjectGallerySchema },
       { name: SupplyRequest.name, schema: SupplyRequestSchema },
       { name: Equipment.name, schema: EquipmentSchema },
+      { name: ProjectMessage.name, schema: ProjectMessageSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -696,7 +702,8 @@ import { Equipment, EquipmentSchema } from './schemas/equipment.schema';
     ProjectIssueController,
     ProjectCommentsController,
     ProjectGalleryController,
-    SupplyRequestController
+    SupplyRequestController,
+    ProjectMessageController
   ],
   providers: [
     SnapfoodService,
@@ -825,7 +832,7 @@ import { Equipment, EquipmentSchema } from './schemas/equipment.schema';
     ProjectCommentsService,
     ProjectGalleryService,
     SupplyRequestService,
-    
+    ProjectMessageService
   ],
 })
 export class AppModule implements NestModule {
