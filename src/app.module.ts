@@ -426,6 +426,13 @@ import { ProjectGalleryService } from './services/project-gallery.service';
 import { ProjectGalleryController } from './controllers/project-gallery.controller';
 import { ProjectGallery, ProjectGallerySchema } from './schemas/project-gallery.schema';
 
+// Supply Requests + Equipment schema
+import { SupplyRequestService } from './services/supply-request.service';
+import { SupplyRequestController } from './controllers/supply-request.controller';
+import { SupplyRequest, SupplyRequestSchema } from './schemas/supply-request.schema';
+import { Equipment, EquipmentSchema } from './schemas/equipment.schema';
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -558,6 +565,8 @@ import { ProjectGallery, ProjectGallerySchema } from './schemas/project-gallery.
       { name: ProjectIssue.name, schema: ProjectIssueSchema },
       { name: ProjectComment.name, schema: ProjectCommentSchema },
       { name: ProjectGallery.name, schema: ProjectGallerySchema },
+      { name: SupplyRequest.name, schema: SupplyRequestSchema },
+      { name: Equipment.name, schema: EquipmentSchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -686,7 +695,8 @@ import { ProjectGallery, ProjectGallerySchema } from './schemas/project-gallery.
     ProjectAssignmentController,
     ProjectIssueController,
     ProjectCommentsController,
-    ProjectGalleryController
+    ProjectGalleryController,
+    SupplyRequestController
   ],
   providers: [
     SnapfoodService,
@@ -813,7 +823,9 @@ import { ProjectGallery, ProjectGallerySchema } from './schemas/project-gallery.
     ProjectAssignmentService,
     ProjectIssueService,
     ProjectCommentsService,
-    ProjectGalleryService
+    ProjectGalleryService,
+    SupplyRequestService,
+    
   ],
 })
 export class AppModule implements NestModule {
