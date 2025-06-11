@@ -407,6 +407,10 @@ import { AppActivity, AppActivitySchema } from './schemas/app-activity.schema';
 import { AppActivityService } from './services/app-activity.service';
 import { BusinessActivityController } from './controllers/business-activity.controller';
 
+// Project Assignment
+import { ProjectAssignmentService } from './services/project-assignment.service';
+import { ProjectAssignmentController } from './controllers/project-assignment.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -661,6 +665,7 @@ import { BusinessActivityController } from './controllers/business-activity.cont
     BusinessClientFeedbackController,
     BusinessAuditController,
     BusinessActivityController,
+    ProjectAssignmentController
   ],
   providers: [
     SnapfoodService,
@@ -784,6 +789,7 @@ import { BusinessActivityController } from './controllers/business-activity.cont
     ClientFeedbackService,
     AuditLogService,
     AppActivityService,
+    ProjectAssignmentService
   ],
 })
 export class AppModule implements NestModule {
