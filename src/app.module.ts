@@ -411,6 +411,21 @@ import { BusinessActivityController } from './controllers/business-activity.cont
 import { ProjectAssignmentService } from './services/project-assignment.service';
 import { ProjectAssignmentController } from './controllers/project-assignment.controller';
 
+// Project Issue
+import { ProjectIssueService } from './services/project-issue.service';
+import { ProjectIssueController } from './controllers/project-issue.controller';
+import { ProjectIssue, ProjectIssueSchema } from './schemas/project-issue.schema';
+
+// Project Comments
+import { ProjectCommentsService } from './services/project-comments.service';
+import { ProjectCommentsController } from './controllers/project-comments.controller';
+import { ProjectComment, ProjectCommentSchema } from './schemas/project-comment.schema';
+
+// Project Gallery
+import { ProjectGalleryService } from './services/project-gallery.service';
+import { ProjectGalleryController } from './controllers/project-gallery.controller';
+import { ProjectGallery, ProjectGallerySchema } from './schemas/project-gallery.schema';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -540,6 +555,9 @@ import { ProjectAssignmentController } from './controllers/project-assignment.co
       { name: ClientFeedback.name, schema: ClientFeedbackSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: AppActivity.name, schema: AppActivitySchema },
+      { name: ProjectIssue.name, schema: ProjectIssueSchema },
+      { name: ProjectComment.name, schema: ProjectCommentSchema },
+      { name: ProjectGallery.name, schema: ProjectGallerySchema },
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
@@ -665,7 +683,10 @@ import { ProjectAssignmentController } from './controllers/project-assignment.co
     BusinessClientFeedbackController,
     BusinessAuditController,
     BusinessActivityController,
-    ProjectAssignmentController
+    ProjectAssignmentController,
+    ProjectIssueController,
+    ProjectCommentsController,
+    ProjectGalleryController
   ],
   providers: [
     SnapfoodService,
@@ -789,7 +810,10 @@ import { ProjectAssignmentController } from './controllers/project-assignment.co
     ClientFeedbackService,
     AuditLogService,
     AppActivityService,
-    ProjectAssignmentService
+    ProjectAssignmentService,
+    ProjectIssueService,
+    ProjectCommentsService,
+    ProjectGalleryService
   ],
 })
 export class AppModule implements NestModule {
