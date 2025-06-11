@@ -161,6 +161,11 @@ export enum AuditAction {
     PROJECT_COMMENT_STATS_VIEWED = 'project_comment_stats_viewed',
     PROJECT_COMMENTS_VIEWED = 'project_comments_viewed',
     PROJECT_COMMENT_WITH_IMAGE_CREATED = 'project_comment_with_image_created',
+
+    PROJECT_GALLERY_MEDIA_UPLOADED = 'project_gallery_media_uploaded',
+    PROJECT_GALLERY_VIEWED = 'project_gallery_viewed',
+    PROJECT_GALLERY_ITEM_UPDATED = 'project_gallery_item_updated',
+    PROJECT_GALLERY_ITEM_DELETED = 'project_gallery_item_deleted'
 }
 
 export enum AuditSeverity {
