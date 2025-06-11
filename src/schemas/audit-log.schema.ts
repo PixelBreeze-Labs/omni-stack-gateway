@@ -165,7 +165,12 @@ export enum AuditAction {
     PROJECT_GALLERY_MEDIA_UPLOADED = 'project_gallery_media_uploaded',
     PROJECT_GALLERY_VIEWED = 'project_gallery_viewed',
     PROJECT_GALLERY_ITEM_UPDATED = 'project_gallery_item_updated',
-    PROJECT_GALLERY_ITEM_DELETED = 'project_gallery_item_deleted'
+    PROJECT_GALLERY_ITEM_DELETED = 'project_gallery_item_deleted',
+    PROJECT_ISSUE_DELETED = 'project_issue_deleted',
+    PROJECT_ISSUE_UPDATED = 'project_issue_updated',
+    PROJECT_ISSUE_REPORTED = 'project_issue_reported',
+    PROJECT_ISSUE_WITH_PHOTOS_REPORTED = 'project_issue_with_photos_reported',
+    PROJECT_ISSUES_VIEWED = 'project_issues_viewed',
 }
 
 export enum AuditSeverity {

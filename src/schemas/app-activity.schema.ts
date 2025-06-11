@@ -80,6 +80,10 @@ export enum ActivityType {
    PROJECT_COMMENT_UPDATED = 'project_comment_updated',
    PROJECT_COMMENT_DELETED = 'project_comment_deleted',
    PROJECT_COMMENT_STATS_VIEWED = 'project_comment_stats_viewed',
+
+   ISSUE_REPORTED = 'issue_reported',
+   ISSUE_UPDATED = 'issue_updated', 
+   
 }
 
 export enum ActivityStatus {
