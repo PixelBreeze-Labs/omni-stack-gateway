@@ -398,6 +398,7 @@ AuditLogSchema.virtual('business', {
   justOne: true
 });
 
+
 // Virtual for user reference
 AuditLogSchema.virtual('user', {
   ref: 'User',
