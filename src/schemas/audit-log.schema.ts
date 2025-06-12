@@ -189,6 +189,15 @@ export enum AuditAction {
     PROJECT_MESSAGE_DELETED = 'project_message_deleted',
     PROJECT_MESSAGES_READ = 'project_messages_read',
     
+    CHECKLIST_ITEM_COMPLETED = 'checklist_item_completed',
+    CHECKLIST_ITEM_CREATED = 'checklist_item_created',
+    CHECKLIST_ITEM_UPDATED = 'checklist_item_updated',
+    CHECKLIST_ITEM_DELETED = 'checklist_item_deleted',
+    CHECKLIST_ITEM_STATS_VIEWED = 'checklist_item_stats_viewed',
+    PROJECT_CHECKLIST_CREATED = 'project_checklist_created',
+    PROJECT_CHECKLIST_STATS_VIEWED = 'project_checklist_stats_viewed',
+    PROJECT_CHECKLISTS_VIEWED = 'project_checklists_viewed',
+    
 }
 
 export enum AuditSeverity {
@@ -388,6 +397,7 @@ AuditLogSchema.virtual('business', {
   foreignField: '_id',
   justOne: true
 });
+
 
 // Virtual for user reference
 AuditLogSchema.virtual('user', {
