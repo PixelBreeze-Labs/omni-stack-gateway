@@ -3,118 +3,118 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 
 export enum AuditAction {
-  // Authentication
-  LOGIN_SUCCESS = 'login_success',
-  LOGIN_FAILURE = 'login_failure',
-  LOGOUT = 'logout',
-  PASSWORD_CHANGE = 'password_change',
-  
-  // User Management
-  USER_CREATED = 'user_created',
-  USER_UPDATED = 'user_updated',
-  USER_DELETED = 'user_deleted',
-  USER_ROLE_CHANGED = 'user_role_changed',
-  USER_PERMISSION_CHANGED = 'user_permission_changed',
-  
-  // Client Management
-  CLIENT_CREATED = 'client_created',
-  CLIENT_UPDATED = 'client_updated',
-  CLIENT_DELETED = 'client_deleted',
-  CLIENT_DATA_VIEWED = 'client_data_viewed',
-  CLIENT_DATA_EXPORTED = 'client_data_exported',
-  
-  // Project Management
-  PROJECT_CREATED = 'project_created',
-  PROJECT_UPDATED = 'project_updated',
-  PROJECT_DELETED = 'project_deleted',
-  PROJECT_STATUS_CHANGED = 'project_status_changed',
-  
-  // Financial Operations
-  INVOICE_CREATED = 'invoice_created',
-  INVOICE_UPDATED = 'invoice_updated',
-  INVOICE_DELETED = 'invoice_deleted',
-  PAYMENT_PROCESSED = 'payment_processed',
-  REFUND_ISSUED = 'refund_issued',
-  
-  // Business Configuration
-  BUSINESS_CONFIG_UPDATED = 'business_config_updated',
-  BUSINESS_SETTINGS_CHANGED = 'business_settings_changed',
-  API_KEY_GENERATED = 'api_key_generated',
-  API_KEY_REVOKED = 'api_key_revoked',
-  
-  // Quality & Compliance
-  QUALITY_INSPECTION_CREATED = 'quality_inspection_created',
-  QUALITY_INSPECTION_SUBMITTED = 'quality_inspection_submitted',
-  QUALITY_INSPECTION_APPROVED = 'quality_inspection_approved',
-  QUALITY_INSPECTION_REJECTED = 'quality_inspection_rejected',
-  
-  // Feedback
-  FEEDBACK_SUBMITTED = 'feedback_submitted',
-  FEEDBACK_RESPONDED = 'feedback_responded',
-  FEEDBACK_RESOLVED = 'feedback_resolved',
-  
-  // Data Operations
-  DATA_EXPORT = 'data_export',
-  DATA_IMPORT = 'data_import',
-  BULK_DELETE = 'bulk_delete',
-  BULK_UPDATE = 'bulk_update',
-  
-  // Document Management
-  DOCUMENT_UPLOADED = 'document_uploaded',
-  DOCUMENT_DOWNLOADED = 'document_downloaded',
-  DOCUMENT_DELETED = 'document_deleted',
-  
-  // System Administration
-  SYSTEM_BACKUP_CREATED = 'system_backup_created',
-  SYSTEM_MAINTENANCE = 'system_maintenance',
-  INTEGRATION_CONFIGURED = 'integration_configured',
-  
-  // Security Events
-  UNAUTHORIZED_ACCESS_ATTEMPT = 'unauthorized_access_attempt',
-  SUSPICIOUS_ACTIVITY = 'suspicious_activity',
-  SECURITY_VIOLATION = 'security_violation',
+    // Authentication
+    LOGIN_SUCCESS = 'login_success',
+    LOGIN_FAILURE = 'login_failure',
+    LOGOUT = 'logout',
+    PASSWORD_CHANGE = 'password_change',
+    
+    // User Management
+    USER_CREATED = 'user_created',
+    USER_UPDATED = 'user_updated',
+    USER_DELETED = 'user_deleted',
+    USER_ROLE_CHANGED = 'user_role_changed',
+    USER_PERMISSION_CHANGED = 'user_permission_changed',
+    
+    // Client Management
+    CLIENT_CREATED = 'client_created',
+    CLIENT_UPDATED = 'client_updated',
+    CLIENT_DELETED = 'client_deleted',
+    CLIENT_DATA_VIEWED = 'client_data_viewed',
+    CLIENT_DATA_EXPORTED = 'client_data_exported',
+    
+    // Project Management
+    PROJECT_CREATED = 'project_created',
+    PROJECT_UPDATED = 'project_updated',
+    PROJECT_DELETED = 'project_deleted',
+    PROJECT_STATUS_CHANGED = 'project_status_changed',
+    
+    // Financial Operations
+    INVOICE_CREATED = 'invoice_created',
+    INVOICE_UPDATED = 'invoice_updated',
+    INVOICE_DELETED = 'invoice_deleted',
+    PAYMENT_PROCESSED = 'payment_processed',
+    REFUND_ISSUED = 'refund_issued',
+    
+    // Business Configuration
+    BUSINESS_CONFIG_UPDATED = 'business_config_updated',
+    BUSINESS_SETTINGS_CHANGED = 'business_settings_changed',
+    API_KEY_GENERATED = 'api_key_generated',
+    API_KEY_REVOKED = 'api_key_revoked',
+    
+    // Quality & Compliance
+    QUALITY_INSPECTION_CREATED = 'quality_inspection_created',
+    QUALITY_INSPECTION_SUBMITTED = 'quality_inspection_submitted',
+    QUALITY_INSPECTION_APPROVED = 'quality_inspection_approved',
+    QUALITY_INSPECTION_REJECTED = 'quality_inspection_rejected',
+    
+    // Feedback
+    FEEDBACK_SUBMITTED = 'feedback_submitted',
+    FEEDBACK_RESPONDED = 'feedback_responded',
+    FEEDBACK_RESOLVED = 'feedback_resolved',
+    
+    // Data Operations
+    DATA_EXPORT = 'data_export',
+    DATA_IMPORT = 'data_import',
+    BULK_DELETE = 'bulk_delete',
+    BULK_UPDATE = 'bulk_update',
+    
+    // Document Management
+    DOCUMENT_UPLOADED = 'document_uploaded',
+    DOCUMENT_DOWNLOADED = 'document_downloaded',
+    DOCUMENT_DELETED = 'document_deleted',
+    
+    // System Administration
+    SYSTEM_BACKUP_CREATED = 'system_backup_created',
+    SYSTEM_MAINTENANCE = 'system_maintenance',
+    INTEGRATION_CONFIGURED = 'integration_configured',
+    
+    // Security Events
+    UNAUTHORIZED_ACCESS_ATTEMPT = 'unauthorized_access_attempt',
+    SUSPICIOUS_ACTIVITY = 'suspicious_activity',
+    SECURITY_VIOLATION = 'security_violation',
 
-  // Storage Operations
-  FILE_UPLOADED = 'file_uploaded',
-  FILE_DOWNLOADED = 'file_downloaded', 
-  FILE_DELETED = 'file_deleted',
-  BULK_FILE_DELETE = 'bulk_file_delete',
-  STORAGE_LIMIT_UPDATED = 'storage_limit_updated',
-  STORAGE_OVERRIDE_ENABLED = 'storage_override_enabled',
-  STORAGE_OVERRIDE_DISABLED = 'storage_override_disabled',
-  STORAGE_LIMIT_EXCEEDED = 'storage_limit_exceeded',
-  STORAGE_INITIALIZED = 'storage_initialized',
+    // Storage Operations
+    FILE_UPLOADED = 'file_uploaded',
+    FILE_DOWNLOADED = 'file_downloaded', 
+    FILE_DELETED = 'file_deleted',
+    BULK_FILE_DELETE = 'bulk_file_delete',
+    STORAGE_LIMIT_UPDATED = 'storage_limit_updated',
+    STORAGE_OVERRIDE_ENABLED = 'storage_override_enabled',
+    STORAGE_OVERRIDE_DISABLED = 'storage_override_disabled',
+    STORAGE_LIMIT_EXCEEDED = 'storage_limit_exceeded',
+    STORAGE_INITIALIZED = 'storage_initialized',
 
-  // Messaging Operations  
-  MESSAGE_SENT = 'message_sent',
-  MESSAGE_RECEIVED = 'message_received',
-  MESSAGE_READ = 'message_read',
-  CONVERSATION_ACCESSED = 'conversation_accessed',
-  MESSAGE_DELETED = 'message_deleted',
+    // Messaging Operations  
+    MESSAGE_SENT = 'message_sent',
+    MESSAGE_RECEIVED = 'message_received',
+    MESSAGE_READ = 'message_read',
+    CONVERSATION_ACCESSED = 'conversation_accessed',
+    MESSAGE_DELETED = 'message_deleted',
 
-  FILE_ACCESSED = 'file_accessed',
-  STORAGE_CHECK_FAILED = 'storage_check_failed',
-  UPLOAD_VALIDATION_FAILED = 'upload_validation_failed',
-  STORAGE_SERVICE_ERROR = 'storage_service_error',
+    FILE_ACCESSED = 'file_accessed',
+    STORAGE_CHECK_FAILED = 'storage_check_failed',
+    UPLOAD_VALIDATION_FAILED = 'upload_validation_failed',
+    STORAGE_SERVICE_ERROR = 'storage_service_error',
 
-  
-  TEAM_ASSIGNED = 'team_assigned',
-  TICKET_CREATED = 'ticket_created',
-  TICKET_UPDATED = 'ticket_updated', 
-  TICKET_ACCESSED = 'ticket_accessed',
-  TICKET_DELETED = 'ticket_deleted',
-  TASK_CREATED = 'task_created',
-  TASK_UPDATED = 'task_updated', 
-  TASK_DELETED = 'task_deleted',
-  TASK_STATUS_CHANGED = 'task_status_changed',
-  TASK_STATISTICS_ACCESSED = 'task_statistics_accessed',
-  TASK_ACCESSED = 'task_accessed',
+    
+    TEAM_ASSIGNED = 'team_assigned',
+    TICKET_CREATED = 'ticket_created',
+    TICKET_UPDATED = 'ticket_updated', 
+    TICKET_ACCESSED = 'ticket_accessed',
+    TICKET_DELETED = 'ticket_deleted',
+    TASK_CREATED = 'task_created',
+    TASK_UPDATED = 'task_updated', 
+    TASK_DELETED = 'task_deleted',
+    TASK_STATUS_CHANGED = 'task_status_changed',
+    TASK_STATISTICS_ACCESSED = 'task_statistics_accessed',
+    TASK_ACCESSED = 'task_accessed',
 
-  TEAM_LOCATION_UPDATED = 'team_location_updated',
-  TEAM_LOCATION_ACCESSED = 'team_location_accessed', 
-  TEAM_AVAILABILITY_ACCESSED = 'team_availability_accessed',
-  ROUTE_PROGRESS_TRACKED = 'route_progress_tracked',
-  LOCATION_DATA_EXPORTED = 'location_data_exported',
+    TEAM_LOCATION_UPDATED = 'team_location_updated',
+    TEAM_LOCATION_ACCESSED = 'team_location_accessed', 
+    TEAM_AVAILABILITY_ACCESSED = 'team_availability_accessed',
+    ROUTE_PROGRESS_TRACKED = 'route_progress_tracked',
+    LOCATION_DATA_EXPORTED = 'location_data_exported',
 
     // Service Area Operations
     SERVICE_AREA_CREATED = 'service_area_created',
@@ -197,7 +197,6 @@ export enum AuditAction {
     PROJECT_CHECKLIST_CREATED = 'project_checklist_created',
     PROJECT_CHECKLIST_STATS_VIEWED = 'project_checklist_stats_viewed',
     PROJECT_CHECKLISTS_VIEWED = 'project_checklists_viewed',
-    
 }
 
 export enum AuditSeverity {
