@@ -3306,6 +3306,7 @@ async getEmployeesWithoutQualityRoles(
   employees: Array<{
     id: string;
     name: string;
+    surname: string;
     email: string;
     currentRole?: string;
     department?: string;
@@ -3384,7 +3385,7 @@ async getEmployeesWithoutQualityRoles(
         _id: { $in: userIds },
         isActive: { $ne: false }
       })
-      .select('_id name email')
+      .select('_id name surname email') // ✅ Added surname to selection
       .lean();
 
     // Create lookup map for users
@@ -3427,7 +3428,7 @@ async getEmployeesWithoutQualityRoles(
         return {
           id: employee.user_id.toString(),
           name: user?.name || employee.name || 'Unknown',
-          surname: user?.surname|| 'Unknown',
+          surname: user?.surname || 'Unknown', // ✅ Added surname to return object
           email: user?.email || employee.email || '',
           currentRole: staffProfile?.role || employee.metadata?.role || 'Not specified',
         };
