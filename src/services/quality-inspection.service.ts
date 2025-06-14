@@ -5,6 +5,12 @@ import { Model } from 'mongoose';
 import { Business, QualityInspectionConfiguration } from '../schemas/business.schema';
 import { QualityInspection } from '../schemas/quality-inspection.schema';
 import { Employee } from '../schemas/employee.schema';
+import { User } from '../schemas/user.schema';
+
+import { SaasNotificationService } from './saas-notification.service';
+import { AuditLogService } from './audit-log.service';
+import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
+import { DeliveryChannel, NotificationPriority, NotificationType } from '../schemas/saas-notification.schema';
 
 // DTOs for inspection creation
 export interface CreateDetailedInspectionDto {
@@ -104,7 +110,10 @@ export class QualityInspectionService {
   constructor(
     @InjectModel(Business.name) private businessModel: Model<Business>,
     @InjectModel(QualityInspection.name) private qualityInspectionModel: Model<QualityInspection>,
-    @InjectModel(Employee.name) private employeeModel: Model<Employee>
+    @InjectModel(Employee.name) private employeeModel: Model<Employee>,
+    @InjectModel(User.name) private userModel: Model<User>,
+    private readonly notificationService: SaasNotificationService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   /**
@@ -174,13 +183,79 @@ export class QualityInspectionService {
   }
 
   /**
+ * Send notification to user when assigned quality role
+ */
+private async sendQualityRoleAssignmentNotification(
+  userId: string,
+  businessId: string,
+  role: string,
+  businessName: string
+): Promise<void> {
+  try {
+    // Get user details
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      this.logger.warn(`User not found for quality role notification: ${userId}`);
+      return;
+    }
+
+    // Check user's notification preferences
+    const emailEnabled = user.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
+
+    const title = `Quality Role Assigned`;
+    const body = `You have been assigned the ${role.replace('_', ' ')} quality role in ${businessName}.`;
+    const priority = NotificationPriority.MEDIUM;
+
+    // Create action data for deep linking
+    const actionData = {
+      type: 'quality_assignment',
+      entityId: userId,
+      entityType: 'quality_role',
+      role: role,
+      url: `https://app.staffluent.co`
+    };
+
+    // Determine channels
+    const channels: DeliveryChannel[] = [DeliveryChannel.APP]; // Always send in-app
+
+    // Send notification
+    await this.notificationService.createNotification({
+      businessId,
+      userId,
+      title,
+      body,
+      type: NotificationType.SYSTEM,
+      priority,
+      channels: [DeliveryChannel.APP], // Send in-app first
+      reference: {
+        type: 'quality_role_assignment',
+        id: userId
+      },
+      actionData
+    });
+
+
+    this.logger.log(`Sent quality role assignment notification to user ${userId} via channels: ${channels.join(', ')}`);
+
+  } catch (error) {
+    this.logger.error(`Error sending quality role assignment notification: ${error.message}`, error.stack);
+  }
+}
+
+/**
  * Assign quality role to a user in a business
  */
 async assignQualityRole(
   businessId: string, 
   userId: string, 
-  role: string
+  role: string,
+  adminUserId?: string,
+  req?: any
 ): Promise<{ success: boolean; message: string; qualityTeam?: any[]; error?: any }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
+
   try {
     this.logger.log(`Assigning quality role ${role} to user ${userId} in business: ${businessId}`);
 
@@ -204,6 +279,34 @@ async assignQualityRole(
     try {
       this.validateRole(role);
     } catch (roleError) {
+      // Log validation error
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId: adminUserId,
+        action: AuditAction.USER_ROLE_CHANGED,
+        resourceType: ResourceType.USER,
+        resourceId: userId,
+        resourceName: `Quality role assignment: ${role}`,
+        success: false,
+        errorMessage: roleError.message,
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          targetUserId: userId,
+          attemptedRole: role,
+          validRoles: [
+            'team_leader',
+            'quality_staff', 
+            'site_supervisor',
+            'project_manager',
+            'operations_manager'
+          ],
+          errorReason: 'invalid_role',
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       return {
         success: false,
         message: roleError.message,
@@ -223,6 +326,27 @@ async assignQualityRole(
     // Find business
     const business = await this.businessModel.findById(businessId);
     if (!business) {
+      // Log business not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId: adminUserId,
+        action: AuditAction.USER_ROLE_CHANGED,
+        resourceType: ResourceType.USER,
+        resourceId: userId,
+        resourceName: `Quality role assignment: ${role}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          targetUserId: userId,
+          role: role,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       return {
         success: false,
         message: 'Business not found',
@@ -241,6 +365,28 @@ async assignQualityRole(
     });
 
     if (!employee) {
+      // Log employee not found
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId: adminUserId,
+        action: AuditAction.USER_ROLE_CHANGED,
+        resourceType: ResourceType.USER,
+        resourceId: userId,
+        resourceName: `Quality role assignment: ${role}`,
+        success: false,
+        errorMessage: 'Employee not found in this business',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          targetUserId: userId,
+          role: role,
+          errorReason: 'employee_not_found',
+          searchCriteria: 'user_id + businessId + not deleted',
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       return {
         success: false,
         message: 'Employee not found in this business',
@@ -255,51 +401,111 @@ async assignQualityRole(
       };
     }
 
+    // Get current metadata or initialize empty object
+    const currentMetadata = employee.metadata || new Map();
+    const oldRole = currentMetadata.get('qualityRole');
+    
+    // Prepare permissions object
+    const permissions = this.getDefaultPermissions(role);
+    
+    // Create updated metadata object
+    const updatedMetadata = new Map(currentMetadata);
+    updatedMetadata.set('qualityRole', role);
+    updatedMetadata.set('qualityAssignedDate', new Date());
+    updatedMetadata.set('qualityPermissions', permissions);
+
     // Update employee's quality role in metadata
-    const updateResult = await this.employeeModel.updateOne(
+    const updateResult = await this.employeeModel.findOneAndUpdate(
       { user_id: userId, businessId },
       { 
         $set: { 
-          'metadata.qualityRole': role,
-          'metadata.qualityAssignedDate': new Date(),
-          'metadata.qualityPermissions': this.getDefaultPermissions(role)
+          metadata: updatedMetadata
         } 
+      },
+      { 
+        new: true,
+        runValidators: true 
       }
     );
 
     // Check if update was successful
-    if (updateResult.matchedCount === 0) {
+    if (!updateResult) {
+      // Log update failure
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId: adminUserId,
+        action: AuditAction.USER_ROLE_CHANGED,
+        resourceType: ResourceType.USER,
+        resourceId: userId,
+        resourceName: `Quality role assignment: ${role}`,
+        success: false,
+        errorMessage: 'Failed to update employee record',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          targetUserId: userId,
+          role: role,
+          oldRole: oldRole,
+          errorReason: 'update_failed',
+          operationDuration: Date.now() - startTime
+        }
+      });
+
       return {
         success: false,
-        message: 'Failed to update employee - no matching record found',
+        message: 'Failed to update employee - no matching record found during update',
         error: {
           code: 'UPDATE_FAILED_NO_MATCH',
           details: { 
             userId, 
-            businessId, 
-            updateResult 
+            businessId
           }
         }
       };
     }
 
-    if (updateResult.modifiedCount === 0) {
-      return {
-        success: false,
-        message: 'Employee found but no changes were made (possibly already has this role)',
-        error: {
-          code: 'UPDATE_FAILED_NO_CHANGES',
-          details: { 
-            userId, 
-            businessId, 
-            role,
-            // @ts-ignore
-            currentRole: employee.metadata?.qualityRole,
-            updateResult 
-          }
-        }
-      };
-    }
+    // Get user details for audit log
+    const user = await this.userModel.findById(userId);
+    const userName = user?.name || employee.name || 'Unknown User';
+    const userEmail = user?.email || employee.email || 'Unknown Email';
+
+    // Log successful quality role assignment
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId: adminUserId,
+      action: AuditAction.USER_ROLE_CHANGED,
+      resourceType: ResourceType.USER,
+      resourceId: userId,
+      resourceName: `${userName} - Quality Role Assignment`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      oldValues: { qualityRole: oldRole },
+      newValues: { qualityRole: role },
+      changedFields: ['qualityRole', 'qualityAssignedDate', 'qualityPermissions'],
+      metadata: {
+        targetUserId: userId,
+        targetUserName: userName,
+        targetUserEmail: userEmail,
+        employeeId: employee._id.toString(),
+        role: role,
+        oldRole: oldRole,
+        permissions: permissions,
+        assignedDate: new Date(),
+        businessName: business.name,
+        operationDuration: Date.now() - startTime
+      }
+    });
+
+    // Send notification to the assigned user
+    await this.sendQualityRoleAssignmentNotification(
+      userId,
+      businessId,
+      role,
+      business.name
+    );
 
     this.logger.log(`Successfully assigned quality role ${role} to employee: ${employee._id}`);
 
@@ -308,11 +514,35 @@ async assignQualityRole(
     
     return {
       success: true,
-      message: `Successfully assigned ${role} role to user`,
+      message: `Successfully assigned ${role.replace('_', ' ')} role to ${userName}`,
       qualityTeam
     };
 
   } catch (error) {
+    // Log unexpected errors
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId: adminUserId,
+      action: AuditAction.USER_ROLE_CHANGED,
+      resourceType: ResourceType.USER,
+      resourceId: userId,
+      resourceName: `Quality role assignment: ${role}`,
+      success: false,
+      errorMessage: 'Unexpected error during quality role assignment',
+      severity: AuditSeverity.HIGH,
+      ipAddress,
+      userAgent,
+      metadata: {
+        targetUserId: userId,
+        role: role,
+        errorReason: 'unexpected_error',
+        errorName: error.name,
+        errorMessage: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        operationDuration: Date.now() - startTime
+      }
+    });
+
     this.logger.error(`Error assigning quality role: ${error.message}`, error.stack);
     
     // Return detailed error information
@@ -331,65 +561,320 @@ async assignQualityRole(
     };
   }
 }
-  /**
-   * Remove quality role from a user in a business
-   */
-  async removeQualityRole(
-    businessId: string, 
-    userId: string
-  ): Promise<{ success: boolean; message: string; qualityTeam: any[] }> {
-    try {
-      this.logger.log(`Removing quality role from user ${userId} in business: ${businessId}`);
 
-      // Find business
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
+/**
+ * Helper method to extract IP address from request
+ */
+private extractIpAddress(req: any): string {
+  return (
+    req?.headers?.['x-forwarded-for'] ||
+    req?.headers?.['x-real-ip'] ||
+    req?.connection?.remoteAddress ||
+    req?.socket?.remoteAddress ||
+    'unknown'
+  ).split(',')[0].trim();
+}
 
-      // Find employee by user_id and businessId
-      const employee = await this.employeeModel.findOne({ 
-        user_id: userId, 
+/**
+ * Send notification to user when quality role is removed
+ */
+private async sendQualityRoleRemovalNotification(
+  userId: string,
+  businessId: string,
+  removedRole: string,
+  businessName: string
+): Promise<void> {
+  try {
+    // Get user details
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      this.logger.warn(`User not found for quality role removal notification: ${userId}`);
+      return;
+    }
+
+    const title = `Quality Role Removed`;
+    const body = `Your ${removedRole.replace('_', ' ')} quality role has been removed in ${businessName}.`;
+    const priority = NotificationPriority.MEDIUM;
+
+    // Create action data
+    const actionData = {
+      type: 'quality_role_removal',
+      entityId: userId,
+      entityType: 'quality_role',
+      removedRole: removedRole,
+      url: `https://app.staffluent.co`
+    };
+
+    // Send notification
+    await this.notificationService.createNotification({
+      businessId,
+      userId,
+      title,
+      body,
+      type: NotificationType.SYSTEM,
+      priority,
+      channels: [DeliveryChannel.APP],
+      reference: {
+        type: 'quality_role_removal',
+        id: userId
+      },
+      actionData
+    });
+
+    this.logger.log(`Sent quality role removal notification to user ${userId}`);
+
+  } catch (error) {
+    this.logger.error(`Error sending quality role removal notification: ${error.message}`, error.stack);
+  }
+}
+
+/**
+ * Remove quality role from a user in a business
+ */
+async removeQualityRole(
+  businessId: string,
+  userId: string,
+  adminUserId?: string,
+  req?: any
+): Promise<{ success: boolean; message: string; qualityTeam?: any[]; error?: any }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
+
+  try {
+    this.logger.log(`Removing quality role from user ${userId} in business: ${businessId}`);
+
+    // Find business
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      await this.auditLogService.createAuditLog({
         businessId,
-        isDeleted: { $ne: true }
+        userId: adminUserId,
+        action: AuditAction.QUALITY_ROLE_REMOVED,
+        resourceType: ResourceType.USER,
+        resourceId: userId,
+        resourceName: `Quality role removal`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          targetUserId: userId,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
       });
 
-      if (!employee) {
-        throw new NotFoundException('Employee not found in this business');
-      }
-
-      // Check if employee has a quality role
-      if (!employee.metadata?.get('qualityRole')) {
-        throw new NotFoundException('Employee does not have a quality role assigned');
-      }
-
-      // Remove quality role from employee metadata
-      await this.employeeModel.updateOne(
-        { user_id: userId, businessId },
-        { 
-          $unset: { 
-            'metadata.qualityRole': '',
-            'metadata.qualityAssignedDate': '',
-            'metadata.qualityPermissions': ''
-          } 
-        }
-      );
-
-      this.logger.log(`Successfully removed quality role from employee: ${employee._id}`);
-
-      // Get updated quality team
-      const qualityTeam = await this.getQualityTeam(businessId);
-      
       return {
-        success: true,
-        message: 'Successfully removed user from quality team',
-        qualityTeam
+        success: false,
+        message: 'Business not found',
+        error: {
+          code: 'BUSINESS_NOT_FOUND',
+          details: { businessId }
+        }
       };
-    } catch (error) {
-      this.logger.error(`Error removing quality role: ${error.message}`, error.stack);
-      throw error;
     }
+
+    // Find employee
+    const employee = await this.employeeModel.findOne({
+      user_id: userId,
+      businessId,
+      isDeleted: { $ne: true }
+    });
+
+    if (!employee) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId: adminUserId,
+        action: AuditAction.QUALITY_ROLE_REMOVED,
+        resourceType: ResourceType.USER,
+        resourceId: userId,
+        resourceName: `Quality role removal`,
+        success: false,
+        errorMessage: 'Employee not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          targetUserId: userId,
+          errorReason: 'employee_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+
+      return {
+        success: false,
+        message: 'Employee not found in this business',
+        error: {
+          code: 'EMPLOYEE_NOT_FOUND',
+          details: { userId, businessId }
+        }
+      };
+    }
+
+    // Get current metadata
+    const currentMetadata = employee.metadata || new Map();
+    const oldRole = currentMetadata.get('qualityRole');
+
+    if (!oldRole) {
+      return {
+        success: false,
+        message: 'User does not have a quality role assigned',
+        error: {
+          code: 'NO_QUALITY_ROLE',
+          details: { userId, businessId }
+        }
+      };
+    }
+
+    // Remove quality role from metadata
+    const updatedMetadata = new Map(currentMetadata);
+    updatedMetadata.delete('qualityRole');
+    updatedMetadata.delete('qualityAssignedDate');
+    updatedMetadata.delete('qualityPermissions');
+
+    // Update employee
+    const updateResult = await this.employeeModel.findOneAndUpdate(
+      { user_id: userId, businessId },
+      { 
+        $set: { 
+          metadata: updatedMetadata
+        } 
+      },
+      { 
+        new: true,
+        runValidators: true 
+      }
+    );
+
+    if (!updateResult) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId: adminUserId,
+        action: AuditAction.QUALITY_ROLE_REMOVED,
+        resourceType: ResourceType.USER,
+        resourceId: userId,
+        resourceName: `Quality role removal`,
+        success: false,
+        errorMessage: 'Failed to update employee record',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          targetUserId: userId,
+          oldRole: oldRole,
+          errorReason: 'update_failed',
+          operationDuration: Date.now() - startTime
+        }
+      });
+
+      return {
+        success: false,
+        message: 'Failed to remove quality role',
+        error: {
+          code: 'UPDATE_FAILED',
+          details: { userId, businessId }
+        }
+      };
+    }
+
+    // Get user details for audit log
+    const user = await this.userModel.findById(userId);
+    const userName = user?.name || employee.name || 'Unknown User';
+    const userEmail = user?.email || employee.email || 'Unknown Email';
+
+    // Log successful quality role removal
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId: adminUserId,
+      action: AuditAction.QUALITY_ROLE_REMOVED,
+      resourceType: ResourceType.USER,
+      resourceId: userId,
+      resourceName: `${userName} - Quality Role Removal`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      oldValues: { 
+        qualityRole: oldRole,
+        hasQualityPermissions: true
+      },
+      newValues: { 
+        qualityRole: null,
+        hasQualityPermissions: false
+      },
+      changedFields: ['qualityRole', 'qualityPermissions'],
+      metadata: {
+        targetUserId: userId,
+        targetUserName: userName,
+        targetUserEmail: userEmail,
+        employeeId: employee._id.toString(),
+        removedRole: oldRole,
+        removalDate: new Date(),
+        businessName: business.name,
+        operationDuration: Date.now() - startTime
+      }
+    });
+
+    // Send notification to the user
+    await this.sendQualityRoleRemovalNotification(
+      userId,
+      businessId,
+      oldRole,
+      business.name
+    );
+
+    this.logger.log(`Successfully removed quality role ${oldRole} from employee: ${employee._id}`);
+
+    // Get updated quality team
+    const qualityTeam = await this.getQualityTeam(businessId);
+
+    return {
+      success: true,
+      message: `Successfully removed ${oldRole.replace('_', ' ')} role from ${userName}`,
+      qualityTeam
+    };
+
+  } catch (error) {
+    // Log unexpected errors
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId: adminUserId,
+      action: AuditAction.QUALITY_ROLE_REMOVED,
+      resourceType: ResourceType.USER,
+      resourceId: userId,
+      resourceName: `Quality role removal`,
+      success: false,
+      errorMessage: 'Unexpected error during quality role removal',
+      severity: AuditSeverity.HIGH,
+      ipAddress,
+      userAgent,
+      metadata: {
+        targetUserId: userId,
+        errorReason: 'unexpected_error',
+        errorName: error.name,
+        errorMessage: error.message,
+        operationDuration: Date.now() - startTime
+      }
+    });
+
+    this.logger.error(`Error removing quality role: ${error.message}`, error.stack);
+
+    return {
+      success: false,
+      message: `Failed to remove quality role: ${error.message}`,
+      error: {
+        code: 'INTERNAL_ERROR',
+        details: {
+          errorName: error.name,
+          errorMessage: error.message,
+          parameters: { businessId, userId }
+        }
+      }
+    };
   }
+}
 
   /**
  * Get quality team for a business

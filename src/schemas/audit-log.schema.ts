@@ -197,6 +197,14 @@ export enum AuditAction {
     PROJECT_CHECKLIST_CREATED = 'project_checklist_created',
     PROJECT_CHECKLIST_STATS_VIEWED = 'project_checklist_stats_viewed',
     PROJECT_CHECKLISTS_VIEWED = 'project_checklists_viewed',
+
+
+     // Quality Management Actions
+    QUALITY_ROLE_ASSIGNED = 'quality_role_assigned',
+    QUALITY_ROLE_UPDATED = 'quality_role_updated',
+    QUALITY_ROLE_REMOVED = 'quality_role_removed',
+    QUALITY_TEAM_VIEWED = 'quality_team_viewed',
+    QUALITY_CONFIG_UPDATED = 'quality_config_updated',
 }
 
 export enum AuditSeverity {
