@@ -3427,6 +3427,7 @@ async getEmployeesWithoutQualityRoles(
         return {
           id: employee.user_id.toString(),
           name: user?.name || employee.name || 'Unknown',
+          surname: user?.surname|| 'Unknown',
           email: user?.email || employee.email || '',
           currentRole: staffProfile?.role || employee.metadata?.role || 'Not specified',
         };
