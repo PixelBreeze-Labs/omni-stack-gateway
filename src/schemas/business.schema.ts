@@ -306,6 +306,14 @@ export interface QualityInspectionConfiguration {
   useDetailedInspections: boolean;
 }
 
+export interface BusinessRole {
+  id: string;
+  name: string;
+  metadata?: any;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 @Schema({ timestamps: true })
 export class Business extends Document {
     @Prop({ required: true })
@@ -600,6 +608,19 @@ export class Business extends Document {
   
   @Prop({ type: MongooseSchema.Types.Mixed })
   qualityInspectionConfig: QualityInspectionConfiguration;
+
+
+  @Prop({ 
+    type: [{
+      id: { type: String, required: true },
+      name: { type: String, required: true },
+      metadata: { type: MongooseSchema.Types.Mixed, default: {} },
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }], 
+    default: [] 
+  })
+  roles: BusinessRole[];
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);
@@ -622,6 +643,8 @@ BusinessSchema.index({ 'baseLocation.latitude': 1, 'baseLocation.longitude': 1 }
 BusinessSchema.index({ 'qualityInspectionConfig.useDetailedInspections': 1 });
 BusinessSchema.index({ 'qualityInspectionConfig.canInspect': 1 });
 BusinessSchema.index({ 'qualityInspectionConfig.finalApprover': 1 });
+BusinessSchema.index({ 'roles.name': 1 });
+BusinessSchema.index({ 'roles.id': 1 });
 
 BusinessSchema.virtual('address', {
     ref: 'Address',
