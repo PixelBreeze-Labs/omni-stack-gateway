@@ -3,7 +3,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { StaffProfile } from '../schemas/staff-profile.schema';
-import { Business, EnhancedTeam } from '../schemas/business.schema';
+import { Business, BusinessRole, EnhancedTeam } from '../schemas/business.schema';
 import { User } from '../schemas/user.schema';
 import { Types } from 'mongoose';
 
@@ -3388,6 +3388,620 @@ private calculateEquipmentUtilization(team: any): number {
   const adjustedUtilization = baseUtilization * activityFactor * routingFactor * performanceFactor;
   
   return Math.round(adjustedUtilization);
+}
+
+/**
+ * Create a new role for a business
+ */
+async createRole(
+  businessId: string,
+  roleData: {
+    name: string;
+    metadata?: any;
+  },
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; roleId: string; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
+
+  try {
+    this.logger.log(`Creating role for business ${businessId}: ${roleData.name}`);
+
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceName: `Role creation: ${roleData.name}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleName: roleData.name,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Business not found');
+    }
+
+    // Check if role name already exists
+    const existingRole = business.roles.find(
+      (role: any) => role.name.toLowerCase() === roleData.name.toLowerCase()
+    );
+    
+    if (existingRole) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceName: `Role creation: ${roleData.name}`,
+        success: false,
+        errorMessage: 'Role with this name already exists',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleName: roleData.name,
+          existingRoleId: existingRole.id,
+          errorReason: 'duplicate_role_name',
+          totalRoles: business.roles.length,
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new Error('Role with this name already exists');
+    }
+
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
+    // Generate a unique ID for the role
+    const roleId = new Date().getTime().toString();
+    const now = new Date();
+    
+    // Create new role object
+    const newRole = {
+      id: roleId,
+      name: roleData.name,
+      metadata: roleData.metadata || {},
+      createdAt: now,
+      updatedAt: now
+    };
+
+    // Add role to business
+    business.roles.push(newRole as BusinessRole);
+    business.markModified('roles');
+    await business.save();
+
+    // Create App Activity
+    if (user) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.BUSINESS_CONFIG_UPDATED,
+        action: `Created role "${roleData.name}"`,
+        description: `New role with ${Object.keys(roleData.metadata || {}).length} metadata properties`,
+        resourceType: 'role',
+        resourceId: roleId,
+        resourceName: roleData.name,
+        data: {
+          roleId,
+          roleName: roleData.name,
+          totalRolesAfter: business.roles.length,
+          metadataKeys: Object.keys(roleData.metadata || {}),
+          roleData: {
+            name: roleData.name,
+            metadata: roleData.metadata || {}
+          }
+        }
+      });
+    }
+
+    // Log successful role creation
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.BUSINESS_CONFIG_UPDATED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: roleId,
+      resourceName: `Role: ${roleData.name}`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      metadata: {
+        roleId,
+        roleName: roleData.name,
+        hasMetadata: !!roleData.metadata,
+        metadataKeys: Object.keys(roleData.metadata || {}),
+        totalRolesAfter: business.roles.length,
+        operationDuration: Date.now() - startTime,
+        newRoleData: {
+          name: roleData.name,
+          metadata: roleData.metadata || {}
+        }
+      }
+    });
+
+    this.logger.log(`Successfully created role ${roleId} (${roleData.name}) for business ${businessId}`);
+
+    return {
+      success: true,
+      roleId,
+      message: `Role '${roleData.name}' created successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException' && error.message !== 'Role with this name already exists') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceName: `Role creation: ${roleData.name}`,
+        success: false,
+        errorMessage: 'Unexpected error during role creation',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleName: roleData.name,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error creating role: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Update an existing role
+ */
+async updateRole(
+  businessId: string,
+  roleId: string,
+  updateData: {
+    name?: string;
+    metadata?: any;
+  },
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
+
+  try {
+    this.logger.log(`Updating role ${roleId} for business ${businessId}`);
+
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: roleId,
+        resourceName: `Role update: ${roleId}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleId,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find role by ID
+    const roleIndex = business.roles.findIndex(
+      (role: any) => role.id === roleId
+    );
+
+    if (roleIndex === -1) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: roleId,
+        resourceName: `Role update: ${roleId}`,
+        success: false,
+        errorMessage: 'Role not found',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleId,
+          errorReason: 'role_not_found',
+          totalRoles: business.roles.length,
+          availableRoleIds: business.roles.map((r: any) => r.id),
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Role not found');
+    }
+
+    const role = business.roles[roleIndex] as any;
+
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
+    // Track what changed BEFORE making changes
+    const oldValues = {
+      name: role.name,
+      metadata: { ...(role.metadata || {}) }
+    };
+
+    // Check if new name conflicts with existing roles (if name is being updated)
+    if (updateData.name && updateData.name !== role.name) {
+      const nameConflict = business.roles.find(
+        (r: any, index: number) => 
+          index !== roleIndex && 
+          r.name.toLowerCase() === updateData.name.toLowerCase()
+      );
+      
+      if (nameConflict) {
+        await this.auditLogService.createAuditLog({
+          businessId,
+          userId,
+          action: AuditAction.BUSINESS_CONFIG_UPDATED,
+          resourceType: ResourceType.BUSINESS,
+          resourceId: roleId,
+          resourceName: `Role: ${role.name}`,
+          success: false,
+          errorMessage: 'Role with this name already exists',
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          metadata: {
+            roleId,
+            oldName: role.name,
+            newName: updateData.name,
+            conflictingRoleId: nameConflict.id,
+            errorReason: 'duplicate_role_name',
+            operationDuration: Date.now() - startTime
+          }
+        });
+        throw new Error('Role with this name already exists');
+      }
+    }
+
+    // Track changed fields
+    const changedFields: string[] = [];
+    
+    // Update role data and track changes
+    if (updateData.name !== undefined && updateData.name !== role.name) {
+      role.name = updateData.name;
+      changedFields.push('name');
+    }
+    if (updateData.metadata !== undefined) {
+      // Merge metadata instead of replacing
+      role.metadata = { ...role.metadata, ...updateData.metadata };
+      changedFields.push('metadata');
+    }
+    
+    // Always update the timestamp
+    role.updatedAt = new Date();
+
+    // Mark the roles array as modified for Mongoose
+    business.markModified('roles');
+    await business.save();
+
+    // Create App Activity for the update
+    if (user && changedFields.length > 0) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.BUSINESS_CONFIG_UPDATED,
+        action: `Updated role "${role.name}"`,
+        description: `Modified ${changedFields.join(', ')} for role`,
+        resourceType: 'role',
+        resourceId: roleId,
+        resourceName: role.name,
+        data: {
+          roleId,
+          roleName: role.name,
+          changedFields,
+          previousValues: {
+            name: oldValues.name,
+            metadataKeys: Object.keys(oldValues.metadata)
+          },
+          newValues: {
+            name: role.name,
+            metadataKeys: Object.keys(role.metadata || {})
+          }
+        }
+      });
+    }
+
+    // Prepare new values for audit log
+    const newValues = {
+      name: role.name,
+      metadata: role.metadata
+    };
+
+    // Log successful role update
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.BUSINESS_CONFIG_UPDATED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: roleId,
+      resourceName: `Role: ${role.name}`,
+      success: true,
+      severity: AuditSeverity.MEDIUM,
+      ipAddress,
+      userAgent,
+      oldValues,
+      newValues,
+      changedFields,
+      metadata: {
+        roleId,
+        roleName: role.name,
+        changedFieldsCount: changedFields.length,
+        metadataKeys: Object.keys(role.metadata || {}),
+        operationDuration: Date.now() - startTime,
+        changedFields
+      }
+    });
+
+    this.logger.log(`Successfully updated role ${roleId} (${role.name}) for business ${businessId}. Changed fields: ${changedFields.join(', ')}`);
+
+    return {
+      success: true,
+      message: `Role updated successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException' && error.message !== 'Role with this name already exists') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: roleId,
+        resourceName: `Role update: ${roleId}`,
+        success: false,
+        errorMessage: 'Unexpected error during role update',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleId,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error updating role: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Remove a role from a business
+ */
+async removeRole(
+  businessId: string,
+  roleId: string,
+  userId?: string,
+  req?: any
+): Promise<{ success: boolean; message: string }> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
+
+  try {
+    this.logger.log(`Removing role ${roleId} for business ${businessId}`);
+
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: roleId,
+        resourceName: `Role deletion: ${roleId}`,
+        success: false,
+        errorMessage: 'Business not found',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleId,
+          errorReason: 'business_not_found',
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Business not found');
+    }
+
+    // Find role by ID
+    const roleIndex = business.roles.findIndex(
+      (role: any) => role.id === roleId
+    );
+
+    if (roleIndex === -1) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: roleId,
+        resourceName: `Role deletion: ${roleId}`,
+        success: false,
+        errorMessage: 'Role not found',
+        severity: AuditSeverity.MEDIUM,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleId,
+          errorReason: 'role_not_found',
+          totalRoles: business.roles.length,
+          availableRoleIds: business.roles.map((r: any) => r.id),
+          operationDuration: Date.now() - startTime
+        }
+      });
+      throw new NotFoundException('Role not found');
+    }
+
+    const role = business.roles[roleIndex] as any;
+    const roleName = role.name;
+
+    // Get user details for activity tracking
+    let user = null;
+    if (userId) {
+      user = await this.userModel.findById(userId);
+    }
+
+    // Store role data before deletion for audit log
+    const deletedRoleData = {
+      id: role.id,
+      name: role.name,
+      metadata: role.metadata || {},
+      createdAt: role.createdAt,
+      updatedAt: role.updatedAt
+    };
+
+    // Remove role from array
+    business.roles.splice(roleIndex, 1);
+    
+    // Mark as modified and save
+    business.markModified('roles');
+    await business.save();
+
+    // Create App Activity for deletion
+    if (user) {
+      await this.appActivityService.createActivity({
+        businessId,
+        userId,
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        type: ActivityType.BUSINESS_CONFIG_UPDATED,
+        action: `Deleted role "${roleName}"`,
+        description: `Removed role with ${Object.keys(deletedRoleData.metadata).length} metadata properties`,
+        resourceType: 'role',
+        resourceId: roleId,
+        resourceName: roleName,
+        data: {
+          roleId,
+          roleName,
+          totalRolesAfter: business.roles.length,
+          deletedRoleData: {
+            metadataKeys: Object.keys(deletedRoleData.metadata),
+            metadata: deletedRoleData.metadata
+          }
+        }
+      });
+    }
+
+    // Log successful role deletion
+    await this.auditLogService.createAuditLog({
+      businessId,
+      userId,
+      action: AuditAction.BUSINESS_CONFIG_UPDATED,
+      resourceType: ResourceType.BUSINESS,
+      resourceId: roleId,
+      resourceName: `Role: ${roleName}`,
+      success: true,
+      severity: AuditSeverity.HIGH, // Higher severity for deletions
+      ipAddress,
+      userAgent,
+      oldValues: deletedRoleData,
+      metadata: {
+        roleId,
+        roleName,
+        metadataKeys: Object.keys(deletedRoleData.metadata || {}),
+        totalRolesAfter: business.roles.length,
+        operationDuration: Date.now() - startTime,
+        deletedRoleData
+      }
+    });
+
+    this.logger.log(`Successfully deleted role ${roleId} (${roleName}) for business ${businessId}`);
+
+    return {
+      success: true,
+      message: `Role '${roleName}' removed successfully`
+    };
+  } catch (error) {
+    // Log any unexpected errors
+    if (error.name !== 'NotFoundException') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.BUSINESS_CONFIG_UPDATED,
+        resourceType: ResourceType.BUSINESS,
+        resourceId: roleId,
+        resourceName: `Role deletion: ${roleId}`,
+        success: false,
+        errorMessage: 'Unexpected error during role deletion',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          roleId,
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error removing role: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Get all roles for a business
+ */
+async getRoles(businessId: string): Promise<{ roles: any[] }> {
+  try {
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    return {
+      roles: business.roles || []
+    };
+  } catch (error) {
+    this.logger.error(`Error getting roles: ${error.message}`, error.stack);
+    throw error;
+  }
 }
 
 }
