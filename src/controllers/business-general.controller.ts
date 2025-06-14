@@ -1375,4 +1375,45 @@ export class BusinessGeneralController {
       throw new InternalServerErrorException('Failed to validate route planning configuration');
     }
   }
+
+  @Get('employees/quality-roles/available')
+@ApiOperation({ 
+  summary: 'Get employees without quality roles',
+  description: 'Retrieve employees who don\'t have quality roles assigned, formatted for dropdown population'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Employees without quality roles retrieved successfully'
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async getEmployeesWithoutQualityRoles(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<{
+  employees: Array<{
+    id: string;
+    name: string;
+    email: string;
+    currentRole?: string;
+    department?: string;
+  }>;
+  total: number;
+}> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.getEmployeesWithoutQualityRoles(businessId);
+  } catch (error) {
+    this.logger.error(`Error getting employees without quality roles: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve employees without quality roles');
+  }
+}
 }

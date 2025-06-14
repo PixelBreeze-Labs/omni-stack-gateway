@@ -3293,6 +3293,81 @@ private calculatePolygonArea(coordinates: Array<{ lat: number; lng: number }>): 
   return approximateKm2;
 }
 
+
+/**
+ * Get employees without quality roles assigned (for dropdown population)
+ */
+async getEmployeesWithoutQualityRoles(
+  businessId: string
+): Promise<{
+  employees: Array<{
+    id: string;
+    name: string;
+    email: string;
+    currentRole?: string;
+    department?: string;
+  }>;
+  total: number;
+}> {
+  try {
+    this.logger.log(`Getting employees without quality roles for business ${businessId}`);
+
+    // Get all staff profiles for this business that don't have quality roles
+    const staffProfiles = await this.staffProfileModel
+      .find({
+        businessId,
+        $or: [
+          { 'metadata.qualityRole': { $exists: false } },
+          { 'metadata.qualityRole': null },
+          { 'metadata.qualityRole': '' }
+        ],
+        isDeleted: { $ne: true }
+      })
+      .select('userId name email metadata departmentName')
+      .lean();
+
+    // Get user details for staff profiles that have userId
+    const userIds = staffProfiles
+      .filter(profile => profile.userId)
+      .map(profile => profile.userId);
+
+    const users = await this.userModel
+      .find({
+        _id: { $in: userIds },
+        isActive: { $ne: false }
+      })
+      .select('_id name email')
+      .lean();
+
+    // Create lookup map for users
+    const userMap = new Map(
+      users.map(user => [user._id.toString(), user])
+    );
+
+    // Combine staff profile and user data for dropdown
+    const employees = staffProfiles
+      .filter(profile => profile.userId && userMap.has(profile.userId.toString()))
+      .map(profile => {
+        const user = userMap.get(profile.userId.toString());
+        return {
+          id: profile.userId.toString(),
+          name: user?.name || profile.name || 'Unknown',
+          email: user?.email || profile.email || '',
+          currentRole: profile.metadata?.role || 'Not specified'
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      employees,
+      total: employees.length
+    };
+  } catch (error) {
+    this.logger.error(`Error getting employees without quality roles: ${error.message}`, error.stack);
+    throw error;
+  }
+}
+
 private calculateEquipmentUtilization(team: any): number {
   // Use actual utilization data if tracked
   if (team.performanceMetrics?.equipmentUtilization) {
