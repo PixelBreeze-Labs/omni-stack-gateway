@@ -19,6 +19,7 @@ import { AppProject } from '../schemas/app-project.schema';
 import { ConstructionSite } from '../schemas/construction-site.schema';
 import { FieldTask, FieldTaskStatus } from '../schemas/field-task.schema';
 import { RouteProgress } from '../schemas/route-progress.schema';
+import { Employee } from '../schemas/employee.schema';
 import { AuditLogService } from './audit-log.service';
 import { AuditAction, AuditSeverity, ResourceType } from 'src/schemas/audit-log.schema';
 import { AppActivityService } from './app-activity.service';
@@ -61,6 +62,7 @@ export class BusinessGeneralService {
     @InjectModel(ConstructionSite.name) private constructionSiteModel: Model<ConstructionSite>,
     @InjectModel(FieldTask.name) private fieldTaskModel: Model<FieldTask>,
     @InjectModel(RouteProgress.name) private routeProgressModel: Model<RouteProgress>,
+    @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private readonly googleMapsService: GoogleMapsService,
     private readonly staffluentEmployeeService: StaffluentEmployeeService,
     private readonly staffluentTaskService: StaffluentTaskService,
@@ -3300,6 +3302,7 @@ private calculatePolygonArea(coordinates: Array<{ lat: number; lng: number }>): 
 async getEmployeesWithoutQualityRoles(
   businessId: string
 ): Promise<{
+  success: boolean;
   employees: Array<{
     id: string;
     name: string;
@@ -3308,12 +3311,43 @@ async getEmployeesWithoutQualityRoles(
     department?: string;
   }>;
   total: number;
+  message?: string;
+  error?: any;
 }> {
   try {
     this.logger.log(`Getting employees without quality roles for business ${businessId}`);
 
-    // Get all staff profiles for this business that don't have quality roles
-    const staffProfiles = await this.staffProfileModel
+    // Validate businessId
+    if (!businessId) {
+      return {
+        success: false,
+        employees: [],
+        total: 0,
+        message: 'Business ID is required',
+        error: {
+          code: 'MISSING_BUSINESS_ID',
+          details: { businessId }
+        }
+      };
+    }
+
+    // Verify business exists
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      return {
+        success: false,
+        employees: [],
+        total: 0,
+        message: 'Business not found',
+        error: {
+          code: 'BUSINESS_NOT_FOUND',
+          details: { businessId }
+        }
+      };
+    }
+
+    // Get all employees for this business that don't have quality roles
+    const employees = await this.employeeModel
       .find({
         businessId,
         $or: [
@@ -3323,13 +3357,27 @@ async getEmployeesWithoutQualityRoles(
         ],
         isDeleted: { $ne: true }
       })
-      .select('userId name email metadata departmentName')
+      .select('user_id name email metadata')
       .lean();
 
-    // Get user details for staff profiles that have userId
-    const userIds = staffProfiles
-      .filter(profile => profile.userId)
-      .map(profile => profile.userId);
+    this.logger.log(`Found ${employees.length} employees without quality roles`);
+
+    // If no employees found, return early
+    if (employees.length === 0) {
+      return {
+        success: true,
+        employees: [],
+        total: 0,
+        message: 'No employees without quality roles found'
+      };
+    }
+
+    // Get user details for employees that have user_id
+    const userIds = employees
+      .filter(employee => employee.user_id)
+      .map(employee => employee.user_id);
+
+    this.logger.log(`Getting user details for ${userIds.length} user IDs`);
 
     const users = await this.userModel
       .find({
@@ -3344,27 +3392,74 @@ async getEmployeesWithoutQualityRoles(
       users.map(user => [user._id.toString(), user])
     );
 
-    // Combine staff profile and user data for dropdown
-    const employees = staffProfiles
-      .filter(profile => profile.userId && userMap.has(profile.userId.toString()))
-      .map(profile => {
-        const user = userMap.get(profile.userId.toString());
+    // Get staff profiles for role information (optional)
+    const staffProfiles = await this.staffProfileModel
+      .find({
+        businessId,
+        userId: { $in: userIds },
+        isDeleted: { $ne: true }
+      })
+      .select('userId role departmentName')
+      .lean();
+
+    // Create lookup map for staff profiles
+    const staffProfileMap = new Map(
+      staffProfiles.map(profile => [profile.userId?.toString(), profile])
+    );
+
+    // Combine employee, user, and staff profile data for dropdown
+    const result = employees
+      .filter(employee => {
+        if (!employee.user_id) {
+          this.logger.warn(`Employee ${employee._id} has no user_id`);
+          return false;
+        }
+        if (!userMap.has(employee.user_id.toString())) {
+          this.logger.warn(`User ${employee.user_id} not found or inactive`);
+          return false;
+        }
+        return true;
+      })
+      .map(employee => {
+        const user = userMap.get(employee.user_id.toString());
+        const staffProfile = staffProfileMap.get(employee.user_id.toString());
+        
         return {
-          id: profile.userId.toString(),
-          name: user?.name || profile.name || 'Unknown',
-          email: user?.email || profile.email || '',
-          currentRole: profile.metadata?.role || 'Not specified'
+          id: employee.user_id.toString(),
+          name: user?.name || employee.name || 'Unknown',
+          email: user?.email || employee.email || '',
+          currentRole: staffProfile?.role || employee.metadata?.role || 'Not specified',
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    this.logger.log(`Successfully processed ${result.length} employees for dropdown`);
+
     return {
-      employees,
-      total: employees.length
+      success: true,
+      employees: result,
+      total: result.length,
+      message: `Found ${result.length} employees without quality roles`
     };
+
   } catch (error) {
     this.logger.error(`Error getting employees without quality roles: ${error.message}`, error.stack);
-    throw error;
+    
+    return {
+      success: false,
+      employees: [],
+      total: 0,
+      message: `Failed to get employees without quality roles: ${error.message}`,
+      error: {
+        code: 'INTERNAL_ERROR',
+        details: {
+          errorName: error.name,
+          errorMessage: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+          parameters: { businessId }
+        }
+      }
+    };
   }
 }
 
