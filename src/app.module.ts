@@ -441,6 +441,7 @@ import { ProjectMessage, ProjectMessageSchema } from './schemas/project-message.
 import { ProjectChecklistService } from './services/project-checklist.service';
 import { ProjectChecklistController } from './controllers/project-checklist.controller';
 import { ProjectChecklist, ProjectChecklistSchema } from './schemas/project-checklist.schema';
+import { ProjectChecklistItem, ProjectChecklistItemSchema } from './schemas/project-checklist.schema';
 
 @Module({
   imports: [
@@ -577,7 +578,8 @@ import { ProjectChecklist, ProjectChecklistSchema } from './schemas/project-chec
       { name: SupplyRequest.name, schema: SupplyRequestSchema },
       { name: Equipment.name, schema: EquipmentSchema },
       { name: ProjectMessage.name, schema: ProjectMessageSchema },
-      { name: ProjectChecklist.name, schema: ProjectChecklistSchema }
+      { name: ProjectChecklist.name, schema: ProjectChecklistSchema },
+      { name: ProjectChecklistItem.name, schema: ProjectChecklistItemSchema }
     ]),
     AutoAssignmentAgentModule,
     ComplianceMonitoringAgentModule,
