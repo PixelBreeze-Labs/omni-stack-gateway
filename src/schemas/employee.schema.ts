@@ -61,8 +61,8 @@ export class Employee extends Document {
     @Prop({ type: Object, default: {} })
     external_ids: Record<string, any>;
 
-    @Prop({ type: Map, of: String, default: {} })
-    metadata: Map<string, any>;
+    @Prop({ type: Map, of: MongooseSchema.Types.Mixed, default: {} })
+metadata: Map<string, any>;
 }
 
 export const EmployeeSchema = SchemaFactory.createForClass(Employee);
