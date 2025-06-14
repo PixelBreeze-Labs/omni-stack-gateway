@@ -3353,8 +3353,7 @@ async getEmployeesWithoutQualityRoles(
           id: profile.userId.toString(),
           name: user?.name || profile.name || 'Unknown',
           email: user?.email || profile.email || '',
-          currentRole: profile.metadata?.role || 'Not specified',
-          department: profile.departmentName || 'Unassigned'
+          currentRole: profile.metadata?.role || 'Not specified'
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
