@@ -174,64 +174,163 @@ export class QualityInspectionService {
   }
 
   /**
-   * Assign quality role to a user in a business
-   */
-  async assignQualityRole(
-    businessId: string, 
-    userId: string, 
-    role: string
-  ): Promise<{ success: boolean; message: string; qualityTeam: any[] }> {
-    try {
-      this.logger.log(`Assigning quality role ${role} to user ${userId} in business: ${businessId}`);
+ * Assign quality role to a user in a business
+ */
+async assignQualityRole(
+  businessId: string, 
+  userId: string, 
+  role: string
+): Promise<{ success: boolean; message: string; qualityTeam?: any[]; error?: any }> {
+  try {
+    this.logger.log(`Assigning quality role ${role} to user ${userId} in business: ${businessId}`);
 
-      // Find business
-      const business = await this.businessModel.findById(businessId);
-      if (!business) {
-        throw new NotFoundException('Business not found');
-      }
-
-      // Validate role
-      this.validateRole(role);
-
-      // Find employee by user_id and businessId
-      const employee = await this.employeeModel.findOne({ 
-        user_id: userId, 
-        businessId,
-        isDeleted: { $ne: true }
-      });
-
-      if (!employee) {
-        throw new NotFoundException('Employee not found in this business');
-      }
-
-      // Update employee's quality role in metadata
-      await this.employeeModel.updateOne(
-        { user_id: userId, businessId },
-        { 
-          $set: { 
-            'metadata.qualityRole': role,
-            'metadata.qualityAssignedDate': new Date(),
-            'metadata.qualityPermissions': this.getDefaultPermissions(role)
-          } 
-        }
-      );
-
-      this.logger.log(`Successfully assigned quality role ${role} to employee: ${employee._id}`);
-
-      // Get updated quality team
-      const qualityTeam = await this.getQualityTeam(businessId);
-      
+    // Validate inputs
+    if (!businessId || !userId || !role) {
       return {
-        success: true,
-        message: `Successfully assigned ${role} role to user`,
-        qualityTeam
+        success: false,
+        message: 'Missing required parameters: businessId, userId, and role are required',
+        error: {
+          code: 'MISSING_PARAMETERS',
+          details: {
+            businessId: !businessId ? 'required' : 'provided',
+            userId: !userId ? 'required' : 'provided',
+            role: !role ? 'required' : 'provided'
+          }
+        }
       };
-    } catch (error) {
-      this.logger.error(`Error assigning quality role: ${error.message}`, error.stack);
-      throw error;
     }
-  }
 
+    // Validate role first
+    try {
+      this.validateRole(role);
+    } catch (roleError) {
+      return {
+        success: false,
+        message: roleError.message,
+        error: {
+          code: 'INVALID_ROLE',
+          details: { providedRole: role, validRoles: [
+            'team_leader',
+            'quality_staff', 
+            'site_supervisor',
+            'project_manager',
+            'operations_manager'
+          ]}
+        }
+      };
+    }
+
+    // Find business
+    const business = await this.businessModel.findById(businessId);
+    if (!business) {
+      return {
+        success: false,
+        message: 'Business not found',
+        error: {
+          code: 'BUSINESS_NOT_FOUND',
+          details: { businessId }
+        }
+      };
+    }
+
+    // Find employee by user_id and businessId
+    const employee = await this.employeeModel.findOne({ 
+      user_id: userId, 
+      businessId,
+      isDeleted: { $ne: true }
+    });
+
+    if (!employee) {
+      return {
+        success: false,
+        message: 'Employee not found in this business',
+        error: {
+          code: 'EMPLOYEE_NOT_FOUND',
+          details: { 
+            userId, 
+            businessId,
+            searchCriteria: 'user_id + businessId + not deleted'
+          }
+        }
+      };
+    }
+
+    // Update employee's quality role in metadata
+    const updateResult = await this.employeeModel.updateOne(
+      { user_id: userId, businessId },
+      { 
+        $set: { 
+          'metadata.qualityRole': role,
+          'metadata.qualityAssignedDate': new Date(),
+          'metadata.qualityPermissions': this.getDefaultPermissions(role)
+        } 
+      }
+    );
+
+    // Check if update was successful
+    if (updateResult.matchedCount === 0) {
+      return {
+        success: false,
+        message: 'Failed to update employee - no matching record found',
+        error: {
+          code: 'UPDATE_FAILED_NO_MATCH',
+          details: { 
+            userId, 
+            businessId, 
+            updateResult 
+          }
+        }
+      };
+    }
+
+    if (updateResult.modifiedCount === 0) {
+      return {
+        success: false,
+        message: 'Employee found but no changes were made (possibly already has this role)',
+        error: {
+          code: 'UPDATE_FAILED_NO_CHANGES',
+          details: { 
+            userId, 
+            businessId, 
+            role,
+            // @ts-ignore
+            currentRole: employee.metadata?.qualityRole,
+            updateResult 
+          }
+        }
+      };
+    }
+
+    this.logger.log(`Successfully assigned quality role ${role} to employee: ${employee._id}`);
+
+    // Get updated quality team
+    const qualityTeam = await this.getQualityTeam(businessId);
+    
+    return {
+      success: true,
+      message: `Successfully assigned ${role} role to user`,
+      qualityTeam
+    };
+
+  } catch (error) {
+    this.logger.error(`Error assigning quality role: ${error.message}`, error.stack);
+    
+    // Return detailed error information
+    return {
+      success: false,
+      message: `Failed to assign quality role: ${error.message}`,
+      error: {
+        code: 'INTERNAL_ERROR',
+        details: {
+          errorName: error.name,
+          errorMessage: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+          parameters: { businessId, userId, role }
+        }
+      }
+    };
+  }
+}
   /**
    * Remove quality role from a user in a business
    */
