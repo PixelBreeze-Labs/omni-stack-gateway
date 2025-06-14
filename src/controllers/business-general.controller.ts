@@ -1416,4 +1416,181 @@ async getEmployeesWithoutQualityRoles(
     throw new InternalServerErrorException('Failed to retrieve employees without quality roles');
   }
 }
+
+@Post('roles')
+@ApiOperation({ 
+  summary: 'Create a new role',
+  description: 'Create a new role for the business'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 201, 
+  description: 'Role created successfully'
+})
+@ApiResponse({ status: 400, description: 'Bad request - Invalid data or role already exists' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business not found' })
+async createRole(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Body() roleData: {
+    name: string;
+    metadata?: any;
+  },
+  @Req() req: any
+): Promise<{ success: boolean; roleId: string; message: string }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (!roleData.name) {
+      throw new BadRequestException('Role name is required');
+    }
+
+    const business = await this.validateBusinessApiKey(businessId, apiKey);
+    const adminUserId = business.adminUserId;
+
+    return await this.businessGeneralService.createRole(
+      businessId, 
+      roleData,
+      adminUserId,
+      req
+    );
+  } catch (error) {
+    this.logger.error(`Error creating role: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to create role');
+  }
+}
+
+@Put('roles/:roleId')
+@ApiOperation({ 
+  summary: 'Update an existing role',
+  description: 'Update role information'
+})
+@ApiParam({ name: 'roleId', description: 'Role ID' })
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Role updated successfully'
+})
+@ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business or role not found' })
+async updateRole(
+  @Param('roleId') roleId: string,
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Body() updateData: {
+    name?: string;
+    metadata?: any;
+  },
+  @Req() req: any
+): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (!roleId) {
+      throw new BadRequestException('Role ID is required');
+    }
+
+    const business = await this.validateBusinessApiKey(businessId, apiKey);
+    const adminUserId = business.adminUserId;
+
+    return await this.businessGeneralService.updateRole(
+      businessId, 
+      roleId, 
+      updateData,
+      adminUserId,
+      req
+    );
+  } catch (error) {
+    this.logger.error(`Error updating role: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to update role');
+  }
+}
+
+@Delete('roles/:roleId')
+@ApiOperation({ 
+  summary: 'Remove a role',
+  description: 'Remove a role from the business'
+})
+@ApiParam({ name: 'roleId', description: 'Role ID' })
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Role removed successfully'
+})
+@ApiResponse({ status: 401, description: 'Unauthorized - Invalid API key' })
+@ApiResponse({ status: 404, description: 'Business or role not found' })
+async removeRole(
+  @Param('roleId') roleId: string,
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string,
+  @Req() req: any
+): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    if (!roleId) {
+      throw new BadRequestException('Role ID is required');
+    }
+
+    const business = await this.validateBusinessApiKey(businessId, apiKey);
+    const adminUserId = business.adminUserId;
+
+    return await this.businessGeneralService.removeRole(
+      businessId, 
+      roleId,
+      adminUserId,
+      req
+    );
+  } catch (error) {
+    this.logger.error(`Error removing role: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to remove role');
+  }
+}
+
+@Get('roles')
+@ApiOperation({ 
+  summary: 'Get all roles',
+  description: 'Retrieve all roles for the business'
+})
+@ApiQuery({ name: 'businessId', required: true, description: 'Business ID' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Roles retrieved successfully'
+})
+async getRoles(
+  @Query('businessId') businessId: string,
+  @Headers('business-x-api-key') apiKey: string
+): Promise<{ roles: any[] }> {
+  try {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+
+    await this.validateBusinessApiKey(businessId, apiKey);
+    return await this.businessGeneralService.getRoles(businessId);
+  } catch (error) {
+    this.logger.error(`Error getting roles: ${error.message}`, error.stack);
+    if (error instanceof UnauthorizedException || error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+    throw new InternalServerErrorException('Failed to retrieve roles');
+  }
+}
 }
