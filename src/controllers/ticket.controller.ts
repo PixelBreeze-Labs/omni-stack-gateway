@@ -249,7 +249,7 @@ export class TicketController {
       const adminUserId = business.adminUserId; // Extract admin user ID
       
       // 🎯 PASS ADMIN USER ID TO SERVICE
-      return await this.ticketService.addMessage(
+      const result = await this.ticketService.addMessage(
         ticketId,
         addMessageDto,
         'business',
@@ -258,6 +258,13 @@ export class TicketController {
         adminUserId, // Pass admin user ID for activity tracking
         req // Pass request for IP/UserAgent
       );
+      
+      // Return both ticket and notification debugging info
+      return {
+        // @ts-ignore
+        ticket: result.ticket,
+        notificationDebug: result.notificationResult // This will show OneSignal debug info
+      };
     } catch (error) {
       this.logger.error(`Error adding message to ticket: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException) {
@@ -423,13 +430,20 @@ export class TicketController {
     try {
       const clientId = req.client.id;
       // ✅ NO USER ID - Support team actions don't get audit logged
-      return await this.ticketService.addMessage(
+      const result = await this.ticketService.addMessage(
         ticketId,
         addMessageDto,
         'support',
         undefined,
         clientId
       );
+      
+      // Return both ticket and notification debugging info
+      return {
+        // @ts-ignore
+        ticket: result.ticket,
+        notificationDebug: result.notificationResult // This will show OneSignal debug info
+      };
     } catch (error) {
       this.logger.error(`Error adding support message: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to add message');
