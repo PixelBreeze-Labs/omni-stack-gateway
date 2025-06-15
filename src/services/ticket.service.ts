@@ -264,7 +264,7 @@ private async sendTicketUpdateNotification(
           } 
         });
 
-        const oneSignalResult = await this.oneSignalService.sendToBusinessUsers(
+        const oneSignalResult = await this.oneSignalService.sendToBusinessUsersWeb(
           ticket.businessId,
           title,
           body,

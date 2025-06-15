@@ -224,7 +224,7 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
     /**
      * Send notification to specific business users
      */
-    async sendToBusinessUsers(
+    async sendToBusinessUsersWeb(
         businessId: string,
         title: string,
         message: string,
@@ -277,7 +277,6 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
                 type: 'business_notification',
                 ...(options?.data || {}),
             },
-            url: options?.url,
             web_url: options?.url,
             priority: options?.priority || 5,
             buttons: options?.buttons,
@@ -297,7 +296,7 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
         assignedBy: string,
         dueDate?: Date
     ): Promise<any> {
-        return this.sendToBusinessUsers(
+        return this.sendToBusinessUsersWeb(
             businessId,
             '📋 New Task Assigned',
             `You've been assigned "${taskName}" in ${projectName}`,
@@ -331,7 +330,7 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
     ): Promise<any> {
         const priorityMap = { low: 3, medium: 5, high: 7, urgent: 10 };
         
-        return this.sendToBusinessUsers(
+        return this.sendToBusinessUsersWeb(
             businessId,
             '🔍 Quality Inspection Required',
             `Inspection needed for ${projectName} at ${location}`,
@@ -361,7 +360,7 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
         message: string,
         location?: string
     ): Promise<any> {
-        return this.sendToBusinessUsers(
+        return this.sendToBusinessUsersWeb(
             businessId,
             `🚨 EMERGENCY: ${title}`,
             message,
@@ -393,7 +392,7 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
         const emoji = rating >= 4 ? '😊' : rating >= 3 ? '😐' : '😞';
         const priority = rating <= 2 ? 8 : 5;
 
-        return this.sendToBusinessUsers(
+        return this.sendToBusinessUsersWeb(
             businessId,
             `${emoji} New Client Feedback`,
             `${clientName} left ${feedbackType} feedback (${rating}/5 stars)${projectName ? ` for ${projectName}` : ''}`,
@@ -424,7 +423,7 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
         currentHours: number,
         thresholdHours: number = 8
     ): Promise<any> {
-        return this.sendToBusinessUsers(
+        return this.sendToBusinessUsersWeb(
             businessId,
             '⏰ Overtime Alert',
             `You've worked ${currentHours} hours today. Consider taking a break.`,
@@ -456,7 +455,7 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
             // Business-specific test
             if (typeof target === 'object' && !Array.isArray(target) && 'businessId' in target) {
                 const businessTarget = target as { businessId: string; userIds?: string[] };
-                return this.sendToBusinessUsers(
+                return this.sendToBusinessUsersWeb(
                     businessTarget.businessId,
                     title,
                     message,
