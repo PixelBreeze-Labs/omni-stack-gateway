@@ -837,46 +837,8 @@ export class AuthService {
         }
     ): Promise<void> {
         try {
-            // Don't fail login if notifications fail
-            if (!this.staffluentOneSignalService.isConfigured()) {
-                this.logger.warn('OneSignal not configured - skipping notification registration');
-                return;
-            }
-
-            // Get user and employee data for additional context
-            const user = await this.userModel.findById(userId);
-            const employee = platform === 'mobile' ? await this.employeeModel.findOne({user_id: userId}) : null;
-            
-            // Convert 'mobile' to specific platform
-            let actualPlatform: 'web' | 'ios' | 'android' = 'web';
-            if (platform === 'mobile') {
-                // Determine iOS vs Android from device info
-                if (deviceInfo?.deviceType?.toLowerCase().includes('ios') || 
-                    deviceInfo?.osVersion?.toLowerCase().includes('ios')) {
-                    actualPlatform = 'ios';
-                } else {
-                    actualPlatform = 'android'; // Default to Android for mobile
-                }
-            } else {
-                actualPlatform = 'web';
-            }
-            // Register device with OneSignal
-            await this.staffluentOneSignalService.registerStaffluentDevice({
-                userId,
-                businessId,
-                platform: actualPlatform,
-                userRole,
-                department: employee?.metadata?.get('department'),
-                teams: employee?.metadata?.get('teams')?.split(',') || [],
-                isActive: true,
-                // Add device info for mobile
-                ...(deviceInfo && {
-                    deviceToken: deviceInfo.deviceId,
-                    // Store additional device info in tags via the service
-                })
-            });
-
-            this.logger.log(`Successfully registered ${platform} notifications for user ${userId} in business ${businessId}`);
+            this.logger.log('Notification registration skipped - clients will handle permission first');
+            return; // Skip ALL registration during login
         } catch (error) {
             // Log error but don't fail login
             this.logger.error(`Failed to register notifications for user ${userId}: ${error.message}`);
