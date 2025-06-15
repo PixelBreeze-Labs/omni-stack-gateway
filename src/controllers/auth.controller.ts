@@ -104,11 +104,6 @@ async registerNotifications(
         return {
             success: true,
             message: 'Notifications registered successfully',
-            data: {
-                playerId: result.id, // 🔑 Return the actual player ID from OneSignal
-                external_user_id: result.external_user_id,
-                wasCreated: !body.playerId || result.id !== body.playerId // Tell frontend if ID changed
-            }
         };
     } catch (error) {
         return {
