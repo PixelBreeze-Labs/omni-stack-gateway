@@ -119,7 +119,7 @@ export class StaffluentOneSignalService {
             timestamp: new Date().toISOString(),
             step: '',
             external_user_id: '',
-            oneSignalPlayerId: '',
+            oneSignalId: '',
             platform: '',
             tags: {},
             updatePayload: {},
@@ -147,107 +147,110 @@ export class StaffluentOneSignalService {
             debugInfo.step = 'Data Preparation';
             const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
             debugInfo.external_user_id = external_user_id;
-            debugInfo.oneSignalPlayerId = deviceData.playerId || 'none';
+            debugInfo.oneSignalId = deviceData.playerId; // This is actually the OneSignal ID
             debugInfo.platform = deviceData.platform;
     
             const tags = {
                 businessId: deviceData.businessId,
-                userId: deviceData.userId, // ADDED: Include userId in tags
+                userId: deviceData.userId,
                 userRole: deviceData.userRole || 'business_staff',
                 isActive: deviceData.isActive !== false ? 'true' : 'false',
-                platform: deviceData.platform, // ADDED: Include platform in tags
+                platform: deviceData.platform,
             };
             debugInfo.tags = tags;
     
             debugInfo.logs.push(`External User ID: ${external_user_id}`);
-            debugInfo.logs.push(`OneSignal Player ID: ${deviceData.playerId}`);
+            debugInfo.logs.push(`OneSignal ID: ${deviceData.playerId}`);
             debugInfo.logs.push(`Platform: ${deviceData.platform}`);
             debugInfo.logs.push(`Tags: ${JSON.stringify(tags)}`);
     
-            // Step 3: Update player with external ID
-            debugInfo.step = 'Player Update with External ID';
+            // Step 3: Update user with external ID using Users API
+            debugInfo.step = 'User Update with External ID (Users API)';
             
             if (deviceData.playerId) {
-                debugInfo.logs.push(`Attempting to update player: ${deviceData.playerId}`);
+                debugInfo.logs.push(`Attempting to update OneSignal user: ${deviceData.playerId}`);
                 
                 try {
-                    // FIXED: Ensure external_user_id is properly set
+                    // FIXED: Use the Users API instead of Players API
                     const updatePayload = {
-                        app_id: this.appId,
-                        tags,
-                        external_user_id, // This sets the External ID in dashboard
+                        properties: {
+                            tags,
+                        },
+                        identity: {
+                            external_id: external_user_id, // Set external ID
+                        }
                     };
                     debugInfo.updatePayload = updatePayload;
                     debugInfo.logs.push(`Update payload: ${JSON.stringify(updatePayload, null, 2)}`);
                     
-                    // Make the API call to update player
+                    // Make the API call to update user using Users API
                     const response = await lastValueFrom(
-                        this.httpService.put(`${this.playersUrl}/${deviceData.playerId}`, updatePayload, {
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Basic ${this.apiKey}`,
-                            },
-                            timeout: 10000, // 10 second timeout
-                        }),
+                        this.httpService.patch(
+                            `https://onesignal.com/api/v1/apps/${this.appId}/users/${deviceData.playerId}`,
+                            updatePayload,
+                            {
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Basic ${this.apiKey}`,
+                                },
+                                timeout: 10000,
+                            }
+                        )
                     );
     
                     debugInfo.apiResponse = response.data;
-                    debugInfo.logs.push('✅ OneSignal update successful');
+                    debugInfo.logs.push('✅ OneSignal Users API update successful');
                     debugInfo.logs.push(`Response: ${JSON.stringify(response.data)}`);
                     
-                    // ADDED: Verify external ID was set by checking the response
-                    if (response.data.success === true || response.data.success === false) {
-                        if (response.data.success === false) {
-                            debugInfo.logs.push('⚠️ OneSignal reported success=false, but this might be normal');
-                        }
-                    } else {
-                        debugInfo.logs.push('✅ OneSignal update confirmed successful');
-                    }
-                    
-                    // Step 4: ADDED - Verify external ID was set by retrieving player data
-                    debugInfo.step = 'Verification - Get Player Data';
+                    // Step 4: Verify external ID was set
+                    debugInfo.step = 'Verification - Get User Data';
                     try {
                         const verifyResponse = await lastValueFrom(
-                            this.httpService.get(`${this.playersUrl}/${deviceData.playerId}?app_id=${this.appId}`, {
-                                headers: {
-                                    'Authorization': `Basic ${this.apiKey}`,
-                                },
-                                timeout: 5000,
-                            }),
+                            this.httpService.get(
+                                `https://onesignal.com/api/v1/apps/${this.appId}/users/${deviceData.playerId}`,
+                                {
+                                    headers: {
+                                        'Authorization': `Basic ${this.apiKey}`,
+                                    },
+                                    timeout: 5000,
+                                }
+                            )
                         );
                         
-                        const playerData = verifyResponse.data;
-                        debugInfo.logs.push(`Player verification data: ${JSON.stringify(playerData)}`);
+                        const userData = verifyResponse.data;
+                        debugInfo.logs.push(`User verification data: ${JSON.stringify(userData)}`);
                         
-                        if (playerData.external_user_id === external_user_id) {
+                        // Check if external ID was set correctly
+                        const userExternalId = userData.identity?.external_id;
+                        if (userExternalId === external_user_id) {
                             debugInfo.logs.push('✅ External ID successfully set and verified!');
                             debugInfo.success = true;
-                            debugInfo.message = 'OneSignal player updated and external ID verified';
+                            debugInfo.message = 'OneSignal user updated and external ID verified';
                         } else {
-                            debugInfo.logs.push(`⚠️ External ID mismatch. Expected: ${external_user_id}, Got: ${playerData.external_user_id}`);
+                            debugInfo.logs.push(`⚠️ External ID mismatch. Expected: ${external_user_id}, Got: ${userExternalId}`);
                             debugInfo.success = true; // Still consider it success since update worked
-                            debugInfo.message = 'OneSignal player updated but external ID verification unclear';
+                            debugInfo.message = 'OneSignal user updated but external ID verification unclear';
                         }
                     } catch (verifyError) {
                         debugInfo.logs.push(`⚠️ Could not verify external ID: ${verifyError.message}`);
                         debugInfo.success = true; // Still success since main update worked
-                        debugInfo.message = 'OneSignal player updated (verification failed)';
+                        debugInfo.message = 'OneSignal user updated (verification failed)';
                     }
                     
-                    this.logger.log(`OneSignal player updated successfully: ${deviceData.playerId} with external_user_id: ${external_user_id}`);
+                    this.logger.log(`OneSignal user updated successfully: ${deviceData.playerId} with external_user_id: ${external_user_id}`);
                     
                     return {
                         success: true,
                         message: debugInfo.message,
-                        playerId: deviceData.playerId,
+                        oneSignalId: deviceData.playerId,
                         external_user_id: external_user_id,
                         debugInfo,
                         oneSignalResponse: response.data,
-                        note: `Check OneSignal dashboard for player ${deviceData.playerId} with external ID: ${external_user_id}`
+                        note: `Check OneSignal dashboard for user ${deviceData.playerId} with external ID: ${external_user_id}`
                     };
     
                 } catch (updateError) {
-                    debugInfo.step = 'Player Update Error';
+                    debugInfo.step = 'User Update Error';
                     debugInfo.success = false;
                     
                     const errorData = updateError.response?.data;
@@ -260,15 +263,13 @@ export class StaffluentOneSignalService {
                         fullError: errorData
                     };
                     
-                    debugInfo.logs.push(`❌ OneSignal update failed with status: ${errorStatus}`);
+                    debugInfo.logs.push(`❌ OneSignal Users API update failed with status: ${errorStatus}`);
                     debugInfo.logs.push(`Error message: ${errorMessage}`);
                     debugInfo.logs.push(`Full error: ${JSON.stringify(errorData)}`);
                     
-                    // ADDED: Handle specific error cases
                     if (errorStatus === 404) {
-                        debugInfo.logs.push('🚨 404 Error: OneSignal Player ID not found in your app');
-                        debugInfo.logs.push('This means the OneSignal ID belongs to a different app or is invalid');
-                        debugInfo.message = 'OneSignal Player ID not found - check if it belongs to the correct app';
+                        debugInfo.logs.push('🚨 404 Error: OneSignal User ID not found in your app');
+                        debugInfo.message = 'OneSignal User ID not found - check if it belongs to the correct app';
                     } else if (errorStatus === 400) {
                         debugInfo.logs.push('🚨 400 Error: Bad request - check payload format');
                         debugInfo.message = 'OneSignal API rejected the request - check data format';
@@ -276,8 +277,8 @@ export class StaffluentOneSignalService {
                         debugInfo.message = `OneSignal update failed: ${errorMessage}`;
                     }
                     
-                    this.logger.error(`Failed to update OneSignal player ${deviceData.playerId}: ${errorMessage}`, {
-                        playerId: deviceData.playerId,
+                    this.logger.error(`Failed to update OneSignal user ${deviceData.playerId}: ${errorMessage}`, {
+                        oneSignalId: deviceData.playerId,
                         external_user_id,
                         errorStatus,
                         errorData
@@ -287,29 +288,24 @@ export class StaffluentOneSignalService {
                         success: false,
                         message: debugInfo.message,
                         error: errorMessage,
-                        playerId: deviceData.playerId,
+                        oneSignalId: deviceData.playerId,
                         external_user_id: external_user_id,
-                        debugInfo,
-                        troubleshooting: {
-                            playerIdCheck: `Verify that OneSignal ID ${deviceData.playerId} exists in your OneSignal app ${this.appId}`,
-                            appIdCheck: 'Verify that the OneSignal App ID matches the one where this player was created',
-                            permissionCheck: 'Verify that your OneSignal API key has permission to update players'
-                        }
+                        debugInfo
                     };
                 }
             }
     
-            // Step 4: No player ID provided
-            debugInfo.step = 'No Player ID';
+            // No OneSignal ID provided
+            debugInfo.step = 'No OneSignal ID';
             debugInfo.success = false;
-            debugInfo.error = 'No OneSignal player ID provided';
-            debugInfo.message = 'OneSignal player ID is required for registration';
-            debugInfo.logs.push('❌ No OneSignal player ID provided');
+            debugInfo.error = 'No OneSignal ID provided';
+            debugInfo.message = 'OneSignal ID is required for registration';
+            debugInfo.logs.push('❌ No OneSignal ID provided');
             
             return {
                 success: false,
-                message: 'OneSignal player ID is required',
-                error: 'No player ID provided',
+                message: 'OneSignal ID is required',
+                error: 'No OneSignal ID provided',
                 debugInfo
             };
     
@@ -321,7 +317,7 @@ export class StaffluentOneSignalService {
     
             this.logger.error(`OneSignal registration failed: ${error.message}`, {
                 external_user_id: debugInfo.external_user_id,
-                playerId: deviceData.playerId,
+                oneSignalId: deviceData.playerId,
                 error: error.stack
             });
             
