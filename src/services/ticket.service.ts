@@ -1083,10 +1083,7 @@ async addMessage(
   clientId?: string,
   userId?: string,
   req?: any
-): Promise<{
-  ticket: Ticket;
-  notificationResult?: any;
-}> {
+): Promise<Ticket> {
   const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
   const userAgent = req?.get('User-Agent');
   const startTime = Date.now();
@@ -1203,10 +1200,7 @@ async addMessage(
     this.logger.log(`Message added to ticket: ${ticketId} by ${sender}`);
     
     // Return both ticket and notification debug info
-    return {
-      ticket,
-      notificationResult
-    };
+    return ticket;
 
   } catch (error) {
     // Log unexpected errors only for business messages

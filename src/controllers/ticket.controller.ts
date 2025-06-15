@@ -249,7 +249,7 @@ export class TicketController {
       const adminUserId = business.adminUserId; // Extract admin user ID
       
       // 🎯 PASS ADMIN USER ID TO SERVICE
-      const result = await this.ticketService.addMessage(
+      return await this.ticketService.addMessage(
         ticketId,
         addMessageDto,
         'business',
@@ -258,13 +258,6 @@ export class TicketController {
         adminUserId, // Pass admin user ID for activity tracking
         req // Pass request for IP/UserAgent
       );
-      
-      // Return both ticket and notification debugging info
-      return {
-        // @ts-ignore
-        ticket: result.ticket,
-        notificationDebug: result.notificationResult // This will show OneSignal debug info
-      };
     } catch (error) {
       this.logger.error(`Error adding message to ticket: ${error.message}`, error.stack);
       if (error instanceof UnauthorizedException) {
