@@ -20,6 +20,7 @@ import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
 import { generateBusinessApiKey } from 'src/utils/business-api-key.utils';
 import { AuditLogService } from './audit-log.service';
 import { AuditAction, AuditSeverity, ResourceType } from 'src/schemas/audit-log.schema';
+import { StaffluentOneSignalService } from './staffluent-onesignal.service';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +33,7 @@ export class AuthService {
         private sidebarFeatureService: SidebarFeatureService,
         private venueBoostService: VenueBoostService,
         private auditLogService: AuditLogService,
+        private staffluentOneSignalService: StaffluentOneSignalService,
         @InjectModel(Store.name) private storeModel: Model<Store>,
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(Business.name) private businessModel: Model<Business>,
@@ -164,7 +166,6 @@ export class AuthService {
             throw new UnauthorizedException('Login failed');
         }
     }
-
     async staffluentsBusinessAdminLogin(loginDto: StaffluentsBusinessAdminLoginDto, req?: any) {
         const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
         const userAgent = req?.get('User-Agent');
@@ -227,6 +228,9 @@ export class AuthService {
                 business._id.toString(),
                 user._id.toString()
             );
+
+            // 🔔 REGISTER FOR NOTIFICATIONS (ADMIN WEB)
+            await this.registerForNotifications(user._id.toString(), business._id.toString(), 'web', 'business_admin');
 
             // Get VenueBoost authentication data if available
             let auth_response = null;
@@ -393,6 +397,9 @@ export class AuthService {
                 employee.metadata?.get('role') ||
                 'business_staff';
 
+            // 🔔 REGISTER FOR NOTIFICATIONS (STAFF WEB)
+            await this.registerForNotifications(user._id.toString(), business._id.toString(), 'web', role);
+
             // Get features filtered by role
             const featuresInfo = await this.getBusinessFeaturesForLogin(
                 business._id.toString(),
@@ -449,12 +456,6 @@ export class AuthService {
         }
     }
 
-   /**
-     * Login for mobile staff users
-     */
-    /**
-     * Login for mobile staff users
-     */
     async staffluentMobileLogin(loginDto: {
         email: string;
         password: string;
@@ -605,6 +606,15 @@ export class AuthService {
                 user._id.toString()
             );
 
+            // 🔔 REGISTER FOR NOTIFICATIONS (STAFF MOBILE)
+            await this.registerForNotifications(user._id.toString(), business._id.toString(), 'mobile', role, {
+                deviceId: loginDto.device_id,
+                deviceType: loginDto.device_type,
+                deviceModel: loginDto.device_model,
+                osVersion: loginDto.os_version,
+                appVersion: loginDto.app_version
+            });
+
             // Log additional mobile-specific audit info
             await this.auditLogService.createAuditLog({
                 businessId: business._id.toString(),
@@ -664,9 +674,7 @@ export class AuthService {
             throw new UnauthorizedException(error);
         }
     }
-    /**
-     * Login for client users
-     */
+
     async staffluentsClientLogin(loginDto: StaffluentsClientLoginDto, req?: any) {
         const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
         const userAgent = req?.get('User-Agent');
@@ -738,6 +746,9 @@ export class AuthService {
                 user._id.toString()
             );
 
+            // 🔔 REGISTER FOR NOTIFICATIONS (CLIENT WEB)
+            await this.registerForNotifications(user._id.toString(), businessId, 'web', 'app_client');
+
             // Get VenueBoost connection data
             let clientConnectionData = null;
             try {
@@ -806,6 +817,69 @@ export class AuthService {
                 throw error;
             }
             throw new UnauthorizedException('Client login failed');
+        }
+    }
+
+    /**
+     * 🔔 Register user for OneSignal notifications
+     */
+    private async registerForNotifications(
+        userId: string,
+        businessId: string,
+        platform: 'web' | 'mobile',
+        userRole: string,
+        deviceInfo?: {
+            deviceId?: string;
+            deviceType?: string;
+            deviceModel?: string;
+            osVersion?: string;
+            appVersion?: string;
+        }
+    ): Promise<void> {
+        try {
+            // Don't fail login if notifications fail
+            if (!this.staffluentOneSignalService.isConfigured()) {
+                this.logger.warn('OneSignal not configured - skipping notification registration');
+                return;
+            }
+
+            // Get user and employee data for additional context
+            const user = await this.userModel.findById(userId);
+            const employee = platform === 'mobile' ? await this.employeeModel.findOne({user_id: userId}) : null;
+            
+            // Convert 'mobile' to specific platform
+            let actualPlatform: 'web' | 'ios' | 'android' = 'web';
+            if (platform === 'mobile') {
+                // Determine iOS vs Android from device info
+                if (deviceInfo?.deviceType?.toLowerCase().includes('ios') || 
+                    deviceInfo?.osVersion?.toLowerCase().includes('ios')) {
+                    actualPlatform = 'ios';
+                } else {
+                    actualPlatform = 'android'; // Default to Android for mobile
+                }
+            } else {
+                actualPlatform = 'web';
+            }
+            // Register device with OneSignal
+            await this.staffluentOneSignalService.registerStaffluentDevice({
+                userId,
+                businessId,
+                platform: actualPlatform,
+                userRole,
+                department: employee?.metadata?.get('department'),
+                teams: employee?.metadata?.get('teams')?.split(',') || [],
+                isActive: true,
+                // Add device info for mobile
+                ...(deviceInfo && {
+                    deviceToken: deviceInfo.deviceId,
+                    // Store additional device info in tags via the service
+                })
+            });
+
+            this.logger.log(`Successfully registered ${platform} notifications for user ${userId} in business ${businessId}`);
+        } catch (error) {
+            // Log error but don't fail login
+            this.logger.error(`Failed to register notifications for user ${userId}: ${error.message}`);
         }
     }
 
