@@ -99,144 +99,272 @@ export class TicketService {
   }
 
   /**
-   * Send notification to business when support updates ticket
-   */
-  private async sendTicketUpdateNotification(
-    ticket: Ticket,
-    updateType: 'status_changed' | 'message_added' | 'assignment_changed',
-    additionalData?: any
-  ): Promise<void> {
+ * Send notification to business when support updates ticket
+ */
+private async sendTicketUpdateNotification(
+  ticket: Ticket,
+  updateType: 'status_changed' | 'message_added' | 'assignment_changed',
+  additionalData?: any
+): Promise<{
+  success: boolean;
+  debugInfo?: any;
+  oneSignalError?: string;
+  oneSignalDetails?: any;
+  emailResult?: any;
+}> {
+  const debugInfo: any = {
+    timestamp: new Date().toISOString(),
+    ticketId: ticket._id.toString(),
+    businessId: ticket.businessId,
+    updateType,
+    steps: []
+  };
+
+  try {
+    // Step 1: Configuration check
+    const configCheck = {
+      oneSignalConfigured: this.oneSignalService.isConfigured(),
+      oneSignalStatus: this.oneSignalService.getStatus(),
+      environmentVars: {
+        ONESIGNAL_STAFFLUENT_APP_ID: process.env.ONESIGNAL_STAFFLUENT_APP_ID ? 'SET' : 'MISSING',
+        ONESIGNAL_STAFFLUENT_API_KEY: process.env.ONESIGNAL_STAFFLUENT_API_KEY ? 'SET' : 'MISSING'
+      }
+    };
+    debugInfo.steps.push({ step: 'config_check', result: configCheck });
+
+    // Step 2: Get business details
+    const business = await this.businessModel.findById(ticket.businessId);
+    if (!business) {
+      debugInfo.steps.push({ step: 'business_lookup', result: 'FAILED - Business not found' });
+      return { success: false, debugInfo, oneSignalError: 'Business not found' };
+    }
+    debugInfo.steps.push({ step: 'business_lookup', result: 'SUCCESS', businessName: business.name });
+
+    // Step 3: Get admin user
+    const adminUser = await this.userModel.findById(business.adminUserId);
+    if (!adminUser) {
+      debugInfo.steps.push({ step: 'admin_user_lookup', result: 'FAILED - Admin user not found' });
+      return { success: false, debugInfo, oneSignalError: 'Admin user not found' };
+    }
+
+    const adminUserInfo = {
+      id: adminUser._id.toString(),
+      email: adminUser.email,
+      hasMetadata: !!adminUser.metadata,
+      metadataKeys: adminUser.metadata ? Array.from(adminUser.metadata.keys()) : [],
+      emailNotificationsEnabled: adminUser.metadata?.get('emailNotificationsEnabled') !== 'false'
+    };
+    debugInfo.steps.push({ step: 'admin_user_lookup', result: 'SUCCESS', adminUser: adminUserInfo });
+
+    // Step 4: Prepare notification content
+    let title: string;
+    let body: string;
+    let priority: NotificationPriority = NotificationPriority.MEDIUM;
+
+    switch (updateType) {
+      case 'status_changed':
+        title = `Ticket Status Updated`;
+        body = `Your support ticket "${ticket.title}" status has been changed to ${ticket.status}.`;
+        priority = ticket.status === 'resolved' ? NotificationPriority.HIGH : NotificationPriority.MEDIUM;
+        break;
+      
+      case 'message_added':
+        title = `New Support Message`;
+        body = `Staffluent support has replied to your ticket "${ticket.title}".`;
+        priority = NotificationPriority.HIGH;
+        break;
+      
+      case 'assignment_changed':
+        title = `Ticket Assignment Updated`;
+        body = `Your support ticket "${ticket.title}" has been assigned to ${ticket.assignedTo}.`;
+        priority = NotificationPriority.LOW;
+        break;
+      
+      default:
+        title = `Ticket Updated`;
+        body = `Your support ticket "${ticket.title}" has been updated.`;
+    }
+
+    const actionData = {
+      type: 'support_ticket',
+      entityId: ticket._id.toString(),
+      entityType: 'ticket',
+      url: `https://app.staffluent.co/help-center`
+    };
+
+    const notificationContent = { title, body, priority, actionData };
+    debugInfo.steps.push({ step: 'notification_content_prepared', result: notificationContent });
+
+    // Step 5: Create database notification
+    let dbNotificationResult;
     try {
-      // Get business details
-      const business = await this.businessModel.findById(ticket.businessId);
-      if (!business) {
-        this.logger.warn(`Business not found for ticket notification: ${ticket.businessId}`);
-        return;
+      const emailEnabled = adminUser.metadata?.get('emailNotificationsEnabled') !== 'false';
+      const userChannels: DeliveryChannel[] = [DeliveryChannel.APP];
+      
+      if (emailEnabled) {
+        userChannels.push(DeliveryChannel.EMAIL);
       }
 
-      // Get business admin user only
-      const adminUser = await this.userModel.findById(business.adminUserId);
+      const notification = await this.notificationService.createNotification({
+        businessId: ticket.businessId,
+        userId: adminUser._id.toString(),
+        title,
+        body,
+        type: NotificationType.TICKET,
+        priority,
+        channels: [DeliveryChannel.APP],
+        reference: {
+          type: 'support_ticket',
+          id: ticket._id.toString()
+        },
+        actionData
+      });
 
-      if (!adminUser) {
-        this.logger.warn(`Admin user not found for business: ${ticket.businessId}`);
-        return;
-      }
-
-      // Prepare notification content based on update type
-      let title: string;
-      let body: string;
-      let priority: NotificationPriority = NotificationPriority.MEDIUM;
-
-      switch (updateType) {
-        case 'status_changed':
-          title = `Ticket Status Updated`;
-          body = `Your support ticket "${ticket.title}" status has been changed to ${ticket.status}.`;
-          priority = ticket.status === 'resolved' ? NotificationPriority.HIGH : NotificationPriority.MEDIUM;
-          break;
-        
-        case 'message_added':
-          title = `New Support Message`;
-          body = `Staffluent support has replied to your ticket "${ticket.title}".`;
-          priority = NotificationPriority.HIGH;
-          break;
-        
-        case 'assignment_changed':
-          title = `Ticket Assignment Updated`;
-          body = `Your support ticket "${ticket.title}" has been assigned to ${ticket.assignedTo}.`;
-          priority = NotificationPriority.LOW;
-          break;
-        
-        default:
-          title = `Ticket Updated`;
-          body = `Your support ticket "${ticket.title}" has been updated.`;
-      }
-
-      // Create action data for deep linking
-      const actionData = {
-        type: 'support_ticket',
-        entityId: ticket._id.toString(),
-        entityType: 'ticket',
-        url: `https://app.staffluent.co/help-center`
+      dbNotificationResult = {
+        success: true,
+        notificationId: notification._id.toString(),
+        channels: userChannels
       };
+      debugInfo.steps.push({ step: 'database_notification_created', result: dbNotificationResult });
+    } catch (dbError: any) {
+      dbNotificationResult = { success: false, error: dbError.message };
+      debugInfo.steps.push({ step: 'database_notification_failed', result: dbNotificationResult });
+      return { success: false, debugInfo, oneSignalError: `DB notification failed: ${dbError.message}` };
+    }
 
-      // Send notification to admin user based on their preferences
-      try {
-        // Check admin user's individual notification preferences
-        const emailEnabled = adminUser.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
-        // Determine channels for admin user
-        const userChannels: DeliveryChannel[] = [DeliveryChannel.APP]; // Always send in-app notification
-        
-        if (emailEnabled) {
-          userChannels.push(DeliveryChannel.EMAIL);
-        }
+    // Step 6: Send OneSignal notification
+    let oneSignalError: string | undefined;
+    let oneSignalDetails: any;
 
-        // Send in-app notification (always sent)
-        const notification = await this.notificationService.createNotification({
-          businessId: ticket.businessId,
-          userId: adminUser._id.toString(),
-          title,
-          body,
-          type: NotificationType.TICKET,
-          priority,
-          channels: [DeliveryChannel.APP],
-          reference: {
+    try {
+      if (this.oneSignalService.isConfigured()) {
+        const oneSignalPayload = {
+          userIds: [adminUser._id.toString()],
+          data: {
             type: 'support_ticket',
-            id: ticket._id.toString()
+            ticketId: ticket._id.toString(),
+            updateType,
+            ...actionData
           },
-          actionData
+          url: actionData.url,
+          priority: this.mapNotificationPriorityToOneSignal(priority),
+          buttons: [
+            { id: 'view_ticket', text: 'View Ticket' },
+            { id: 'reply', text: 'Reply' }
+          ]
+        };
+
+        debugInfo.steps.push({ 
+          step: 'onesignal_payload_prepared', 
+          result: { 
+            businessId: ticket.businessId,
+            title, 
+            body, 
+            payload: oneSignalPayload 
+          } 
         });
 
-        // Send OneSignal notification
-        try {
-          if (this.oneSignalService.isConfigured()) {
-            await this.oneSignalService.sendToBusinessUsers(
-              ticket.businessId,
-              title,
-              body,
-              {
-            userIds: [adminUser._id.toString()],
-            data: {
-              type: 'support_ticket',
-              ticketId: ticket._id.toString(),
-              updateType,
-              ...actionData
-            },
-            url: actionData.url,
-            priority: this.mapNotificationPriorityToOneSignal(priority),
-            buttons: [
-              { id: 'view_ticket', text: 'View Ticket' },
-              { id: 'reply', text: 'Reply' }
-            ]
-          }
+        const oneSignalResult = await this.oneSignalService.sendToBusinessUsers(
+          ticket.businessId,
+          title,
+          body,
+          oneSignalPayload
         );
-        this.logger.log(`OneSignal notification sent for ticket ${ticket._id}`);
+
+        oneSignalDetails = oneSignalResult;
+        debugInfo.steps.push({ 
+          step: 'onesignal_notification_sent', 
+          result: { success: true, oneSignalResult } 
+        });
+        
+        this.logger.log(`OneSignal notification sent for ticket ${ticket._id}: ${oneSignalResult?.id}`);
       } else {
+        oneSignalError = 'OneSignal not configured - missing APP_ID or API_KEY';
+        debugInfo.steps.push({ 
+          step: 'onesignal_skipped', 
+          result: { reason: oneSignalError, config: configCheck } 
+        });
         this.logger.warn('OneSignal not configured - skipping push notification');
       }
-    } catch (oneSignalError) {
-      this.logger.error(`OneSignal notification failed for ticket ${ticket._id}: ${oneSignalError.message}`);
-      // Don't throw - notification was already created in database
-    }
-
-        // Send email notification if admin user has email notifications enabled
-        if (emailEnabled && adminUser.email) {
-          await this.sendTicketUpdateEmail(adminUser, business, ticket, updateType, additionalData);
+    } catch (oneSignalErr: any) {
+      oneSignalError = oneSignalErr.message;
+      oneSignalDetails = {
+        error: oneSignalErr.message,
+        response: oneSignalErr.response?.data,
+        status: oneSignalErr.response?.status,
+        statusText: oneSignalErr.response?.statusText,
+        requestConfig: {
+          url: oneSignalErr.config?.url,
+          method: oneSignalErr.config?.method,
+          data: oneSignalErr.config?.data ? JSON.parse(oneSignalErr.config.data) : null
         }
+      };
 
-        this.logger.log(`Sent ticket notification to admin user ${adminUser._id} via channels: ${userChannels.join(', ')}`);
+      debugInfo.steps.push({ 
+        step: 'onesignal_notification_failed', 
+        result: oneSignalDetails 
+      });
 
-      } catch (notificationError) {
-        this.logger.error(`Failed to send ticket notification to admin user ${adminUser._id}: ${notificationError.message}`);
-      }
-
-      this.logger.log(`Sent ticket ${updateType} notification for ticket ${ticket._id} to admin user`);
-
-    } catch (error) {
-      this.logger.error(`Error sending ticket update notification: ${error.message}`, error.stack);
+      this.logger.error(`OneSignal notification failed for ticket ${ticket._id}: ${oneSignalErr.message}`);
     }
-  }
 
-  /**
+    // Step 7: Send email notification
+    let emailResult;
+    const emailEnabled = adminUser.metadata?.get('emailNotificationsEnabled') !== 'false';
+    if (emailEnabled && adminUser.email) {
+      try {
+        await this.sendTicketUpdateEmail(adminUser, business, ticket, updateType, additionalData);
+        emailResult = { success: true, emailSent: true };
+        debugInfo.steps.push({ step: 'email_notification_sent', result: emailResult });
+      } catch (emailError: any) {
+        emailResult = { success: false, error: emailError.message };
+        debugInfo.steps.push({ step: 'email_notification_failed', result: emailResult });
+      }
+    } else {
+      emailResult = { 
+        success: false, 
+        reason: !emailEnabled ? 'Email notifications disabled' : 'No email address' 
+      };
+      debugInfo.steps.push({ step: 'email_notification_skipped', result: emailResult });
+    }
+
+    // Final summary
+    debugInfo.summary = {
+      databaseNotification: dbNotificationResult?.success ? 'SUCCESS' : 'FAILED',
+      oneSignalNotification: oneSignalError ? 'FAILED' : (oneSignalDetails ? 'SUCCESS' : 'SKIPPED'),
+      emailNotification: emailResult?.success ? 'SUCCESS' : 'FAILED/SKIPPED',
+      overallSuccess: true
+    };
+
+    this.logger.log(`Sent ticket ${updateType} notification for ticket ${ticket._id} to admin user`);
+
+    return { 
+      success: true, 
+      debugInfo,
+      oneSignalError, 
+      oneSignalDetails,
+      emailResult
+    };
+
+  } catch (error: any) {
+    debugInfo.steps.push({ 
+      step: 'major_error', 
+      result: { 
+        error: error.message, 
+        stack: error.stack?.split('\n').slice(0, 5).join('\n') 
+      } 
+    });
+
+    this.logger.error(`Error sending ticket update notification: ${error.message}`, error.stack);
+    return { 
+      success: false, 
+      debugInfo,
+      oneSignalError: `Major error: ${error.message}` 
+    };
+  }
+}
+
+/**
  * Map notification priority to OneSignal priority
  */
 private mapNotificationPriorityToOneSignal(priority: NotificationPriority): number {
