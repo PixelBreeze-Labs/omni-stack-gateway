@@ -443,6 +443,9 @@ import { ProjectChecklistController } from './controllers/project-checklist.cont
 import { ProjectChecklist, ProjectChecklistSchema } from './schemas/project-checklist.schema';
 import { ProjectChecklistItem, ProjectChecklistItemSchema } from './schemas/project-checklist.schema';
 
+// Staffluent OneSignal
+import { StaffluentOneSignalService } from './services/staffluent-onesignal.service';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -841,7 +844,8 @@ import { ProjectChecklistItem, ProjectChecklistItemSchema } from './schemas/proj
     ProjectGalleryService,
     SupplyRequestService,
     ProjectMessageService,
-    ProjectChecklistService
+    ProjectChecklistService,
+    StaffluentOneSignalService
   ],
 })
 export class AppModule implements NestModule {
