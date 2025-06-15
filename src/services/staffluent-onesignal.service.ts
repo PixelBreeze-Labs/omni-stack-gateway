@@ -114,70 +114,110 @@ export class StaffluentOneSignalService {
         }
     }
 
-    /**
-     * Register/Update a device for a Staffluent user
-     */
-    async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
-        try {
-            if (!this.appId || !this.apiKey) {
-                throw new Error('OneSignal not configured');
-            }
+   /**
+ * Register/Update a device for a Staffluent user
+ * FIXED VERSION for web platform
+ */
+async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
+    try {
+        if (!this.appId || !this.apiKey) {
+            throw new Error('OneSignal not configured');
+        }
 
-            const tags = {
-                userId: deviceData.userId,
-                businessId: deviceData.businessId,
-                platform: deviceData.platform,
-                ...(deviceData.userRole && { userRole: deviceData.userRole }),
-                ...(deviceData.department && { department: deviceData.department }),
-                ...(deviceData.teams && { teams: deviceData.teams.join(',') }),
-                isActive: deviceData.isActive !== false,
-                lastRegistered: new Date().toISOString(),
-            };
+        const tags = {
+            userId: deviceData.userId,
+            businessId: deviceData.businessId,
+            platform: deviceData.platform,
+            ...(deviceData.userRole && { userRole: deviceData.userRole }),
+            ...(deviceData.department && { department: deviceData.department }),
+            ...(deviceData.teams && { teams: deviceData.teams.join(',') }),
+            isActive: deviceData.isActive !== false,
+            lastRegistered: new Date().toISOString(),
+        };
 
-            let payload: any = {
+        const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
+
+        // Handle different registration scenarios
+        if (deviceData.playerId) {
+            // Update existing player - FIXED payload for web platform
+            console.log(`Updating OneSignal player: ${deviceData.playerId}`);
+            
+            const updatePayload = {
                 app_id: this.appId,
                 tags,
-                external_user_id: `${deviceData.businessId}_${deviceData.userId}`,
+                external_user_id,
+                // Don't include device_type for updates
+                // Don't include identifier for web platform updates
             };
 
-            // Handle different registration scenarios
-            if (deviceData.playerId) {
-                // Update existing player
-                const response = await lastValueFrom(
-                    this.httpService.put(`${this.playersUrl}/${deviceData.playerId}`, payload, {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Basic ${this.apiKey}`,
-                        },
-                    }),
-                );
-                return response.data;
-            } else {
-                // Create new player
-                payload = {
-                    ...payload,
-                    device_type: this.getDeviceType(deviceData.platform),
-                    ...(deviceData.deviceToken && { identifier: deviceData.deviceToken }),
-                };
+            console.log('OneSignal Update Payload:', JSON.stringify(updatePayload, null, 2));
 
-                const response = await lastValueFrom(
-                    this.httpService.post(this.playersUrl, payload, {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Basic ${this.apiKey}`,
-                        },
-                    }),
-                );
-                return response.data;
-            }
-        } catch (error) {
-            this.logger.error(
-                `Staffluent device registration error: ${error.message}`,
-                error.stack,
+            const response = await lastValueFrom(
+                this.httpService.put(`${this.playersUrl}/${deviceData.playerId}`, updatePayload, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${this.apiKey}`,
+                    },
+                }),
             );
-            throw error;
+
+            console.log('OneSignal Update Response:', response.data);
+            return response.data;
+        } else {
+            // Create new player
+            console.log('Creating new OneSignal player');
+            
+            const createPayload = {
+                app_id: this.appId,
+                device_type: this.getDeviceType(deviceData.platform),
+                tags,
+                external_user_id,
+                ...(deviceData.deviceToken && { identifier: deviceData.deviceToken }),
+            };
+
+            console.log('OneSignal Create Payload:', JSON.stringify(createPayload, null, 2));
+
+            const response = await lastValueFrom(
+                this.httpService.post(this.playersUrl, createPayload, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${this.apiKey}`,
+                    },
+                }),
+            );
+
+            console.log('OneSignal Create Response:', response.data);
+            return response.data;
         }
+    } catch (error) {
+        // Enhanced error logging
+        if (error.response) {
+            this.logger.error(
+                `OneSignal API Error: ${error.response.status}`,
+                {
+                    status: error.response.status,
+                    statusText: error.response.statusText,
+                    data: error.response.data,
+                    url: error.config?.url,
+                    method: error.config?.method,
+                    payload: error.config?.data,
+                }
+            );
+        } else if (error.request) {
+            this.logger.error('OneSignal Network Error', {
+                message: 'No response received',
+                request: error.request,
+            });
+        } else {
+            this.logger.error('OneSignal Setup Error', {
+                message: error.message,
+                stack: error.stack,
+            });
+        }
+
+        throw new Error(`OneSignal registration failed: ${error.response?.data?.errors?.[0] || error.message}`);
     }
+}
 
     /**
      * Send notification to specific business users
