@@ -124,18 +124,20 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
             throw new Error('OneSignal not configured');
         }
 
+        // FIXED: Only use 3 most important tags (OneSignal free plan limit)
         const tags = {
-            userId: deviceData.userId,
-            businessId: deviceData.businessId,
-            platform: deviceData.platform,
-            ...(deviceData.userRole && { userRole: deviceData.userRole }),
-            ...(deviceData.department && { department: deviceData.department }),
-            ...(deviceData.teams && { teams: deviceData.teams.join(',') }),
-            isActive: deviceData.isActive !== false,
-            lastRegistered: new Date().toISOString(),
+            businessId: deviceData.businessId,  // #1 - Essential for business-scoped notifications
+            userRole: deviceData.userRole || 'business_staff',  // #2 - Essential for role-based notifications  
+            isActive: deviceData.isActive !== false ? 'true' : 'false',  // #3 - Essential for filtering active users
+            // Removed: userId (use external_user_id instead)
+            // Removed: platform (can be inferred from device_type)
+            // Removed: department (can be added later if needed)
+            // Removed: teams (can be added later if needed) 
+            // Removed: lastRegistered (not critical for targeting)
         };
 
         const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
+        // Note: external_user_id handles user identification, so we don't need userId in tags
 
         // Handle different registration scenarios
         if (deviceData.playerId) {
