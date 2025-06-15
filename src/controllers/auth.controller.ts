@@ -1,10 +1,11 @@
 // controllers/auth.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Headers } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { SalesAssociateLoginDto } from "../dtos/user.dto";
 import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
 import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
+import { StaffluentOneSignalService } from '../services/staffluent-onesignal.service';
 
 // Define the mobile login DTO
 class StaffluentMobileLoginDto {
@@ -22,7 +23,8 @@ class StaffluentMobileLoginDto {
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-    constructor(private authService: AuthService) {}
+    constructor(private authService: AuthService,
+        private staffluentOneSignalService: StaffluentOneSignalService) {}
 
     @Post('sales-associate/login')
     @ApiOperation({ summary: 'Sales associate login' })
@@ -71,4 +73,44 @@ export class AuthController {
         const result = await this.authService.snapfoodLogin(loginDto);
         return result;
     }
+
+
+
+
+@Post('register-notifications')
+@ApiOperation({ summary: 'Register device for notifications after login' })
+async registerNotifications(
+    @Body() body: {
+        businessId: string;
+        userId: string;
+        playerId: string;
+        platform: 'web' | 'ios' | 'android';
+        userRole?: string;
+        deviceToken?: string;
+    },
+    @Headers('business-x-api-key') apiKey?: string, // Optional for validation
+) {
+    try {
+        const result = await this.staffluentOneSignalService.registerStaffluentDevice({
+            userId: body.userId,
+            businessId: body.businessId,
+            playerId: body.playerId,
+            platform: body.platform,
+            userRole: body.userRole || 'business_staff',
+            isActive: true,
+            ...(body.deviceToken && { deviceToken: body.deviceToken }),
+        });
+
+        return {
+            success: true,
+            message: 'Notifications registered successfully',
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: 'Failed to register notifications',
+            error: error.message,
+        };
+    }
+}
 }
