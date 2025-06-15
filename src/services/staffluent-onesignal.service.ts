@@ -115,40 +115,70 @@ export class StaffluentOneSignalService {
     }
 
  /**
-     * FIXED: Simple approach - always create/update tags, never fail
+     * FIXED: Update OneSignal player with detailed debugging response
      */
  async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
+    const debugInfo = {
+        timestamp: new Date().toISOString(),
+        step: '',
+        external_user_id: '',
+        oneSignalPlayerId: '',
+        platform: '',
+        tags: {},
+        updatePayload: {},
+        apiResponse: null,
+        error: null,
+        success: false,
+        message: '',
+        logs: []
+    };
+
     try {
+        // Step 1: Configuration check
+        debugInfo.step = 'Configuration Check';
+        debugInfo.logs.push('Checking OneSignal configuration...');
+        
         if (!this.appId || !this.apiKey) {
+            debugInfo.error = 'OneSignal not configured';
+            debugInfo.message = 'Missing OneSignal app ID or API key';
+            debugInfo.logs.push('❌ OneSignal configuration missing');
             throw new Error('OneSignal not configured');
         }
+        debugInfo.logs.push('✅ OneSignal configuration found');
 
+        // Step 2: Prepare data
+        debugInfo.step = 'Data Preparation';
         const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
+        debugInfo.external_user_id = external_user_id;
+        debugInfo.oneSignalPlayerId = deviceData.playerId || 'none';
+        debugInfo.platform = deviceData.platform;
 
-        // Essential tags only (free plan limit)
         const tags = {
             businessId: deviceData.businessId,
             userRole: deviceData.userRole || 'business_staff',
             isActive: deviceData.isActive !== false ? 'true' : 'false',
         };
+        debugInfo.tags = tags;
 
-        console.log('OneSignal registration attempt:', {
-            external_user_id,
-            playerId: deviceData.playerId,
-            platform: deviceData.platform,
-            tags
-        });
+        debugInfo.logs.push(`External User ID: ${external_user_id}`);
+        debugInfo.logs.push(`OneSignal Player ID: ${deviceData.playerId}`);
+        debugInfo.logs.push(`Platform: ${deviceData.platform}`);
+        debugInfo.logs.push(`Tags: ${JSON.stringify(tags)}`);
 
-        // APPROACH 1: If we have a playerId, try to update it
+        // Step 3: Update player
+        debugInfo.step = 'Player Update';
+        
         if (deviceData.playerId) {
+            debugInfo.logs.push(`Attempting to update player: ${deviceData.playerId}`);
+            
             try {
                 const updatePayload = {
                     app_id: this.appId,
                     tags,
                     external_user_id,
                 };
-
-                console.log('Trying to update existing player:', deviceData.playerId);
+                debugInfo.updatePayload = updatePayload;
+                debugInfo.logs.push(`Update payload: ${JSON.stringify(updatePayload, null, 2)}`);
                 
                 const response = await lastValueFrom(
                     this.httpService.put(`${this.playersUrl}/${deviceData.playerId}`, updatePayload, {
@@ -159,52 +189,82 @@ export class StaffluentOneSignalService {
                     }),
                 );
 
-                console.log('OneSignal update successful:', response.data);
-                return response.data;
+                debugInfo.apiResponse = response.data;
+                debugInfo.success = true;
+                debugInfo.message = 'OneSignal player updated successfully';
+                debugInfo.logs.push('✅ OneSignal update successful');
+                debugInfo.logs.push(`Response: ${JSON.stringify(response.data)}`);
+                
+                this.logger.log(`OneSignal player updated successfully: ${deviceData.playerId}`);
+                
+                return {
+                    success: true,
+                    message: 'OneSignal player updated successfully',
+                    playerId: deviceData.playerId,
+                    debugInfo,
+                    oneSignalResponse: response.data
+                };
 
             } catch (updateError) {
-                console.log('Update failed, will try creating new player:', updateError.response?.data);
+                debugInfo.step = 'Player Update Error';
+                debugInfo.success = false;
                 
-                // If update fails, fall through to create new player
+                const errorData = updateError.response?.data;
+                const errorStatus = updateError.response?.status;
+                const errorMessage = errorData?.errors?.[0] || updateError.message;
+                
+                debugInfo.error = {
+                    status: errorStatus,
+                    message: errorMessage,
+                    fullError: errorData
+                };
+                
+                debugInfo.logs.push(`❌ OneSignal update failed with status: ${errorStatus}`);
+                debugInfo.logs.push(`Error message: ${errorMessage}`);
+                debugInfo.logs.push(`Full error: ${JSON.stringify(errorData)}`);
+                
+                this.logger.error(`Failed to update OneSignal player ${deviceData.playerId}: ${errorMessage}`);
+                
+                return {
+                    success: false,
+                    message: `Failed to update OneSignal player: ${errorMessage}`,
+                    error: errorMessage,
+                    playerId: deviceData.playerId,
+                    debugInfo,
+                    note: 'Player exists but update failed - check OneSignal dashboard'
+                };
             }
         }
 
-        // APPROACH 2: Create new player (or if update failed)
-        console.log('Creating new OneSignal player');
+        // Step 4: No player ID provided
+        debugInfo.step = 'No Player ID';
+        debugInfo.success = false;
+        debugInfo.error = 'No OneSignal player ID provided';
+        debugInfo.message = 'OneSignal player ID is required for registration';
+        debugInfo.logs.push('❌ No OneSignal player ID provided');
         
-        const createPayload = {
-            app_id: this.appId,
-            device_type: this.getDeviceType(deviceData.platform),
-            tags,
-            external_user_id,
+        return {
+            success: false,
+            message: 'OneSignal player ID is required',
+            error: 'No player ID provided',
+            debugInfo
         };
 
-        console.log('OneSignal Create Payload:', JSON.stringify(createPayload, null, 2));
-
-        const response = await lastValueFrom(
-            this.httpService.post(this.playersUrl, createPayload, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Basic ${this.apiKey}`,
-                },
-            }),
-        );
-
-        console.log('OneSignal Create Response:', response.data);
-        
-        if (response.data?.id) {
-            this.logger.log(`OneSignal player created: ${response.data.id} for user: ${external_user_id}`);
-        }
-
-        return response.data;
-
     } catch (error) {
-        // Enhanced error logging but don't throw - just log and return success
+        debugInfo.step = 'General Error';
+        debugInfo.success = false;
+        debugInfo.error = error.message;
+        debugInfo.logs.push(`❌ General error: ${error.message}`);
+
+        // Enhanced error logging
         if (error.response) {
+            debugInfo.logs.push(`HTTP Status: ${error.response.status}`);
+            debugInfo.logs.push(`Response Data: ${JSON.stringify(error.response.data)}`);
+            
             this.logger.error(`OneSignal API Error: ${error.response.status}`, {
                 status: error.response.status,
                 data: error.response.data,
-                external_user_id: `${deviceData.businessId}_${deviceData.userId}`,
+                external_user_id: debugInfo.external_user_id,
             });
 
             // Handle specific known errors gracefully
@@ -215,22 +275,27 @@ export class StaffluentOneSignalService {
             );
 
             if (isDuplicate) {
-                this.logger.log('User already registered in OneSignal - this is expected');
+                debugInfo.logs.push('ℹ️ User already registered in OneSignal - this is expected');
+                debugInfo.success = true;
+                debugInfo.message = 'User already registered';
+                
                 return { 
                     success: true, 
-                    message: 'User already registered',
-                    id: 'existing-user' 
+                    message: 'User already registered in OneSignal',
+                    playerId: deviceData.playerId,
+                    debugInfo,
+                    note: 'Duplicate registration - this is expected behavior'
                 };
             }
         }
 
-        // Don't throw errors - just log them and return partial success
         this.logger.error(`OneSignal registration failed: ${error.message}`);
         
         return { 
-            success: true, 
-            message: 'Registration completed with warnings',
-            error: error.message 
+            success: false, 
+            message: 'OneSignal registration failed',
+            error: error.message,
+            debugInfo
         };
     }
 }
