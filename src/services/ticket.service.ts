@@ -1073,135 +1073,75 @@ private mapNotificationPriorityToOneSignal(priority: NotificationPriority): numb
   }
 
   /**
-   * Add a message to a ticket - Log only business messages
-   */
-  async addMessage(
-    ticketId: string,
-    addMessageDto: AddMessageDto,
-    sender: 'business' | 'support',
-    businessId?: string,
-    clientId?: string,
-    userId?: string,
-    req?: any
-  ): Promise<Ticket> {
-    const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
-    const userAgent = req?.get('User-Agent');
-    const startTime = Date.now();
+ * Add a message to a ticket - Log only business messages
+ */
+async addMessage(
+  ticketId: string,
+  addMessageDto: AddMessageDto,
+  sender: 'business' | 'support',
+  businessId?: string,
+  clientId?: string,
+  userId?: string,
+  req?: any
+): Promise<{
+  ticket: Ticket;
+  notificationResult?: any;
+}> {
+  const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
+  const userAgent = req?.get('User-Agent');
+  const startTime = Date.now();
 
-    try {
-      const query: any = { _id: ticketId, isDeleted: false };
-      
-      if (businessId) {
-        query.businessId = businessId;
+  try {
+    const query: any = { _id: ticketId, isDeleted: false };
+    
+    if (businessId) {
+      query.businessId = businessId;
+    }
+
+    // If clientId provided (support team), verify client ownership
+    if (clientId) {
+      query.clientId = clientId;
+    }
+
+    let senderName = addMessageDto.senderName;
+    let senderEmail = addMessageDto.senderEmail;
+
+    // If it's a business message, get business details
+    if (sender === 'business' && businessId) {
+      const business = await this.businessModel.findById(businessId);
+      if (business) {
+        senderName = business.name;
+        senderEmail = business.email;
       }
+    }
+    
+    const message: TicketMessage = {
+      sender,
+      senderName,
+      senderEmail,
+      message: addMessageDto.message,
+      attachments: addMessageDto.attachments || [],
+      timestamp: new Date(),
+      metadata: addMessageDto.metadata || {}
+    } as TicketMessage;
 
-      // If clientId provided (support team), verify client ownership
-      if (clientId) {
-        query.clientId = clientId;
-      }
-
-      let senderName = addMessageDto.senderName;
-      let senderEmail = addMessageDto.senderEmail;
-
-      // If it's a business message, get business details
-      if (sender === 'business' && businessId) {
-        const business = await this.businessModel.findById(businessId);
-        if (business) {
-          senderName = business.name;
-          senderEmail = business.email;
+    const ticket = await this.ticketModel.findOneAndUpdate(
+      query,
+      { 
+        $push: { messages: message },
+        $set: { 
+          // Auto-reopen ticket if business replies to resolved/closed ticket
+          status: sender === 'business' && ['resolved', 'closed'].includes(query.status) 
+            ? TicketStatus.OPEN 
+            : undefined
         }
-      }
-      
-      const message: TicketMessage = {
-        sender,
-        senderName,
-        senderEmail,
-        message: addMessageDto.message,
-        attachments: addMessageDto.attachments || [],
-        timestamp: new Date(),
-        metadata: addMessageDto.metadata || {}
-      } as TicketMessage;
+      },
+      { new: true }
+    ).exec();
 
-      const ticket = await this.ticketModel.findOneAndUpdate(
-        query,
-        { 
-          $push: { messages: message },
-          $set: { 
-            // Auto-reopen ticket if business replies to resolved/closed ticket
-            status: sender === 'business' && ['resolved', 'closed'].includes(query.status) 
-              ? TicketStatus.OPEN 
-              : undefined
-          }
-        },
-        { new: true }
-      ).exec();
-
-      if (!ticket) {
-        // Log ticket not found only for business messages
-        if (sender === 'business' && businessId) {
-          await this.auditLogService.createAuditLog({
-            businessId,
-            userId,
-            action: AuditAction.MESSAGE_SENT,
-            resourceType: ResourceType.MESSAGE,
-            resourceName: `Message to ticket ${ticketId}`,
-            success: false,
-            errorMessage: 'Ticket not found',
-            severity: AuditSeverity.MEDIUM,
-            ipAddress,
-            userAgent,
-            metadata: {
-              ticketId,
-              messageLength: addMessageDto.message.length,
-              hasAttachments: !!(addMessageDto.attachments?.length),
-              errorReason: 'ticket_not_found',
-              operationDuration: Date.now() - startTime
-            }
-          });
-        }
-        throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
-      }
-
-      // Log successful message only for business messages
+    if (!ticket) {
+      // Log ticket not found only for business messages
       if (sender === 'business' && businessId) {
-        await this.auditLogService.createAuditLog({
-          businessId,
-          userId,
-          action: AuditAction.MESSAGE_SENT,
-          resourceType: ResourceType.MESSAGE,
-          resourceId: ticket._id.toString(),
-          resourceName: `Message to ticket: ${ticket.title}`,
-          success: true,
-          severity: AuditSeverity.LOW,
-          ipAddress,
-          userAgent,
-          metadata: {
-            ticketId: ticket._id.toString(),
-            ticketTitle: ticket.title,
-            messageLength: addMessageDto.message.length,
-            hasAttachments: !!(addMessageDto.attachments?.length),
-            attachmentCount: addMessageDto.attachments?.length || 0,
-            messagePreview: addMessageDto.message.substring(0, 100), // First 100 chars
-            ticketReopened: ticket.status === TicketStatus.OPEN && ['resolved', 'closed'].includes(query.status),
-            operationDuration: Date.now() - startTime
-          }
-        });
-      }
-
-      // Send notification when SUPPORT adds a message (reply to business)
-      if (sender === 'support') {
-        await this.sendTicketUpdateNotification(ticket, 'message_added', {
-          message: addMessageDto.message,
-          senderName
-        });
-      }
-
-      this.logger.log(`Message added to ticket: ${ticketId} by ${sender}`);
-      
-      return ticket;
-    } catch (error) {
-      // Log unexpected errors only for business messages
-      if (sender === 'business' && businessId && error.name !== 'NotFoundException') {
         await this.auditLogService.createAuditLog({
           businessId,
           userId,
@@ -1209,26 +1149,95 @@ private mapNotificationPriorityToOneSignal(priority: NotificationPriority): numb
           resourceType: ResourceType.MESSAGE,
           resourceName: `Message to ticket ${ticketId}`,
           success: false,
-          errorMessage: 'Unexpected error sending message',
-          severity: AuditSeverity.HIGH,
+          errorMessage: 'Ticket not found',
+          severity: AuditSeverity.MEDIUM,
           ipAddress,
           userAgent,
           metadata: {
             ticketId,
             messageLength: addMessageDto.message.length,
             hasAttachments: !!(addMessageDto.attachments?.length),
-            errorReason: 'unexpected_error',
-            errorName: error.name,
-            errorMessage: error.message,
+            errorReason: 'ticket_not_found',
             operationDuration: Date.now() - startTime
           }
         });
       }
-
-      this.logger.error(`Error adding message to ticket: ${error.message}`, error.stack);
-      throw error;
+      throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
     }
+
+    // Log successful message only for business messages
+    if (sender === 'business' && businessId) {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.MESSAGE_SENT,
+        resourceType: ResourceType.MESSAGE,
+        resourceId: ticket._id.toString(),
+        resourceName: `Message to ticket: ${ticket.title}`,
+        success: true,
+        severity: AuditSeverity.LOW,
+        ipAddress,
+        userAgent,
+        metadata: {
+          ticketId: ticket._id.toString(),
+          ticketTitle: ticket.title,
+          messageLength: addMessageDto.message.length,
+          hasAttachments: !!(addMessageDto.attachments?.length),
+          attachmentCount: addMessageDto.attachments?.length || 0,
+          messagePreview: addMessageDto.message.substring(0, 100), // First 100 chars
+          ticketReopened: ticket.status === TicketStatus.OPEN && ['resolved', 'closed'].includes(query.status),
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    // Send notification when SUPPORT adds a message (reply to business) - CAPTURE RESULT
+    let notificationResult;
+    if (sender === 'support') {
+      notificationResult = await this.sendTicketUpdateNotification(ticket, 'message_added', {
+        message: addMessageDto.message,
+        senderName
+      });
+    }
+
+    this.logger.log(`Message added to ticket: ${ticketId} by ${sender}`);
+    
+    // Return both ticket and notification debug info
+    return {
+      ticket,
+      notificationResult
+    };
+
+  } catch (error) {
+    // Log unexpected errors only for business messages
+    if (sender === 'business' && businessId && error.name !== 'NotFoundException') {
+      await this.auditLogService.createAuditLog({
+        businessId,
+        userId,
+        action: AuditAction.MESSAGE_SENT,
+        resourceType: ResourceType.MESSAGE,
+        resourceName: `Message to ticket ${ticketId}`,
+        success: false,
+        errorMessage: 'Unexpected error sending message',
+        severity: AuditSeverity.HIGH,
+        ipAddress,
+        userAgent,
+        metadata: {
+          ticketId,
+          messageLength: addMessageDto.message.length,
+          hasAttachments: !!(addMessageDto.attachments?.length),
+          errorReason: 'unexpected_error',
+          errorName: error.name,
+          errorMessage: error.message,
+          operationDuration: Date.now() - startTime
+        }
+      });
+    }
+
+    this.logger.error(`Error adding message to ticket: ${error.message}`, error.stack);
+    throw error;
   }
+}
   
   /**
    * Delete/archive a ticket - NO AUDIT LOGGING (support team action only)
