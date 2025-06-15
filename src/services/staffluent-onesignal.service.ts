@@ -114,111 +114,107 @@ export class StaffluentOneSignalService {
         }
     }
 
-   /**
- * Register/Update a device for a Staffluent user
- * FIXED VERSION for web platform
- */
-   async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
-    try {
-        if (!this.appId || !this.apiKey) {
-            throw new Error('OneSignal not configured');
-        }
-
-        // FIXED: Only use 3 most important tags (OneSignal free plan limit)
-        const tags = {
-            businessId: deviceData.businessId,  
-            userRole: deviceData.userRole || 'business_staff',  
-            isActive: deviceData.isActive !== false ? 'true' : 'false',  
-        };
-
-        const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
-
-        // Handle different registration scenarios
-        if (deviceData.playerId) {
-            // Try to update existing player first
-            console.log(`Attempting to update OneSignal player: ${deviceData.playerId}`);
+    async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
+        try {
+            if (!this.appId || !this.apiKey) {
+                throw new Error('OneSignal not configured');
+            }
+    
+            // FIXED: Only use 3 most important tags (OneSignal free plan limit)
+            const tags = {
+                businessId: deviceData.businessId,  
+                userRole: deviceData.userRole || 'business_staff',  
+                isActive: deviceData.isActive !== false ? 'true' : 'false',  
+            };
+    
+            const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
+    
+            // Handle different registration scenarios
+            if (deviceData.playerId) {
+                // Try to update existing player first
+                console.log(`Attempting to update OneSignal player: ${deviceData.playerId}`);
+                
+                const updatePayload = {
+                    app_id: this.appId,
+                    tags,
+                    external_user_id,
+                };
+    
+                try {
+                    const response = await lastValueFrom(
+                        this.httpService.put(`${this.playersUrl}/${deviceData.playerId}`, updatePayload, {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Basic ${this.apiKey}`,
+                            },
+                        }),
+                    );
+    
+                    console.log('OneSignal Update Success:', response.data);
+                    return response.data;
+                } catch (updateError) {
+                    // If update fails (player not found), fall back to creating new player
+                    console.log('OneSignal update failed, creating new player instead:', updateError.response?.data);
+                    
+                    // Remove playerId so we create a new one
+                    deviceData.playerId = undefined;
+                }
+            }
+    
+            // Create new player (either no playerId provided or update failed)
+            console.log('Creating new OneSignal player');
             
-            const updatePayload = {
+            const createPayload = {
                 app_id: this.appId,
+                device_type: this.getDeviceType(deviceData.platform),
                 tags,
                 external_user_id,
+                ...(deviceData.deviceToken && { identifier: deviceData.deviceToken }),
             };
-
-            try {
-                const response = await lastValueFrom(
-                    this.httpService.put(`${this.playersUrl}/${deviceData.playerId}`, updatePayload, {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Basic ${this.apiKey}`,
-                        },
-                    }),
-                );
-
-                console.log('OneSignal Update Success:', response.data);
-                return response.data;
-            } catch (updateError) {
-                // If update fails (player not found), fall back to creating new player
-                console.log('OneSignal update failed, creating new player instead:', updateError.response?.data);
-                
-                // Remove playerId so we create a new one
-                deviceData.playerId = undefined;
-            }
-        }
-
-        // Create new player (either no playerId provided or update failed)
-        console.log('Creating new OneSignal player');
-        
-        const createPayload = {
-            app_id: this.appId,
-            device_type: this.getDeviceType(deviceData.platform),
-            tags,
-            external_user_id,
-            ...(deviceData.deviceToken && { identifier: deviceData.deviceToken }),
-        };
-
-        console.log('OneSignal Create Payload:', JSON.stringify(createPayload, null, 2));
-
-        const response = await lastValueFrom(
-            this.httpService.post(this.playersUrl, createPayload, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Basic ${this.apiKey}`,
-                },
-            }),
-        );
-
-        console.log('OneSignal Create Response:', response.data);
-        return response.data;
-
-    } catch (error) {
-        // Enhanced error logging
-        if (error.response) {
-            this.logger.error(
-                `OneSignal API Error: ${error.response.status}`,
-                {
-                    status: error.response.status,
-                    statusText: error.response.statusText,
-                    data: error.response.data,
-                    url: error.config?.url,
-                    method: error.config?.method,
-                    payload: error.config?.data,
-                }
+    
+            console.log('OneSignal Create Payload:', JSON.stringify(createPayload, null, 2));
+    
+            const response = await lastValueFrom(
+                this.httpService.post(this.playersUrl, createPayload, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${this.apiKey}`,
+                    },
+                }),
             );
-        } else if (error.request) {
-            this.logger.error('OneSignal Network Error', {
-                message: 'No response received',
-                request: error.request,
-            });
-        } else {
-            this.logger.error('OneSignal Setup Error', {
-                message: error.message,
-                stack: error.stack,
-            });
+    
+            console.log('OneSignal Create Response:', response.data);
+            return response.data;
+    
+        } catch (error) {
+            // Enhanced error logging
+            if (error.response) {
+                this.logger.error(
+                    `OneSignal API Error: ${error.response.status}`,
+                    {
+                        status: error.response.status,
+                        statusText: error.response.statusText,
+                        data: error.response.data,
+                        url: error.config?.url,
+                        method: error.config?.method,
+                        payload: error.config?.data,
+                    }
+                );
+            } else if (error.request) {
+                this.logger.error('OneSignal Network Error', {
+                    message: 'No response received',
+                    request: error.request,
+                });
+            } else {
+                this.logger.error('OneSignal Setup Error', {
+                    message: error.message,
+                    stack: error.stack,
+                });
+            }
+    
+            throw new Error(`OneSignal registration failed: ${error.response?.data?.errors?.[0] || error.message}`);
         }
-
-        throw new Error(`OneSignal registration failed: ${error.response?.data?.errors?.[0] || error.message}`);
     }
-}
 
     /**
      * Send notification to specific business users
