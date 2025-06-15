@@ -432,11 +432,7 @@ export class TicketController {
       );
       
       // Return both ticket and notification debugging info
-      return {
-        // @ts-ignore
-        ticket: result.ticket,
-        notificationDebug: result.notificationResult // This will show OneSignal debug info
-      };
+      return result;
     } catch (error) {
       this.logger.error(`Error adding support message: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to add message');
