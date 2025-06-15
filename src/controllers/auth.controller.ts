@@ -77,58 +77,73 @@ export class AuthController {
 
 
 
-// Fixed backend endpoint - handle OneSignal ID properly
-@Post('register-notifications')
-@ApiOperation({ summary: 'Register device for notifications after login' })
-async registerNotifications(
-    @Body() body: {
-        businessId: string;
-        userId: string;
-        playerId: string;  // This is now the OneSignal ID from dashboard
-        platform: 'web' | 'ios' | 'android';
-        userRole?: string;
-        subscriptionId?: string; // Optional subscription ID
-        deviceToken?: string;
-    },
-    @Headers('business-x-api-key') apiKey?: string,
-) {
-    try {
-        console.log('=== Notification Registration Request ===');
-        console.log('Request body:', body);
-        console.log('PlayerId (OneSignal ID):', body.playerId);
-        console.log('SubscriptionId:', body.subscriptionId);
-        console.log('========================================');
-
-        // FIXED: Use the OneSignal ID (playerId) to update the correct player
-        const result = await this.staffluentOneSignalService.registerStaffluentDevice({
-            userId: body.userId,
-            businessId: body.businessId,
-            playerId: body.playerId,  // This is the OneSignal ID that shows in dashboard
-            platform: body.platform,
-            userRole: body.userRole || 'business_staff',
-            isActive: true,
-        });
-
-        console.log('OneSignal registration result:', result);
-
-        return {
-            success: true,
-            message: 'Notifications registered successfully',
-            playerId: body.playerId, // Return the OneSignal ID we used
-            oneSignalId: body.playerId,
-            subscriptionId: body.subscriptionId,
-            note: `Look for OneSignal ID: ${body.playerId} in your dashboard`
-        };
-        
-    } catch (error) {
-        console.error('Notification registration error:', error);
-        
-        return {
-            success: true, // Still return success to avoid blocking user flow
-            message: 'Notifications registration completed with warnings',
-            error: error.message,
-            playerId: body.playerId,
-        };
+    @Post('register-notifications')
+    @ApiOperation({ summary: 'Register device for notifications after login' })
+    async registerNotifications(
+        @Body() body: {
+            businessId: string;
+            userId: string;
+            playerId: string;
+            platform: 'web' | 'ios' | 'android';
+            userRole?: string;
+            subscriptionId?: string;
+            deviceToken?: string;
+        },
+        @Headers('business-x-api-key') apiKey?: string,
+    ) {
+        try {
+            console.log('=== Notification Registration Request ===');
+            console.log('Request body:', body);
+            console.log('PlayerId (OneSignal ID):', body.playerId);
+            console.log('Expected External User ID:', `${body.businessId}_${body.userId}`);
+            console.log('========================================');
+    
+            // Call OneSignal service
+            const result = await this.staffluentOneSignalService.registerStaffluentDevice({
+                userId: body.userId,
+                businessId: body.businessId,
+                playerId: body.playerId,
+                platform: body.platform,
+                userRole: body.userRole || 'business_staff',
+                isActive: true,
+            });
+    
+            console.log('OneSignal registration result:', result);
+    
+            // FIXED: Actually check if OneSignal succeeded
+            if (result.success) {
+                return {
+                    success: true,
+                    message: result.message || 'Notifications registered successfully',
+                    playerId: body.playerId,
+                    oneSignalId: body.playerId,
+                    subscriptionId: body.subscriptionId,
+                    external_user_id: `${body.businessId}_${body.userId}`,
+                    oneSignalResult: result, // Include the full result for debugging
+                    note: `External ID should now be: ${body.businessId}_${body.userId}`
+                };
+            } else {
+                // OneSignal failed
+                console.error('OneSignal registration failed:', result);
+                return {
+                    success: false,
+                    message: result.message || 'OneSignal registration failed',
+                    error: result.error,
+                    playerId: body.playerId,
+                    oneSignalResult: result, // Include for debugging
+                    troubleshooting: 'Check OneSignal API key and app ID configuration'
+                };
+            }
+            
+        } catch (error) {
+            console.error('Notification registration error:', error);
+            
+            return {
+                success: false,
+                message: 'Notifications registration failed',
+                error: error.message,
+                playerId: body.playerId,
+            };
+        }
     }
-}
 }
