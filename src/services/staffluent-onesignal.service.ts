@@ -36,8 +36,7 @@ interface StaffluentNotificationOptions {
 interface StaffluentDeviceRegistration {
     userId: string;
     businessId: string;
-    deviceToken?: string;
-    playerId?: string;
+    subscriptionId?: string; // FIXED: Changed from playerId to subscriptionId
     platform: 'ios' | 'android' | 'web';
     userRole?: string;
     department?: string;
@@ -114,83 +113,61 @@ export class StaffluentOneSignalService {
         }
     }
 
-   /**
- * Register/Update a device for a Staffluent user
- * FIXED VERSION for web platform
- */
-async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
+  /**
+     * FIXED: Register/Update device for Staffluent user - simplified approach
+     */
+  async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
     try {
         if (!this.appId || !this.apiKey) {
             throw new Error('OneSignal not configured');
         }
 
-        // FIXED: Only use 3 most important tags (OneSignal free plan limit)
+        // Essential tags only (free plan limit)
         const tags = {
-            businessId: deviceData.businessId,  // #1 - Essential for business-scoped notifications
-            userRole: deviceData.userRole || 'business_staff',  // #2 - Essential for role-based notifications  
-            isActive: deviceData.isActive !== false ? 'true' : 'false',  // #3 - Essential for filtering active users
-            // Removed: userId (use external_user_id instead)
-            // Removed: platform (can be inferred from device_type)
-            // Removed: department (can be added later if needed)
-            // Removed: teams (can be added later if needed) 
-            // Removed: lastRegistered (not critical for targeting)
+            businessId: deviceData.businessId,
+            userRole: deviceData.userRole || 'business_staff',
+            isActive: deviceData.isActive !== false ? 'true' : 'false',
         };
 
         const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
-        // Note: external_user_id handles user identification, so we don't need userId in tags
 
-        // Handle different registration scenarios
-        if (deviceData.playerId) {
-            // Update existing player - FIXED payload for web platform
-            console.log(`Updating OneSignal player: ${deviceData.playerId}`);
-            
-            const updatePayload = {
-                app_id: this.appId,
-                tags,
-                external_user_id,
-                // Don't include device_type for updates
-                // Don't include identifier for web platform updates
-            };
+        // FIXED: Always create a new player instead of trying to update
+        // This avoids the "No user with this id found" error
+        console.log('Creating OneSignal player for user:', external_user_id);
+        
+        const createPayload: any = {
+            app_id: this.appId,
+            device_type: this.getDeviceType(deviceData.platform),
+            tags,
+            external_user_id,
+        };
 
-            console.log('OneSignal Update Payload:', JSON.stringify(updatePayload, null, 2));
-
-            const response = await lastValueFrom(
-                this.httpService.put(`${this.playersUrl}/${deviceData.playerId}`, updatePayload, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Basic ${this.apiKey}`,
-                    },
-                }),
-            );
-
-            console.log('OneSignal Update Response:', response.data);
-            return response.data;
-        } else {
-            // Create new player
-            console.log('Creating new OneSignal player');
-            
-            const createPayload = {
-                app_id: this.appId,
-                device_type: this.getDeviceType(deviceData.platform),
-                tags,
-                external_user_id,
-                ...(deviceData.deviceToken && { identifier: deviceData.deviceToken }),
-            };
-
-            console.log('OneSignal Create Payload:', JSON.stringify(createPayload, null, 2));
-
-            const response = await lastValueFrom(
-                this.httpService.post(this.playersUrl, createPayload, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Basic ${this.apiKey}`,
-                    },
-                }),
-            );
-
-            console.log('OneSignal Create Response:', response.data);
-            return response.data;
+        // For web platform, we don't need to set identifier
+        // OneSignal will handle the subscription automatically
+        if (deviceData.platform !== 'web' && deviceData.subscriptionId) {
+            createPayload.identifier = deviceData.subscriptionId;
         }
+
+        console.log('OneSignal Create Payload:', JSON.stringify(createPayload, null, 2));
+
+        const response = await lastValueFrom(
+            this.httpService.post(this.playersUrl, createPayload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${this.apiKey}`,
+                },
+            }),
+        );
+
+        console.log('OneSignal Create Response:', response.data);
+        
+        // If successful, log the player ID for future reference
+        if (response.data?.id) {
+            this.logger.log(`OneSignal player created successfully: ${response.data.id} for user: ${external_user_id}`);
+        }
+
+        return response.data;
+
     } catch (error) {
         // Enhanced error logging
         if (error.response) {
@@ -203,8 +180,15 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
                     url: error.config?.url,
                     method: error.config?.method,
                     payload: error.config?.data,
+                    external_user_id: `${deviceData.businessId}_${deviceData.userId}`,
                 }
             );
+
+            // If it's a duplicate external_user_id error, that's actually okay
+            if (error.response.data?.errors?.some(err => err.includes('already exists'))) {
+                this.logger.log('User already registered in OneSignal, this is expected');
+                return { success: true, message: 'User already registered' };
+            }
         } else if (error.request) {
             this.logger.error('OneSignal Network Error', {
                 message: 'No response received',
@@ -218,6 +202,40 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
         }
 
         throw new Error(`OneSignal registration failed: ${error.response?.data?.errors?.[0] || error.message}`);
+    }
+}
+
+/**
+ * FIXED: Alternative method to update existing user tags without creating new player
+ */
+async updateUserTags(
+    businessId: string, 
+    userId: string, 
+    tags: { [key: string]: string }
+): Promise<any> {
+    try {
+        const external_user_id = `${businessId}_${userId}`;
+        
+        // Use the external user ID to update tags
+        const updatePayload = {
+            app_id: this.appId,
+            tags,
+        };
+
+        // OneSignal allows updating by external_user_id
+        const response = await lastValueFrom(
+            this.httpService.put(`${this.playersUrl}/${external_user_id}`, updatePayload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${this.apiKey}`,
+                },
+            }),
+        );
+
+        return response.data;
+    } catch (error) {
+        this.logger.error(`Failed to update user tags: ${error.message}`);
+        throw error;
     }
 }
 

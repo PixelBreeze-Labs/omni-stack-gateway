@@ -77,35 +77,43 @@ export class AuthController {
 
 
 
+// Fixed backend endpoint for notification registration
 @Post('register-notifications')
 @ApiOperation({ summary: 'Register device for notifications after login' })
 async registerNotifications(
     @Body() body: {
         businessId: string;
         userId: string;
-        playerId: string;
+        subscriptionId?: string; // FIXED: Changed from playerId to subscriptionId
         platform: 'web' | 'ios' | 'android';
         userRole?: string;
         deviceToken?: string;
     },
-    @Headers('business-x-api-key') apiKey?: string, // Optional for validation
+    @Headers('business-x-api-key') apiKey?: string,
 ) {
     try {
+        console.log('Notification registration request:', body);
+
+        // FIXED: Pass subscriptionId instead of playerId
         const result = await this.staffluentOneSignalService.registerStaffluentDevice({
             userId: body.userId,
             businessId: body.businessId,
-            playerId: body.playerId,
+            subscriptionId: body.subscriptionId, // FIXED: Use subscriptionId
             platform: body.platform,
             userRole: body.userRole || 'business_staff',
             isActive: true,
-            ...(body.deviceToken && { deviceToken: body.deviceToken }),
         });
+
+        console.log('OneSignal registration result:', result);
 
         return {
             success: true,
             message: 'Notifications registered successfully',
+            playerId: result?.id, // Return the actual OneSignal player ID
         };
     } catch (error) {
+        console.error('Notification registration error:', error);
+        
         return {
             success: false,
             message: 'Failed to register notifications',
