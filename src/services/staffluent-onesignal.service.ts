@@ -147,7 +147,7 @@ export class StaffluentOneSignalService {
             debugInfo.step = 'Data Preparation';
             const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
             debugInfo.external_user_id = external_user_id;
-            debugInfo.oneSignalId = deviceData.playerId; // This is the OneSignal ID
+            debugInfo.oneSignalId = deviceData.playerId;
             debugInfo.platform = deviceData.platform;
     
             const tags = {
@@ -165,7 +165,7 @@ export class StaffluentOneSignalService {
             debugInfo.logs.push(`Tags: ${JSON.stringify(tags)}`);
     
             if (deviceData.playerId) {
-                // Step 3: Set External ID using Create Alias API
+                // Step 3: Set External ID using Create Alias API (CORRECT METHOD)
                 debugInfo.step = 'Set External ID (Create Alias API)';
                 debugInfo.logs.push(`Setting external ID using Create Alias API for: ${deviceData.playerId}`);
                 
@@ -178,15 +178,15 @@ export class StaffluentOneSignalService {
                     debugInfo.updatePayload = aliasPayload;
                     debugInfo.logs.push(`Alias payload: ${JSON.stringify(aliasPayload, null, 2)}`);
                     
-                    // FIXED: Use Create Alias API with new base URL
+                    // FIXED: Use PATCH method with correct Create Alias endpoint
                     const aliasResponse = await lastValueFrom(
-                        this.httpService.post(
+                        this.httpService.patch(
                             `https://api.onesignal.com/apps/${this.appId}/users/by/onesignal_id/${deviceData.playerId}/identity`,
                             aliasPayload,
                             {
                                 headers: {
                                     'Content-Type': 'application/json',
-                                    'Authorization': `Basic ${this.apiKey}`,
+                                    'Authorization': `Key ${this.apiKey}`, // FIXED: Use "Key" prefix
                                 },
                                 timeout: 10000,
                             }
@@ -213,7 +213,7 @@ export class StaffluentOneSignalService {
                                 {
                                     headers: {
                                         'Content-Type': 'application/json',
-                                        'Authorization': `Basic ${this.apiKey}`,
+                                        'Authorization': `Key ${this.apiKey}`, // FIXED: Use "Key" prefix
                                     },
                                     timeout: 10000,
                                 }
@@ -236,7 +236,7 @@ export class StaffluentOneSignalService {
                                 `https://api.onesignal.com/apps/${this.appId}/users/by/onesignal_id/${deviceData.playerId}`,
                                 {
                                     headers: {
-                                        'Authorization': `Basic ${this.apiKey}`,
+                                        'Authorization': `Key ${this.apiKey}`, // FIXED: Use "Key" prefix
                                     },
                                     timeout: 5000,
                                 }
@@ -299,6 +299,9 @@ export class StaffluentOneSignalService {
                     } else if (errorStatus === 400) {
                         debugInfo.logs.push('🚨 400 Error: Bad request - check API key and payload');
                         debugInfo.message = 'OneSignal API rejected request - check API key and data format';
+                    } else if (errorStatus === 405) {
+                        debugInfo.logs.push('🚨 405 Error: Method not allowed - endpoint or method incorrect');
+                        debugInfo.message = 'OneSignal API method not allowed - check endpoint and HTTP method';
                     } else {
                         debugInfo.message = `OneSignal external ID setup failed: ${errorMessage}`;
                     }
