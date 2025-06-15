@@ -10,6 +10,7 @@ import { EmailService } from './email.service';
 import { AuditLogService } from './audit-log.service';
 import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
 import { DeliveryChannel, NotificationPriority, NotificationType } from 'src/schemas/saas-notification.schema';
+import { StaffluentOneSignalService } from './staffluent-onesignal.service';
 
 // NOTE: Add these to AuditAction enum in audit-log.schema.ts:
 // TICKET_CREATED = 'ticket_created',
@@ -80,7 +81,8 @@ export class TicketService {
     @InjectModel(User.name) private userModel: Model<User>,
     private readonly notificationService: SaasNotificationService,
     private readonly auditLogService: AuditLogService,
-    private readonly emailService?: EmailService
+    private readonly oneSignalService: StaffluentOneSignalService,
+    private readonly emailService?: EmailService,
   ) {}
 
   /**
@@ -184,6 +186,38 @@ export class TicketService {
           actionData
         });
 
+        // Send OneSignal notification
+        try {
+          if (this.oneSignalService.isConfigured()) {
+            await this.oneSignalService.sendToBusinessUsers(
+              ticket.businessId,
+              title,
+              body,
+              {
+            userIds: [adminUser._id.toString()],
+            data: {
+              type: 'support_ticket',
+              ticketId: ticket._id.toString(),
+              updateType,
+              ...actionData
+            },
+            url: actionData.url,
+            priority: this.mapNotificationPriorityToOneSignal(priority),
+            buttons: [
+              { id: 'view_ticket', text: 'View Ticket' },
+              { id: 'reply', text: 'Reply' }
+            ]
+          }
+        );
+        this.logger.log(`OneSignal notification sent for ticket ${ticket._id}`);
+      } else {
+        this.logger.warn('OneSignal not configured - skipping push notification');
+      }
+    } catch (oneSignalError) {
+      this.logger.error(`OneSignal notification failed for ticket ${ticket._id}: ${oneSignalError.message}`);
+      // Don't throw - notification was already created in database
+    }
+
         // Send email notification if admin user has email notifications enabled
         if (emailEnabled && adminUser.email) {
           await this.sendTicketUpdateEmail(adminUser, business, ticket, updateType, additionalData);
@@ -201,6 +235,24 @@ export class TicketService {
       this.logger.error(`Error sending ticket update notification: ${error.message}`, error.stack);
     }
   }
+
+  /**
+ * Map notification priority to OneSignal priority
+ */
+private mapNotificationPriorityToOneSignal(priority: NotificationPriority): number {
+  switch (priority) {
+    case NotificationPriority.LOW:
+      return 3;
+    case NotificationPriority.MEDIUM:
+      return 5;
+    case NotificationPriority.HIGH:
+      return 7;
+    case NotificationPriority.URGENT:
+      return 10;
+    default:
+      return 5;
+  }
+}
 
   /**
    * Send email notification for ticket updates
