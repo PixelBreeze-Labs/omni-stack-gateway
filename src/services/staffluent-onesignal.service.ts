@@ -138,9 +138,9 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
     try {
 
         let finalBusinessId = deviceData.businessId;
-       
-        
-        if (!deviceData.businessId) {
+     
+        // and role client or app client   
+        if (!deviceData.businessId && (deviceData.userRole === 'client' || deviceData.userRole === 'app_client')) {
             try {
                 // Find AppClient by user_id to get businessId
                 const appClient = await this.appClientModel.findOne({

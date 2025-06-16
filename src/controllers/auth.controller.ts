@@ -6,8 +6,6 @@ import { SalesAssociateLoginDto } from "../dtos/user.dto";
 import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
 import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
 import { StaffluentOneSignalService } from '../services/staffluent-onesignal.service';
-import { Model } from 'mongoose';
-import { AppClient } from '../schemas/app-client.schema';
 
 // Define the mobile login DTO
 class StaffluentMobileLoginDto {
