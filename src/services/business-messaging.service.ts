@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BusinessService } from './business.service';
 import { AuditLogService } from './audit-log.service';
 import { AuditAction, AuditSeverity, ResourceType } from 'src/schemas/audit-log.schema';
+import { StaffluentOneSignalService } from './staffluent-onesignal.service';
 
 // Export interfaces for TypeScript
 export interface SendMessageResponse {
@@ -44,12 +45,11 @@ export class BusinessMessagingService {
     @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
     @InjectModel(User.name) private userModel: Model<User>,
     private readonly businessService: BusinessService,
-    private readonly auditLogService: AuditLogService
+    private readonly auditLogService: AuditLogService,
+    private readonly oneSignalService: StaffluentOneSignalService
+
   ) {}
 
-  /**
-   * Send a message from business to client
-   */
   async sendMessageToClient(
     businessId: string,
     appClientId: string,
@@ -63,7 +63,7 @@ export class BusinessMessagingService {
         mimeType: string;
     },
     req?: any
-): Promise<SendMessageResponse> {
+): Promise<SendMessageResponse & { notificationResult?: any }> {
     const ipAddress = req ? this.extractIpAddress(req) : 'unknown';
     const userAgent = req?.get('User-Agent');
 
@@ -77,6 +77,12 @@ export class BusinessMessagingService {
 
         if (!appClient) {
             throw new NotFoundException('Client not found or does not belong to this business');
+        }
+
+        // Get business info for notification
+        const business = await this.businessModel.findById(businessId).lean();
+        if (!business) {
+            throw new NotFoundException('Business not found');
         }
 
         // Get or create conversation ID
@@ -99,7 +105,24 @@ export class BusinessMessagingService {
 
         await message.save();
 
-        // Log message sent
+        // 🚀 NEW: Send OneSignal notification to app client
+        let notificationResult;
+        try {
+            notificationResult = await this.sendMessageNotificationToClient(
+                message, 
+                appClient, 
+                business
+            );
+        } catch (notificationError) {
+            // Don't fail the message sending if notification fails
+            this.logger.error(`Notification failed but message sent: ${notificationError.message}`);
+            notificationResult = { 
+                success: false, 
+                error: notificationError.message 
+            };
+        }
+
+        // Log message sent (existing audit log)
         await this.auditLogService.createAuditLog({
             businessId,
             userId: senderUserId,
@@ -123,7 +146,10 @@ export class BusinessMessagingService {
                     fileName: fileData.fileName,
                     fileSize: fileData.fileSize,
                     mimeType: fileData.mimeType
-                } : undefined
+                } : undefined,
+                // ✅ ADD NOTIFICATION RESULT TO AUDIT
+                notificationSent: notificationResult?.success || false,
+                notificationError: notificationResult?.oneSignalError
             }
         });
 
@@ -133,10 +159,11 @@ export class BusinessMessagingService {
             messageId: message._id.toString(),
             conversationId,
             success: true,
-            timestamp: message.createdAt
+            timestamp: message.createdAt,
+            notificationResult // ✅ RETURN NOTIFICATION RESULT
         };
     } catch (error) {
-        // Log failed message send
+        // Existing error handling...
         await this.auditLogService.createAuditLog({
             businessId,
             userId: senderUserId,
@@ -338,6 +365,176 @@ async markMessagesAsRead(
     }
     
     return business;
+  }
+
+  /**
+ * Send OneSignal notification to app client when business sends message
+ */
+private async sendMessageNotificationToClient(
+    message: BusinessClientMessage,
+    appClient: any,
+    business: any
+  ): Promise<{
+    success: boolean;
+    debugInfo?: any;
+    oneSignalError?: string;
+    oneSignalDetails?: any;
+  }> {
+    const debugInfo: any = {
+      timestamp: new Date().toISOString(),
+      messageId: message._id.toString(),
+      businessId: message.businessId,
+      appClientId: message.appClientId,
+      steps: []
+    };
+  
+    try {
+      // Step 1: Configuration check
+      const configCheck = {
+        oneSignalConfigured: this.oneSignalService.isConfigured(),
+        oneSignalStatus: this.oneSignalService.getStatus(),
+      };
+      debugInfo.steps.push({ step: 'config_check', result: configCheck });
+  
+      if (!this.oneSignalService.isConfigured()) {
+        const error = 'OneSignal not configured - missing APP_ID or API_KEY';
+        debugInfo.steps.push({ step: 'onesignal_skipped', result: { reason: error } });
+        this.logger.warn('OneSignal not configured - skipping push notification');
+        return { success: false, debugInfo, oneSignalError: error };
+      }
+  
+      // Step 2: Get app client user info
+      if (!appClient.userId) {
+        const error = 'App client has no userId for OneSignal targeting';
+        debugInfo.steps.push({ step: 'user_id_missing', result: { reason: error } });
+        return { success: false, debugInfo, oneSignalError: error };
+      }
+  
+      const clientUserInfo = {
+        userId: appClient.userId,
+        businessId: message.businessId,
+        clientName: appClient.name,
+        clientEmail: appClient.email
+      };
+      debugInfo.steps.push({ step: 'client_user_lookup', result: 'SUCCESS', clientInfo: clientUserInfo });
+  
+      // Step 3: Prepare notification content
+      const title = `New Message from ${business.name}`;
+      const body = message.content.length > 100 
+        ? `${message.content.substring(0, 97)}...` 
+        : message.content;
+  
+      const actionData = {
+        type: 'business_message',
+        entityId: message._id.toString(),
+        entityType: 'message',
+        conversationId: message.conversationId,
+        businessId: message.businessId,
+        url: `https://app.staffluent.co/messages/${message.conversationId}`
+      };
+  
+      const notificationContent = { title, body, actionData };
+      debugInfo.steps.push({ step: 'notification_content_prepared', result: notificationContent });
+  
+      // Step 4: Send OneSignal notification to app client
+      let oneSignalError: string | undefined;
+      let oneSignalDetails: any;
+  
+      try {
+        const oneSignalPayload = {
+          userIds: [appClient.userId], // Target the app client user
+          data: {
+            type: 'business_message',
+            messageId: message._id.toString(),
+            conversationId: message.conversationId,
+            businessId: message.businessId,
+            businessName: business.name,
+            ...actionData
+          },
+          url: actionData.url,
+          priority: 7, // High priority for direct messages
+          buttons: [
+            { id: 'view_message', text: 'View Message' },
+            { id: 'reply', text: 'Reply' }
+          ]
+        };
+  
+        debugInfo.steps.push({ 
+          step: 'onesignal_payload_prepared', 
+          result: { 
+            businessId: message.businessId,
+            targetUserId: appClient.userId,
+            title, 
+            body, 
+            payload: oneSignalPayload 
+          } 
+        });
+  
+        // Send notification to specific business user (the app client)
+        const oneSignalResult = await this.oneSignalService.sendToSpecificUser(
+          message.businessId,
+          appClient.userId,
+          title,
+          body,
+          oneSignalPayload
+        );
+  
+        oneSignalDetails = oneSignalResult;
+        debugInfo.steps.push({ 
+          step: 'onesignal_notification_sent', 
+          result: { success: true, oneSignalResult } 
+        });
+        
+        this.logger.log(`OneSignal message notification sent to client ${appClient.userId}: ${oneSignalResult?.id}`);
+  
+      } catch (oneSignalErr: any) {
+        oneSignalError = oneSignalErr.message;
+        oneSignalDetails = {
+          error: oneSignalErr.message,
+          response: oneSignalErr.response?.data,
+          status: oneSignalErr.response?.status,
+          statusText: oneSignalErr.response?.statusText
+        };
+  
+        debugInfo.steps.push({ 
+          step: 'onesignal_notification_failed', 
+          result: oneSignalDetails 
+        });
+  
+        this.logger.error(`OneSignal message notification failed for client ${appClient.userId}: ${oneSignalErr.message}`);
+      }
+  
+      // Final summary
+      debugInfo.summary = {
+        oneSignalNotification: oneSignalError ? 'FAILED' : 'SUCCESS',
+        overallSuccess: !oneSignalError
+      };
+  
+      this.logger.log(`Sent message notification to app client ${appClient.userId} for message ${message._id}`);
+  
+      return { 
+        success: !oneSignalError, 
+        debugInfo,
+        oneSignalError, 
+        oneSignalDetails
+      };
+  
+    } catch (error: any) {
+      debugInfo.steps.push({ 
+        step: 'major_error', 
+        result: { 
+          error: error.message, 
+          stack: error.stack?.split('\n').slice(0, 5).join('\n') 
+        } 
+      });
+  
+      this.logger.error(`Error sending message notification: ${error.message}`, error.stack);
+      return { 
+        success: false, 
+        debugInfo,
+        oneSignalError: `Major error: ${error.message}` 
+      };
+    }
   }
 
   private extractIpAddress(req: any): string {

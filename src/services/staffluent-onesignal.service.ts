@@ -466,6 +466,70 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
     }
 
     /**
+ * Send notification to a specific user within a business
+ */
+async sendToSpecificUser(
+    businessId: string,
+    userId: string,
+    title: string,
+    message: string,
+    options?: {
+        data?: any;
+        url?: string;
+        priority?: number;
+        buttons?: Array<{ id: string; text: string; icon?: string }>;
+        bigPicture?: string;
+        chromeWebIcon?: string;
+        chromeWebImage?: string;
+        ttl?: number;
+        collapseId?: string;
+    }
+): Promise<any> {
+    try {
+        if (!this.appId || !this.apiKey) {
+            throw new Error('OneSignal not configured');
+        }
+
+        // Create external user ID for the specific user
+        const external_user_id = `${businessId}_${userId}`;
+
+        const notificationOptions: StaffluentNotificationOptions = {
+            headings: { en: title },
+            contents: { en: message },
+            include_external_user_ids: [external_user_id],
+            data: {
+                businessId,
+                userId,
+                type: 'direct_message',
+                ...(options?.data || {}),
+            },
+            web_url: options?.url,
+            priority: options?.priority || 5,
+            buttons: options?.buttons,
+            big_picture: options?.bigPicture,
+            chrome_web_icon: options?.chromeWebIcon,
+            chrome_web_image: options?.chromeWebImage,
+            ttl: options?.ttl,
+            collapse_id: options?.collapseId,
+        };
+
+        const result = await this.sendNotification(notificationOptions);
+
+        this.logger.log(`Notification sent to specific user ${userId} in business ${businessId}: ${result?.id}`);
+        
+        return result;
+
+    } catch (error) {
+        this.logger.error(
+            `Error sending notification to specific user ${userId} in business ${businessId}: ${error.message}`,
+            error.stack,
+        );
+        throw error;
+    }
+}
+
+
+    /**
      * Send task assignment notification
      */
     async sendTaskAssignmentNotification(
