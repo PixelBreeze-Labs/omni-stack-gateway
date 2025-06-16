@@ -155,8 +155,8 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
             businessId: deviceData.businessId,
             userId: deviceData.userId,
             userRole: deviceData.userRole || 'business_staff',
-            isActive: deviceData.isActive !== false ? 'true' : 'false',
-            platform: deviceData.platform,
+            // isActive: deviceData.isActive !== false ? 'true' : 'false',
+            // platform: deviceData.platform,
         };
         debugInfo.tags = tags;
 
