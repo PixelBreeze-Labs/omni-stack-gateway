@@ -797,6 +797,7 @@ export class AuthService {
                 userId: user._id.toString(),
                 has_changed_password: user.metadata?.get('has_changed_password') === 'true',
                 clientId: appClient.clientId,
+                businessId: appClient.businessId,
                 appClientId: appClient._id.toString(),
                 client: {
                     id: appClient._id,
