@@ -10,7 +10,8 @@ export enum NotificationType {
   SIGNATURE = 'signature',
   INVOICE = 'invoice',
   ALERT = 'alert',
-  TICKET = 'ticket'
+  TICKET = 'ticket',
+  QUALITY_INSPECTION = 'quality_inspection'
 }
 
 export enum NotificationPriority {

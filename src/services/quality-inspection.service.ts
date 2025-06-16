@@ -11,6 +11,7 @@ import { SaasNotificationService } from './saas-notification.service';
 import { AuditLogService } from './audit-log.service';
 import { AuditAction, AuditSeverity, ResourceType } from '../schemas/audit-log.schema';
 import { DeliveryChannel, NotificationPriority, NotificationType } from '../schemas/saas-notification.schema';
+import { StaffluentOneSignalService } from './staffluent-onesignal.service';
 
 // DTOs for inspection creation
 export interface CreateDetailedInspectionDto {
@@ -114,6 +115,7 @@ export class QualityInspectionService {
     @InjectModel(User.name) private userModel: Model<User>,
     private readonly notificationService: SaasNotificationService,
     private readonly auditLogService: AuditLogService,
+    private readonly oneSignalService: StaffluentOneSignalService,
   ) {}
 
   /**
@@ -183,64 +185,538 @@ export class QualityInspectionService {
   }
 
   /**
- * Send notification to user when assigned quality role
- */
-private async sendQualityRoleAssignmentNotification(
-  userId: string,
-  businessId: string,
-  role: string,
-  businessName: string
-): Promise<void> {
-  try {
-    // Get user details
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      this.logger.warn(`User not found for quality role notification: ${userId}`);
-      return;
-    }
-
-    // Check user's notification preferences
-    const emailEnabled = user.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
-
-    const title = `Quality Role Assigned`;
-    const body = `You have been assigned the ${role.replace('_', ' ')} quality role in ${businessName}.`;
-    const priority = NotificationPriority.MEDIUM;
-
-    // Create action data for deep linking
-    const actionData = {
-      type: 'quality_assignment',
-      entityId: userId,
-      entityType: 'quality_role',
-      role: role,
-      url: `https://app.staffluent.co`
+   * Send notification for quality inspection updates
+   */
+  private async sendQualityInspectionNotification(
+    inspection: QualityInspection,
+    notificationType: 'inspection_created' | 'inspection_submitted' | 'inspection_approved' | 
+                     'inspection_rejected' | 'inspection_revision_requested' | 'inspection_assigned' |
+                     'final_approval_granted' | 'inspection_overridden' | 'client_review_submitted',
+    recipientUserIds: string[],
+    additionalData?: any
+  ): Promise<{
+    success: boolean;
+    debugInfo?: any;
+    oneSignalError?: string;
+    oneSignalDetails?: any;
+    emailResult?: any;
+  }> {
+    const debugInfo: any = {
+      timestamp: new Date().toISOString(),
+      inspectionId: inspection._id.toString(),
+      businessId: inspection.businessId,
+      notificationType,
+      recipientCount: recipientUserIds.length,
+      steps: []
     };
 
-    // Determine channels
-    const channels: DeliveryChannel[] = [DeliveryChannel.APP]; // Always send in-app
+    try {
+      // Step 1: Configuration check
+      const configCheck = {
+        oneSignalConfigured: this.oneSignalService.isConfigured(),
+        oneSignalStatus: this.oneSignalService.getStatus(),
+        environmentVars: {
+          ONESIGNAL_STAFFLUENT_APP_ID: process.env.ONESIGNAL_STAFFLUENT_APP_ID ? 'SET' : 'MISSING',
+          ONESIGNAL_STAFFLUENT_API_KEY: process.env.ONESIGNAL_STAFFLUENT_API_KEY ? 'SET' : 'MISSING'
+        }
+      };
+      debugInfo.steps.push({ step: 'config_check', result: configCheck });
 
-    // Send notification
-    await this.notificationService.createNotification({
-      businessId,
-      userId,
-      title,
-      body,
-      type: NotificationType.SYSTEM,
-      priority,
-      channels: [DeliveryChannel.APP], // Send in-app first
-      reference: {
-        type: 'quality_role_assignment',
-        id: userId
-      },
-      actionData
-    });
+      // Step 2: Get business details
+      const business = await this.businessModel.findById(inspection.businessId);
+      if (!business) {
+        debugInfo.steps.push({ step: 'business_lookup', result: 'FAILED - Business not found' });
+        return { success: false, debugInfo, oneSignalError: 'Business not found' };
+      }
+      debugInfo.steps.push({ step: 'business_lookup', result: 'SUCCESS', businessName: business.name });
 
+      // Step 3: Prepare notification content based on type
+      let title: string;
+      let body: string;
+      let priority: NotificationPriority = NotificationPriority.MEDIUM;
+      let buttons: Array<{ id: string; text: string }> = [];
 
-    this.logger.log(`Sent quality role assignment notification to user ${userId} via channels: ${channels.join(', ')}`);
+      switch (notificationType) {
+        case 'inspection_created':
+          title = '📋 New Quality Inspection';
+          body = `Quality inspection created for ${inspection.location}`;
+          priority = NotificationPriority.MEDIUM;
+          buttons = [
+            { id: 'view_inspection', text: 'View Inspection' },
+            { id: 'start_review', text: 'Start Review' }
+          ];
+          break;
 
-  } catch (error) {
-    this.logger.error(`Error sending quality role assignment notification: ${error.message}`, error.stack);
+        case 'inspection_submitted':
+          title = '🔍 Inspection Submitted for Review';
+          body = `Quality inspection at ${inspection.location} is ready for review`;
+          priority = NotificationPriority.HIGH;
+          buttons = [
+            { id: 'review_inspection', text: 'Review Now' },
+            { id: 'view_details', text: 'View Details' }
+          ];
+          break;
+
+        case 'inspection_approved':
+          title = '✅ Inspection Approved';
+          body = `Quality inspection for ${inspection.location} has been approved`;
+          priority = NotificationPriority.MEDIUM;
+          buttons = [
+            { id: 'view_inspection', text: 'View Inspection' },
+            { id: 'final_approval', text: 'Final Approval' }
+          ];
+          break;
+
+        case 'inspection_rejected':
+          title = '❌ Inspection Rejected';
+          body = `Quality inspection for ${inspection.location} requires attention`;
+          priority = NotificationPriority.HIGH;
+          buttons = [
+            { id: 'view_feedback', text: 'View Feedback' },
+            { id: 'revise_inspection', text: 'Revise' }
+          ];
+          break;
+
+        case 'inspection_revision_requested':
+          title = '🔄 Revision Requested';
+          body = `Quality inspection for ${inspection.location} needs revision`;
+          priority = NotificationPriority.HIGH;
+          buttons = [
+            { id: 'view_feedback', text: 'View Feedback' },
+            { id: 'start_revision', text: 'Start Revision' }
+          ];
+          break;
+
+        case 'inspection_assigned':
+          title = '👤 Inspection Assigned';
+          body = `You've been assigned to review inspection at ${inspection.location}`;
+          priority = NotificationPriority.MEDIUM;
+          buttons = [
+            { id: 'start_review', text: 'Start Review' },
+            { id: 'view_details', text: 'View Details' }
+          ];
+          break;
+
+        case 'final_approval_granted':
+          title = '🎉 Final Approval Granted';
+          body = `Quality inspection for ${inspection.location} has received final approval`;
+          priority = NotificationPriority.HIGH;
+          buttons = [
+            { id: 'view_inspection', text: 'View Inspection' },
+            { id: 'notify_client', text: 'Notify Client' }
+          ];
+          break;
+
+        case 'inspection_overridden':
+          title = '⚠️ Inspection Decision Overridden';
+          body = `Quality inspection decision for ${inspection.location} has been overridden`;
+          priority = NotificationPriority.HIGH;
+          buttons = [
+            { id: 'view_details', text: 'View Details' },
+            { id: 'review_override', text: 'Review Override' }
+          ];
+          break;
+
+        case 'client_review_submitted':
+          title = '💬 Client Review Submitted';
+          body = `Client has submitted review for inspection at ${inspection.location}`;
+          priority = NotificationPriority.MEDIUM;
+          buttons = [
+            { id: 'view_review', text: 'View Review' },
+            { id: 'respond', text: 'Respond' }
+          ];
+          break;
+
+        default:
+          title = 'Quality Inspection Update';
+          body = `Inspection at ${inspection.location} has been updated`;
+          priority = NotificationPriority.MEDIUM;
+      }
+
+      const actionData = {
+        type: 'quality_inspection',
+        entityId: inspection._id.toString(),
+        entityType: 'inspection',
+        inspectionId: inspection._id.toString(),
+        location: inspection.location,
+        status: inspection.status,
+        priority: NotificationPriority.MEDIUM,
+        url: `https://app.staffluent.co/quality/inspections/${inspection._id}`
+      };
+
+      const notificationContent = { title, body, priority, actionData, buttons };
+      debugInfo.steps.push({ step: 'notification_content_prepared', result: notificationContent });
+
+      // Step 4: Create database notifications for each recipient
+      const dbNotificationResults = [];
+      for (const userId of recipientUserIds) {
+        try {
+          const user = await this.userModel.findById(userId);
+          if (!user) {
+            debugInfo.steps.push({ 
+              step: `database_notification_failed_${userId}`, 
+              result: { success: false, error: 'User not found' } 
+            });
+            continue;
+          }
+
+          const emailEnabled = user.metadata?.get('emailNotificationsEnabled') !== 'false';
+          const userChannels: DeliveryChannel[] = [DeliveryChannel.APP];
+          
+          if (emailEnabled) {
+            userChannels.push(DeliveryChannel.EMAIL);
+          }
+
+          const notification = await this.notificationService.createNotification({
+            businessId: inspection.businessId,
+            userId: userId,
+            title,
+            body,
+            type: NotificationType.QUALITY_INSPECTION,
+            priority,
+            channels: [DeliveryChannel.APP],
+            reference: {
+              type: 'quality_inspection',
+              id: inspection._id.toString()
+            },
+            actionData
+          });
+
+          dbNotificationResults.push({
+            userId,
+            success: true,
+            notificationId: notification._id.toString(),
+            channels: userChannels
+          });
+
+        } catch (dbError: any) {
+          dbNotificationResults.push({
+            userId,
+            success: false,
+            error: dbError.message
+          });
+        }
+      }
+
+      debugInfo.steps.push({ 
+        step: 'database_notifications_created', 
+        result: { 
+          total: recipientUserIds.length,
+          successful: dbNotificationResults.filter(r => r.success).length,
+          failed: dbNotificationResults.filter(r => !r.success).length,
+          details: dbNotificationResults
+        } 
+      });
+
+      // Step 5: Send OneSignal notification
+      let oneSignalError: string | undefined;
+      let oneSignalDetails: any;
+
+      try {
+        if (this.oneSignalService.isConfigured()) {
+          const oneSignalPayload = {
+            userIds: recipientUserIds,
+            data: {
+              type: 'quality_inspection',
+              inspectionId: inspection._id.toString(),
+              notificationType,
+              location: inspection.location,
+              status: inspection.status,
+              ...actionData,
+              ...additionalData
+            },
+            url: actionData.url,
+            priority: this.mapNotificationPriorityToOneSignal(priority),
+            buttons: buttons
+          };
+
+          debugInfo.steps.push({ 
+            step: 'onesignal_payload_prepared', 
+            result: { 
+              businessId: inspection.businessId,
+              title, 
+              body, 
+              payload: oneSignalPayload,
+              recipientCount: recipientUserIds.length
+            } 
+          });
+
+          const oneSignalResult = await this.oneSignalService.sendToBusinessUsersWeb(
+            inspection.businessId,
+            title,
+            body,
+            {
+              userIds: recipientUserIds,
+              data: oneSignalPayload.data,
+              url: oneSignalPayload.url,
+              priority: oneSignalPayload.priority,
+              buttons: oneSignalPayload.buttons
+            }
+          );
+
+          oneSignalDetails = oneSignalResult;
+          debugInfo.steps.push({ 
+            step: 'onesignal_notification_sent', 
+            result: { success: true, oneSignalResult } 
+          });
+          
+          this.logger.log(`OneSignal notification sent for inspection ${inspection._id}: ${oneSignalResult?.id}`);
+        } else {
+          oneSignalError = 'OneSignal not configured - missing APP_ID or API_KEY';
+          debugInfo.steps.push({ 
+            step: 'onesignal_skipped', 
+            result: { reason: oneSignalError, config: configCheck } 
+          });
+          this.logger.warn('OneSignal not configured - skipping push notification');
+        }
+      } catch (oneSignalErr: any) {
+        oneSignalError = oneSignalErr.message;
+        oneSignalDetails = {
+          error: oneSignalErr.message,
+          response: oneSignalErr.response?.data,
+          status: oneSignalErr.response?.status,
+          statusText: oneSignalErr.response?.statusText
+        };
+
+        debugInfo.steps.push({ 
+          step: 'onesignal_notification_failed', 
+          result: oneSignalDetails 
+        });
+
+        this.logger.error(`OneSignal notification failed for inspection ${inspection._id}: ${oneSignalErr.message}`);
+      }
+
+      // Final summary
+      debugInfo.summary = {
+        databaseNotifications: dbNotificationResults.filter(r => r.success).length + '/' + dbNotificationResults.length,
+        oneSignalNotification: oneSignalError ? 'FAILED' : (oneSignalDetails ? 'SUCCESS' : 'SKIPPED'),
+        overallSuccess: true
+      };
+
+      this.logger.log(`Sent quality inspection ${notificationType} notification for inspection ${inspection._id} to ${recipientUserIds.length} users`);
+
+      return { 
+        success: true, 
+        debugInfo,
+        oneSignalError, 
+        oneSignalDetails
+      };
+
+    } catch (error: any) {
+      debugInfo.steps.push({ 
+        step: 'major_error', 
+        result: { 
+          error: error.message, 
+          stack: error.stack?.split('\n').slice(0, 5).join('\n') 
+        } 
+      });
+
+      this.logger.error(`Error sending quality inspection notification: ${error.message}`, error.stack);
+      return { 
+        success: false, 
+        debugInfo,
+        oneSignalError: `Major error: ${error.message}` 
+      };
+    }
   }
-}
+
+
+  /**
+   * Map notification priority to OneSignal priority
+   */
+  private mapNotificationPriorityToOneSignal(priority: NotificationPriority): number {
+    switch (priority) {
+      case NotificationPriority.LOW:
+        return 3;
+      case NotificationPriority.MEDIUM:
+        return 5;
+      case NotificationPriority.HIGH:
+        return 7;
+      case NotificationPriority.URGENT:
+        return 10;
+      default:
+        return 5;
+    }
+  }
+
+
+   /**
+   * Get users to notify based on inspection stage and business configuration
+   */
+   private async getNotificationRecipients(
+    inspection: QualityInspection,
+    notificationType: string
+  ): Promise<string[]> {
+    const business = await this.businessModel.findById(inspection.businessId);
+    if (!business) return [];
+
+    const config = business.qualityInspectionConfig || this.getDefaultConfiguration();
+    let targetRoles: string[] = [];
+    let specificUsers: string[] = [];
+
+    switch (notificationType) {
+      case 'inspection_created':
+        // Notify reviewers and managers
+        targetRoles = [...config.canReview, config.finalApprover];
+        break;
+
+      case 'inspection_submitted':
+        // Notify reviewers
+        targetRoles = config.canReview;
+        break;
+
+      case 'inspection_approved':
+        // Notify final approver and inspector
+        targetRoles = [config.finalApprover];
+        specificUsers = [inspection.inspectorId];
+        break;
+
+      case 'inspection_rejected':
+      case 'inspection_revision_requested':
+        // Notify inspector
+        specificUsers = [inspection.inspectorId];
+        break;
+
+      case 'inspection_assigned':
+        // Notify assigned reviewer
+        if (inspection.reviewerId) {
+          specificUsers = [inspection.reviewerId];
+        }
+        break;
+
+      case 'final_approval_granted':
+        // Notify inspector and business admin
+        specificUsers = [inspection.inspectorId];
+        if (business.adminUserId) {
+          specificUsers.push(business.adminUserId);
+        }
+        break;
+
+      case 'inspection_overridden':
+        // Notify inspector, reviewer, and admin
+        specificUsers = [inspection.inspectorId];
+        if (inspection.reviewerId) {
+          specificUsers.push(inspection.reviewerId);
+        }
+        if (business.adminUserId) {
+          specificUsers.push(business.adminUserId);
+        }
+        break;
+
+      case 'client_review_submitted':
+        // Notify business admin and project managers
+        targetRoles = ['project_manager', 'operations_manager'];
+        if (business.adminUserId) {
+          specificUsers.push(business.adminUserId);
+        }
+        break;
+    }
+
+    // Find users by roles
+    const roleUserIds: string[] = [];
+    if (targetRoles.length > 0) {
+      const employees = await this.employeeModel.find({
+        businessId: inspection.businessId,
+        isDeleted: { $ne: true },
+        $or: [
+          { 'metadata.role': { $in: targetRoles } },
+          { 'metadata.qualityRole': { $in: targetRoles } }
+        ]
+      });
+
+      roleUserIds.push(...employees.map(emp => emp.user_id).filter(id => id));
+    }
+
+    // Combine specific users and role-based users, remove duplicates
+    const allUserIds = [...new Set([...specificUsers, ...roleUserIds])];
+    
+    // Filter out invalid user IDs
+    return allUserIds.filter(userId => userId && userId !== 'null' && userId !== 'undefined');
+  }
+
+  private async sendQualityRoleAssignmentNotification(
+    userId: string,
+    businessId: string,
+    role: string,
+    businessName: string
+  ): Promise<void> {
+    try {
+      const user = await this.userModel.findById(userId);
+      if (!user) {
+        this.logger.warn(`User not found for quality role notification: ${userId}`);
+        return;
+      }
+  
+      const title = `Quality Role Assigned`;
+      const body = `You have been assigned the ${role.replace('_', ' ')} quality role in ${businessName}.`;
+      const priority = NotificationPriority.MEDIUM;
+  
+      const actionData = {
+        type: 'quality_assignment',
+        entityId: userId,
+        entityType: 'quality_role',
+        role: role,
+        url: `https://app.staffluent.co`
+      };
+  
+      // ✅ Create SAAS notification
+      await this.notificationService.createNotification({
+        businessId,
+        userId,
+        title,
+        body,
+        type: NotificationType.SYSTEM,
+        priority,
+        channels: [DeliveryChannel.APP],
+        reference: {
+          type: 'quality_role_assignment',
+          id: userId
+        },
+        actionData
+      });
+  
+      // ✅ ADD OneSignal notification
+      try {
+        if (this.oneSignalService.isConfigured()) {
+          const oneSignalPayload = {
+            userIds: [userId],
+            data: {
+              type: 'quality_role_assignment',
+              userId: userId,
+              role: role,
+              businessName: businessName,
+              ...actionData
+            },
+            url: actionData.url,
+            priority: this.mapNotificationPriorityToOneSignal(priority),
+            buttons: [
+              { id: 'view_role', text: 'View Role Details' },
+              { id: 'open_app', text: 'Open App' }
+            ]
+          };
+  
+          const oneSignalResult = await this.oneSignalService.sendToBusinessUsersWeb(
+            businessId,
+            title,
+            body,
+            oneSignalPayload
+          );
+  
+          this.logger.log(`OneSignal role assignment notification sent: ${oneSignalResult?.id}`);
+        } else {
+          this.logger.warn('OneSignal not configured - skipping push notification for role assignment');
+        }
+      } catch (oneSignalError) {
+        this.logger.error(`OneSignal role assignment notification failed: ${oneSignalError.message}`);
+        // Don't throw - SAAS notification was successful
+      }
+  
+      this.logger.log(`Sent quality role assignment notification to user ${userId} via SAAS + OneSignal`);
+  
+    } catch (error) {
+      this.logger.error(`Error sending quality role assignment notification: ${error.message}`, error.stack);
+    }
+  }
 
 /**
  * Assign quality role to a user in a business
@@ -575,9 +1051,6 @@ private extractIpAddress(req: any): string {
   ).split(',')[0].trim();
 }
 
-/**
- * Send notification to user when quality role is removed
- */
 private async sendQualityRoleRemovalNotification(
   userId: string,
   businessId: string,
@@ -585,7 +1058,6 @@ private async sendQualityRoleRemovalNotification(
   businessName: string
 ): Promise<void> {
   try {
-    // Get user details
     const user = await this.userModel.findById(userId);
     if (!user) {
       this.logger.warn(`User not found for quality role removal notification: ${userId}`);
@@ -596,7 +1068,6 @@ private async sendQualityRoleRemovalNotification(
     const body = `Your ${removedRole.replace('_', ' ')} quality role has been removed in ${businessName}.`;
     const priority = NotificationPriority.MEDIUM;
 
-    // Create action data
     const actionData = {
       type: 'quality_role_removal',
       entityId: userId,
@@ -605,7 +1076,7 @@ private async sendQualityRoleRemovalNotification(
       url: `https://app.staffluent.co`
     };
 
-    // Send notification
+    // ✅ Create SAAS notification
     await this.notificationService.createNotification({
       businessId,
       userId,
@@ -620,6 +1091,37 @@ private async sendQualityRoleRemovalNotification(
       },
       actionData
     });
+
+    // ✅ ADD OneSignal notification
+    try {
+      if (this.oneSignalService.isConfigured()) {
+        const oneSignalResult = await this.oneSignalService.sendToBusinessUsersWeb(
+          businessId,
+          title,
+          body,
+          {
+            userIds: [userId],
+            data: {
+              type: 'quality_role_removal',
+              userId: userId,
+              removedRole: removedRole,
+              businessName: businessName,
+              ...actionData
+            },
+            url: actionData.url,
+            priority: this.mapNotificationPriorityToOneSignal(priority),
+            buttons: [
+              { id: 'view_profile', text: 'View Profile' },
+              { id: 'open_app', text: 'Open App' }
+            ]
+          }
+        );
+
+        this.logger.log(`OneSignal role removal notification sent: ${oneSignalResult?.id}`);
+      }
+    } catch (oneSignalError) {
+      this.logger.error(`OneSignal role removal notification failed: ${oneSignalError.message}`);
+    }
 
     this.logger.log(`Sent quality role removal notification to user ${userId}`);
 
@@ -1058,19 +1560,19 @@ async getQualityTeam(businessId: string): Promise<any[]> {
   }
 
   /**
- * Create detailed inspection (construction with photos/signature)
- */
-async createDetailedInspection(
+   * Create detailed inspection (construction with photos/signature) - WITH NOTIFICATIONS
+   */
+  async createDetailedInspection(
     businessId: string,
     inspectorId: string,
     inspectionData: CreateDetailedInspectionDto
   ): Promise<{ success: boolean; message: string; inspection: any }> {
     try {
       this.logger.log(`Creating detailed inspection for business: ${businessId}, inspector: ${inspectorId}`);
-  
+
       // Validate inspector has permission
       await this.validateInspectorPermissions(businessId, inspectorId, 'detailed');
-  
+
       // Calculate passed/failed items from checklist
       const totalItems = inspectionData.checklistItems?.length || 0;
       const passedItems = inspectionData.checklistItems?.filter(item => item.status === 'pass').length || 0;
@@ -1078,7 +1580,7 @@ async createDetailedInspection(
       const hasCriticalIssues = inspectionData.checklistItems?.some(item => 
         item.status === 'fail' && item.critical === true
       ) || false;
-  
+
       // Create inspection record
       const inspection = await this.qualityInspectionModel.create({
         businessId,
@@ -1104,9 +1606,26 @@ async createDetailedInspection(
           notes: inspectionData.notes || ''
         }
       });
-  
+
+      // Send notification to relevant users
+      const recipients = await this.getNotificationRecipients(inspection, 'inspection_created');
+      if (recipients.length > 0) {
+        await this.sendQualityInspectionNotification(
+          inspection,
+          'inspection_created',
+          recipients,
+          {
+            inspectionType: 'detailed',
+            totalItems,
+            passedItems,
+            failedItems,
+            hasCriticalIssues
+          }
+        );
+      }
+
       this.logger.log(`Successfully created detailed inspection: ${inspection._id}`);
-  
+
       return {
         success: true,
         message: 'Detailed inspection created successfully',
@@ -1316,7 +1835,7 @@ async createDetailedInspection(
   }
   
   /**
-   * Submit inspection for review
+   * Submit inspection for review - WITH NOTIFICATIONS
    */
   async submitInspectionForReview(
     inspectionId: string,
@@ -1324,40 +1843,40 @@ async createDetailedInspection(
   ): Promise<{ success: boolean; message: string; inspection: any }> {
     try {
       this.logger.log(`Submitting inspection for review: ${inspectionId} by inspector: ${inspectorId}`);
-  
+
       // Find inspection
       const inspection = await this.qualityInspectionModel.findById(inspectionId);
       if (!inspection) {
         throw new NotFoundException('Inspection not found');
       }
-  
+
       // Verify inspector owns this inspection
       if (inspection.inspectorId !== inspectorId) {
         throw new BadRequestException('You can only submit your own inspections');
       }
-  
+
       // Verify inspection is in draft status
       if (inspection.status !== 'draft') {
         throw new BadRequestException('Only draft inspections can be submitted for review');
       }
-  
+
       // Get business config to check requirements
       const business = await this.businessModel.findById(inspection.businessId);
       if (!business) {
         throw new NotFoundException('Business not found');
       }
-  
+
       const config = business.qualityInspectionConfig || this.getDefaultConfiguration();
-  
+
       // Validate inspection completeness based on config
       if (config.requirePhotos && inspection.type === 'detailed' && !inspection.hasPhotos) {
         throw new BadRequestException('Photos are required for this inspection');
       }
-  
+
       if (config.requireSignature && inspection.type === 'detailed' && !inspection.hasSignature) {
         throw new BadRequestException('Signature is required for this inspection');
       }
-  
+
       // Update inspection status
       const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
         inspectionId,
@@ -1370,9 +1889,25 @@ async createDetailedInspection(
         },
         { new: true }
       );
-  
+
+      // Send notification to reviewers
+      const recipients = await this.getNotificationRecipients(updatedInspection, 'inspection_submitted');
+      if (recipients.length > 0) {
+        await this.sendQualityInspectionNotification(
+          updatedInspection,
+          'inspection_submitted',
+          recipients,
+          {
+            inspectorName: inspectorId, // You might want to get actual name
+            submittedAt: new Date().toISOString(),
+            requiresPhotos: config.requirePhotos,
+            requiresSignature: config.requireSignature
+          }
+        );
+      }
+
       this.logger.log(`Successfully submitted inspection for review: ${inspectionId}`);
-  
+
       return {
         success: true,
         message: 'Inspection submitted for review successfully',
@@ -1503,141 +2038,174 @@ async getInspectionsForReview(
     }
   }
   
-  /**
-   * Approve inspection
+ /**
+   * Approve inspection - WITH NOTIFICATIONS
    */
-  async approveInspection(
-    inspectionId: string,
-    reviewerId: string,
-    approvalData: ApproveInspectionDto
-  ): Promise<{ success: boolean; message: string; inspection: any }> {
-    try {
-      this.logger.log(`Approving inspection: ${inspectionId} by reviewer: ${reviewerId}`);
-  
-      // Find inspection
-      const inspection = await this.qualityInspectionModel.findById(inspectionId);
-      if (!inspection) {
-        throw new NotFoundException('Inspection not found');
-      }
-  
-      // Validate reviewer has permission
-      await this.validateReviewerPermissions(inspection.businessId, reviewerId);
-  
-      // Verify inspection can be reviewed
-      if (!['pending', 'under_review'].includes(inspection.status)) {
-        throw new BadRequestException('Inspection cannot be reviewed in current status');
-      }
-  
-      // Check self-review policy
-      const business = await this.businessModel.findById(inspection.businessId);
-      const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
-  
-      if (!config.allowSelfReview && inspection.inspectorId === reviewerId) {
-        throw new BadRequestException('Self-review is not allowed');
-      }
-  
-      // Update inspection
-      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
-        inspectionId,
-        {
-          status: 'approved',
-          reviewerId,
-          reviewedDate: new Date(),
-          metadata: {
-            ...inspection.metadata,
-            reviewNotes: approvalData.notes || '',
-            reviewComments: approvalData.reviewComments || '',
-            reviewAction: 'approved',
-            reviewedAt: new Date().toISOString(),
-            reviewerId: reviewerId
-          }
-        },
-        { new: true }
-      );
-  
-      this.logger.log(`Successfully approved inspection: ${inspectionId}`);
-  
-      return {
-        success: true,
-        message: 'Inspection approved successfully',
-        inspection: updatedInspection
-      };
-    } catch (error) {
-      this.logger.error(`Error approving inspection: ${error.message}`, error.stack);
-      throw error;
+ async approveInspection(
+  inspectionId: string,
+  reviewerId: string,
+  approvalData: ApproveInspectionDto
+): Promise<{ success: boolean; message: string; inspection: any }> {
+  try {
+    this.logger.log(`Approving inspection: ${inspectionId} by reviewer: ${reviewerId}`);
+
+    // Find inspection
+    const inspection = await this.qualityInspectionModel.findById(inspectionId);
+    if (!inspection) {
+      throw new NotFoundException('Inspection not found');
     }
-  }
-  
-  /**
-   * Reject inspection
-   */
-  async rejectInspection(
-    inspectionId: string,
-    reviewerId: string,
-    rejectionData: RejectInspectionDto
-  ): Promise<{ success: boolean; message: string; inspection: any }> {
-    try {
-      this.logger.log(`Rejecting inspection: ${inspectionId} by reviewer: ${reviewerId}`);
-  
-      // Find inspection
-      const inspection = await this.qualityInspectionModel.findById(inspectionId);
-      if (!inspection) {
-        throw new NotFoundException('Inspection not found');
-      }
-  
-      // Validate reviewer has permission
-      await this.validateReviewerPermissions(inspection.businessId, reviewerId);
-  
-      // Verify inspection can be reviewed
-      if (!['pending', 'under_review'].includes(inspection.status)) {
-        throw new BadRequestException('Inspection cannot be reviewed in current status');
-      }
-  
-      // Check self-review policy
-      const business = await this.businessModel.findById(inspection.businessId);
-      const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
-  
-      if (!config.allowSelfReview && inspection.inspectorId === reviewerId) {
-        throw new BadRequestException('Self-review is not allowed');
-      }
-  
-      // Validate rejection data
-      if (!rejectionData.reason || !rejectionData.feedback) {
-        throw new BadRequestException('Reason and feedback are required for rejection');
-      }
-  
-      // Update inspection
-      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
-        inspectionId,
-        {
-          status: 'rejected',
-          reviewerId,
-          reviewedDate: new Date(),
-          metadata: {
-            ...inspection.metadata,
-            rejectionReason: rejectionData.reason,
-            rejectionFeedback: rejectionData.feedback,
-            requiredChanges: rejectionData.requiredChanges || [],
-            reviewAction: 'rejected',
-            reviewedAt: new Date().toISOString(),
-            reviewerId: reviewerId
-          }
-        },
-        { new: true }
-      );
-  
-      this.logger.log(`Successfully rejected inspection: ${inspectionId}`);
-  
-      return {
-        success: true,
-        message: 'Inspection rejected successfully',
-        inspection: updatedInspection
-      };
-    } catch (error) {
-      this.logger.error(`Error rejecting inspection: ${error.message}`, error.stack);
-      throw error;
+
+    // Validate reviewer has permission
+    await this.validateReviewerPermissions(inspection.businessId, reviewerId);
+
+    // Verify inspection can be reviewed
+    if (!['pending', 'under_review'].includes(inspection.status)) {
+      throw new BadRequestException('Inspection cannot be reviewed in current status');
     }
+
+    // Check self-review policy
+    const business = await this.businessModel.findById(inspection.businessId);
+    const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
+
+    if (!config.allowSelfReview && inspection.inspectorId === reviewerId) {
+      throw new BadRequestException('Self-review is not allowed');
+    }
+
+    // Update inspection
+    const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+      inspectionId,
+      {
+        status: 'approved',
+        reviewerId,
+        reviewedDate: new Date(),
+        metadata: {
+          ...inspection.metadata,
+          reviewNotes: approvalData.notes || '',
+          reviewComments: approvalData.reviewComments || '',
+          reviewAction: 'approved',
+          reviewedAt: new Date().toISOString(),
+          reviewerId: reviewerId
+        }
+      },
+      { new: true }
+    );
+
+    // Send notification to inspector and final approvers
+    const recipients = await this.getNotificationRecipients(updatedInspection, 'inspection_approved');
+    if (recipients.length > 0) {
+      await this.sendQualityInspectionNotification(
+        updatedInspection,
+        'inspection_approved',
+        recipients,
+        {
+          reviewerName: reviewerId, // You might want to get actual name
+          reviewNotes: approvalData.notes,
+          reviewComments: approvalData.reviewComments,
+          approvedAt: new Date().toISOString()
+        }
+      );
+    }
+
+    this.logger.log(`Successfully approved inspection: ${inspectionId}`);
+
+    return {
+      success: true,
+      message: 'Inspection approved successfully',
+      inspection: updatedInspection
+    };
+  } catch (error) {
+    this.logger.error(`Error approving inspection: ${error.message}`, error.stack);
+    throw error;
   }
+}
+
+/**
+ * Reject inspection - WITH NOTIFICATIONS
+ */
+async rejectInspection(
+  inspectionId: string,
+  reviewerId: string,
+  rejectionData: RejectInspectionDto
+): Promise<{ success: boolean; message: string; inspection: any }> {
+  try {
+    this.logger.log(`Rejecting inspection: ${inspectionId} by reviewer: ${reviewerId}`);
+
+    // Find inspection
+    const inspection = await this.qualityInspectionModel.findById(inspectionId);
+    if (!inspection) {
+      throw new NotFoundException('Inspection not found');
+    }
+
+    // Validate reviewer has permission
+    await this.validateReviewerPermissions(inspection.businessId, reviewerId);
+
+    // Verify inspection can be reviewed
+    if (!['pending', 'under_review'].includes(inspection.status)) {
+      throw new BadRequestException('Inspection cannot be reviewed in current status');
+    }
+
+    // Check self-review policy
+    const business = await this.businessModel.findById(inspection.businessId);
+    const config = business?.qualityInspectionConfig || this.getDefaultConfiguration();
+
+    if (!config.allowSelfReview && inspection.inspectorId === reviewerId) {
+      throw new BadRequestException('Self-review is not allowed');
+    }
+
+    // Validate rejection data
+    if (!rejectionData.reason || !rejectionData.feedback) {
+      throw new BadRequestException('Reason and feedback are required for rejection');
+    }
+
+    // Update inspection
+    const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+      inspectionId,
+      {
+        status: 'rejected',
+        reviewerId,
+        reviewedDate: new Date(),
+        metadata: {
+          ...inspection.metadata,
+          rejectionReason: rejectionData.reason,
+          rejectionFeedback: rejectionData.feedback,
+          requiredChanges: rejectionData.requiredChanges || [],
+          reviewAction: 'rejected',
+          reviewedAt: new Date().toISOString(),
+          reviewerId: reviewerId
+        }
+      },
+      { new: true }
+    );
+
+    // Send notification to inspector
+    const recipients = await this.getNotificationRecipients(updatedInspection, 'inspection_rejected');
+    if (recipients.length > 0) {
+      await this.sendQualityInspectionNotification(
+        updatedInspection,
+        'inspection_rejected',
+        recipients,
+        {
+          reviewerName: reviewerId, // You might want to get actual name
+          rejectionReason: rejectionData.reason,
+          rejectionFeedback: rejectionData.feedback,
+          requiredChanges: rejectionData.requiredChanges,
+          rejectedAt: new Date().toISOString()
+        }
+      );
+    }
+
+    this.logger.log(`Successfully rejected inspection: ${inspectionId}`);
+
+    return {
+      success: true,
+      message: 'Inspection rejected successfully',
+      inspection: updatedInspection
+    };
+  } catch (error) {
+    this.logger.error(`Error rejecting inspection: ${error.message}`, error.stack);
+    throw error;
+  }
+}
   
   /**
    * Request inspection revision
@@ -1879,74 +2447,90 @@ async getInspectionsForFinalApproval(
     }
   }
   
-  /**
-   * Give final approval to inspection
+    /**
+   * Give final approval to inspection - WITH NOTIFICATIONS
    */
-  async giveInspectionFinalApproval(
-    inspectionId: string,
-    approverId: string,
-    approvalData: FinalApprovalDto
-  ): Promise<{ success: boolean; message: string; inspection: any }> {
-    try {
-      this.logger.log(`Giving final approval to inspection: ${inspectionId} by approver: ${approverId}`);
+    async giveInspectionFinalApproval(
+      inspectionId: string,
+      approverId: string,
+      approvalData: FinalApprovalDto
+    ): Promise<{ success: boolean; message: string; inspection: any }> {
+      try {
+        this.logger.log(`Giving final approval to inspection: ${inspectionId} by approver: ${approverId}`);
   
-      // Find inspection
-      const inspection = await this.qualityInspectionModel.findById(inspectionId);
-      if (!inspection) {
-        throw new NotFoundException('Inspection not found');
+        // Find inspection
+        const inspection = await this.qualityInspectionModel.findById(inspectionId);
+        if (!inspection) {
+          throw new NotFoundException('Inspection not found');
+        }
+  
+        // Validate approver has permission
+        await this.validateFinalApproverPermissions(inspection.businessId, approverId);
+  
+        // Verify inspection can receive final approval
+        if (inspection.status !== 'approved') {
+          throw new BadRequestException('Only approved inspections can receive final approval');
+        }
+  
+        if (inspection.completedDate) {
+          throw new BadRequestException('Inspection has already received final approval');
+        }
+  
+        // Update inspection with final approval
+        const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
+          inspectionId,
+          {
+            status: 'complete',
+            approverId,
+            approvedDate: new Date(),
+            completedDate: new Date(),
+            metadata: {
+              ...inspection.metadata,
+              finalApprovalNotes: approvalData.notes || '',
+              clientNotificationRequired: approvalData.clientNotificationRequired || false,
+              scheduledCompletionDate: approvalData.scheduledCompletionDate,
+              finalApprovedAt: new Date().toISOString(),
+              finalApproverId: approverId,
+              finalApprovalAction: 'approved'
+            }
+          },
+          { new: true }
+        );
+  
+        // Send notification to inspector and relevant stakeholders
+        const recipients = await this.getNotificationRecipients(updatedInspection, 'final_approval_granted');
+        if (recipients.length > 0) {
+          await this.sendQualityInspectionNotification(
+            updatedInspection,
+            'final_approval_granted',
+            recipients,
+            {
+              approverName: approverId, // You might want to get actual name
+              finalApprovalNotes: approvalData.notes,
+              clientNotificationRequired: approvalData.clientNotificationRequired,
+              scheduledCompletionDate: approvalData.scheduledCompletionDate,
+              finalApprovedAt: new Date().toISOString()
+            }
+          );
+        }
+  
+        this.logger.log(`Successfully gave final approval to inspection: ${inspectionId}`);
+  
+        // If client notification is required, mark it for notification
+        if (approvalData.clientNotificationRequired) {
+          this.logger.log(`Client notification required for inspection: ${inspectionId}`);
+        }
+  
+        return {
+          success: true,
+          message: 'Final approval given successfully',
+          inspection: updatedInspection
+        };
+      } catch (error) {
+        this.logger.error(`Error giving final approval: ${error.message}`, error.stack);
+        throw error;
       }
-  
-      // Validate approver has permission
-      await this.validateFinalApproverPermissions(inspection.businessId, approverId);
-  
-      // Verify inspection can receive final approval
-      if (inspection.status !== 'approved') {
-        throw new BadRequestException('Only approved inspections can receive final approval');
-      }
-  
-      if (inspection.completedDate) {
-        throw new BadRequestException('Inspection has already received final approval');
-      }
-  
-      // Update inspection with final approval
-      const updatedInspection = await this.qualityInspectionModel.findByIdAndUpdate(
-        inspectionId,
-        {
-          status: 'complete',
-          approverId,
-          approvedDate: new Date(),
-          completedDate: new Date(),
-          metadata: {
-            ...inspection.metadata,
-            finalApprovalNotes: approvalData.notes || '',
-            clientNotificationRequired: approvalData.clientNotificationRequired || false,
-            scheduledCompletionDate: approvalData.scheduledCompletionDate,
-            finalApprovedAt: new Date().toISOString(),
-            finalApproverId: approverId,
-            finalApprovalAction: 'approved'
-          }
-        },
-        { new: true }
-      );
-  
-      this.logger.log(`Successfully gave final approval to inspection: ${inspectionId}`);
-  
-      // If client notification is required, mark it for notification
-      if (approvalData.clientNotificationRequired) {
-        // This could trigger a notification service or email
-        this.logger.log(`Client notification required for inspection: ${inspectionId}`);
-      }
-  
-      return {
-        success: true,
-        message: 'Final approval given successfully',
-        inspection: updatedInspection
-      };
-    } catch (error) {
-      this.logger.error(`Error giving final approval: ${error.message}`, error.stack);
-      throw error;
     }
-  }
   
   /**
    * Override previous review decision
