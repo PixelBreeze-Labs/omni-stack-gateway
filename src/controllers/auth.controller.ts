@@ -6,6 +6,8 @@ import { SalesAssociateLoginDto } from "../dtos/user.dto";
 import { StaffluentsBusinessAdminLoginDto } from "../dtos/staffluent-login.dto";
 import {SnapfoodLoginDto} from "../dtos/snapfood-login.dto";
 import { StaffluentOneSignalService } from '../services/staffluent-onesignal.service';
+import { Model } from 'mongoose';
+import { AppClient } from '../schemas/app-client.schema';
 
 // Define the mobile login DTO
 class StaffluentMobileLoginDto {
@@ -98,13 +100,16 @@ export class AuthController {
             console.log('Expected External User ID:', `${body.businessId}_${body.userId}`);
             console.log('========================================');
     
+            let finalBusinessId = body.businessId;
+            let userRole = body.userRole || 'business_staff';
+                
             // Call OneSignal service
             const result = await this.staffluentOneSignalService.registerStaffluentDevice({
                 userId: body.userId,
-                businessId: body.businessId,
+                businessId: finalBusinessId,
                 playerId: body.playerId,
                 platform: body.platform,
-                userRole: body.userRole || 'business_staff',
+                userRole: userRole,
                 isActive: true,
             });
     
@@ -118,9 +123,9 @@ export class AuthController {
                     playerId: body.playerId,
                     oneSignalId: body.playerId,
                     subscriptionId: body.subscriptionId,
-                    external_user_id: `${body.businessId}_${body.userId}`,
+                    external_user_id: `${finalBusinessId}_${body.userId}`,
                     oneSignalResult: result, // Include the full result for debugging
-                    note: `External ID should now be: ${body.businessId}_${body.userId}`
+                    note: `External ID should now be: ${finalBusinessId}_${body.userId}`
                 };
             } else {
                 // OneSignal failed

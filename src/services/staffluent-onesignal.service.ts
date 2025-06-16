@@ -3,6 +3,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
+import { Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { AppClient } from '../schemas/app-client.schema';
 
 interface StaffluentNotificationOptions {
     headings: { [language: string]: string };
@@ -56,6 +59,7 @@ export class StaffluentOneSignalService {
     constructor(
         private httpService: HttpService,
         private configService: ConfigService,
+        @InjectModel(AppClient.name) private appClientModel: Model<AppClient>,
     ) {
         this.appId = this.configService.get<string>('ONESIGNAL_STAFFLUENT_APP_ID');
         this.apiKey = this.configService.get<string>('ONESIGNAL_STAFFLUENT_API_KEY');
@@ -132,6 +136,30 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
     };
 
     try {
+
+        let finalBusinessId = deviceData.businessId;
+       
+        
+        if (!deviceData.businessId) {
+            try {
+                // Find AppClient by user_id to get businessId
+                const appClient = await this.appClientModel.findOne({
+                    user_id: deviceData.userId,
+                    is_active: true
+                }).lean();
+
+                if (appClient && appClient.businessId) {
+                    finalBusinessId = appClient.businessId.toString();
+                    console.log(`✅ Found businessId from AppClient: ${finalBusinessId}`);
+                } else {
+                    console.log('❌ AppClient not found or missing businessId');
+                   
+                }
+            } catch (lookupError) {
+                console.error('Error looking up businessId:', lookupError.message);
+            }
+        }
+
         // Step 1: Configuration check
         debugInfo.step = 'Configuration Check';
         debugInfo.logs.push('Checking OneSignal configuration...');
@@ -146,13 +174,13 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
 
         // Step 2: Prepare data
         debugInfo.step = 'Data Preparation';
-        const external_user_id = `${deviceData.businessId}_${deviceData.userId}`;
+        const external_user_id = `${finalBusinessId}_${deviceData.userId}`;
         debugInfo.external_user_id = external_user_id;
         debugInfo.oneSignalId = deviceData.playerId;
         debugInfo.platform = deviceData.platform;
 
         const tags = {
-            businessId: deviceData.businessId,
+            businessId: finalBusinessId,
             userId: deviceData.userId,
             userRole: deviceData.userRole || 'business_staff',
             // isActive: deviceData.isActive !== false ? 'true' : 'false',
