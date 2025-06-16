@@ -88,6 +88,8 @@ export class AuthController {
             userRole?: string;
             subscriptionId?: string;
             deviceToken?: string;
+            fallbackUsed?: boolean; // NEW: Track if frontend used fallback
+            externalUserId?: string; // NEW: Explicit external ID for fallback cases
         },
         @Headers('business-x-api-key') apiKey?: string,
     ) {
@@ -95,45 +97,48 @@ export class AuthController {
             console.log('=== Notification Registration Request ===');
             console.log('Request body:', body);
             console.log('PlayerId (OneSignal ID):', body.playerId);
+            console.log('Fallback used:', body.fallbackUsed);
+            console.log('External User ID:', body.externalUserId);
             console.log('Expected External User ID:', `${body.businessId}_${body.userId}`);
             console.log('========================================');
     
             let finalBusinessId = body.businessId;
             let userRole = body.userRole || 'business_staff';
                 
-            // Call OneSignal service
-            const result = await this.staffluentOneSignalService.registerStaffluentDevice({
+            // Call enhanced OneSignal service method
+            const result = await this.staffluentOneSignalService.registerStaffluentDeviceEnhanced({
                 userId: body.userId,
                 businessId: finalBusinessId,
                 playerId: body.playerId,
                 platform: body.platform,
                 userRole: userRole,
                 isActive: true,
+                fallbackUsed: body.fallbackUsed, // Pass fallback flag
+                externalUserId: body.externalUserId // Pass explicit external ID
             });
     
             console.log('OneSignal registration result:', result);
     
-            // FIXED: Actually check if OneSignal succeeded
             if (result.success) {
                 return {
                     success: true,
                     message: result.message || 'Notifications registered successfully',
                     playerId: body.playerId,
-                    oneSignalId: body.playerId,
+                    oneSignalId: result.oneSignalId || body.playerId,
                     subscriptionId: body.subscriptionId,
-                    external_user_id: `${finalBusinessId}_${body.userId}`,
-                    oneSignalResult: result, // Include the full result for debugging
-                    note: `External ID should now be: ${finalBusinessId}_${body.userId}`
+                    external_user_id: result.external_user_id || `${finalBusinessId}_${body.userId}`,
+                    oneSignalResult: result,
+                    fallbackUsed: result.fallbackUsed || false,
+                    note: result.note || `External ID: ${finalBusinessId}_${body.userId}`
                 };
             } else {
-                // OneSignal failed
                 console.error('OneSignal registration failed:', result);
                 return {
                     success: false,
                     message: result.message || 'OneSignal registration failed',
                     error: result.error,
                     playerId: body.playerId,
-                    oneSignalResult: result, // Include for debugging
+                    oneSignalResult: result,
                     troubleshooting: 'Check OneSignal API key and app ID configuration'
                 };
             }
