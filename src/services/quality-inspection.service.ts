@@ -634,65 +634,89 @@ export class QualityInspectionService {
     return allUserIds.filter(userId => userId && userId !== 'null' && userId !== 'undefined');
   }
 
-  /**
- * Send notification to user when assigned quality role
- */
-private async sendQualityRoleAssignmentNotification(
-  userId: string,
-  businessId: string,
-  role: string,
-  businessName: string
-): Promise<void> {
-  try {
-    // Get user details
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      this.logger.warn(`User not found for quality role notification: ${userId}`);
-      return;
+  private async sendQualityRoleAssignmentNotification(
+    userId: string,
+    businessId: string,
+    role: string,
+    businessName: string
+  ): Promise<void> {
+    try {
+      const user = await this.userModel.findById(userId);
+      if (!user) {
+        this.logger.warn(`User not found for quality role notification: ${userId}`);
+        return;
+      }
+  
+      const title = `Quality Role Assigned`;
+      const body = `You have been assigned the ${role.replace('_', ' ')} quality role in ${businessName}.`;
+      const priority = NotificationPriority.MEDIUM;
+  
+      const actionData = {
+        type: 'quality_assignment',
+        entityId: userId,
+        entityType: 'quality_role',
+        role: role,
+        url: `https://app.staffluent.co`
+      };
+  
+      // ✅ Create SAAS notification
+      await this.notificationService.createNotification({
+        businessId,
+        userId,
+        title,
+        body,
+        type: NotificationType.SYSTEM,
+        priority,
+        channels: [DeliveryChannel.APP],
+        reference: {
+          type: 'quality_role_assignment',
+          id: userId
+        },
+        actionData
+      });
+  
+      // ✅ ADD OneSignal notification
+      try {
+        if (this.oneSignalService.isConfigured()) {
+          const oneSignalPayload = {
+            userIds: [userId],
+            data: {
+              type: 'quality_role_assignment',
+              userId: userId,
+              role: role,
+              businessName: businessName,
+              ...actionData
+            },
+            url: actionData.url,
+            priority: this.mapNotificationPriorityToOneSignal(priority),
+            buttons: [
+              { id: 'view_role', text: 'View Role Details' },
+              { id: 'open_app', text: 'Open App' }
+            ]
+          };
+  
+          const oneSignalResult = await this.oneSignalService.sendToBusinessUsersWeb(
+            businessId,
+            title,
+            body,
+            oneSignalPayload
+          );
+  
+          this.logger.log(`OneSignal role assignment notification sent: ${oneSignalResult?.id}`);
+        } else {
+          this.logger.warn('OneSignal not configured - skipping push notification for role assignment');
+        }
+      } catch (oneSignalError) {
+        this.logger.error(`OneSignal role assignment notification failed: ${oneSignalError.message}`);
+        // Don't throw - SAAS notification was successful
+      }
+  
+      this.logger.log(`Sent quality role assignment notification to user ${userId} via SAAS + OneSignal`);
+  
+    } catch (error) {
+      this.logger.error(`Error sending quality role assignment notification: ${error.message}`, error.stack);
     }
-
-    // Check user's notification preferences
-    const emailEnabled = user.metadata?.get('emailNotificationsEnabled') !== 'false'; // Default true
-
-    const title = `Quality Role Assigned`;
-    const body = `You have been assigned the ${role.replace('_', ' ')} quality role in ${businessName}.`;
-    const priority = NotificationPriority.MEDIUM;
-
-    // Create action data for deep linking
-    const actionData = {
-      type: 'quality_assignment',
-      entityId: userId,
-      entityType: 'quality_role',
-      role: role,
-      url: `https://app.staffluent.co`
-    };
-
-    // Determine channels
-    const channels: DeliveryChannel[] = [DeliveryChannel.APP]; // Always send in-app
-
-    // Send notification
-    await this.notificationService.createNotification({
-      businessId,
-      userId,
-      title,
-      body,
-      type: NotificationType.SYSTEM,
-      priority,
-      channels: [DeliveryChannel.APP], // Send in-app first
-      reference: {
-        type: 'quality_role_assignment',
-        id: userId
-      },
-      actionData
-    });
-
-
-    this.logger.log(`Sent quality role assignment notification to user ${userId} via channels: ${channels.join(', ')}`);
-
-  } catch (error) {
-    this.logger.error(`Error sending quality role assignment notification: ${error.message}`, error.stack);
   }
-}
 
 /**
  * Assign quality role to a user in a business
@@ -1027,9 +1051,6 @@ private extractIpAddress(req: any): string {
   ).split(',')[0].trim();
 }
 
-/**
- * Send notification to user when quality role is removed
- */
 private async sendQualityRoleRemovalNotification(
   userId: string,
   businessId: string,
@@ -1037,7 +1058,6 @@ private async sendQualityRoleRemovalNotification(
   businessName: string
 ): Promise<void> {
   try {
-    // Get user details
     const user = await this.userModel.findById(userId);
     if (!user) {
       this.logger.warn(`User not found for quality role removal notification: ${userId}`);
@@ -1048,7 +1068,6 @@ private async sendQualityRoleRemovalNotification(
     const body = `Your ${removedRole.replace('_', ' ')} quality role has been removed in ${businessName}.`;
     const priority = NotificationPriority.MEDIUM;
 
-    // Create action data
     const actionData = {
       type: 'quality_role_removal',
       entityId: userId,
@@ -1057,7 +1076,7 @@ private async sendQualityRoleRemovalNotification(
       url: `https://app.staffluent.co`
     };
 
-    // Send notification
+    // ✅ Create SAAS notification
     await this.notificationService.createNotification({
       businessId,
       userId,
@@ -1072,6 +1091,37 @@ private async sendQualityRoleRemovalNotification(
       },
       actionData
     });
+
+    // ✅ ADD OneSignal notification
+    try {
+      if (this.oneSignalService.isConfigured()) {
+        const oneSignalResult = await this.oneSignalService.sendToBusinessUsersWeb(
+          businessId,
+          title,
+          body,
+          {
+            userIds: [userId],
+            data: {
+              type: 'quality_role_removal',
+              userId: userId,
+              removedRole: removedRole,
+              businessName: businessName,
+              ...actionData
+            },
+            url: actionData.url,
+            priority: this.mapNotificationPriorityToOneSignal(priority),
+            buttons: [
+              { id: 'view_profile', text: 'View Profile' },
+              { id: 'open_app', text: 'Open App' }
+            ]
+          }
+        );
+
+        this.logger.log(`OneSignal role removal notification sent: ${oneSignalResult?.id}`);
+      }
+    } catch (oneSignalError) {
+      this.logger.error(`OneSignal role removal notification failed: ${oneSignalError.message}`);
+    }
 
     this.logger.log(`Sent quality role removal notification to user ${userId}`);
 
