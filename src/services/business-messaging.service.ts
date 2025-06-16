@@ -404,14 +404,14 @@ private async sendMessageNotificationToClient(
       }
   
       // Step 2: Get app client user info
-      if (!appClient.userId) {
+      if (!appClient.user_id) {
         const error = 'App client has no userId for OneSignal targeting';
         debugInfo.steps.push({ step: 'user_id_missing', result: { reason: error } });
         return { success: false, debugInfo, oneSignalError: error };
       }
   
       const clientUserInfo = {
-        userId: appClient.userId,
+        userId: appClient.user_id,
         businessId: message.businessId,
         clientName: appClient.name,
         clientEmail: appClient.email
@@ -442,7 +442,7 @@ private async sendMessageNotificationToClient(
   
       try {
         const oneSignalPayload = {
-          userIds: [appClient.userId], // Target the app client user
+          userIds: [appClient.user_id], // Target the app client user
           data: {
             type: 'business_message',
             messageId: message._id.toString(),
@@ -463,7 +463,7 @@ private async sendMessageNotificationToClient(
           step: 'onesignal_payload_prepared', 
           result: { 
             businessId: message.businessId,
-            targetUserId: appClient.userId,
+            targetUserId: appClient.user_id,
             title, 
             body, 
             payload: oneSignalPayload 
@@ -473,7 +473,7 @@ private async sendMessageNotificationToClient(
         // Send notification to specific business user (the app client)
         const oneSignalResult = await this.oneSignalService.sendToSpecificUser(
           message.businessId,
-          appClient.userId,
+          appClient.user_id,
           title,
           body,
           oneSignalPayload
@@ -485,7 +485,7 @@ private async sendMessageNotificationToClient(
           result: { success: true, oneSignalResult } 
         });
         
-        this.logger.log(`OneSignal message notification sent to client ${appClient.userId}: ${oneSignalResult?.id}`);
+        this.logger.log(`OneSignal message notification sent to client ${appClient.user_id}: ${oneSignalResult?.id}`);
   
       } catch (oneSignalErr: any) {
         oneSignalError = oneSignalErr.message;
@@ -501,7 +501,7 @@ private async sendMessageNotificationToClient(
           result: oneSignalDetails 
         });
   
-        this.logger.error(`OneSignal message notification failed for client ${appClient.userId}: ${oneSignalErr.message}`);
+        this.logger.error(`OneSignal message notification failed for client ${appClient.user_id}: ${oneSignalErr.message}`);
       }
   
       // Final summary
@@ -510,7 +510,7 @@ private async sendMessageNotificationToClient(
         overallSuccess: !oneSignalError
       };
   
-      this.logger.log(`Sent message notification to app client ${appClient.userId} for message ${message._id}`);
+      this.logger.log(`Sent message notification to app client ${appClient.user_id} for message ${message._id}`);
   
       return { 
         success: !oneSignalError, 
