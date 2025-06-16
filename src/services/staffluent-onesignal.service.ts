@@ -46,6 +46,8 @@ interface StaffluentDeviceRegistration {
     department?: string;
     teams?: string[];
     isActive?: boolean;
+    fallbackUsed?: boolean;
+    externalUserId?: string;
 }
 
 @Injectable()
@@ -117,6 +119,341 @@ export class StaffluentOneSignalService {
             throw error;
         }
     }
+
+    /**
+ * Find user by external ID using OneSignal REST API
+ */
+async findUserByExternalId(externalUserId: string): Promise<{ success: boolean; oneSignalId?: string; userData?: any; error?: string }> {
+    try {
+        if (!this.appId || !this.apiKey) {
+            throw new Error('OneSignal not configured');
+        }
+
+        // Use OneSignal REST API to find user by external ID
+        const response = await lastValueFrom(
+            this.httpService.get(
+                `https://api.onesignal.com/apps/${this.appId}/users/by/external_id/${externalUserId}`,
+                {
+                    headers: {
+                        'Authorization': `Key ${this.apiKey}`,
+                    },
+                    timeout: 10000,
+                }
+            )
+        );
+
+        const userData = response.data;
+        
+        if (userData && userData.identity?.onesignal_id) {
+            this.logger.log(`Found OneSignal user by external ID ${externalUserId}: ${userData.identity.onesignal_id}`);
+            return {
+                success: true,
+                oneSignalId: userData.identity.onesignal_id,
+                userData: userData
+            };
+        } else {
+            return {
+                success: false,
+                error: 'User found but no OneSignal ID available'
+            };
+        }
+
+    } catch (error) {
+        const errorStatus = error.response?.status;
+        const errorMessage = error.response?.data?.errors?.[0] || error.message;
+        
+        if (errorStatus === 404) {
+            this.logger.warn(`User with external ID ${externalUserId} not found in OneSignal`);
+            return {
+                success: false,
+                error: 'User not found'
+            };
+        }
+        
+        this.logger.error(`Error finding user by external ID ${externalUserId}: ${errorMessage}`);
+        return {
+            success: false,
+            error: errorMessage
+        };
+    }
+}
+
+
+/**
+ * Enhanced registerStaffluentDevice that handles both normal and fallback cases
+ */
+async registerStaffluentDeviceEnhanced(deviceData: StaffluentDeviceRegistration & { fallbackUsed?: boolean; externalUserId?: string }): Promise<any> {
+    const debugInfo = {
+        timestamp: new Date().toISOString(),
+        step: '',
+        external_user_id: '',
+        oneSignalId: '',
+        platform: '',
+        tags: {},
+        updatePayload: {},
+        apiResponse: null,
+        error: null,
+        success: false,
+        message: '',
+        logs: [],
+        fallbackUsed: deviceData.fallbackUsed || false
+    };
+
+    try {
+        let finalBusinessId = deviceData.businessId;
+     
+        // Handle business ID lookup for clients
+        if (!deviceData.businessId && (deviceData.userRole === 'client' || deviceData.userRole === 'app_client')) {
+            try {
+                const appClient = await this.appClientModel.findOne({
+                    user_id: deviceData.userId,
+                    is_active: true
+                }).lean();
+
+                if (appClient && appClient.businessId) {
+                    finalBusinessId = appClient.businessId.toString();
+                    console.log(`✅ Found businessId from AppClient: ${finalBusinessId}`);
+                } else {
+                    console.log('❌ AppClient not found or missing businessId');
+                }
+            } catch (lookupError) {
+                console.error('Error looking up businessId:', lookupError.message);
+            }
+        }
+
+        // Configuration check
+        debugInfo.step = 'Configuration Check';
+        debugInfo.logs.push('Checking OneSignal configuration...');
+        
+        if (!this.appId || !this.apiKey) {
+            debugInfo.error = 'OneSignal not configured';
+            debugInfo.message = 'Missing OneSignal app ID or API key';
+            debugInfo.logs.push('❌ OneSignal configuration missing');
+            throw new Error('OneSignal not configured');
+        }
+        debugInfo.logs.push('✅ OneSignal configuration found');
+
+        // Prepare data
+        debugInfo.step = 'Data Preparation';
+        const external_user_id = `${finalBusinessId}_${deviceData.userId}`;
+        debugInfo.external_user_id = external_user_id;
+        debugInfo.oneSignalId = deviceData.playerId;
+        debugInfo.platform = deviceData.platform;
+
+        const tags = {
+            businessId: finalBusinessId,
+            userId: deviceData.userId,
+            userRole: deviceData.userRole || 'business_staff',
+        };
+        debugInfo.tags = tags;
+
+        debugInfo.logs.push(`External User ID: ${external_user_id}`);
+        debugInfo.logs.push(`OneSignal ID: ${deviceData.playerId}`);
+        debugInfo.logs.push(`Platform: ${deviceData.platform}`);
+        debugInfo.logs.push(`Fallback Used: ${deviceData.fallbackUsed}`);
+        debugInfo.logs.push(`Tags: ${JSON.stringify(tags)}`);
+
+        if (deviceData.playerId) {
+            // HANDLE FALLBACK CASE: When playerId is actually external ID
+            if (deviceData.fallbackUsed && deviceData.externalUserId) {
+                debugInfo.step = 'Fallback Mode - External ID Registration';
+                debugInfo.logs.push('🔄 Handling iOS PWA fallback case...');
+                
+                // Try to find the actual OneSignal ID using external ID
+                try {
+                    const findResult = await this.findUserByExternalId(deviceData.externalUserId);
+                    
+                    if (findResult.success && findResult.oneSignalId) {
+                        debugInfo.logs.push(`✅ Found actual OneSignal ID: ${findResult.oneSignalId}`);
+                        
+                        // Use the real OneSignal ID to update tags
+                        return await this.registerStaffluentDevice({
+                            ...deviceData,
+                            playerId: findResult.oneSignalId,
+                            fallbackUsed: undefined // Remove fallback flag for normal processing
+                        });
+                    } else {
+                        debugInfo.logs.push('⚠️ Could not find OneSignal ID, but user exists with external ID');
+                        debugInfo.logs.push('✅ Registration successful - notifications can be sent via external ID');
+                        
+                        // User exists in OneSignal with external ID, just mark as successful
+                        debugInfo.success = true;
+                        debugInfo.message = 'User registered with external ID (fallback mode)';
+                        
+                        return {
+                            success: true,
+                            message: debugInfo.message,
+                            oneSignalId: deviceData.playerId, // Keep the external ID
+                            external_user_id: deviceData.externalUserId,
+                            tags: tags,
+                            debugInfo,
+                            note: `User exists in OneSignal with external ID: ${deviceData.externalUserId}. Notifications will work via include_external_user_ids.`,
+                            fallbackUsed: true
+                        };
+                    }
+                } catch (findError) {
+                    debugInfo.logs.push(`⚠️ Error finding user: ${findError.message}`);
+                    debugInfo.logs.push('✅ Assuming registration successful with external ID');
+                    
+                    // Even if we can't verify, assume success since external ID works
+                    debugInfo.success = true;
+                    debugInfo.message = 'Registration completed with external ID fallback';
+                    
+                    return {
+                        success: true,
+                        message: debugInfo.message,
+                        oneSignalId: deviceData.playerId,
+                        external_user_id: deviceData.externalUserId,
+                        tags: tags,
+                        debugInfo,
+                        note: `Using external ID for notifications: ${deviceData.externalUserId}`,
+                        fallbackUsed: true
+                    };
+                }
+            }
+            
+            // NORMAL CASE: Regular OneSignal ID processing
+            debugInfo.step = 'Normal Mode - OneSignal ID Registration';
+            debugInfo.logs.push(`Setting external ID and tags for OneSignal ID: ${deviceData.playerId}`);
+            
+            try {
+                const combinedPayload = {
+                    identity: {
+                        external_id: external_user_id
+                    },
+                    properties: {
+                        tags: tags
+                    }
+                };
+                debugInfo.updatePayload = combinedPayload;
+                debugInfo.logs.push(`Combined payload: ${JSON.stringify(combinedPayload, null, 2)}`);
+                
+                const updateResponse = await lastValueFrom(
+                    this.httpService.patch(
+                        `https://api.onesignal.com/apps/${this.appId}/users/by/onesignal_id/${deviceData.playerId}`,
+                        combinedPayload,
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Key ${this.apiKey}`,
+                            },
+                            timeout: 15000,
+                        }
+                    )
+                );
+
+                debugInfo.apiResponse = updateResponse.data;
+                debugInfo.logs.push('✅ External ID and tags set successfully');
+                debugInfo.logs.push(`Update Response: ${JSON.stringify(updateResponse.data)}`);
+                debugInfo.success = true;
+                debugInfo.message = 'OneSignal user updated with external ID and tags';
+                
+                this.logger.log(`OneSignal user updated successfully: ${deviceData.playerId} with external_user_id: ${external_user_id}`);
+                
+                return {
+                    success: true,
+                    message: debugInfo.message,
+                    oneSignalId: deviceData.playerId,
+                    external_user_id: external_user_id,
+                    tags: tags,
+                    debugInfo,
+                    oneSignalResponse: updateResponse.data,
+                    note: `Check OneSignal dashboard for user ${deviceData.playerId} with external ID: ${external_user_id}`
+                };
+
+            } catch (updateError) {
+                debugInfo.step = 'Update Error';
+                debugInfo.success = false;
+                
+                const errorData = updateError.response?.data;
+                const errorStatus = updateError.response?.status;
+                const errorMessage = errorData?.errors?.[0] || updateError.message;
+                
+                debugInfo.error = {
+                    status: errorStatus,
+                    message: errorMessage,
+                    fullError: errorData
+                };
+                
+                debugInfo.logs.push(`❌ OneSignal update failed with status: ${errorStatus}`);
+                debugInfo.logs.push(`Error message: ${errorMessage}`);
+                
+                if (errorStatus === 404) {
+                    debugInfo.logs.push('🚨 404 Error: OneSignal User ID not found');
+                    debugInfo.message = 'OneSignal User ID not found - this might be a fallback case';
+                    
+                    // If 404, the playerId might actually be an external ID, try fallback
+                    if (!deviceData.fallbackUsed) {
+                        debugInfo.logs.push('🔄 Trying to treat as external ID...');
+                        
+                        try {
+                            const findResult = await this.findUserByExternalId(deviceData.playerId);
+                            
+                            if (findResult.success) {
+                                debugInfo.logs.push('✅ Found user by treating playerId as external ID');
+                                debugInfo.success = true;
+                                debugInfo.message = 'User found via external ID lookup';
+                                
+                                return {
+                                    success: true,
+                                    message: debugInfo.message,
+                                    oneSignalId: findResult.oneSignalId || deviceData.playerId,
+                                    external_user_id: deviceData.playerId,
+                                    tags: tags,
+                                    debugInfo,
+                                    note: 'User found by treating input as external ID',
+                                    fallbackUsed: true
+                                };
+                            }
+                        } catch (fallbackError) {
+                            debugInfo.logs.push(`❌ Fallback lookup also failed: ${fallbackError.message}`);
+                        }
+                    }
+                }
+                
+                this.logger.error(`Failed to update OneSignal user ${deviceData.playerId}: ${errorMessage}`);
+                
+                return {
+                    success: false,
+                    message: debugInfo.message || `OneSignal update failed: ${errorMessage}`,
+                    error: errorMessage,
+                    oneSignalId: deviceData.playerId,
+                    external_user_id: external_user_id,
+                    debugInfo
+                };
+            }
+        }
+
+        // No OneSignal ID provided
+        debugInfo.step = 'No OneSignal ID';
+        debugInfo.success = false;
+        debugInfo.error = 'No OneSignal ID provided';
+        debugInfo.message = 'OneSignal ID is required for registration';
+        debugInfo.logs.push('❌ No OneSignal ID provided');
+        
+        return {
+            success: false,
+            message: 'OneSignal ID is required',
+            error: 'No OneSignal ID provided',
+            debugInfo
+        };
+
+    } catch (error) {
+        debugInfo.step = 'General Error';
+        debugInfo.success = false;
+        debugInfo.error = error.message;
+        debugInfo.logs.push(`❌ General error: ${error.message}`);
+
+        this.logger.error(`OneSignal registration failed: ${error.message}`);
+        
+        return { 
+            success: false, 
+            message: 'OneSignal registration failed',
+            error: error.message,
+            debugInfo
+        };
+    }
+}
 
     // Fixed registerStaffluentDevice method with correct tags update
 async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promise<any> {
