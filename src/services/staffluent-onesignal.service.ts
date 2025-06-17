@@ -41,7 +41,7 @@ interface StaffluentDeviceRegistration {
     businessId: string;
     deviceToken?: string;
     playerId?: string;
-    platform: 'ios' | 'android' | 'web';
+    platform: 'ios' | 'android' | 'web' | 'pwa';
     userRole?: string;
     department?: string;
     teams?: string[];
