@@ -430,7 +430,7 @@ private async sendMessageNotificationToClient(
         entityType: 'message',
         conversationId: message.conversationId,
         businessId: message.businessId,
-        url: `https://app.staffluent.co/messages/${message.conversationId}`
+        url: `https://app.staffluent.co/client-portal/dashboard`
       };
   
       const notificationContent = { title, body, actionData };
