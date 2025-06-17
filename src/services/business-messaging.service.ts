@@ -437,72 +437,73 @@ private async sendMessageNotificationToClient(
       debugInfo.steps.push({ step: 'notification_content_prepared', result: notificationContent });
   
       // Step 4: Send OneSignal notification to app client
-      let oneSignalError: string | undefined;
-      let oneSignalDetails: any;
+let oneSignalError: string | undefined;
+let oneSignalDetails: any;
+
+try {
+  // 🔧 CORRECT: Structure options to match sendToSpecificUser expectations
+  const notificationOptions = {
+    data: {
+      type: 'business_message',
+      messageId: message._id.toString(),
+      conversationId: message.conversationId,
+      businessId: message.businessId,
+      businessName: business.name,
+      entityId: message._id.toString(),
+      entityType: 'message'
+    },
+    url: actionData.url,
+    priority: 7,
+    buttons: [
+      { id: 'view_message', text: 'View Message' },
+      { id: 'reply', text: 'Reply' }
+    ]
+  };
+
+  debugInfo.steps.push({ 
+    step: 'onesignal_payload_prepared', 
+    result: { 
+      businessId: message.businessId,
+      targetUserId: appClient.user_id,
+      title, 
+      body, 
+      options: notificationOptions 
+    } 
+  });
+
+  // 🔧 CORRECT: Pass title, body, and options separately
+  const oneSignalResult = await this.oneSignalService.sendToSpecificUser(
+    message.businessId,
+    appClient.user_id,
+    title,                    // ✅ Goes to headings.en
+    body,                     // ✅ Goes to contents.en (your description)
+    notificationOptions       // ✅ Correctly structured options
+  );
+
+  oneSignalDetails = oneSignalResult;
+  debugInfo.steps.push({ 
+    step: 'onesignal_notification_sent', 
+    result: { success: true, oneSignalResult } 
+  });
   
-      try {
-        const oneSignalPayload = {
-          userIds: [appClient.user_id], // Target the app client user
-          data: {
-            type: 'business_message',
-            messageId: message._id.toString(),
-            conversationId: message.conversationId,
-            businessId: message.businessId,
-            businessName: business.name,
-            ...actionData
-          },
-          url: actionData.url,
-          priority: 7, // High priority for direct messages
-          buttons: [
-            { id: 'view_message', text: 'View Message' },
-            { id: 'reply', text: 'Reply' }
-          ]
-        };
-  
-        debugInfo.steps.push({ 
-          step: 'onesignal_payload_prepared', 
-          result: { 
-            businessId: message.businessId,
-            targetUserId: appClient.user_id,
-            title, 
-            body, 
-            payload: oneSignalPayload 
-          } 
-        });
-  
-        // Send notification to specific business user (the app client)
-        const oneSignalResult = await this.oneSignalService.sendToSpecificUser(
-          message.businessId,
-          appClient.user_id,
-          title,
-          body,
-          oneSignalPayload
-        );
-  
-        oneSignalDetails = oneSignalResult;
-        debugInfo.steps.push({ 
-          step: 'onesignal_notification_sent', 
-          result: { success: true, oneSignalResult } 
-        });
-        
-        this.logger.log(`OneSignal message notification sent to client ${appClient.user_id}: ${oneSignalResult?.id}`);
-  
-      } catch (oneSignalErr: any) {
-        oneSignalError = oneSignalErr.message;
-        oneSignalDetails = {
-          error: oneSignalErr.message,
-          response: oneSignalErr.response?.data,
-          status: oneSignalErr.response?.status,
-          statusText: oneSignalErr.response?.statusText
-        };
-  
-        debugInfo.steps.push({ 
-          step: 'onesignal_notification_failed', 
-          result: oneSignalDetails 
-        });
-  
-        this.logger.error(`OneSignal message notification failed for client ${appClient.user_id}: ${oneSignalErr.message}`);
-      }
+  this.logger.log(`OneSignal message notification sent to client ${appClient.user_id}: ${oneSignalResult?.id}`);
+
+} catch (oneSignalErr: any) {
+  oneSignalError = oneSignalErr.message;
+  oneSignalDetails = {
+    error: oneSignalErr.message,
+    response: oneSignalErr.response?.data,
+    status: oneSignalErr.response?.status,
+    statusText: oneSignalErr.response?.statusText
+  };
+
+  debugInfo.steps.push({ 
+    step: 'onesignal_notification_failed', 
+    result: oneSignalDetails 
+  });
+
+  this.logger.error(`OneSignal message notification failed for client ${appClient.user_id}: ${oneSignalErr.message}`);
+}
   
       // Final summary
       debugInfo.summary = {
