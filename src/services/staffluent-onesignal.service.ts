@@ -895,93 +895,68 @@ async registerStaffluentDevice(deviceData: StaffluentDeviceRegistration): Promis
         return this.sendNotification(notificationOptions);
     }
 
-    async sendToSpecificUser(
-        businessId: string,
-        userId: string,
-        title: string,
-        message: string,
-        options?: any
-    ): Promise<any> {
-        try {
-            if (!this.appId || !this.apiKey) {
-                throw new Error('OneSignal not configured');
-            }
-    
-            // 🔥 TEST: Use specific OneSignal ID instead of external ID
-            const external_user_id = `${businessId}_${userId}`;
-            
-            // Get current OneSignal ID for this user
-            let targetOneSignalId: string | null = null;
-            
-            try {
-                const userLookup = await this.findUserByExternalId(external_user_id);
-                if (userLookup.success && userLookup.oneSignalId) {
-                    targetOneSignalId = userLookup.oneSignalId;
-                    console.log(`🎯 Using OneSignal ID: ${targetOneSignalId}`);
-                } else {
-                    console.log(`⚠️ No OneSignal ID found for external ID: ${external_user_id}`);
-                }
-            } catch (lookupError) {
-                console.warn(`❌ Lookup failed: ${lookupError.message}`);
-            }
-    
-            const notificationOptions: StaffluentNotificationOptions = {
-                headings: { en: title },
-                contents: { en: message },
-                // 🎯 TEST: Use OneSignal ID directly
-                ...(targetOneSignalId 
-                    ? { 
-                        include_player_ids: [targetOneSignalId],
-                        // Add debug info
-                        data: {
-                            ...options?.data,
-                            debug_targeting: 'onesignal_id',
-                            debug_target_id: targetOneSignalId,
-                            debug_external_id: external_user_id
-                        }
-                      }
-                    : { 
-                        include_external_user_ids: [external_user_id],
-                        data: {
-                            ...options?.data,
-                            debug_targeting: 'external_id',
-                            debug_target_id: external_user_id
-                        }
-                      }
-                ),
-                data: {
-                    businessId,
-                    userId,
-                    type: 'direct_message',
-                    ...(options?.data || {}),
-                },
-                web_url: options?.url,
-                priority: options?.priority || 5,
-                buttons: options?.buttons,
-            };
-    
-            console.log('📱 Sending notification with:', {
-                targeting: targetOneSignalId ? 'OneSignal ID' : 'External ID',
-                targetId: targetOneSignalId || external_user_id,
-                userId,
-                businessId
-            });
-    
-            const result = await this.sendNotification(notificationOptions);
-    
-            console.log('✅ Notification sent:', {
-                oneSignalNotificationId: result?.id,
-                recipients: result?.recipients,
-                targeting: targetOneSignalId ? 'OneSignal ID' : 'External ID'
-            });
-    
-            return result;
-    
-        } catch (error) {
-            console.error('❌ Send notification error:', error.message);
-            throw error;
-        }
+    /**
+ * Send notification to a specific user within a business
+ */
+async sendToSpecificUser(
+    businessId: string,
+    userId: string,
+    title: string,
+    message: string,
+    options?: {
+        data?: any;
+        url?: string;
+        priority?: number;
+        buttons?: Array<{ id: string; text: string; icon?: string }>;
+        bigPicture?: string;
+        chromeWebIcon?: string;
+        chromeWebImage?: string;
+        ttl?: number;
+        collapseId?: string;
     }
+): Promise<any> {
+    try {
+        if (!this.appId || !this.apiKey) {
+            throw new Error('OneSignal not configured');
+        }
+
+        // Create external user ID for the specific user
+        const external_user_id = `${businessId}_${userId}`;
+
+        const notificationOptions: StaffluentNotificationOptions = {
+            headings: { en: title },
+            contents: { en: message },
+            include_external_user_ids: [external_user_id],
+            data: {
+                businessId,
+                userId,
+                type: 'direct_message',
+                ...(options?.data || {}),
+            },
+            web_url: options?.url,
+            priority: options?.priority || 5,
+            buttons: options?.buttons,
+            big_picture: options?.bigPicture,
+            chrome_web_icon: options?.chromeWebIcon,
+            chrome_web_image: options?.chromeWebImage,
+            ttl: options?.ttl,
+            collapse_id: options?.collapseId,
+        };
+
+        const result = await this.sendNotification(notificationOptions);
+
+        this.logger.log(`Notification sent to specific user ${userId} in business ${businessId}: ${result?.id}`);
+        
+        return result;
+
+    } catch (error) {
+        this.logger.error(
+            `Error sending notification to specific user ${userId} in business ${businessId}: ${error.message}`,
+            error.stack,
+        );
+        throw error;
+    }
+}
 
 
     /**
