@@ -122,7 +122,7 @@ export class StaffluentOneSignalService {
 
     // CORRECTED: Handle external ID to OneSignal ID lookup properly
 
-    async registerStaffluentDeviceFixed(deviceData: StaffluentDeviceRegistration & { fallbackUsed?: boolean; externalUserId?: string }): Promise<any> {
+    async registerStaffluentDeviceEnhanced(deviceData: StaffluentDeviceRegistration & { fallbackUsed?: boolean; externalUserId?: string }): Promise<any> {
         const debugInfo = {
             timestamp: new Date().toISOString(),
             step: '',
