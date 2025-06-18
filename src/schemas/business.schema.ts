@@ -314,6 +314,85 @@ export interface BusinessRole {
   updatedAt?: Date;
 }
 
+export enum CheckInMethod {
+  APP_BUTTON = 'app_button',
+  QR_CODE = 'qr_code', 
+  NFC_TAP = 'nfc_tap',
+  AUTO_GEOFENCE = 'auto_geofence'
+}
+
+export enum CheckInRequirement {
+  REQUIRE = 'require',
+  ALLOW = 'allow',
+  DISABLE = 'disable'
+}
+
+export enum LocationRequirement {
+  ALWAYS = 'always',
+  OPTIONAL = 'optional', 
+  NEVER = 'never'
+}
+
+export enum UserTerminology {
+  CHECK_IN = 'check_in',    // For office workers
+  CLOCK_IN = 'clock_in'     // For field workers
+}
+
+export interface RoleCheckInSettings {
+  roleName: string;
+  methods: {
+    appButton: CheckInRequirement;
+    qrCode: CheckInRequirement;
+    nfcTap: CheckInRequirement;
+    autoGeofence: CheckInRequirement;
+  };
+  locationRequirement: LocationRequirement;
+  primaryMethod: CheckInMethod;
+  terminology: UserTerminology;
+  enhancedVerification: boolean;
+  allowOverride: boolean;
+}
+
+export interface SiteOverrideSettings {
+  siteId: string;
+  siteName: string;
+  overrides: {
+    forceMethod?: CheckInMethod;
+    locationAccuracy?: number; // meters
+    requirePhoto?: boolean;
+    requireSignature?: boolean;
+    customRadius?: number; // meters
+  };
+}
+
+export interface CheckInConfiguration {
+  // Global settings
+  enabled: boolean;
+  
+  // Geofence settings
+  defaultJobSiteRadius: number; // 50, 100, 200 meters
+  autoCheckInTimeout: number; // 5, 15, 30 minutes
+  allowFallbackWithoutLocation: boolean;
+  requireLocationOverride: boolean;
+  
+  // Role-based configurations
+  roleSettings: RoleCheckInSettings[];
+  
+  // Site-specific overrides
+  siteOverrides: SiteOverrideSettings[];
+  
+  // Security settings
+  allowManualLocationEntry: boolean;
+  requireReasonForOverride: boolean;
+  logAllAttempts: boolean;
+  
+  // Advanced settings
+  enableOfflineMode: boolean;
+  syncFrequencyMinutes: number;
+  enableLocationHistory: boolean;
+  maxLocationHistoryDays: number;
+}
+
 @Schema({ timestamps: true })
 export class Business extends Document {
     @Prop({ required: true })
@@ -621,6 +700,10 @@ export class Business extends Document {
     default: [] 
   })
   roles: BusinessRole[];
+
+  // Add to Business class
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  checkInConfig: CheckInConfiguration;
 }
 
 export const BusinessSchema = SchemaFactory.createForClass(Business);

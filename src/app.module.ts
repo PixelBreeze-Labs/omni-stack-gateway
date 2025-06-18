@@ -446,6 +446,10 @@ import { ProjectChecklistItem, ProjectChecklistItemSchema } from './schemas/proj
 // Staffluent OneSignal
 import { StaffluentOneSignalService } from './services/staffluent-onesignal.service';
 
+// Business Check-in Config
+import { CheckInConfigService } from './services/checkin-config.service';
+import { BusinessCheckInConfigController } from './controllers/business-checkin-config.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -714,7 +718,8 @@ import { StaffluentOneSignalService } from './services/staffluent-onesignal.serv
     ProjectGalleryController,
     SupplyRequestController,
     ProjectMessageController,
-    ProjectChecklistController
+    ProjectChecklistController,
+    BusinessCheckInConfigController
   ],
   providers: [
     SnapfoodService,
@@ -845,7 +850,8 @@ import { StaffluentOneSignalService } from './services/staffluent-onesignal.serv
     SupplyRequestService,
     ProjectMessageService,
     ProjectChecklistService,
-    StaffluentOneSignalService
+    StaffluentOneSignalService,
+    CheckInConfigService
   ],
 })
 export class AppModule implements NestModule {
