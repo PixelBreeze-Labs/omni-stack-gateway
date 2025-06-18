@@ -205,6 +205,8 @@ export enum AuditAction {
     QUALITY_ROLE_REMOVED = 'quality_role_removed',
     QUALITY_TEAM_VIEWED = 'quality_team_viewed',
     QUALITY_CONFIG_UPDATED = 'quality_config_updated',
+
+    BUSINESS_CONFIG_VIEWED = 'business_config_viewed',
 }
 
 export enum AuditSeverity {
