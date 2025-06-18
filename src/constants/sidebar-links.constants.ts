@@ -803,6 +803,11 @@ export const businessAdminLinks: SideLink[] = [
         icon: null,
         sub: [
             {
+                title: 'Business Space',
+                href: '/business-space',
+                icon: null,
+            },
+            {
                 title: 'Alerts',
                 href: '/configuration/alerts',
                 icon: null,
