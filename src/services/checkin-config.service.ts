@@ -535,10 +535,10 @@ export class CheckInConfigService {
     }
   }
 
-  /**
-   * Get default configuration template
-   */
-  getDefaultConfiguration(): CheckInConfiguration {
+ /**
+ * Get default configuration template
+ */
+getDefaultConfiguration(): CheckInConfiguration {
     return {
       enabled: true,
       defaultJobSiteRadius: 100,
@@ -586,6 +586,20 @@ export class CheckInConfigService {
           primaryMethod: CheckInMethod.APP_BUTTON,
           terminology: UserTerminology.CHECK_IN,
           enhancedVerification: false,
+          allowOverride: true
+        },
+        {
+          roleName: 'operations_manager',
+          methods: {
+            appButton: CheckInRequirement.REQUIRE,
+            qrCode: CheckInRequirement.ALLOW,
+            nfcTap: CheckInRequirement.ALLOW,
+            autoGeofence: CheckInRequirement.ALLOW
+          },
+          locationRequirement: LocationRequirement.OPTIONAL,
+          primaryMethod: CheckInMethod.APP_BUTTON,
+          terminology: UserTerminology.CHECK_IN,
+          enhancedVerification: true,
           allowOverride: true
         }
       ],
